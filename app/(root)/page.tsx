@@ -184,9 +184,7 @@ export default function HomePage() {
 
               <p className="text-gray-700 mb-2">Auto</p>
 
-              <p className="text-sm text-gray-500 mb-4">
-                Compare rates and save
-              </p>
+              <p className="text-sm text-gray-500 mb-4">Protect your Auto</p>
 
               <a
                 href="/auto"

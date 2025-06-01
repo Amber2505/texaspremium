@@ -7,18 +7,10 @@ import Image from "next/image";
 const RootLayout = ({ children }: { children: React.ReactNode }) => {
   const [isGetInsuranceOpen, setIsGetInsuranceOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [screenSize, setScreenSize] = useState({ width: 0, height: 0 });
   const getInsuranceRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const updateScreenSize = () => {
-      setScreenSize({
-        width: window.innerWidth,
-        height: window.innerHeight,
-      });
-    };
-
     const handleClickOutside = (event: MouseEvent) => {
       if (
         getInsuranceRef.current &&
@@ -35,7 +27,6 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
     };
 
     const handleResize = () => {
-      updateScreenSize();
       if (
         isGetInsuranceOpen &&
         dropdownRef.current &&
@@ -59,7 +50,6 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
       }
     };
 
-    updateScreenSize();
     if (isGetInsuranceOpen || isMobileMenuOpen) {
       document.addEventListener("mousedown", handleClickOutside);
       window.addEventListener("resize", handleResize);
@@ -84,9 +74,9 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
           <Image
             src="/logo.png"
             alt="Texas Premium Insurance Services"
-            width={200} // ✅ pixel value
-            height={200} // ✅ pixel value
-            className="w-auto" // Tailwind class for automatic width (optional here)
+            width={200}
+            height={200}
+            className="w-auto"
           />
         </Link>
 
@@ -295,10 +285,6 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
           </div>
         </div>
       </nav>
-
-      {/* <div className="fixed bottom-4 right-4 bg-gray-800 text-white text-sm px-3 py-2 rounded-md shadow-lg z-50">
-        Screen: {screenSize.width}px × {screenSize.height}px
-      </div> */}
 
       {children}
       <footer className="bg-black text-white footer-text">
