@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { format, toZonedTime } from "date-fns-tz";
 import { LoadScript, Autocomplete } from "@react-google-maps/api";
+import Image from "next/image";
 
 // Define types for driver and vehicle objects
 interface Driver {
@@ -52,10 +53,9 @@ export default function AutoQuote() {
   const [priorCoverage, setPriorCoverage] = useState<string>("");
   const [vinLoading, setVinLoading] = useState<number | null>(null);
   const [vinError, setVinError] = useState<string>("");
-  const [errors, setErrors] = useState({ DriversNo: "", VehicleNo: "" });
   const [isAddressSelected, setIsAddressSelected] = useState(false);
 
-  // Calculate today's date in Central Time for default effective date
+  // Calculate todays date in Central Time for default effective date
   const CENTRAL_TIME_ZONE = "America/Chicago";
   const getTodayInCT = () => {
     const now = new Date();
@@ -157,7 +157,7 @@ export default function AutoQuote() {
       return;
     }
 
-    // After submitting step 1, ensure the primary applicant's details
+    // After submitting step 1, ensure the primary applicants details
     // are reflected in drivers[0] if DriversNo is 1 or more.
     setFormData((prevFormData) => {
       const newDrivers = [...prevFormData.drivers];
@@ -173,7 +173,7 @@ export default function AutoQuote() {
             idNumber: "",
           });
         } else {
-          // Ensure the first driver's details always match the main form fields
+          // Ensure the first drivers details always match the main form fields
           newDrivers[0] = {
             ...newDrivers[0],
             firstName: prevFormData.F_name,
@@ -240,7 +240,7 @@ export default function AutoQuote() {
   const initializeDrivers = (count: number): Driver[] => {
     const newDrivers = Array.from({ length: count }, (_, index) => {
       if (index === 0) {
-        // For the first driver, always pull from formData's main fields
+        // For the first driver, always pull from formDatas main fields
         return {
           firstName: formData.F_name,
           lastName: formData.L_name,
@@ -290,7 +290,7 @@ export default function AutoQuote() {
   // Updated VIN search function
   const handleVinSearch = async (vehicleIndex: number, vin: string) => {
     if (!vin || vin.length !== 17) {
-      return; // Don't search if VIN is not 17 characters
+      return; // Dont search if VIN is not 17 characters
     }
 
     // Check if this VIN is already used in other vehicles
@@ -537,13 +537,16 @@ ${coverageDetails}`;
           <LoadScript googleMapsApiKey={Maps_API_KEY} libraries={libraries}>
             <form onSubmit={handleSubmitStep1}>
               <div className="text-center mb-6">
-                <img
+                <Image
                   src="/autoquote.png"
                   alt="Banner"
-                  className="mx-auto mb-4 w-40"
+                  width={160}
+                  height={80}
+                  className="mx-auto mb-4"
                 />
+
                 <h1 className="text-2xl font-bold mb-2">
-                  Let’s put together a plan that fits you perfectly.
+                  Let&apos;s put together a plan that fits you perfectly.
                 </h1>
                 <p className="text-gray-700">
                   Please fill out the information below as accurately as
@@ -552,8 +555,8 @@ ${coverageDetails}`;
               </div>
               <div className="mb-4 text-center">
                 <label className="block text-sm mb-1">
-                  Effective Date (Default to Today's Date click on Calendar to
-                  change it)
+                  Effective Date (Default to Today&apos;s Date click on Calendar
+                  to change it)
                 </label>
                 <input
                   type="date"
@@ -914,11 +917,11 @@ ${coverageDetails}`;
                       >
                         <option value="">Select...</option>
                         <option value="in-state-dl">
-                          In-State Driver's License
+                          In-State Driver&apos;s License
                         </option>
                         <option value="in-state-id">In-State ID</option>
                         <option value="out-of-state-DL">
-                          Out-of-State Driver's License
+                          Out-of-State Driver&apos;s License
                         </option>
                         <option value="out-of-state-ID">Out-of-State ID</option>
                         <option value="international">
@@ -930,7 +933,7 @@ ${coverageDetails}`;
                     {driver.idType === "in-state-dl" && (
                       <div>
                         <label className="block mb-1 font-bold">
-                          Driver's License Number
+                          Driver&apos;s License Number
                         </label>
                         <input
                           type="text"
@@ -947,7 +950,7 @@ ${coverageDetails}`;
                             }));
                           }}
                           className="border p-2 w-full rounded"
-                          placeholder="Enter Driver's License Number"
+                          placeholder="Enter Drivers License Number"
                           required
                         />
                       </div>
@@ -983,7 +986,7 @@ ${coverageDetails}`;
                       <>
                         <div>
                           <label className="block mb-1 font-bold">
-                            Driver's License Number
+                            Driver&apos;s License Number
                           </label>
                           <input
                             type="text"
@@ -1000,7 +1003,7 @@ ${coverageDetails}`;
                               }));
                             }}
                             className="border p-2 w-full rounded"
-                            placeholder="Enter Driver's License Number"
+                            placeholder="Enter Drivers License Number"
                             required
                           />
                         </div>
@@ -1254,7 +1257,7 @@ ${coverageDetails}`;
                             {option === "Liability" && (
                               <span className="ml-1 text-red-500">*</span>
                             )}{" "}
-                            {/* Indicate it's required */}
+                            {/* Indicate its required */}
                           </button>
                         ))}
                       </div>
@@ -1358,7 +1361,7 @@ ${coverageDetails}`;
                     <label className="block mb-1 font-bold">Membership</label>
                     <label className="block mb-1">
                       (Many companies offer a better price if you have a
-                      Membership with Sam's or Costco)
+                      Membership with Sam&apos;s or Costco)
                     </label>
                     <select
                       name="membership"
@@ -1368,7 +1371,7 @@ ${coverageDetails}`;
                       onChange={handleChange}
                     >
                       <option value="">Select...</option>
-                      <option value="sams_club">Sam's Club</option>
+                      <option value="sams_club">Sam&apos;s Club</option>
                       <option value="costco">Costco</option>
                       <option value="none">None</option>{" "}
                       {/* Fixed duplicate value */}

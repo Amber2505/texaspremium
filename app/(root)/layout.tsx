@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 
 const RootLayout = ({ children }: { children: React.ReactNode }) => {
   const [isGetInsuranceOpen, setIsGetInsuranceOpen] = useState(false);
@@ -80,10 +81,12 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
     <div>
       <nav className="bg-[#E5E5E5] text-gray-900 p-5 flex justify-between items-center">
         <Link href="/" onClick={handleNavClick} className="flex items-center">
-          <img
+          <Image
             src="/logo.png"
             alt="Texas Premium Insurance Services"
-            className="h-30 w-auto"
+            width={200} // ✅ pixel value
+            height={200} // ✅ pixel value
+            className="w-auto" // Tailwind class for automatic width (optional here)
           />
         </Link>
 
