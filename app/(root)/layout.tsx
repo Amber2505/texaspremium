@@ -375,14 +375,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                   href="/terms"
                   className="underline text-white hover:text-blue-400"
                 >
-                  Terms of Service
-                </a>{" "}
-                |{" "}
-                <a
-                  href="/privacy"
-                  className="underline text-white hover:text-blue-400"
-                >
-                  Privacy Policy
+                  Terms of Use and Privacy Policy
                 </a>{" "}
                 |{" "}
                 <a
