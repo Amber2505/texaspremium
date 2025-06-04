@@ -32,10 +32,10 @@ export default function SR22Page() {
         In Texas, an SR-22 is a{" "}
         <strong>Certificate of Financial Responsibility</strong> filed by your
         auto insurance company with the Texas Department of Public Safety (DPS)
-        to prove you carry the state's minimum liability insurance coverage.
-        It's not a type of insurance but a document verifying that you meet
-        Texas's financial responsibility requirements, typically required for
-        high-risk drivers after serious driving violations or license
+        to prove you carry the state&#39;s minimum liability insurance coverage.
+        It&#39;s not a type of insurance but a document verifying that you meet
+        Texas&#39;s financial responsibility requirements, typically required
+        for high-risk drivers after serious driving violations or license
         suspensions.
       </p>
       <p className="mb-4">
@@ -91,10 +91,10 @@ export default function SR22Page() {
       </h2>
       <p className="mb-4">
         An SR-22 in Texas is a form your insurance provider files with the Texas
-        DPS to confirm you have at least the state's minimum liability
+        DPS to confirm you have at least the state&#39;s minimum liability
         insurance, which is 30/60/25 coverage ($30,000 per person, $60,000 per
-        accident for bodily injury, and $25,000 for property damage). Here's how
-        the process works:
+        accident for bodily injury, and $25,000 for property damage). Here&#39;s
+        how the process works:
       </p>
       <ol className="mb-4 pl-5">
         <li>
