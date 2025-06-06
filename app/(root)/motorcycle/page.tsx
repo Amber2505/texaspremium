@@ -28,8 +28,8 @@ interface Vehicle {
 
 // Define type for formData state
 interface FormData {
-  F_name: string;
-  L_name: string;
+  Rider_F_name: string;
+  Rider_L_name: string;
   Address: string;
   DOB: string;
   phone: string;
@@ -66,8 +66,8 @@ export default function AutoQuote() {
   const [formData, setFormData] = useState<FormData>(() => {
     const today = getTodayInCT();
     return {
-      F_name: "",
-      L_name: "",
+      Rider_F_name: "",
+      Rider_L_name: "",
       Address: "",
       DOB: "",
       phone: "",
@@ -165,8 +165,8 @@ export default function AutoQuote() {
         if (newDrivers.length === 0) {
           // If drivers array is empty, initialize the first driver
           newDrivers.push({
-            firstName: prevFormData.F_name,
-            lastName: prevFormData.L_name,
+            firstName: prevFormData.Rider_F_name,
+            lastName: prevFormData.Rider_L_name,
             dateOfBirth: prevFormData.DOB,
             gender: "", // Default or actual values for required fields
             idType: "",
@@ -176,8 +176,8 @@ export default function AutoQuote() {
           // Ensure the first drivers details always match the main form fields
           newDrivers[0] = {
             ...newDrivers[0],
-            firstName: prevFormData.F_name,
-            lastName: prevFormData.L_name,
+            firstName: prevFormData.Rider_F_name,
+            lastName: prevFormData.Rider_L_name,
             dateOfBirth: prevFormData.DOB,
           };
         }
@@ -242,8 +242,8 @@ export default function AutoQuote() {
       if (index === 0) {
         // For the first driver, always pull from formDatas main fields
         return {
-          firstName: formData.F_name,
-          lastName: formData.L_name,
+          firstName: formData.Rider_F_name,
+          lastName: formData.Rider_L_name,
           dateOfBirth: formData.DOB,
           gender: formData.drivers[0]?.gender || "", // Preserve if already set
           idType: formData.drivers[0]?.idType || "",
@@ -404,8 +404,8 @@ export default function AutoQuote() {
 
   const formatQuoteMessage = (data: FormData) => {
     const {
-      F_name,
-      L_name,
+      Rider_F_name,
+      Rider_L_name,
       Address,
       DOB,
       phone,
@@ -421,8 +421,8 @@ export default function AutoQuote() {
       membership,
     } = data;
 
-    const personalInfo = `Test \n\n Auto Quote Requested \n\n Personal Info:
-- Name: ${F_name} ${L_name}
+    const personalInfo = `Test \n\n MotorCycle Quote Requested \n\n Personal Info:
+- Name: ${Rider_F_name} ${Rider_L_name}
 - Address: ${Address}
 - DOB: ${DOB}
 - Phone: ${phone}
@@ -532,7 +532,7 @@ ${coverageDetails}`;
             <form onSubmit={handleSubmitStep1}>
               <div className="text-center mb-6">
                 <Image
-                  src="/autoquote.png"
+                  src="/motorcycle1.png"
                   alt="Banner"
                   width={160}
                   height={80}
@@ -540,11 +540,14 @@ ${coverageDetails}`;
                 />
 
                 <h1 className="text-2xl font-bold mb-2">
-                  Let&apos;s put together a plan that fits you perfectly.
+                  Rev Up for the Perfect Motorcycle Insurance Quote!
                 </h1>
+                <p className="text-xl text-gray-1000">
+                  Your ride deserves the best—let’s make sure it’s protected.
+                </p>
                 <p className="text-gray-700">
-                  Please fill out the information below as accurately as
-                  possible for a precise quote.
+                  Fill out the details below to get a fast, accurate quote
+                  tailored just for you and your bike.
                 </p>
               </div>
               <div className="mb-4 text-center">
@@ -566,25 +569,29 @@ ${coverageDetails}`;
 
               <div className="flex gap-4 mb-4">
                 <div className="w-1/2">
-                  <label className="block mb-1 font-bold">First Name</label>
+                  <label className="block mb-1 font-bold">
+                    Rider First Name
+                  </label>
                   <input
                     type="text"
-                    name="F_name"
+                    name="Rider_F_name"
                     className="border p-2 w-full rounded"
-                    placeholder="Enter First Name"
-                    value={formData.F_name}
+                    placeholder="Enter Riders First Name"
+                    value={formData.Rider_F_name}
                     onChange={handleChange}
                     required
                   />
                 </div>
                 <div className="w-1/2">
-                  <label className="block mb-1 font-bold">Last Name</label>
+                  <label className="block mb-1 font-bold">
+                    Rider Last Name
+                  </label>
                   <input
                     type="text"
-                    name="L_name"
+                    name="Rider_L_name"
                     className="border p-2 w-full rounded"
-                    placeholder="Enter Last Name"
-                    value={formData.L_name}
+                    placeholder="Enter Rider Last Name"
+                    value={formData.Rider_L_name}
                     onChange={handleChange}
                     required
                   />
@@ -782,8 +789,10 @@ ${coverageDetails}`;
                       <label className="block mb-1 font-bold">First Name</label>
                       <input
                         type="text"
-                        // FOR THE FIRST DRIVER, ALWAYS PULL FROM formData.F_name
-                        value={index === 0 ? formData.F_name : driver.firstName}
+                        // FOR THE FIRST DRIVER, ALWAYS PULL FROM formData.Rider_F_name
+                        value={
+                          index === 0 ? formData.Rider_F_name : driver.firstName
+                        }
                         onChange={(e) => {
                           // Only allow changing for additional drivers (index > 0)
                           if (index > 0) {
@@ -810,8 +819,10 @@ ${coverageDetails}`;
                       <label className="block mb-1 font-bold">Last Name</label>
                       <input
                         type="text"
-                        // FOR THE FIRST DRIVER, ALWAYS PULL FROM formData.L_name
-                        value={index === 0 ? formData.L_name : driver.lastName}
+                        // FOR THE FIRST DRIVER, ALWAYS PULL FROM formData.Rider_L_name
+                        value={
+                          index === 0 ? formData.Rider_L_name : driver.lastName
+                        }
                         onChange={(e) => {
                           // Only allow changing for additional drivers (index > 0)
                           if (index > 0) {
@@ -1440,13 +1451,13 @@ ${coverageDetails}`;
                       <span className="font-medium text-gray-700">
                         First Name:
                       </span>{" "}
-                      {formData.F_name || "Not provided"}
+                      {formData.Rider_F_name || "Not provided"}
                     </p>
                     <p>
                       <span className="font-medium text-gray-700">
                         Last Name:
                       </span>{" "}
-                      {formData.L_name || "Not provided"}
+                      {formData.Rider_L_name || "Not provided"}
                     </p>
                     <p>
                       <span className="font-medium text-gray-700">
