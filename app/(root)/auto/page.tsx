@@ -16,6 +16,7 @@ interface Driver {
   state?: string;
   country?: string;
   idSubType?: string;
+  relationship: string;
 }
 
 interface Vehicle {
@@ -54,6 +55,7 @@ export default function AutoQuote() {
   const [vinLoading, setVinLoading] = useState<number | null>(null);
   const [vinError, setVinError] = useState<string>("");
   const [isAddressSelected, setIsAddressSelected] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Calculate todays date in Central Time for default effective date
   const CENTRAL_TIME_ZONE = "America/Chicago";
@@ -96,13 +98,8 @@ export default function AutoQuote() {
     const { name, value } = e.target;
 
     if (name === "phone") {
-      // 1. Strip all non-digit characters
       const digitsOnly = value.replace(/\D/g, "");
-
-      // 2. Limit to 10 digits
       const limitedDigits = digitsOnly.substring(0, 10);
-
-      // 3. Apply formatting
       let formattedPhoneNumber = limitedDigits;
       if (limitedDigits.length > 6) {
         formattedPhoneNumber = `(${limitedDigits.substring(
@@ -123,15 +120,16 @@ export default function AutoQuote() {
         phone: formattedPhoneNumber,
       }));
     } else if (name === "popcoverage") {
-      // Keep your existing priorCoverage logic if you have it
       setPriorCoverage(value);
     } else {
-      // For all other form fields, update formData normally
       setFormData((prevFormData) => ({
         ...prevFormData,
         [name]: value,
       }));
-      setIsAddressSelected(false); // Reset selection if user starts typing manually
+      // Only reset isAddressSelected if the Address field is cleared
+      if (name === "Address" && value === "") {
+        setIsAddressSelected(false);
+      }
     }
   };
 
@@ -171,6 +169,7 @@ export default function AutoQuote() {
             gender: "", // Default or actual values for required fields
             idType: "",
             idNumber: "",
+            relationship: "Policyholder",
           });
         } else {
           // Ensure the first drivers details always match the main form fields
@@ -179,6 +178,7 @@ export default function AutoQuote() {
             firstName: prevFormData.F_name,
             lastName: prevFormData.L_name,
             dateOfBirth: prevFormData.DOB,
+            relationship: "Policyholder",
           };
         }
       } else {
@@ -210,10 +210,7 @@ export default function AutoQuote() {
   const handleSubmitStep4 = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    // Format the message
     const message = formatQuoteMessage(formData);
-
-    // URL-encode the message to handle special characters
     const encodedMessage = encodeURIComponent(message);
     const toNumber = "9727486404";
     const url = `https://astraldbapi.herokuapp.com/message_send_link/?message=${encodedMessage}&To=${toNumber}`;
@@ -230,6 +227,34 @@ export default function AutoQuote() {
       const result = await response.json();
       console.log("Message sent successfully:", result);
       alert("An Agent would contact you soon, Thanks for get a Quote");
+
+      // Reset form data and navigate to Step 1
+      const today = getTodayInCT();
+      setFormData({
+        F_name: "",
+        L_name: "",
+        Address: "",
+        DOB: "",
+        phone: "",
+        maritalStatus: "",
+        residencyType: "",
+        effectiveDate: today,
+        emailAddress: "",
+        policyStartDate: today,
+        DriversNo: 0,
+        VehicleNo: 0,
+        drivers: [],
+        vehicles: [],
+        priorCoverage: "",
+        priorCoverageMonths: "",
+        expirationDate: "",
+        membership: "",
+      });
+      setPriorCoverage("");
+      setVinLoading(null);
+      setVinError("");
+      setIsAddressSelected(false);
+      setStep(1);
     } catch (error) {
       console.error("Error sending message:", error);
       alert("Failed to send quote via SMS. Please try again.");
@@ -251,6 +276,7 @@ export default function AutoQuote() {
           state: formData.drivers[0]?.state || "",
           country: formData.drivers[0]?.country || "",
           idSubType: formData.drivers[0]?.idSubType || "",
+          relationship: "Policyholder",
         };
       } else {
         // For additional drivers, try to preserve their existing data or create new
@@ -265,6 +291,7 @@ export default function AutoQuote() {
             state: "",
             country: "",
             idSubType: "",
+            relationship: "",
           }
         );
       }
@@ -369,21 +396,56 @@ export default function AutoQuote() {
     const vehicle = updatedVehicles[vehicleIndex];
     const currentCoverage = vehicle.coverage || [];
 
-    // Prevent deselection of "Liability"
+    // Prevent changes to Liability (mandatory)
     if (
       coverageOption === "Liability" &&
       currentCoverage.includes("Liability")
     ) {
-      return; // Do nothing if trying to deselect "Liability"
+      return;
     }
 
-    if (currentCoverage.includes(coverageOption)) {
-      vehicle.coverage = currentCoverage.filter(
-        (option) => option !== coverageOption
-      );
+    // Handle mutual exclusivity between PIP and Medical Payments
+    let newCoverage = [...currentCoverage];
+    if (coverageOption === "Personal Injury Protection") {
+      if (newCoverage.includes("Personal Injury Protection")) {
+        // Deselect PIP
+        newCoverage = newCoverage.filter(
+          (option) => option !== "Personal Injury Protection"
+        );
+      } else {
+        // Select PIP and remove Medical Payments
+        newCoverage = newCoverage.filter(
+          (option) => option !== "Medical Payments"
+        );
+        newCoverage.push("Personal Injury Protection");
+      }
+    } else if (coverageOption === "Medical Payments") {
+      if (newCoverage.includes("Medical Payments")) {
+        // Deselect Medical Payments
+        newCoverage = newCoverage.filter(
+          (option) => option !== "Medical Payments"
+        );
+      } else {
+        // Select Medical Payments and remove PIP
+        newCoverage = newCoverage.filter(
+          (option) => option !== "Personal Injury Protection"
+        );
+        newCoverage.push("Medical Payments");
+      }
     } else {
-      vehicle.coverage = [...currentCoverage, coverageOption];
+      // Toggle other coverage options (except Liability)
+      if (newCoverage.includes(coverageOption)) {
+        newCoverage = newCoverage.filter((option) => option !== coverageOption);
+      } else {
+        newCoverage.push(coverageOption);
+      }
     }
+
+    // Update vehicle coverage
+    updatedVehicles[vehicleIndex] = {
+      ...vehicle,
+      coverage: newCoverage,
+    };
 
     setFormData({
       ...formData,
@@ -444,12 +506,14 @@ export default function AutoQuote() {
               state,
               country,
               idSubType,
+              relationship,
             } = driver;
 
             return `Driver ${index + 1}:
 - Name: ${firstName} ${lastName}
 - DOB: ${dateOfBirth}
 - Gender: ${gender}
+- Relationship: ${relationship || "N/A"}
 - ID Type: ${idType}
 - ID Number: ${idNumber || "N/A"}
 ${
@@ -864,6 +928,43 @@ ${coverageDetails}`;
                       />
                     </div>
                     <div>
+                      <label className="block mb-1 font-bold">
+                        Relationship
+                      </label>
+                      {index === 0 ? (
+                        <input
+                          type="text"
+                          value="Policyholder"
+                          className="border p-2 w-full rounded bg-gray-100"
+                          disabled
+                        />
+                      ) : (
+                        <select
+                          value={driver.relationship}
+                          onChange={(e) => {
+                            const updatedDrivers = [...formData.drivers];
+                            updatedDrivers[index] = {
+                              ...updatedDrivers[index],
+                              relationship: e.target.value,
+                            };
+                            setFormData((prev) => ({
+                              ...prev,
+                              drivers: updatedDrivers,
+                            }));
+                          }}
+                          className="border p-2 w-full rounded"
+                          required
+                        >
+                          <option value="">Select...</option>
+                          <option value="spouse">Spouse</option>
+                          <option value="child">Child</option>
+                          <option value="parent">Parent</option>
+                          <option value="other_relative">Other Relative</option>
+                          <option value="non_relative">Non-Relative</option>
+                        </select>
+                      )}
+                    </div>
+                    <div>
                       <label className="block mb-1 font-bold">Gender</label>
                       <select
                         value={driver.gender}
@@ -933,10 +1034,14 @@ ${coverageDetails}`;
                           type="text"
                           value={driver.idNumber || ""}
                           onChange={(e) => {
+                            const onlyNumbers = e.target.value.replace(
+                              /\D/g,
+                              ""
+                            );
                             const updatedDrivers = [...formData.drivers];
                             updatedDrivers[index] = {
                               ...updatedDrivers[index],
-                              idNumber: e.target.value,
+                              idNumber: onlyNumbers,
                             };
                             setFormData((prev) => ({
                               ...prev,
@@ -947,8 +1052,14 @@ ${coverageDetails}`;
                           placeholder="Enter Drivers License Number"
                           required
                           maxLength={8}
-                          inputMode="numeric"
+                          inputMode="numeric" // Shows numeric keyboard on mobile
+                          pattern="[0-9]*" // Allows only digits
                         />
+                        {driver.idNumber && driver.idNumber.length !== 8 && (
+                          <p className="text-red-500 text-sm mt-1">
+                            Driver's License must be exactly 8 digits.
+                          </p>
+                        )}
                       </div>
                     )}
 
@@ -1220,41 +1331,77 @@ ${coverageDetails}`;
                         disabled
                       />
                     </div>
+
                     <div className="col-span-2">
                       <label className="block mb-1 font-bold">
-                        Coverage Options
+                        Coverage Options (Hover over Coverage to see what
+                        exactly it covers)
                       </label>
                       <div className="flex flex-wrap gap-2">
                         {[
-                          "Liability",
-                          "Comprehensive/Collision (Basic Full coverage)",
-                          "Personal Injury Protection",
-                          "Medical Payments",
-                          "Uninsured Motorist",
-                          "Towing",
-                          "Rental",
-                          "Roadside Assistance", // Fixed typo: "Assitance" → "Assistance"
+                          {
+                            name: "Liability",
+                            description:
+                              "Texas law requires minimum liability coverage of 30/60/25: $30,000 per person for bodily injury, $60,000 total per accident for bodily injury, and $25,000 for property damage. This coverage only pays for damages and injuries you cause to others in an at-fault accident. Liability insurance does not cover your own injuries or vehicle damage - you need additional coverage like collision or comprehensive for that protection.",
+                          },
+                          {
+                            name: "Comprehensive/Collision (Basic Full coverage)",
+                            description:
+                              "Comprehensive covers damage to your vehicle from non-collision events like theft, weather, vandalism, or animal strikes. Collision covers damage to your vehicle from crashes with other vehicles or objects. Both are optional in Texas but typically required if you have a car loan or lease - together they provide 'full coverage' protecting your own vehicle regardless of fault.",
+                          },
+                          {
+                            name: "Personal Injury Protection",
+                            description:
+                              "PIP covers your medical expenses, lost wages (up to 80%), and household services regardless of who caused the accident. Texas requires insurance companies to offer at least $2,500 of PIP coverage, though it's optional to purchase. PIP is not mandatory in Texas but provides immediate coverage for you and your passengers without waiting to determine fault in an accident.",
+                          },
+                          {
+                            name: "Medical Payments",
+                            description:
+                              "MedPay covers medical bills for you and your passengers after an accident, regardless of who's at fault. It's optional in Texas and typically offers coverage in amounts like $1,000, $2,500, or $5,000. Unlike PIP, MedPay only covers medical expenses - no lost wages or household services - making it a simpler, more focused coverage option.",
+                          },
+                          {
+                            name: "Uninsured Motorist",
+                            description:
+                              "Protects you when the at-fault driver has no insurance or insufficient coverage to pay for your injuries and damages. With 12% of Texas registered vehicles unmatched to insurance policies, this optional coverage is crucial. It also pays if you're in a hit-and-run accident. Texas insurers must offer this coverage, but you can reject it in writing.",
+                          },
+                          {
+                            name: "Towing",
+                            description:
+                              "Covers the cost of towing your vehicle to a repair shop or safe location after an accident, breakdown, or if your car becomes disabled. This is specifically for towing services only, not other roadside assistance like jump-starts or tire changes. Coverage limits typically range from $50-$200 per towing incident, and it's an optional add-on that helps with unexpected towing expenses.",
+                          },
+                          {
+                            name: "Rental",
+                            description:
+                              "Covers the cost of a rental car while your vehicle is being repaired after a covered claim or if it's stolen. Typically pays a daily amount (like $30-$50 per day) for a specified number of days (usually 30 days maximum). This optional coverage ensures you stay mobile while your car is out of commission, helping you maintain your daily routine during the repair process.",
+                          },
+                          {
+                            name: "Roadside Assistance",
+                            description:
+                              "Provides emergency services when your vehicle breaks down or you're stranded, including jump-starts for dead batteries, flat tire changes, lockout assistance, and emergency fuel delivery. Available 24/7 regardless of where the breakdown occurs, this optional coverage. It's separate from towing coverage and focuses on getting you back on the road quickly for minor issues.",
+                          },
                         ].map((option) => (
                           <button
-                            key={option}
+                            key={option.name}
                             type="button"
-                            onClick={() => handleCoverageChange(index, option)}
+                            onClick={() =>
+                              handleCoverageChange(index, option.name)
+                            }
                             className={`px-4 py-2 border rounded-full text-xs font-medium ${
-                              vehicle.coverage.includes(option)
+                              vehicle.coverage.includes(option.name)
                                 ? "bg-blue-600 text-white"
                                 : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                             } ${
-                              option === "Liability"
+                              option.name === "Liability"
                                 ? "opacity-75 cursor-not-allowed"
                                 : ""
-                            }`} // Visual cue for "Liability"
-                            disabled={option === "Liability"} // Disable interaction with "Liability"
+                            }`}
+                            disabled={option.name === "Liability"}
+                            title={option.description} // Add tooltip with description
                           >
-                            {option}
-                            {option === "Liability" && (
+                            {option.name}
+                            {option.name === "Liability" && (
                               <span className="ml-1 text-red-500">*</span>
-                            )}{" "}
-                            {/* Indicate its required */}
+                            )}
                           </button>
                         ))}
                       </div>
@@ -1525,6 +1672,12 @@ ${coverageDetails}`;
                               Date of Birth:
                             </span>{" "}
                             {driver.dateOfBirth || "Not provided"}
+                          </p>
+                          <p>
+                            <span className="font-medium text-gray-700">
+                              Relationship:
+                            </span>{" "}
+                            {driver.relationship || "Not provided"}
                           </p>
                           <p>
                             <span className="font-medium text-gray-700">
