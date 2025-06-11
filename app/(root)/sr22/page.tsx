@@ -1,8 +1,62 @@
 "use client";
-
-import React from "react";
+import React, { useState } from "react";
+import Image from "next/image";
 
 export default function SR22Page() {
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    message: "",
+  });
+
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+
+    // Format the message from form data
+    const message = `Test \nSR-22 Inquiry:\nName: ${formData.name}\nEmail: ${
+      formData.email
+    }\nPhone: ${formData.phone}\nMessage: ${
+      formData.message || "No message provided"
+    }`;
+    const encodedMessage = encodeURIComponent(message);
+    const toNumber = "9727486404";
+    const url = `https://astraldbapi.herokuapp.com/message_send_link/?message=${encodedMessage}&To=${toNumber}`;
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to send message");
+      }
+
+      const result = await response.json();
+      console.log("Message sent successfully:", result);
+      alert("Thank you for your inquiry! An agent will contact you soon.");
+
+      // Reset form data
+      setFormData({
+        name: "",
+        email: "",
+        phone: "",
+        message: "",
+      });
+    } catch (error) {
+      console.error("Error sending message:", error);
+      alert(
+        "Failed to send inquiry via SMS. Please try again or call (469) 729-5185."
+      );
+    }
+  };
   return (
     <div className="font-sans leading-relaxed m-0 p-2 max-w-7xl mx-auto text-gray-800">
       <div className="flex justify-center mt-6 mb-8">
@@ -13,17 +67,124 @@ export default function SR22Page() {
           Call to Get a Quote
         </a>
       </div>
-      <h1 className="text-gray-700 text-4xl text-center mb-5">
-        SR-22 Insurance in Texas: Everything You Need to Know
-      </h1>
 
-      <div className="bg-gray-50 p-4 border-l-4 border-blue-500 mb-5">
-        <p>
-          <strong>Need an SR-22 in Texas?</strong> This guide explains what an
-          SR-22 is, why you might need it, how to get it, and what it means for
-          Texas drivers looking to reinstate their driving privileges.
-        </p>
-      </div>
+      {/* Header with Text and Image */}
+      <header className="relative bg-gray-50 py-12 mb-8 rounded-xl overflow-hidden">
+        <div className="container mx-auto px-4 flex flex-col md:flex-row items-center">
+          <div className="md:w-3/5 z-10">
+            <h1 className="text-gray-700 text-4xl md:text-5xl font-bold mb-4">
+              SR-22 Insurance in Texas
+            </h1>
+            <p className="text-gray-600 text-lg mb-6">
+              <strong>Need an SR-22 in Texas?</strong> This guide explains what
+              an SR-22 is, why you might need it, how to get it, and what it
+              means for Texas drivers looking to reinstate their driving
+              privileges.
+            </p>
+            <a
+              href="tel:+1-469-729-5185"
+              className="bg-[#a0103d] hover:bg-[#870d34] text-white font-semibold py-3 px-6 rounded-xl shadow-lg transition duration-300 ease-in-out transform hover:scale-105"
+            >
+              Get Started Now
+            </a>
+          </div>
+          <div className="md:w-2/5 mt-8 md:mt-0">
+            <Image
+              src="/Sr22pic.jpg"
+              alt="Business professional in a modern office"
+              width={400}
+              height={300}
+              className="rounded-lg shadow-xl transform -rotate-3 hover:rotate-0 transition duration-300 ease-in-out"
+            />
+          </div>
+        </div>
+      </header>
+
+      {/* New Contact Form Section */}
+      <section className="bg-gray-50 p-6 rounded-xl mb-8 border-l-4 border-blue-500">
+        <h2 className="text-gray-700 text-3xl mb-4">
+          Request a SR-22 Insurance Quote
+        </h2>
+        <form onSubmit={handleSubmit} className="grid gap-4">
+          <div>
+            <label
+              htmlFor="name"
+              className="block text-gray-700 font-medium mb-1"
+            >
+              Name
+            </label>
+            <input
+              type="text"
+              id="name"
+              name="name"
+              value={formData.name}
+              onChange={handleInputChange}
+              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Your full name"
+              required
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="email"
+              className="block text-gray-700 font-medium mb-1"
+            >
+              Email
+            </label>
+            <input
+              type="email"
+              id="email"
+              name="email"
+              value={formData.email}
+              onChange={handleInputChange}
+              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Your email address"
+              required
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="phone"
+              className="block text-gray-700 font-medium mb-1"
+            >
+              Phone Number
+            </label>
+            <input
+              type="tel"
+              id="phone"
+              name="phone"
+              value={formData.phone}
+              onChange={handleInputChange}
+              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Your phone number"
+              required
+            />
+          </div>
+          <div>
+            <label
+              htmlFor="message"
+              className="block text-gray-700 font-medium mb-1"
+            >
+              Message
+            </label>
+            <textarea
+              id="message"
+              name="message"
+              value={formData.message}
+              onChange={handleInputChange}
+              className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Tell us about your SR-22 needs or driving situation"
+              rows={4}
+            />
+          </div>
+          <button
+            type="submit"
+            className="bg-[#a0103d] hover:bg-[#870d34] text-white font-semibold py-3 px-6 rounded-xl w-full md:w-auto transition duration-300 ease-in-out transform hover:scale-105"
+          >
+            Submit Inquiry
+          </button>
+        </form>
+      </section>
 
       <h2 className="text-gray-700 text-3xl mt-8">
         What Is SR-22 Insurance in Texas?
