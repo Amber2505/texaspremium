@@ -55,7 +55,6 @@ export default function AutoQuote() {
   const [vinLoading, setVinLoading] = useState<number | null>(null);
   const [vinError, setVinError] = useState<string>("");
   const [isAddressSelected, setIsAddressSelected] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Calculate todays date in Central Time for default effective date
   const CENTRAL_TIME_ZONE = "America/Chicago";
