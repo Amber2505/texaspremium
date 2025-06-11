@@ -1056,7 +1056,7 @@ ${coverageDetails}`;
                         />
                         {driver.idNumber && driver.idNumber.length !== 8 && (
                           <p className="text-red-500 text-sm mt-1">
-                            Driver's License must be exactly 8 digits.
+                            Driver&apos;s License must be exactly 8 digits.
                           </p>
                         )}
                       </div>
