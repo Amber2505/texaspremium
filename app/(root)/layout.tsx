@@ -242,10 +242,10 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                               href: "/surety-bond",
                               label: "Surety Bond",
                             },
-                            {
-                              href: "/notary-services",
-                              label: "Notary Services",
-                            },
+                            // {
+                            //   href: "/notary-services",
+                            //   label: "Notary Services",
+                            // },
                           ].map((item) => (
                             <li key={item.href}>
                               <a

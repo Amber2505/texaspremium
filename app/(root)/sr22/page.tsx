@@ -320,6 +320,14 @@ export default function SR22Page() {
           <strong>lower your premiums</strong>.
         </li>
       </ol>
+      <div className="flex justify-center mt-6 mb-8">
+        <a
+          href="tel:+1-469-729-5185"
+          className="bg-[#a0103d] hover:bg-[#870d34] text-white font-semibold py-3 px-6 rounded-xl text-xl shadow-lg transition duration-300 ease-in-out transform hover:scale-105 hover:shadow-[#a0103d]/50 hover:shadow-xl"
+        >
+          Get Your SR-22 Insurance Today
+        </a>
+      </div>
     </div>
   );
 }

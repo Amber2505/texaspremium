@@ -5,8 +5,8 @@ import { format, toZonedTime } from "date-fns-tz";
 import { LoadScript, Autocomplete } from "@react-google-maps/api";
 import Image from "next/image";
 
-// Define types for driver and vehicle objects
-interface Driver {
+// Define types for Rider and Motorcycle objects
+interface Rider {
   firstName: string;
   lastName: string;
   dateOfBirth: string;
@@ -16,9 +16,10 @@ interface Driver {
   state?: string;
   country?: string;
   idSubType?: string;
+  relationship: string;
 }
 
-interface Vehicle {
+interface Motorcycle {
   vinNumber: string;
   make: string;
   model: string;
@@ -28,8 +29,8 @@ interface Vehicle {
 
 // Define type for formData state
 interface FormData {
-  Rider_F_name: string;
-  Rider_L_name: string;
+  F_name: string;
+  L_name: string;
   Address: string;
   DOB: string;
   phone: string;
@@ -38,10 +39,10 @@ interface FormData {
   effectiveDate: string;
   emailAddress: string;
   policyStartDate: string;
-  DriversNo: number;
-  VehicleNo: number;
-  drivers: Driver[];
-  vehicles: Vehicle[];
+  RidersNo: number;
+  MotorcycleNo: number;
+  Riders: Rider[];
+  Motorcycles: Motorcycle[];
   priorCoverage: string;
   priorCoverageMonths: string;
   expirationDate: string;
@@ -66,8 +67,8 @@ export default function AutoQuote() {
   const [formData, setFormData] = useState<FormData>(() => {
     const today = getTodayInCT();
     return {
-      Rider_F_name: "",
-      Rider_L_name: "",
+      F_name: "",
+      L_name: "",
       Address: "",
       DOB: "",
       phone: "",
@@ -76,10 +77,10 @@ export default function AutoQuote() {
       effectiveDate: today,
       emailAddress: "",
       policyStartDate: today,
-      DriversNo: 0,
-      VehicleNo: 0,
-      drivers: [],
-      vehicles: [],
+      RidersNo: 0,
+      MotorcycleNo: 0,
+      Riders: [],
+      Motorcycles: [],
       priorCoverage: "",
       priorCoverageMonths: "",
       expirationDate: "",
@@ -96,13 +97,8 @@ export default function AutoQuote() {
     const { name, value } = e.target;
 
     if (name === "phone") {
-      // 1. Strip all non-digit characters
       const digitsOnly = value.replace(/\D/g, "");
-
-      // 2. Limit to 10 digits
       const limitedDigits = digitsOnly.substring(0, 10);
-
-      // 3. Apply formatting
       let formattedPhoneNumber = limitedDigits;
       if (limitedDigits.length > 6) {
         formattedPhoneNumber = `(${limitedDigits.substring(
@@ -123,15 +119,16 @@ export default function AutoQuote() {
         phone: formattedPhoneNumber,
       }));
     } else if (name === "popcoverage") {
-      // Keep your existing priorCoverage logic if you have it
       setPriorCoverage(value);
     } else {
-      // For all other form fields, update formData normally
       setFormData((prevFormData) => ({
         ...prevFormData,
         [name]: value,
       }));
-      setIsAddressSelected(false); // Reset selection if user starts typing manually
+      // Only reset isAddressSelected if the Address field is cleared
+      if (name === "Address" && value === "") {
+        setIsAddressSelected(false);
+      }
     }
   };
 
@@ -158,37 +155,39 @@ export default function AutoQuote() {
     }
 
     // After submitting step 1, ensure the primary applicants details
-    // are reflected in drivers[0] if DriversNo is 1 or more.
+    // are reflected in Riders[0] if RidersNo is 1 or more.
     setFormData((prevFormData) => {
-      const newDrivers = [...prevFormData.drivers];
-      if (prevFormData.DriversNo > 0) {
-        if (newDrivers.length === 0) {
-          // If drivers array is empty, initialize the first driver
-          newDrivers.push({
-            firstName: prevFormData.Rider_F_name,
-            lastName: prevFormData.Rider_L_name,
+      const newRiders = [...prevFormData.Riders];
+      if (prevFormData.RidersNo > 0) {
+        if (newRiders.length === 0) {
+          // If Riders array is empty, initialize the first Rider
+          newRiders.push({
+            firstName: prevFormData.F_name,
+            lastName: prevFormData.L_name,
             dateOfBirth: prevFormData.DOB,
             gender: "", // Default or actual values for required fields
             idType: "",
             idNumber: "",
+            relationship: "Policyholder",
           });
         } else {
-          // Ensure the first drivers details always match the main form fields
-          newDrivers[0] = {
-            ...newDrivers[0],
-            firstName: prevFormData.Rider_F_name,
-            lastName: prevFormData.Rider_L_name,
+          // Ensure the first Riders details always match the main form fields
+          newRiders[0] = {
+            ...newRiders[0],
+            firstName: prevFormData.F_name,
+            lastName: prevFormData.L_name,
             dateOfBirth: prevFormData.DOB,
+            relationship: "Policyholder",
           };
         }
       } else {
-        // If DriversNo is 0, ensure the drivers array is empty.
-        newDrivers.length = 0;
+        // If RidersNo is 0, ensure the Riders array is empty.
+        newRiders.length = 0;
       }
 
       return {
         ...prevFormData,
-        drivers: newDrivers,
+        Riders: newRiders,
       };
     });
 
@@ -210,10 +209,7 @@ export default function AutoQuote() {
   const handleSubmitStep4 = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    // Format the message
     const message = formatQuoteMessage(formData);
-
-    // URL-encode the message to handle special characters
     const encodedMessage = encodeURIComponent(message);
     const toNumber = "9727486404";
     const url = `https://astraldbapi.herokuapp.com/message_send_link/?message=${encodedMessage}&To=${toNumber}`;
@@ -230,32 +226,61 @@ export default function AutoQuote() {
       const result = await response.json();
       console.log("Message sent successfully:", result);
       alert("An Agent would contact you soon, Thanks for get a Quote");
+
+      // Reset form data and navigate to Step 1
+      const today = getTodayInCT();
+      setFormData({
+        F_name: "",
+        L_name: "",
+        Address: "",
+        DOB: "",
+        phone: "",
+        maritalStatus: "",
+        residencyType: "",
+        effectiveDate: today,
+        emailAddress: "",
+        policyStartDate: today,
+        RidersNo: 0,
+        MotorcycleNo: 0,
+        Riders: [],
+        Motorcycles: [],
+        priorCoverage: "",
+        priorCoverageMonths: "",
+        expirationDate: "",
+        membership: "",
+      });
+      setPriorCoverage("");
+      setVinLoading(null);
+      setVinError("");
+      setIsAddressSelected(false);
+      setStep(1);
     } catch (error) {
       console.error("Error sending message:", error);
       alert("Failed to send quote via SMS. Please try again.");
     }
   };
 
-  // Initialize drivers array based on DriversNo
-  const initializeDrivers = (count: number): Driver[] => {
-    const newDrivers = Array.from({ length: count }, (_, index) => {
+  // Initialize Riders array based on RidersNo
+  const initializeRiders = (count: number): Rider[] => {
+    const newRiders = Array.from({ length: count }, (_, index) => {
       if (index === 0) {
-        // For the first driver, always pull from formDatas main fields
+        // For the first Rider, always pull from formDatas main fields
         return {
-          firstName: formData.Rider_F_name,
-          lastName: formData.Rider_L_name,
+          firstName: formData.F_name,
+          lastName: formData.L_name,
           dateOfBirth: formData.DOB,
-          gender: formData.drivers[0]?.gender || "", // Preserve if already set
-          idType: formData.drivers[0]?.idType || "",
-          idNumber: formData.drivers[0]?.idNumber || "",
-          state: formData.drivers[0]?.state || "",
-          country: formData.drivers[0]?.country || "",
-          idSubType: formData.drivers[0]?.idSubType || "",
+          gender: formData.Riders[0]?.gender || "", // Preserve if already set
+          idType: formData.Riders[0]?.idType || "",
+          idNumber: formData.Riders[0]?.idNumber || "",
+          state: formData.Riders[0]?.state || "",
+          country: formData.Riders[0]?.country || "",
+          idSubType: formData.Riders[0]?.idSubType || "",
+          relationship: "Policyholder",
         };
       } else {
-        // For additional drivers, try to preserve their existing data or create new
+        // For additional Riders, try to preserve their existing data or create new
         return (
-          formData.drivers[index] || {
+          formData.Riders[index] || {
             firstName: "",
             lastName: "",
             dateOfBirth: "",
@@ -265,17 +290,18 @@ export default function AutoQuote() {
             state: "",
             country: "",
             idSubType: "",
+            relationship: "",
           }
         );
       }
     });
-    return newDrivers;
+    return newRiders;
   };
 
-  // Initialize vehicles array based on VehicleNo
-  const initializeVehicles = (count: number): Vehicle[] => {
-    const newVehicles = Array.from({ length: count }, (_, index) => {
-      const existingVehicle = formData.vehicles[index] || {
+  // Initialize Motorcycles array based on MotorcycleNo
+  const initializeMotorcycles = (count: number): Motorcycle[] => {
+    const newMotorcycles = Array.from({ length: count }, (_, index) => {
+      const existingMotorcycle = formData.Motorcycles[index] || {
         vinNumber: "",
         make: "",
         model: "",
@@ -283,29 +309,30 @@ export default function AutoQuote() {
         coverage: ["Liability"],
       };
       return {
-        vinNumber: existingVehicle.vinNumber || "",
-        make: existingVehicle.make || "",
-        model: existingVehicle.model || "",
-        year: existingVehicle.year || "",
-        coverage: existingVehicle.coverage || ["Liability"],
+        vinNumber: existingMotorcycle.vinNumber || "",
+        make: existingMotorcycle.make || "",
+        model: existingMotorcycle.model || "",
+        year: existingMotorcycle.year || "",
+        coverage: existingMotorcycle.coverage || ["Liability"],
       };
     });
-    return newVehicles;
+    return newMotorcycles;
   };
 
   // Updated VIN search function
-  const handleVinSearch = async (vehicleIndex: number, vin: string) => {
+  const handleVinSearch = async (MotorcycleIndex: number, vin: string) => {
     if (!vin || vin.length !== 17) {
       return;
     }
-    const isDuplicate = formData.vehicles.some(
-      (vehicle, index) => index !== vehicleIndex && vehicle.vinNumber === vin
+    const isDuplicate = formData.Motorcycles.some(
+      (Motorcycle, index) =>
+        index !== MotorcycleIndex && Motorcycle.vinNumber === vin
     );
     if (isDuplicate) {
-      setVinError("This VIN has already been added to another vehicle.");
+      setVinError("This VIN has already been added to another Motorcycle.");
       return;
     }
-    setVinLoading(vehicleIndex);
+    setVinLoading(MotorcycleIndex);
     setVinError("");
     try {
       const response = await fetch(
@@ -316,21 +343,21 @@ export default function AutoQuote() {
       }
       const data = await response.json();
       if (data && data.vin) {
-        const updatedVehicles = [...formData.vehicles];
-        updatedVehicles[vehicleIndex] = {
-          ...updatedVehicles[vehicleIndex],
+        const updatedMotorcycles = [...formData.Motorcycles];
+        updatedMotorcycles[MotorcycleIndex] = {
+          ...updatedMotorcycles[MotorcycleIndex],
           vinNumber: vin,
           make: data.make || "",
           model: data.model || "",
           year: data.year ? data.year.toString() : "",
-          coverage: updatedVehicles[vehicleIndex].coverage || [],
+          coverage: updatedMotorcycles[MotorcycleIndex].coverage || [],
         };
         setFormData({
           ...formData,
-          vehicles: updatedVehicles,
+          Motorcycles: updatedMotorcycles,
         });
       } else {
-        setVinError("No vehicle info found for that VIN.");
+        setVinError("No Motorcycle info found for that VIN.");
       }
     } catch (err) {
       console.error("VIN API Error:", err);
@@ -341,53 +368,88 @@ export default function AutoQuote() {
   };
 
   // Handle VIN input change with automatic search when 17 characters
-  const handleVinInputChange = (vehicleIndex: number, value: string) => {
-    const updatedVehicles = [...formData.vehicles];
-    updatedVehicles[vehicleIndex] = {
-      ...updatedVehicles[vehicleIndex],
+  const handleVinInputChange = (MotorcycleIndex: number, value: string) => {
+    const updatedMotorcycles = [...formData.Motorcycles];
+    updatedMotorcycles[MotorcycleIndex] = {
+      ...updatedMotorcycles[MotorcycleIndex],
       vinNumber: value,
-      coverage: updatedVehicles[vehicleIndex].coverage || [],
+      coverage: updatedMotorcycles[MotorcycleIndex].coverage || [],
     };
     setFormData({
       ...formData,
-      vehicles: updatedVehicles,
+      Motorcycles: updatedMotorcycles,
     });
 
     setVinError(""); // Clear previous error
 
     if (value.length === 17) {
-      handleVinSearch(vehicleIndex, value);
+      handleVinSearch(MotorcycleIndex, value);
     }
   };
 
-  // Handle coverage selection for a vehicle
+  // Handle coverage selection for a Motorcycle
   const handleCoverageChange = (
-    vehicleIndex: number,
+    MotorcycleIndex: number,
     coverageOption: string
   ) => {
-    const updatedVehicles = [...formData.vehicles];
-    const vehicle = updatedVehicles[vehicleIndex];
-    const currentCoverage = vehicle.coverage || [];
+    const updatedMotorcycles = [...formData.Motorcycles];
+    const Motorcycle = updatedMotorcycles[MotorcycleIndex];
+    const currentCoverage = Motorcycle.coverage || [];
 
-    // Prevent deselection of "Liability"
+    // Prevent changes to Liability (mandatory)
     if (
       coverageOption === "Liability" &&
       currentCoverage.includes("Liability")
     ) {
-      return; // Do nothing if trying to deselect "Liability"
+      return;
     }
 
-    if (currentCoverage.includes(coverageOption)) {
-      vehicle.coverage = currentCoverage.filter(
-        (option) => option !== coverageOption
-      );
+    // Handle mutual exclusivity between PIP and Medical Payments
+    let newCoverage = [...currentCoverage];
+    if (coverageOption === "Personal Injury Protection") {
+      if (newCoverage.includes("Personal Injury Protection")) {
+        // Deselect PIP
+        newCoverage = newCoverage.filter(
+          (option) => option !== "Personal Injury Protection"
+        );
+      } else {
+        // Select PIP and remove Medical Payments
+        newCoverage = newCoverage.filter(
+          (option) => option !== "Medical Payments"
+        );
+        newCoverage.push("Personal Injury Protection");
+      }
+    } else if (coverageOption === "Medical Payments") {
+      if (newCoverage.includes("Medical Payments")) {
+        // Deselect Medical Payments
+        newCoverage = newCoverage.filter(
+          (option) => option !== "Medical Payments"
+        );
+      } else {
+        // Select Medical Payments and remove PIP
+        newCoverage = newCoverage.filter(
+          (option) => option !== "Personal Injury Protection"
+        );
+        newCoverage.push("Medical Payments");
+      }
     } else {
-      vehicle.coverage = [...currentCoverage, coverageOption];
+      // Toggle other coverage options (except Liability)
+      if (newCoverage.includes(coverageOption)) {
+        newCoverage = newCoverage.filter((option) => option !== coverageOption);
+      } else {
+        newCoverage.push(coverageOption);
+      }
     }
+
+    // Update Motorcycle coverage
+    updatedMotorcycles[MotorcycleIndex] = {
+      ...Motorcycle,
+      coverage: newCoverage,
+    };
 
     setFormData({
       ...formData,
-      vehicles: updatedVehicles,
+      Motorcycles: updatedMotorcycles,
     });
   };
 
@@ -404,8 +466,8 @@ export default function AutoQuote() {
 
   const formatQuoteMessage = (data: FormData) => {
     const {
-      Rider_F_name,
-      Rider_L_name,
+      F_name,
+      L_name,
       Address,
       DOB,
       phone,
@@ -413,16 +475,16 @@ export default function AutoQuote() {
       maritalStatus,
       residencyType,
       effectiveDate,
-      drivers,
-      vehicles,
+      Riders,
+      Motorcycles,
       priorCoverage,
       priorCoverageMonths,
       expirationDate,
       membership,
     } = data;
 
-    const personalInfo = `Test \n\n MotorCycle Quote Requested \n\n Personal Info:
-- Name: ${Rider_F_name} ${Rider_L_name}
+    const personalInfo = `Test \n\n Motorcycle Quote Requested \n\n Personal Info:
+- Name: ${F_name} ${L_name}
 - Address: ${Address}
 - DOB: ${DOB}
 - Phone: ${phone}
@@ -431,25 +493,26 @@ export default function AutoQuote() {
 - Residency: ${residencyType}
 - Effective Date: ${effectiveDate}`;
 
-    const driverInfo = drivers.length
-      ? drivers
-          .map((driver, index) => {
-            const {
-              firstName,
-              lastName,
-              dateOfBirth,
-              gender,
-              idType,
-              idNumber,
-              state,
-              country,
-              idSubType,
-            } = driver;
+    const RiderInfo = Riders.length
+      ? Riders.map((Rider, index) => {
+          const {
+            firstName,
+            lastName,
+            dateOfBirth,
+            gender,
+            idType,
+            idNumber,
+            state,
+            country,
+            idSubType,
+            relationship,
+          } = Rider;
 
-            return `Driver ${index + 1}:
+          return `Rider ${index + 1}:
 - Name: ${firstName} ${lastName}
 - DOB: ${dateOfBirth}
 - Gender: ${gender}
+- Relationship: ${relationship || "N/A"}
 - ID Type: ${idType}
 - ID Number: ${idNumber || "N/A"}
 ${
@@ -462,23 +525,20 @@ ${
     ? `- Country: ${country || "N/A"}\n- Sub-Type: ${idSubType || "N/A"}`
     : ""
 }`.trim();
-          })
-          .join("\n\n")
-      : "No drivers added.";
+        }).join("\n\n")
+      : "No Riders added.";
 
-    const vehicleInfo = vehicles.length
-      ? vehicles
-          .map((vehicle, index) => {
-            const { vinNumber, make, model, year, coverage } = vehicle;
-            return `Vehicle ${index + 1}:
+    const MotorcycleInfo = Motorcycles.length
+      ? Motorcycles.map((Motorcycle, index) => {
+          const { vinNumber, make, model, year, coverage } = Motorcycle;
+          return `Motorcycle ${index + 1}:
 - VIN: ${vinNumber}
 - Make: ${make}
 - Model: ${model}
 - Year: ${year}
 - Coverage: ${coverage.length ? coverage.join(", ") : "None"}`;
-          })
-          .join("\n\n")
-      : "No vehicles added.";
+        }).join("\n\n")
+      : "No Motorcycles added.";
 
     let coverageDetails = `Prior Coverage: ${priorCoverage || "None"}`;
     if (priorCoverage === "yes") {
@@ -492,9 +552,9 @@ ${
 
     return `${personalInfo}
 
-${driverInfo}
+${RiderInfo}
 
-${vehicleInfo}
+${MotorcycleInfo}
 
 ${coverageDetails}`;
   };
@@ -517,7 +577,7 @@ ${coverageDetails}`;
                 {
                   [
                     "Info",
-                    "Drivers & Vehicles",
+                    "Riders & Motorcycles",
                     "Coverage & Discounts",
                     "Review",
                   ][num - 1]
@@ -569,29 +629,25 @@ ${coverageDetails}`;
 
               <div className="flex gap-4 mb-4">
                 <div className="w-1/2">
-                  <label className="block mb-1 font-bold">
-                    Rider First Name
-                  </label>
+                  <label className="block mb-1 font-bold">First Name</label>
                   <input
                     type="text"
-                    name="Rider_F_name"
+                    name="F_name"
                     className="border p-2 w-full rounded"
-                    placeholder="Enter Riders First Name"
-                    value={formData.Rider_F_name}
+                    placeholder="Enter First Name"
+                    value={formData.F_name}
                     onChange={handleChange}
                     required
                   />
                 </div>
                 <div className="w-1/2">
-                  <label className="block mb-1 font-bold">
-                    Rider Last Name
-                  </label>
+                  <label className="block mb-1 font-bold">Last Name</label>
                   <input
                     type="text"
-                    name="Rider_L_name"
+                    name="L_name"
                     className="border p-2 w-full rounded"
-                    placeholder="Enter Rider Last Name"
-                    value={formData.Rider_L_name}
+                    placeholder="Enter Last Name"
+                    value={formData.L_name}
                     onChange={handleChange}
                     required
                   />
@@ -722,26 +778,26 @@ ${coverageDetails}`;
           <form onSubmit={handleSubmitStep2}>
             <div>
               <h2 className="text-xl font-bold mb-4">
-                Step 2: Driver & Vehicle Information
+                Step 2: Rider & Motorcycle Information
               </h2>
               <div className="flex gap-4 mb-4">
                 <div className="w-1/2">
                   <label className="block mb-1">
-                    How many Drivers (including you)
+                    How many Riders (including you)
                   </label>
                   <select
-                    name="DriversNo"
+                    name="RidersNo"
                     className={`border p-2 w-full rounded ${
-                      formData.DriversNo === 0 ? "border-red-500" : ""
+                      formData.RidersNo === 0 ? "border-red-500" : ""
                     }`}
                     required
-                    value={formData.DriversNo}
+                    value={formData.RidersNo}
                     onChange={(e) => {
-                      const numDrivers = parseInt(e.target.value) || 0;
+                      const numRiders = parseInt(e.target.value) || 0;
                       setFormData((prevFormData) => ({
                         ...prevFormData,
-                        DriversNo: numDrivers,
-                        drivers: initializeDrivers(numDrivers),
+                        RidersNo: numRiders,
+                        Riders: initializeRiders(numRiders),
                       }));
                     }}
                   >
@@ -754,20 +810,20 @@ ${coverageDetails}`;
                   </select>
                 </div>
                 <div className="w-1/2">
-                  <label className="block mb-1">How many Vehicles</label>
+                  <label className="block mb-1">How many Motorcycles</label>
                   <select
-                    name="VehicleNo"
+                    name="MotorcycleNo"
                     className={`border p-2 w-full rounded ${
-                      formData.VehicleNo === 0 ? "border-red-500" : ""
+                      formData.MotorcycleNo === 0 ? "border-red-500" : ""
                     }`}
-                    value={formData.VehicleNo}
+                    value={formData.MotorcycleNo}
                     required
                     onChange={(e) => {
-                      const numVehicles = parseInt(e.target.value) || 0;
+                      const numMotorcycles = parseInt(e.target.value) || 0;
                       setFormData((prevFormData) => ({
                         ...prevFormData,
-                        VehicleNo: numVehicles,
-                        vehicles: initializeVehicles(numVehicles),
+                        MotorcycleNo: numMotorcycles,
+                        Motorcycles: initializeMotorcycles(numMotorcycles),
                       }));
                     }}
                   >
@@ -781,35 +837,33 @@ ${coverageDetails}`;
                 </div>
               </div>
 
-              {formData.drivers.map((driver, index) => (
+              {formData.Riders.map((Rider, index) => (
                 <div key={index} className="mb-4 p-4 border rounded-lg">
-                  <h4 className="font-medium mb-2">Driver {index + 1}</h4>
+                  <h4 className="font-medium mb-2">Rider {index + 1}</h4>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block mb-1 font-bold">First Name</label>
                       <input
                         type="text"
-                        // FOR THE FIRST DRIVER, ALWAYS PULL FROM formData.Rider_F_name
-                        value={
-                          index === 0 ? formData.Rider_F_name : driver.firstName
-                        }
+                        // FOR THE FIRST Rider, ALWAYS PULL FROM formData.F_name
+                        value={index === 0 ? formData.F_name : Rider.firstName}
                         onChange={(e) => {
-                          // Only allow changing for additional drivers (index > 0)
+                          // Only allow changing for additional Riders (index > 0)
                           if (index > 0) {
-                            const updatedDrivers = [...formData.drivers];
-                            updatedDrivers[index] = {
-                              ...updatedDrivers[index],
+                            const updatedRiders = [...formData.Riders];
+                            updatedRiders[index] = {
+                              ...updatedRiders[index],
                               firstName: e.target.value,
                             };
                             setFormData((prev) => ({
                               ...prev,
-                              drivers: updatedDrivers,
+                              Riders: updatedRiders,
                             }));
                           }
                         }}
                         className="border p-2 w-full rounded"
                         placeholder="Enter First Name"
-                        disabled={index === 0} // Disable for the first driver
+                        disabled={index === 0} // Disable for the first Rider
                         style={
                           index === 0 ? { backgroundColor: "#f3f4f6" } : {}
                         }
@@ -819,27 +873,25 @@ ${coverageDetails}`;
                       <label className="block mb-1 font-bold">Last Name</label>
                       <input
                         type="text"
-                        // FOR THE FIRST DRIVER, ALWAYS PULL FROM formData.Rider_L_name
-                        value={
-                          index === 0 ? formData.Rider_L_name : driver.lastName
-                        }
+                        // FOR THE FIRST Rider, ALWAYS PULL FROM formData.L_name
+                        value={index === 0 ? formData.L_name : Rider.lastName}
                         onChange={(e) => {
-                          // Only allow changing for additional drivers (index > 0)
+                          // Only allow changing for additional Riders (index > 0)
                           if (index > 0) {
-                            const updatedDrivers = [...formData.drivers];
-                            updatedDrivers[index] = {
-                              ...updatedDrivers[index],
+                            const updatedRiders = [...formData.Riders];
+                            updatedRiders[index] = {
+                              ...updatedRiders[index],
                               lastName: e.target.value,
                             };
                             setFormData((prev) => ({
                               ...prev,
-                              drivers: updatedDrivers,
+                              Riders: updatedRiders,
                             }));
                           }
                         }}
                         className="border p-2 w-full rounded"
                         placeholder="Enter Last Name"
-                        disabled={index === 0} // Disable for the first driver
+                        disabled={index === 0} // Disable for the first Rider
                         style={
                           index === 0 ? { backgroundColor: "#f3f4f6" } : {}
                         }
@@ -851,42 +903,79 @@ ${coverageDetails}`;
                       </label>
                       <input
                         type="date"
-                        // FOR THE FIRST DRIVER, ALWAYS PULL FROM formData.DOB
-                        value={index === 0 ? formData.DOB : driver.dateOfBirth}
+                        // FOR THE FIRST Rider, ALWAYS PULL FROM formData.DOB
+                        value={index === 0 ? formData.DOB : Rider.dateOfBirth}
                         onChange={(e) => {
-                          // Only allow changing for additional drivers (index > 0)
+                          // Only allow changing for additional Riders (index > 0)
                           if (index > 0) {
-                            const updatedDrivers = [...formData.drivers];
-                            updatedDrivers[index] = {
-                              ...updatedDrivers[index],
+                            const updatedRiders = [...formData.Riders];
+                            updatedRiders[index] = {
+                              ...updatedRiders[index],
                               dateOfBirth: e.target.value,
                             };
                             setFormData((prev) => ({
                               ...prev,
-                              drivers: updatedDrivers,
+                              Riders: updatedRiders,
                             }));
                           }
                         }}
                         className="border p-2 w-full rounded"
-                        disabled={index === 0} // Disable for the first driver
+                        disabled={index === 0} // Disable for the first Rider
                         style={
                           index === 0 ? { backgroundColor: "#f3f4f6" } : {}
                         }
                       />
                     </div>
                     <div>
+                      <label className="block mb-1 font-bold">
+                        Relationship
+                      </label>
+                      {index === 0 ? (
+                        <input
+                          type="text"
+                          value="Policyholder"
+                          className="border p-2 w-full rounded bg-gray-100"
+                          disabled
+                        />
+                      ) : (
+                        <select
+                          value={Rider.relationship}
+                          onChange={(e) => {
+                            const updatedRiders = [...formData.Riders];
+                            updatedRiders[index] = {
+                              ...updatedRiders[index],
+                              relationship: e.target.value,
+                            };
+                            setFormData((prev) => ({
+                              ...prev,
+                              Riders: updatedRiders,
+                            }));
+                          }}
+                          className="border p-2 w-full rounded"
+                          required
+                        >
+                          <option value="">Select...</option>
+                          <option value="spouse">Spouse</option>
+                          <option value="child">Child</option>
+                          <option value="parent">Parent</option>
+                          <option value="other_relative">Other Relative</option>
+                          <option value="non_relative">Non-Relative</option>
+                        </select>
+                      )}
+                    </div>
+                    <div>
                       <label className="block mb-1 font-bold">Gender</label>
                       <select
-                        value={driver.gender}
+                        value={Rider.gender}
                         onChange={(e) => {
-                          const updatedDrivers = [...formData.drivers];
-                          updatedDrivers[index] = {
-                            ...updatedDrivers[index],
+                          const updatedRiders = [...formData.Riders];
+                          updatedRiders[index] = {
+                            ...updatedRiders[index],
                             gender: e.target.value,
                           };
                           setFormData((prev) => ({
                             ...prev,
-                            drivers: updatedDrivers,
+                            Riders: updatedRiders,
                           }));
                         }}
                         required
@@ -901,11 +990,11 @@ ${coverageDetails}`;
                     <div>
                       <label className="block mb-1 font-bold">ID Type</label>
                       <select
-                        value={driver.idType}
+                        value={Rider.idType}
                         onChange={(e) => {
-                          const updatedDrivers = [...formData.drivers];
-                          updatedDrivers[index] = {
-                            ...updatedDrivers[index],
+                          const updatedRiders = [...formData.Riders];
+                          updatedRiders[index] = {
+                            ...updatedRiders[index],
                             idType: e.target.value,
                             idNumber: "", // Reset related fields when ID Type changes
                             state: "", // Reset state for out-of-state options
@@ -914,7 +1003,7 @@ ${coverageDetails}`;
                           };
                           setFormData((prev) => ({
                             ...prev,
-                            drivers: updatedDrivers,
+                            Riders: updatedRiders,
                           }));
                         }}
                         className="border p-2 w-full rounded"
@@ -935,51 +1024,61 @@ ${coverageDetails}`;
                       </select>
                     </div>
 
-                    {driver.idType === "in-state-dl" && (
+                    {Rider.idType === "in-state-dl" && (
                       <div>
                         <label className="block mb-1 font-bold">
-                          Driver&apos;s License Number
+                          Rider&apos;s License Number
                         </label>
                         <input
                           type="text"
-                          value={driver.idNumber || ""}
+                          value={Rider.idNumber || ""}
                           onChange={(e) => {
-                            const updatedDrivers = [...formData.drivers];
-                            updatedDrivers[index] = {
-                              ...updatedDrivers[index],
-                              idNumber: e.target.value,
+                            const onlyNumbers = e.target.value.replace(
+                              /\D/g,
+                              ""
+                            );
+                            const updatedRiders = [...formData.Riders];
+                            updatedRiders[index] = {
+                              ...updatedRiders[index],
+                              idNumber: onlyNumbers,
                             };
                             setFormData((prev) => ({
                               ...prev,
-                              drivers: updatedDrivers,
+                              Riders: updatedRiders,
                             }));
                           }}
                           className="border p-2 w-full rounded"
                           placeholder="Enter Drivers License Number"
                           required
                           maxLength={8}
-                          inputMode="numeric"
+                          inputMode="numeric" // Shows numeric keyboard on mobile
+                          pattern="[0-9]*" // Allows only digits
                         />
+                        {Rider.idNumber && Rider.idNumber.length !== 8 && (
+                          <p className="text-red-500 text-sm mt-1">
+                            Rider&apos;s License must be exactly 8 digits.
+                          </p>
+                        )}
                       </div>
                     )}
 
-                    {driver.idType === "in-state-id" && (
+                    {Rider.idType === "in-state-id" && (
                       <div>
                         <label className="block mb-1 font-bold">
                           ID Number
                         </label>
                         <input
                           type="text"
-                          value={driver.idNumber || ""}
+                          value={Rider.idNumber || ""}
                           onChange={(e) => {
-                            const updatedDrivers = [...formData.drivers];
-                            updatedDrivers[index] = {
-                              ...updatedDrivers[index],
+                            const updatedRiders = [...formData.Riders];
+                            updatedRiders[index] = {
+                              ...updatedRiders[index],
                               idNumber: e.target.value,
                             };
                             setFormData((prev) => ({
                               ...prev,
-                              drivers: updatedDrivers,
+                              Riders: updatedRiders,
                             }));
                           }}
                           className="border p-2 w-full rounded"
@@ -989,24 +1088,24 @@ ${coverageDetails}`;
                       </div>
                     )}
 
-                    {driver.idType === "out-of-state-DL" && (
+                    {Rider.idType === "out-of-state-DL" && (
                       <>
                         <div>
                           <label className="block mb-1 font-bold">
-                            Driver&apos;s License Number
+                            Rider&apos;s License Number
                           </label>
                           <input
                             type="text"
-                            value={driver.idNumber || ""}
+                            value={Rider.idNumber || ""}
                             onChange={(e) => {
-                              const updatedDrivers = [...formData.drivers];
-                              updatedDrivers[index] = {
-                                ...updatedDrivers[index],
+                              const updatedRiders = [...formData.Riders];
+                              updatedRiders[index] = {
+                                ...updatedRiders[index],
                                 idNumber: e.target.value,
                               };
                               setFormData((prev) => ({
                                 ...prev,
-                                drivers: updatedDrivers,
+                                Riders: updatedRiders,
                               }));
                             }}
                             className="border p-2 w-full rounded"
@@ -1019,16 +1118,16 @@ ${coverageDetails}`;
                           <label className="block mb-1 font-bold">State</label>
                           <input
                             type="text"
-                            value={driver.state || ""}
+                            value={Rider.state || ""}
                             onChange={(e) => {
-                              const updatedDrivers = [...formData.drivers];
-                              updatedDrivers[index] = {
-                                ...updatedDrivers[index],
+                              const updatedRiders = [...formData.Riders];
+                              updatedRiders[index] = {
+                                ...updatedRiders[index],
                                 state: e.target.value,
                               };
                               setFormData((prev) => ({
                                 ...prev,
-                                drivers: updatedDrivers,
+                                Riders: updatedRiders,
                               }));
                             }}
                             className="border p-2 w-full rounded"
@@ -1039,7 +1138,7 @@ ${coverageDetails}`;
                       </>
                     )}
 
-                    {driver.idType === "out-of-state-ID" && (
+                    {Rider.idType === "out-of-state-ID" && (
                       <>
                         <div>
                           <label className="block mb-1 font-bold">
@@ -1047,16 +1146,16 @@ ${coverageDetails}`;
                           </label>
                           <input
                             type="text"
-                            value={driver.idNumber || ""}
+                            value={Rider.idNumber || ""}
                             onChange={(e) => {
-                              const updatedDrivers = [...formData.drivers];
-                              updatedDrivers[index] = {
-                                ...updatedDrivers[index],
+                              const updatedRiders = [...formData.Riders];
+                              updatedRiders[index] = {
+                                ...updatedRiders[index],
                                 idNumber: e.target.value,
                               };
                               setFormData((prev) => ({
                                 ...prev,
-                                drivers: updatedDrivers,
+                                Riders: updatedRiders,
                               }));
                             }}
                             className="border p-2 w-full rounded"
@@ -1068,16 +1167,16 @@ ${coverageDetails}`;
                           <label className="block mb-1 font-bold">State</label>
                           <input
                             type="text"
-                            value={driver.state || ""}
+                            value={Rider.state || ""}
                             onChange={(e) => {
-                              const updatedDrivers = [...formData.drivers];
-                              updatedDrivers[index] = {
-                                ...updatedDrivers[index],
+                              const updatedRiders = [...formData.Riders];
+                              updatedRiders[index] = {
+                                ...updatedRiders[index],
                                 state: e.target.value,
                               };
                               setFormData((prev) => ({
                                 ...prev,
-                                drivers: updatedDrivers,
+                                Riders: updatedRiders,
                               }));
                             }}
                             className="border p-2 w-full rounded"
@@ -1088,7 +1187,7 @@ ${coverageDetails}`;
                       </>
                     )}
 
-                    {driver.idType === "international" && (
+                    {Rider.idType === "international" && (
                       <>
                         <div>
                           <label className="block mb-1 font-bold">
@@ -1096,16 +1195,16 @@ ${coverageDetails}`;
                           </label>
                           <input
                             type="text"
-                            value={driver.idNumber || ""}
+                            value={Rider.idNumber || ""}
                             onChange={(e) => {
-                              const updatedDrivers = [...formData.drivers];
-                              updatedDrivers[index] = {
-                                ...updatedDrivers[index],
+                              const updatedRiders = [...formData.Riders];
+                              updatedRiders[index] = {
+                                ...updatedRiders[index],
                                 idNumber: e.target.value,
                               };
                               setFormData((prev) => ({
                                 ...prev,
-                                drivers: updatedDrivers,
+                                Riders: updatedRiders,
                               }));
                             }}
                             className="border p-2 w-full rounded"
@@ -1119,16 +1218,16 @@ ${coverageDetails}`;
                           </label>
                           <input
                             type="text"
-                            value={driver.country || ""}
+                            value={Rider.country || ""}
                             onChange={(e) => {
-                              const updatedDrivers = [...formData.drivers];
-                              updatedDrivers[index] = {
-                                ...updatedDrivers[index],
+                              const updatedRiders = [...formData.Riders];
+                              updatedRiders[index] = {
+                                ...updatedRiders[index],
                                 country: e.target.value,
                               };
                               setFormData((prev) => ({
                                 ...prev,
-                                drivers: updatedDrivers,
+                                Riders: updatedRiders,
                               }));
                             }}
                             className="border p-2 w-full rounded"
@@ -1141,16 +1240,16 @@ ${coverageDetails}`;
                             ID Type
                           </label>
                           <select
-                            value={driver.idSubType || ""}
+                            value={Rider.idSubType || ""}
                             onChange={(e) => {
-                              const updatedDrivers = [...formData.drivers];
-                              updatedDrivers[index] = {
-                                ...updatedDrivers[index],
+                              const updatedRiders = [...formData.Riders];
+                              updatedRiders[index] = {
+                                ...updatedRiders[index],
                                 idSubType: e.target.value,
                               };
                               setFormData((prev) => ({
                                 ...prev,
-                                drivers: updatedDrivers,
+                                Riders: updatedRiders,
                               }));
                             }}
                             className="border p-2 w-full rounded"
@@ -1172,15 +1271,15 @@ ${coverageDetails}`;
                 </div>
               ))}
 
-              {formData.vehicles.map((vehicle, index) => (
+              {formData.Motorcycles.map((Motorcycle, index) => (
                 <div key={index} className="mb-4 p-4 border rounded-lg">
-                  <h4 className="font-medium mb-2">Vehicle {index + 1}</h4>
+                  <h4 className="font-medium mb-2">Motorcycle {index + 1}</h4>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block mb-1 font-bold">VIN Number</label>
                       <input
                         type="text"
-                        value={vehicle.vinNumber}
+                        value={Motorcycle.vinNumber}
                         onChange={(e) =>
                           handleVinInputChange(index, e.target.value)
                         }
@@ -1202,7 +1301,7 @@ ${coverageDetails}`;
                       <label className="block mb-1 font-bold">Make</label>
                       <input
                         type="text"
-                        value={vehicle.make}
+                        value={Motorcycle.make}
                         readOnly
                         className="border p-2 w-full rounded bg-gray-100"
                         placeholder="Auto-filled from VIN"
@@ -1213,7 +1312,7 @@ ${coverageDetails}`;
                       <label className="block mb-1 font-bold">Model</label>
                       <input
                         type="text"
-                        value={vehicle.model}
+                        value={Motorcycle.model}
                         readOnly
                         className="border p-2 w-full rounded bg-gray-100"
                         placeholder="Auto-filled from VIN"
@@ -1224,48 +1323,84 @@ ${coverageDetails}`;
                       <label className="block mb-1 font-bold">Year</label>
                       <input
                         type="text"
-                        value={vehicle.year}
+                        value={Motorcycle.year}
                         readOnly
                         className="border p-2 w-full rounded bg-gray-100"
                         placeholder="Auto-filled from VIN"
                         disabled
                       />
                     </div>
+
                     <div className="col-span-2">
                       <label className="block mb-1 font-bold">
-                        Coverage Options
+                        Coverage Options (Hover over Coverage to see what
+                        exactly it covers)
                       </label>
                       <div className="flex flex-wrap gap-2">
                         {[
-                          "Liability",
-                          "Comprehensive/Collision (Basic Full coverage)",
-                          "Personal Injury Protection",
-                          "Medical Payments",
-                          "Uninsured Motorist",
-                          "Towing",
-                          "Rental",
-                          "Roadside Assistance", // Fixed typo: "Assitance" → "Assistance"
+                          {
+                            name: "Liability",
+                            description:
+                              "Texas law requires minimum liability coverage of 30/60/25: $30,000 per person for bodily injury, $60,000 total per accident for bodily injury, and $25,000 for property damage. This coverage only pays for damages and injuries you cause to others in an at-fault accident. Liability insurance does not cover your own injuries or Motorcycle damage - you need additional coverage like collision or comprehensive for that protection.",
+                          },
+                          {
+                            name: "Comprehensive/Collision (Basic Full coverage)",
+                            description:
+                              "Comprehensive covers damage to your Motorcycle from non-collision events like theft, weather, vandalism, or animal strikes. Collision covers damage to your Motorcycle from crashes with other Motorcycles or objects. Both are optional in Texas but typically required if you have a car loan or lease - together they provide 'full coverage' protecting your own Motorcycle regardless of fault.",
+                          },
+                          {
+                            name: "Personal Injury Protection",
+                            description:
+                              "PIP covers your medical expenses, lost wages (up to 80%), and household services regardless of who caused the accident. Texas requires insurance companies to offer at least $2,500 of PIP coverage, though it's optional to purchase. PIP is not mandatory in Texas but provides immediate coverage for you and your passengers without waiting to determine fault in an accident.",
+                          },
+                          {
+                            name: "Medical Payments",
+                            description:
+                              "MedPay covers medical bills for you and your passengers after an accident, regardless of who's at fault. It's optional in Texas and typically offers coverage in amounts like $1,000, $2,500, or $5,000. Unlike PIP, MedPay only covers medical expenses - no lost wages or household services - making it a simpler, more focused coverage option.",
+                          },
+                          {
+                            name: "Uninsured Motorist",
+                            description:
+                              "Protects you when the at-fault Rider has no insurance or insufficient coverage to pay for your injuries and damages. With 12% of Texas registered Motorcycles unmatched to insurance policies, this optional coverage is crucial. It also pays if you're in a hit-and-run accident. Texas insurers must offer this coverage, but you can reject it in writing.",
+                          },
+                          {
+                            name: "Towing",
+                            description:
+                              "Covers the cost of towing your Motorcycle to a repair shop or safe location after an accident, breakdown, or if your car becomes disabled. This is specifically for towing services only, not other roadside assistance like jump-starts or tire changes. Coverage limits typically range from $50-$200 per towing incident, and it's an optional add-on that helps with unexpected towing expenses.",
+                          },
+                          {
+                            name: "Rental",
+                            description:
+                              "Covers the cost of a rental car while your Motorcycle is being repaired after a covered claim or if it's stolen. Typically pays a daily amount (like $30-$50 per day) for a specified number of days (usually 30 days maximum). This optional coverage ensures you stay mobile while your car is out of commission, helping you maintain your daily routine during the repair process.",
+                          },
+                          {
+                            name: "Roadside Assistance",
+                            description:
+                              "Provides emergency services when your Motorcycle breaks down or you're stranded, including jump-starts for dead batteries, flat tire changes, lockout assistance, and emergency fuel delivery. Available 24/7 regardless of where the breakdown occurs, this optional coverage. It's separate from towing coverage and focuses on getting you back on the road quickly for minor issues.",
+                          },
                         ].map((option) => (
                           <button
-                            key={option}
+                            key={option.name}
                             type="button"
-                            onClick={() => handleCoverageChange(index, option)}
+                            onClick={() =>
+                              handleCoverageChange(index, option.name)
+                            }
                             className={`px-4 py-2 border rounded-full text-xs font-medium ${
-                              vehicle.coverage.includes(option)
+                              Motorcycle.coverage.includes(option.name)
                                 ? "bg-blue-600 text-white"
                                 : "bg-gray-200 text-gray-700 hover:bg-gray-300"
                             } ${
-                              option === "Liability"
+                              option.name === "Liability"
                                 ? "opacity-75 cursor-not-allowed"
                                 : ""
-                            }`} // Visual cue for "Liability"
-                            disabled={option === "Liability"} // Disable interaction with "Liability"
+                            }`}
+                            disabled={option.name === "Liability"}
+                            title={option.description} // Add tooltip with description
                           >
-                            {option}
-                            {option === "Liability" && (
+                            {option.name}
+                            {option.name === "Liability" && (
                               <span className="ml-1 text-red-500">*</span>
-                            )}{" "}
-                            {/* Indicate its required */}
+                            )}
                           </button>
                         ))}
                       </div>
@@ -1451,13 +1586,13 @@ ${coverageDetails}`;
                       <span className="font-medium text-gray-700">
                         First Name:
                       </span>{" "}
-                      {formData.Rider_F_name || "Not provided"}
+                      {formData.F_name || "Not provided"}
                     </p>
                     <p>
                       <span className="font-medium text-gray-700">
                         Last Name:
                       </span>{" "}
-                      {formData.Rider_L_name || "Not provided"}
+                      {formData.L_name || "Not provided"}
                     </p>
                     <p>
                       <span className="font-medium text-gray-700">
@@ -1504,82 +1639,88 @@ ${coverageDetails}`;
                   </div>
                 </div>
 
-                {/* Drivers Section */}
+                {/* Riders Section */}
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-300 pb-2 mb-4">
-                    Drivers
+                    Riders
                   </h3>
-                  {formData.drivers.length > 0 ? (
-                    formData.drivers.map((driver, index) => (
+                  {formData.Riders.length > 0 ? (
+                    formData.Riders.map((Rider, index) => (
                       <div
                         key={index}
                         className="mb-4 p-4 bg-white rounded-lg shadow-sm"
                       >
                         <h4 className="font-medium text-gray-800 mb-2">
-                          Driver {index + 1}
+                          Rider {index + 1}
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <p>
                             <span className="font-medium text-gray-700">
                               First Name:
                             </span>{" "}
-                            {driver.firstName || "Not provided"}
+                            {Rider.firstName || "Not provided"}
                           </p>
                           <p>
                             <span className="font-medium text-gray-700">
                               Last Name:
                             </span>{" "}
-                            {driver.lastName || "Not provided"}
+                            {Rider.lastName || "Not provided"}
                           </p>
                           <p>
                             <span className="font-medium text-gray-700">
                               Date of Birth:
                             </span>{" "}
-                            {driver.dateOfBirth || "Not provided"}
+                            {Rider.dateOfBirth || "Not provided"}
+                          </p>
+                          <p>
+                            <span className="font-medium text-gray-700">
+                              Relationship:
+                            </span>{" "}
+                            {Rider.relationship || "Not provided"}
                           </p>
                           <p>
                             <span className="font-medium text-gray-700">
                               Gender:
                             </span>{" "}
-                            {driver.gender || "Not provided"}
+                            {Rider.gender || "Not provided"}
                           </p>
                           <p>
                             <span className="font-medium text-gray-700">
                               ID Type:
                             </span>{" "}
-                            {driver.idType || "Not provided"}
+                            {Rider.idType || "Not provided"}
                           </p>
-                          {driver.idType && (
+                          {Rider.idType && (
                             <>
                               <p>
                                 <span className="font-medium text-gray-700">
                                   ID Number:
                                 </span>{" "}
-                                {driver.idNumber || "Not provided"}
+                                {Rider.idNumber || "Not provided"}
                               </p>
                               {["out-of-state-DL", "out-of-state-ID"].includes(
-                                driver.idType
+                                Rider.idType
                               ) && (
                                 <p>
                                   <span className="font-medium text-gray-700">
                                     State:
                                   </span>{" "}
-                                  {driver.state || "Not provided"}
+                                  {Rider.state || "Not provided"}
                                 </p>
                               )}
-                              {driver.idType === "international" && (
+                              {Rider.idType === "international" && (
                                 <>
                                   <p>
                                     <span className="font-medium text-gray-700">
                                       Country:
                                     </span>{" "}
-                                    {driver.country || "Not provided"}
+                                    {Rider.country || "Not provided"}
                                   </p>
                                   <p>
                                     <span className="font-medium text-gray-700">
                                       ID Sub-Type:
                                     </span>{" "}
-                                    {driver.idSubType || "Not provided"}
+                                    {Rider.idSubType || "Not provided"}
                                   </p>
                                 </>
                               )}
@@ -1589,62 +1730,62 @@ ${coverageDetails}`;
                       </div>
                     ))
                   ) : (
-                    <p className="text-gray-600">No drivers added.</p>
+                    <p className="text-gray-600">No Riders added.</p>
                   )}
                 </div>
 
-                {/* Vehicles Section */}
+                {/* Motorcycles Section */}
                 <div className="mb-6">
                   <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-300 pb-2 mb-4">
-                    Vehicles
+                    Motorcycles
                   </h3>
-                  {formData.vehicles.length > 0 ? (
-                    formData.vehicles.map((vehicle, index) => (
+                  {formData.Motorcycles.length > 0 ? (
+                    formData.Motorcycles.map((Motorcycle, index) => (
                       <div
                         key={index}
                         className="mb-4 p-4 bg-white rounded-lg shadow-sm"
                       >
                         <h4 className="font-medium text-gray-800 mb-2">
-                          Vehicle {index + 1}
+                          Motorcycle {index + 1}
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <p>
                             <span className="font-medium text-gray-700">
                               VIN Number:
                             </span>{" "}
-                            {vehicle.vinNumber || "Not provided"}
+                            {Motorcycle.vinNumber || "Not provided"}
                           </p>
                           <p>
                             <span className="font-medium text-gray-700">
                               Make:
                             </span>{" "}
-                            {vehicle.make || "Not provided"}
+                            {Motorcycle.make || "Not provided"}
                           </p>
                           <p>
                             <span className="font-medium text-gray-700">
                               Model:
                             </span>{" "}
-                            {vehicle.model || "Not provided"}
+                            {Motorcycle.model || "Not provided"}
                           </p>
                           <p>
                             <span className="font-medium text-gray-700">
                               Year:
                             </span>{" "}
-                            {vehicle.year || "Not provided"}
+                            {Motorcycle.year || "Not provided"}
                           </p>
                           <p className="col-span-2">
                             <span className="font-medium text-gray-700">
                               Coverage:
                             </span>{" "}
-                            {vehicle.coverage.length > 0
-                              ? vehicle.coverage.join(", ")
+                            {Motorcycle.coverage.length > 0
+                              ? Motorcycle.coverage.join(", ")
                               : "None selected"}
                           </p>
                         </div>
                       </div>
                     ))
                   ) : (
-                    <p className="text-gray-600">No vehicles added.</p>
+                    <p className="text-gray-600">No Motorcycles added.</p>
                   )}
                 </div>
 
