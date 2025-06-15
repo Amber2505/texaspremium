@@ -1,10 +1,11 @@
 "use client";
 
 import Image from "next/image";
-
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation"; // Use useSearchParams for query parameters
 
 export default function HomePage() {
+  const searchParams = useSearchParams();
   const images = [
     { src: "/car.png", alt: "Car" },
 
@@ -30,6 +31,20 @@ export default function HomePage() {
 
     return () => clearInterval(interval); // Cleanup interval on component unmount
   }, [images.length]);
+
+  // Extract and save utm_campaign to localStorage
+  useEffect(() => {
+    // Ensure we're on the client side to avoid SSR issues
+    if (typeof window === "undefined") return;
+
+    // Get utm_campaign from searchParams
+    const campaignName = searchParams.get("utm_campaign");
+
+    // Store campaignName in localStorage if it exists
+    if (campaignName) {
+      localStorage.setItem("campaignName", campaignName);
+    }
+  }, [searchParams]); // Re-run when searchParams change
 
   return (
     <>
