@@ -6,7 +6,7 @@ export default function ShortenPage() {
   const [longUrl, setLongUrl] = useState<string>("");
   const [shortUrl, setShortUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(false); // Fixed Boolean to boolean (minor type consistency)
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -23,8 +23,7 @@ export default function ShortenPage() {
       } else if (result.shortUrl) {
         setShortUrl(`${window.location.origin}/${result.shortUrl}`);
       }
-    } catch (_err) {
-      // Renamed err to _err to fix ESLint error
+    } catch {
       setError(
         "Invalid URL. Please enter a valid URL (e.g., https://example.com)."
       );
