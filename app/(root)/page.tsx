@@ -347,7 +347,7 @@ export default function HomePage() {
 
         <div className="text-center mt-12">
           <a
-            href="/quote"
+            href="/auto"
             className="inline-block bg-[#A0103D] text-white font-semibold py-3 px-8 rounded-full hover:bg-[#102a56] transition"
           >
             Start Your Quote
