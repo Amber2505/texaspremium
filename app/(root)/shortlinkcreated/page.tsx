@@ -23,7 +23,8 @@ export default function ShortenPage() {
       } else if (result.shortUrl) {
         setShortUrl(`${window.location.origin}/${result.shortUrl}`);
       }
-    } catch (err) {
+    } catch (_err) {
+      // Renamed err to _err to fix ESLint error
       setError(
         "Invalid URL. Please enter a valid URL (e.g., https://example.com)."
       );
