@@ -116,7 +116,7 @@ export default function HomePage() {
               <p className="text-gray-700 mb-2">Home</p>
               <p className="text-sm text-gray-500 mb-4">Protect your home</p>
               <a
-                href="/quote/home"
+                href="/homeowners"
                 className="inline-block bg-[#a0103d] text-white font-semibold py-2 px-4 rounded-md hover:bg-[#102a56] transition"
               >
                 Quote Now &gt;&gt;
@@ -133,7 +133,7 @@ export default function HomePage() {
               <p className="text-gray-700 mb-2">Rental</p>
               <p className="text-sm text-gray-500 mb-4">Protect your rental</p>
               <a
-                href="/quote/rental"
+                href="/renters"
                 className="inline-block bg-[#a0103d] text-white font-semibold py-2 px-4 rounded-md hover:bg-[#102a56] transition"
               >
                 Quote Now &gt;&gt;
@@ -150,7 +150,7 @@ export default function HomePage() {
               <p className="text-gray-700 mb-2">Motorcycle</p>
               <p className="text-sm text-gray-500 mb-4">Protect your ride</p>
               <a
-                href="/quote/motorcycle"
+                href="/motorcycle"
                 className="inline-block bg-[#a0103d] text-white font-semibold py-2 px-4 rounded-md hover:bg-[#102a56] transition"
               >
                 Quote Now &gt;&gt;
@@ -169,7 +169,7 @@ export default function HomePage() {
                 Protect your business
               </p>
               <a
-                href="/quote/commercial"
+                href="/general-liability"
                 className="inline-block bg-[#a0103d] text-white font-semibold py-2 px-4 rounded-md hover:bg-[#102a56] transition"
               >
                 Quote Now &gt;&gt;
@@ -188,10 +188,10 @@ export default function HomePage() {
                 SR-22, Boat, RV, Mobile Home, Bond, Mexico Ins, other
               </p>
               <a
-                href="/quote/other"
+                href="tel:+14697295185"
                 className="inline-block bg-[#a0103d] text-white font-semibold py-2 px-4 rounded-md hover:bg-[#102a56] transition"
               >
-                Quote Now &gt;&gt;
+                Contact Now &gt;&gt;
               </a>
             </div>
           </div>
