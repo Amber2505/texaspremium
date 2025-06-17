@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-
+import { useSearchParams } from "next/navigation";
 import { useState, useEffect } from "react";
 
 export default function HomePage() {
@@ -30,6 +30,14 @@ export default function HomePage() {
 
     return () => clearInterval(interval); // Cleanup interval on component unmount
   }, [images.length]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      const campaign = urlParams.get("campaignName") || "Direct";
+      sessionStorage.setItem("campaignName", campaign);
+    }
+  }, []);
 
   return (
     <>
@@ -210,7 +218,7 @@ export default function HomePage() {
               <p className="text-sm text-gray-500 mb-4">Protect your home</p>
 
               <a
-                href="/quote/home"
+                href="/homeowners"
                 className="inline-block bg-[#a0103d] text-white font-semibold py-2 px-4 rounded-md hover:bg-[#102a56] transition"
               >
                 Quote Now &gt;&gt;
@@ -235,7 +243,7 @@ export default function HomePage() {
               </p>
 
               <a
-                href="/quote/rental"
+                href="/renters"
                 className="inline-block bg-[#a0103d] text-white font-semibold py-2 px-4 rounded-md hover:bg-[#102a56] transition"
               >
                 Quote Now &gt;&gt;
@@ -258,7 +266,7 @@ export default function HomePage() {
               <p className="text-sm text-gray-500 mb-4">Protect your ride</p>
 
               <a
-                href="/quote/motorcycle"
+                href="/motorcycle"
                 className="inline-block bg-[#a0103d] text-white font-semibold py-2 px-4 rounded-md hover:bg-[#102a56] transition"
               >
                 Quote Now &gt;&gt;
@@ -283,7 +291,7 @@ export default function HomePage() {
               </p>
 
               <a
-                href="/quote/commercial"
+                href="/general-liability"
                 className="inline-block bg-[#a0103d] text-white font-semibold py-2 px-4 rounded-md hover:bg-[#102a56] transition"
               >
                 Quote Now &gt;&gt;
@@ -308,10 +316,10 @@ export default function HomePage() {
               </p>
 
               <a
-                href="/quote/other"
+                href="tel:+14697295185"
                 className="inline-block bg-[#a0103d] text-white font-semibold py-2 px-4 rounded-md hover:bg-[#102a56] transition"
               >
-                Quote Now &gt;&gt;
+                Contact Us &gt;&gt;
               </a>
             </div>
           </div>

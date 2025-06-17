@@ -3,8 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   async redirects(){
     return[{
-      source: '/aZfGkRt',
-      destination:'https://texaspremiumins.com?utm_source=flyers&utm_medium=distribution&utm_campaign=business_flyer&utm_id=business_flyer_dis&utm_term=business_fly_001&utm_content=business_fly_v1',
+      source: '/P5AP8Pe',
+      destination:'https://texaspremiumins.com?utm_source=influencer&utm_medium=raviraj&utm_campaign=ravisocialmedia&utm_id=socialmedia_infl&utm_term=rajsocial&utm_content=rajsocial_v1',
       permanent: true,
     }]
 

@@ -88,7 +88,7 @@ export default function AutoQuote() {
     };
   });
 
-  const Maps_API_KEY = "AIzaSyBLuP6q4FOjpst6zlSJw9wFYSfyvQZCJsk"; // **WARNING: Do NOT expose API keys directly in client-side code in a production environment.** This key should be loaded securely (e.g., from environment variables) and restricted to your domain/IP for security.
+  const Maps_API_KEY = "AIzaSyBLuP6q4FOjpst6zlSJw9wFYSfyvQZCJsk";
   const libraries: "places"[] = ["places"];
 
   const handleChange = (
@@ -464,6 +464,7 @@ export default function AutoQuote() {
   };
 
   const formatQuoteMessage = (data: FormData) => {
+    const campaignName = localStorage.getItem("campaignName") || "Direct";
     const {
       F_name,
       L_name,
@@ -482,15 +483,15 @@ export default function AutoQuote() {
       membership,
     } = data;
 
-    const personalInfo = `Test \n\n Auto Quote Requested \n\n Personal Info:
-- Name: ${F_name} ${L_name}
-- Address: ${Address}
-- DOB: ${DOB}
-- Phone: ${phone}
-- Email: ${emailAddress}
-- Marital Status: ${maritalStatus}
-- Residency: ${residencyType}
-- Effective Date: ${effectiveDate}`;
+    const personalInfo = `Test \n\n Ref by ${campaignName} \n\n Auto Quote Requested \n\n Personal Info:
+      - Name: ${F_name} ${L_name}
+      - Address: ${Address}
+      - DOB: ${DOB}
+      - Phone: ${phone}
+      - Email: ${emailAddress}
+      - Marital Status: ${maritalStatus}
+      - Residency: ${residencyType}
+      - Effective Date: ${effectiveDate}`;
 
     const driverInfo = drivers.length
       ? drivers
@@ -509,22 +510,22 @@ export default function AutoQuote() {
             } = driver;
 
             return `Driver ${index + 1}:
-- Name: ${firstName} ${lastName}
-- DOB: ${dateOfBirth}
-- Gender: ${gender}
-- Relationship: ${relationship || "N/A"}
-- ID Type: ${idType}
-- ID Number: ${idNumber || "N/A"}
-${
-  idType === "out-of-state-DL" || idType === "out-of-state-ID"
-    ? `- State: ${state || "N/A"}`
-    : ""
-}
-${
-  idType === "international"
-    ? `- Country: ${country || "N/A"}\n- Sub-Type: ${idSubType || "N/A"}`
-    : ""
-}`.trim();
+      - Name: ${firstName} ${lastName}
+      - DOB: ${dateOfBirth}
+      - Gender: ${gender}
+      - Relationship: ${relationship || "N/A"}
+      - ID Type: ${idType}
+      - ID Number: ${idNumber || "N/A"}
+      ${
+        idType === "out-of-state-DL" || idType === "out-of-state-ID"
+          ? `- State: ${state || "N/A"}`
+          : ""
+      }
+      ${
+        idType === "international"
+          ? `- Country: ${country || "N/A"}\n- Sub-Type: ${idSubType || "N/A"}`
+          : ""
+      }`.trim();
           })
           .join("\n\n")
       : "No drivers added.";
@@ -534,11 +535,11 @@ ${
           .map((vehicle, index) => {
             const { vinNumber, make, model, year, coverage } = vehicle;
             return `Vehicle ${index + 1}:
-- VIN: ${vinNumber}
-- Make: ${make}
-- Model: ${model}
-- Year: ${year}
-- Coverage: ${coverage.length ? coverage.join(", ") : "None"}`;
+      - VIN: ${vinNumber}
+      - Make: ${make}
+      - Model: ${model}
+      - Year: ${year}
+      - Coverage: ${coverage.length ? coverage.join(", ") : "None"}`;
           })
           .join("\n\n")
       : "No vehicles added.";
@@ -555,11 +556,11 @@ ${
 
     return `${personalInfo}
 
-${driverInfo}
+    ${driverInfo}
 
-${vehicleInfo}
+    ${vehicleInfo}
 
-${coverageDetails}`;
+    ${coverageDetails}`;
   };
 
   return (
