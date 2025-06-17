@@ -32,11 +32,8 @@ export default function HomePage() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      console.log("Full search string:", window.location.search); // 👈 DEBUG
-
       const urlParams = new URLSearchParams(window.location.search);
-      const campaign = urlParams.get("campaignName") || "Direct";
-      console.log("Detected campaignName:", campaign); // 👈 DEBUG
+      const campaign = urlParams.get("utm_medium") || "Direct"; // 👈 updated key
       sessionStorage.setItem("campaignName", campaign);
     }
   }, []);
