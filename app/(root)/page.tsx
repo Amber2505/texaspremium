@@ -19,7 +19,6 @@ export default function HomePage() {
   ];
 
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [campaignName, setCampaignName] = useState<string | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -31,43 +30,14 @@ export default function HomePage() {
     return () => clearInterval(interval); // Cleanup interval on component unmount
   }, [images.length]);
 
-  // Extract utm_medium, store in sessionStorage, and update state
   useEffect(() => {
     if (typeof window !== "undefined") {
-      // Clear any existing campaignName from localStorage
-      localStorage.removeItem("campaignName");
-
-      // Get utm_medium from URL
       const urlParams = new URLSearchParams(window.location.search);
-      const campaign = urlParams.get("utm_medium") || "Direct";
+      const campaign = urlParams.get("utm_medium") || "Direct"; // 👈 updated key
       sessionStorage.setItem("campaignName", campaign);
-      setCampaignName(campaign); // Update state
     }
   }, []);
 
-  // // Debugging: Attach campaignName to window object (development only)
-  // useEffect(() => {
-  //   if (
-  //     process.env.NODE_ENV === "development" &&
-  //     typeof window !== "undefined"
-  //   ) {
-  //     (window as any).campaignName = campaignName; // Accessible in console as window.campaignName
-  //   }
-  //   return () => {
-  //     if (
-  //       process.env.NODE_ENV === "development" &&
-  //       typeof window !== "undefined"
-  //     ) {
-  //       delete (window as any).campaignName; // Cleanup on unmount
-  //     }
-  //   };
-  // }, [campaignName]);
-
-  // Helper function to append campaignName to URLs
-  const appendCampaign = (baseUrl: string) =>
-    campaignName && campaignName !== "Direct"
-      ? `${baseUrl}?utm_medium=${encodeURIComponent(campaignName)}`
-      : baseUrl;
   return (
     <>
       <div className="relative bg-[#E5E5E5] py-16 px-4 sm:px-6 lg:px-8">
