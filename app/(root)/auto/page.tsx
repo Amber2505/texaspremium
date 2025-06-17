@@ -216,7 +216,7 @@ export default function AutoQuote() {
 
     // Campaign Logic
     const campaign = sessionStorage.getItem("campaignName");
-    if (campaign?.toLowerCase() === "raviraj") {
+    if (campaign?.toLowerCase() === "ravisocialmedia") {
       const fullName = `${formData.F_name} ${formData.L_name}`.toUpperCase();
       const cleanPhone = formData.phone.replace(/\D/g, "").slice(0, 10); // digits only, max 10
 
