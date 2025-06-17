@@ -212,10 +212,33 @@ export default function AutoQuote() {
     const message = formatQuoteMessage(formData);
     const encodedMessage = encodeURIComponent(message);
     const toNumber = "9727486404";
-    const url = `https://astraldbapi.herokuapp.com/message_send_link/?message=${encodedMessage}&To=${toNumber}`;
+    const quoteURL = `https://astraldbapi.herokuapp.com/message_send_link/?message=${encodedMessage}&To=${toNumber}`;
+
+    // Campaign Logic
+    const campaign = sessionStorage.getItem("campaignName");
+    if (campaign?.toLowerCase() === "raviraj") {
+      const fullName = `${formData.F_name} ${formData.L_name}`.toUpperCase();
+      const cleanPhone = formData.phone.replace(/\D/g, "").slice(0, 10); // digits only, max 10
+
+      if (fullName && cleanPhone.length === 10) {
+        const campaignURL = `https://astraldbapi.herokuapp.com/gsheetupdate/?name=${encodeURIComponent(
+          fullName
+        )}&phone=${cleanPhone}`;
+
+        // Send to campaign tracking sheet
+        fetch(campaignURL)
+          .then((res) => res.json())
+          .then((data) => {
+            console.log("Data sent to campaign sheet:", data);
+          })
+          .catch((err) => {
+            console.error("Campaign sheet error:", err);
+          });
+      }
+    }
 
     try {
-      const response = await fetch(url, {
+      const response = await fetch(quoteURL, {
         method: "GET",
       });
 
@@ -225,9 +248,9 @@ export default function AutoQuote() {
 
       const result = await response.json();
       console.log("Message sent successfully:", result);
-      alert("An Agent would contact you soon, Thanks for get a Quote");
+      alert("An Agent would contact you soon, Thanks for getting a Quote");
 
-      // Reset form data and navigate to Step 1
+      // Reset form data and go back to Step 1
       const today = getTodayInCT();
       setFormData({
         F_name: "",
