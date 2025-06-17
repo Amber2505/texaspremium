@@ -45,23 +45,23 @@ export default function HomePage() {
     }
   }, []);
 
-  // Debugging: Attach campaignName to window object (development only)
-  useEffect(() => {
-    if (
-      process.env.NODE_ENV === "development" &&
-      typeof window !== "undefined"
-    ) {
-      (window as any).campaignName = campaignName; // Accessible in console as window.campaignName
-    }
-    return () => {
-      if (
-        process.env.NODE_ENV === "development" &&
-        typeof window !== "undefined"
-      ) {
-        delete (window as any).campaignName; // Cleanup on unmount
-      }
-    };
-  }, [campaignName]);
+  // // Debugging: Attach campaignName to window object (development only)
+  // useEffect(() => {
+  //   if (
+  //     process.env.NODE_ENV === "development" &&
+  //     typeof window !== "undefined"
+  //   ) {
+  //     (window as any).campaignName = campaignName; // Accessible in console as window.campaignName
+  //   }
+  //   return () => {
+  //     if (
+  //       process.env.NODE_ENV === "development" &&
+  //       typeof window !== "undefined"
+  //     ) {
+  //       delete (window as any).campaignName; // Cleanup on unmount
+  //     }
+  //   };
+  // }, [campaignName]);
 
   // Helper function to append campaignName to URLs
   const appendCampaign = (baseUrl: string) =>
