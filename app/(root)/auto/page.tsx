@@ -132,18 +132,53 @@ export default function AutoQuote() {
     }
   };
 
+  // const handleAddressSelect = (
+  //   autocomplete: google.maps.places.Autocomplete
+  // ) => {
+  //   const place = autocomplete.getPlace();
+  //   if (place) {
+  //     // Add a check that place itself is not null/undefined
+  //     const formattedAddress = place.formatted_address || ""; // Provide a default empty string
+  //     setFormData((prevFormData) => ({
+  //       ...prevFormData,
+  //       Address: formattedAddress,
+  //     }));
+  //     setIsAddressSelected(true);
+  //   }
+  // };
+
   const handleAddressSelect = (
     autocomplete: google.maps.places.Autocomplete
   ) => {
     const place = autocomplete.getPlace();
     if (place) {
-      // Add a check that place itself is not null/undefined
-      const formattedAddress = place.formatted_address || ""; // Provide a default empty string
-      setFormData((prevFormData) => ({
-        ...prevFormData,
-        Address: formattedAddress,
-      }));
-      setIsAddressSelected(true);
+      const formattedAddress = place.formatted_address || "";
+
+      // **Validate if the selected address is in Texas**
+      const isTexasAddress = place.address_components?.some(
+        (component) =>
+          component.types.includes("administrative_area_level_1") &&
+          component.short_name === "TX"
+      );
+
+      if (isTexasAddress) {
+        // If it's a Texas address, update the form data and set selection status
+        setFormData((prevFormData) => ({
+          ...prevFormData,
+          Address: formattedAddress,
+        }));
+        setIsAddressSelected(true);
+      } else {
+        // If it's not a Texas address, handle the rejection
+        alert("Please select an address within Texas."); // Inform the user
+
+        // Optionally, clear the input field or reset the address state
+        setFormData((prevFormData) => ({
+          ...prevFormData,
+          Address: "", // Clear the previously entered or suggested address
+        }));
+        setIsAddressSelected(false); // Indicate that no valid address has been selected
+      }
     }
   };
 
