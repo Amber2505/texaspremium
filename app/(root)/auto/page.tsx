@@ -1466,9 +1466,13 @@ export default function AutoQuote() {
               <h2 className="text-xl font-bold mb-4">
                 Step 3: Coverage & Discounts
               </h2>
-              <div className="flex gap-4 mb-4">
-                <div className="w-1/2">
-                  <label className="block mb-1">Prior Coverage</label>
+              <div className="mb-4 text-center">
+                <div className="w-full">
+                  <label className="block mb-1 font-bold">Prior Coverage</label>
+                  <label className="block mb-1">
+                    (Many companies offer a better price if you have an Active
+                    policy with the older Company)
+                  </label>
                   <select
                     name="popcoverage"
                     className="border p-2 w-full rounded"
