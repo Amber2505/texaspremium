@@ -496,12 +496,16 @@ export default function AutoQuote() {
       } else {
         setVinError("No vehicle information found for this VIN.");
       }
-    } catch (err: any) {
-      setVinError(
-        err.message.includes("Failed to fetch")
-          ? "Unable to connect to the VIN lookup service. Please try again later."
-          : `Invalid VIN: ${err.message}`
-      );
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setVinError(
+          err.message.includes("Failed to fetch")
+            ? "Unable to connect to the VIN lookup service. Please try again later."
+            : `Invalid VIN: ${err.message}`
+        );
+      } else {
+        setVinError("An unexpected error occurred.");
+      }
     } finally {
       setVinLoading(null);
     }
