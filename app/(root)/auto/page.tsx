@@ -497,11 +497,6 @@ export default function AutoQuote() {
         setVinError("No vehicle information found for this VIN.");
       }
     } catch (err: any) {
-      console.error("VIN API Error:", {
-        message: err.message,
-        vin,
-        endpoint: `https://astraldbapi.herokuapp.com/basic_vin_data/${vin}`,
-      });
       setVinError(
         err.message.includes("Failed to fetch")
           ? "Unable to connect to the VIN lookup service. Please try again later."
