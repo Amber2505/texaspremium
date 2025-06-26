@@ -55,6 +55,7 @@ export default function AutoQuote() {
   const [vinLoading, setVinLoading] = useState<number | null>(null);
   const [vinError, setVinError] = useState<string>("");
   const [isAddressSelected, setIsAddressSelected] = useState(false);
+  const [phoneError, setPhoneError] = useState<string>("");
 
   // Calculate todays date in Central Time for default effective date
   const CENTRAL_TIME_ZONE = "America/Chicago";
@@ -97,9 +98,12 @@ export default function AutoQuote() {
     const { name, value } = e.target;
 
     if (name === "phone") {
+      // Extract only digits
       const digitsOnly = value.replace(/\D/g, "");
       const limitedDigits = digitsOnly.substring(0, 10);
       let formattedPhoneNumber = limitedDigits;
+
+      // Only apply formatting if there are digits
       if (limitedDigits.length > 6) {
         formattedPhoneNumber = `(${limitedDigits.substring(
           0,
@@ -111,15 +115,27 @@ export default function AutoQuote() {
           3
         )}) ${limitedDigits.substring(3, 6)}`;
       } else if (limitedDigits.length > 0) {
-        formattedPhoneNumber = `(${limitedDigits.substring(0, 3)})`;
+        formattedPhoneNumber = limitedDigits; // Use raw digits for 1-3 characters
       }
+
+      // Validate phone number length
+      setPhoneError(
+        limitedDigits.length !== 10 && limitedDigits.length > 0
+          ? "Phone number must be exactly 10 digits."
+          : ""
+      );
 
       setFormData((prevFormData) => ({
         ...prevFormData,
         phone: formattedPhoneNumber,
       }));
     } else if (name === "popcoverage") {
+      // Update both priorCoverage state and formData.priorCoverage
       setPriorCoverage(value);
+      setFormData((prevFormData) => ({
+        ...prevFormData,
+        priorCoverage: value, // Update formData.priorCoverage
+      }));
     } else {
       setFormData((prevFormData) => ({
         ...prevFormData,
@@ -184,6 +200,13 @@ export default function AutoQuote() {
 
   const handleSubmitStep1 = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
+    // Validate phone number
+    const phoneDigits = formData.phone.replace(/\D/g, ""); // Remove non-digits
+    if (phoneDigits.length !== 10) {
+      alert("Please enter a valid 10-digit phone number.");
+      return;
+    }
     if (!isAddressSelected) {
       alert("Please select an address from the suggestions.");
       return;
@@ -232,7 +255,36 @@ export default function AutoQuote() {
   const handleSubmitStep2 = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    setStep(3); // Go to next step
+    // Check if there are drivers and vehicles
+    if (formData.vehicles.length === 0 || formData.drivers.length === 0) {
+      alert("Please add at least one driver and one vehicle.");
+      return;
+    }
+
+    // Check for vinError
+    if (vinError) {
+      alert(vinError);
+      return;
+    }
+
+    // Validate all vehicle VINs
+    const invalidVehicles = formData.vehicles.filter(
+      (vehicle) =>
+        !vehicle.vinNumber ||
+        vehicle.vinNumber.length !== 17 ||
+        !vehicle.make ||
+        !vehicle.model ||
+        !vehicle.year
+    );
+
+    if (invalidVehicles.length > 0) {
+      alert(
+        "One or more VINs are invalid or missing vehicle information. Please verify all VINs before continuing."
+      );
+      return;
+    }
+
+    setStep(3);
   };
 
   const handleSubmitStep3 = (e: React.FormEvent<HTMLFormElement>) => {
@@ -378,11 +430,24 @@ export default function AutoQuote() {
     return newVehicles;
   };
 
-  // Updated VIN search function
   const handleVinSearch = async (vehicleIndex: number, vin: string) => {
-    if (!vin || vin.length !== 17) {
+    // Validate VIN format
+    if (!vin) {
+      setVinError("Please enter a VIN.");
       return;
     }
+    if (vin.length !== 17) {
+      setVinError("VIN must be exactly 17 characters.");
+      return;
+    }
+    if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) {
+      setVinError(
+        "Invalid VIN format. Use only letters (A-Z, excluding I, O, Q) and numbers."
+      );
+      return;
+    }
+
+    // Check for duplicate VIN
     const isDuplicate = formData.vehicles.some(
       (vehicle, index) => index !== vehicleIndex && vehicle.vinNumber === vin
     );
@@ -390,15 +455,29 @@ export default function AutoQuote() {
       setVinError("This VIN has already been added to another vehicle.");
       return;
     }
+
     setVinLoading(vehicleIndex);
     setVinError("");
+
     try {
       const response = await fetch(
-        `https://astraldbapi.herokuapp.com/basic_vin_data/${vin}`
+        `https://astraldbapi.herokuapp.com/basic_vin_data/${vin}`,
+        {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+          mode: "cors",
+        }
       );
+
       if (!response.ok) {
-        throw new Error("Invalid VIN or response");
+        const errorText = await response.text();
+        throw new Error(
+          `API error: ${response.status} - ${
+            errorText || "Invalid VIN or server error"
+          }`
+        );
       }
+
       const data = await response.json();
       if (data && data.vin) {
         const updatedVehicles = [...formData.vehicles];
@@ -415,11 +494,19 @@ export default function AutoQuote() {
           vehicles: updatedVehicles,
         });
       } else {
-        setVinError("No vehicle info found for that VIN.");
+        setVinError("No vehicle information found for this VIN.");
       }
-    } catch (err) {
-      console.error("VIN API Error:", err);
-      setVinError("Something went wrong while searching VIN.");
+    } catch (err: any) {
+      console.error("VIN API Error:", {
+        message: err.message,
+        vin,
+        endpoint: `https://astraldbapi.herokuapp.com/basic_vin_data/${vin}`,
+      });
+      setVinError(
+        err.message.includes("Failed to fetch")
+          ? "Unable to connect to the VIN lookup service. Please try again later."
+          : `Invalid VIN: ${err.message}`
+      );
     } finally {
       setVinLoading(null);
     }
@@ -757,11 +844,16 @@ export default function AutoQuote() {
                     inputMode="numeric"
                     name="phone"
                     placeholder="Enter 10-digit phone number"
-                    className="border p-2 w-full rounded"
+                    className={`border p-2 w-full rounded ${
+                      phoneError ? "border-red-500" : ""
+                    }`}
                     value={formData.phone || ""} // Ensure value is never undefined
                     onChange={handleChange}
                     required
                   />
+                  {phoneError && (
+                    <p className="text-red-500 text-xs mt-1">{phoneError}</p>
+                  )}
                 </div>
                 <div className="w-1/2">
                   <label className="block mb-1 font-bold">Email address</label>
