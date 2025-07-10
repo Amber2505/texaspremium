@@ -828,7 +828,7 @@ export default function AutoQuote() {
                   className="mx-auto mb-2 sm:mb-4"
                 />
                 <h1 className="text-xl sm:text-2xl font-bold mb-2">
-                  Let's put together a plan that fits you perfectly.
+                  Let&apos;s put together a plan that fits you perfectly.
                 </h1>
                 <p className="text-gray-700 text-xs sm:text-sm">
                   Please fill out the information below as accurately as
@@ -1328,11 +1328,11 @@ export default function AutoQuote() {
                       >
                         <option value="">Select...</option>
                         <option value="in-state-dl">
-                          In-State Driver's License
+                          In-State Driver&apos;s License
                         </option>
                         <option value="in-state-id">In-State ID</option>
                         <option value="out-of-state-DL">
-                          Out-of-State Driver's License
+                          Out-of-State Driver&apos;s License
                         </option>
                         <option value="out-of-state-ID">Out-of-State ID</option>
                         <option value="international">
@@ -1344,7 +1344,7 @@ export default function AutoQuote() {
                     {driver.idType === "in-state-dl" && (
                       <div>
                         <label className="block mb-1 font-bold text-xs sm:text-sm">
-                          Driver's License Number
+                          Driver&apos;s License Number
                         </label>
                         <input
                           type="text"
@@ -1373,7 +1373,7 @@ export default function AutoQuote() {
                         />
                         {driver.idNumber && driver.idNumber.length !== 8 && (
                           <p className="text-red-500 text-xs mt-1">
-                            Driver's License must be exactly 8 digits.
+                            Driver&apos;s License must be exactly 8 digits.
                           </p>
                         )}
                       </div>
@@ -1409,7 +1409,7 @@ export default function AutoQuote() {
                       <>
                         <div>
                           <label className="block mb-1 font-bold text-xs sm:text-sm">
-                            Driver's License Number
+                            Driver&apos;s License Number
                           </label>
                           <input
                             type="text"
@@ -1843,7 +1843,7 @@ export default function AutoQuote() {
                       Membership
                     </label>
                     <label className="block mb-1 text-xs sm:text-sm">
-                      (Sam's or Costco membership may lower your rate)
+                      (Sam&apos;s or Costco membership may lower your rate)
                     </label>
                     <select
                       name="membership"
@@ -1853,7 +1853,7 @@ export default function AutoQuote() {
                       onChange={handleChange}
                     >
                       <option value="">Select...</option>
-                      <option value="sams_club">Sam's Club</option>
+                      <option value="sams_club">Sam&apos;s Club</option>
                       <option value="costco">Costco</option>
                       <option value="none">None</option>
                     </select>
