@@ -47,6 +47,8 @@ interface FormData {
   priorCoverageMonths: string;
   expirationDate: string;
   membership: string;
+  verificationCode?: string;
+  inputCode?: string;
 }
 
 export default function AutoQuote() {
@@ -56,8 +58,13 @@ export default function AutoQuote() {
   const [vinError, setVinError] = useState<string>("");
   const [isAddressSelected, setIsAddressSelected] = useState(false);
   const [phoneError, setPhoneError] = useState<string>("");
+  const [isSending, setIsSending] = useState(false);
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [codeError, setCodeError] = useState<string>("");
+  const [addressError, setAddressError] = useState<string>("");
+  const [submitError, setSubmitError] = useState<string>("");
 
-  // Calculate todays date in Central Time for default effective date
+  // Calculate today's date in Central Time for default effective date
   const CENTRAL_TIME_ZONE = "America/Chicago";
   const getTodayInCT = () => {
     const now = new Date();
@@ -86,6 +93,8 @@ export default function AutoQuote() {
       priorCoverageMonths: "",
       expirationDate: "",
       membership: "",
+      verificationCode: "",
+      inputCode: "",
     };
   });
 
@@ -98,12 +107,10 @@ export default function AutoQuote() {
     const { name, value } = e.target;
 
     if (name === "phone") {
-      // Extract only digits
       const digitsOnly = value.replace(/\D/g, "");
       const limitedDigits = digitsOnly.substring(0, 10);
       let formattedPhoneNumber = limitedDigits;
 
-      // Only apply formatting if there are digits
       if (limitedDigits.length > 6) {
         formattedPhoneNumber = `(${limitedDigits.substring(
           0,
@@ -115,10 +122,9 @@ export default function AutoQuote() {
           3
         )}) ${limitedDigits.substring(3, 6)}`;
       } else if (limitedDigits.length > 0) {
-        formattedPhoneNumber = limitedDigits; // Use raw digits for 1-3 characters
+        formattedPhoneNumber = limitedDigits;
       }
 
-      // Validate phone number length
       setPhoneError(
         limitedDigits.length !== 10 && limitedDigits.length > 0
           ? "Phone number must be exactly 10 digits."
@@ -130,38 +136,62 @@ export default function AutoQuote() {
         phone: formattedPhoneNumber,
       }));
     } else if (name === "popcoverage") {
-      // Update both priorCoverage state and formData.priorCoverage
       setPriorCoverage(value);
       setFormData((prevFormData) => ({
         ...prevFormData,
-        priorCoverage: value, // Update formData.priorCoverage
+        priorCoverage: value,
+        priorCoverageMonths:
+          value === "no" ? "" : prevFormData.priorCoverageMonths,
+        expirationDate: value === "no" ? "" : prevFormData.expirationDate,
+      }));
+    } else if (name === "inputCode") {
+      setFormData((prevFormData) => ({
+        ...prevFormData,
+        inputCode: value,
       }));
     } else {
       setFormData((prevFormData) => ({
         ...prevFormData,
         [name]: value,
       }));
-      // Only reset isAddressSelected if the Address field is cleared
       if (name === "Address" && value === "") {
         setIsAddressSelected(false);
+        setAddressError("");
+      } else if (name === "Address") {
+        validateAddress(value);
+        setIsAddressSelected(value.trim() !== "");
       }
     }
   };
 
-  // const handleAddressSelect = (
-  //   autocomplete: google.maps.places.Autocomplete
-  // ) => {
-  //   const place = autocomplete.getPlace();
-  //   if (place) {
-  //     // Add a check that place itself is not null/undefined
-  //     const formattedAddress = place.formatted_address || ""; // Provide a default empty string
-  //     setFormData((prevFormData) => ({
-  //       ...prevFormData,
-  //       Address: formattedAddress,
-  //     }));
-  //     setIsAddressSelected(true);
-  //   }
-  // };
+  const validateAddress = (address: string) => {
+    const trimmedAddress = address.trim().toLowerCase();
+    const isApartmentComplex =
+      trimmedAddress.includes("apartments") ||
+      trimmedAddress.includes("apts") ||
+      trimmedAddress.includes("condo") ||
+      trimmedAddress.includes("tower") ||
+      trimmedAddress.includes("residence");
+    const hasUnitNumber =
+      trimmedAddress.includes("apt") ||
+      trimmedAddress.includes("unit") ||
+      trimmedAddress.includes("#") ||
+      trimmedAddress.includes("suite");
+
+    if (isApartmentComplex && !hasUnitNumber) {
+      setAddressError(
+        "Please verify or add your apartment number (e.g., Apt 1525)."
+      );
+    } else if (!isApartmentComplex && !hasUnitNumber) {
+      setAddressError("");
+    } else if (hasUnitNumber) {
+      setAddressError("");
+    } else {
+      setAddressError(
+        "Please verify if this is an apartment address and add the apartment number if applicable (e.g., Apt 1525)."
+      );
+    }
+  };
 
   const handleAddressSelect = (
     autocomplete: google.maps.places.Autocomplete
@@ -169,67 +199,138 @@ export default function AutoQuote() {
     const place = autocomplete.getPlace();
     if (place) {
       const formattedAddress = place.formatted_address || "";
-
-      // **Validate if the selected address is in Texas**
       const isTexasAddress = place.address_components?.some(
         (component) =>
           component.types.includes("administrative_area_level_1") &&
           component.short_name === "TX"
       );
 
-      if (isTexasAddress) {
-        // If it's a Texas address, update the form data and set selection status
+      if (!isTexasAddress) {
+        alert("Please select an address within Texas.");
         setFormData((prevFormData) => ({
           ...prevFormData,
-          Address: formattedAddress,
+          Address: "",
         }));
-        setIsAddressSelected(true);
-      } else {
-        // If it's not a Texas address, handle the rejection
-        alert("Please select an address within Texas."); // Inform the user
-
-        // Optionally, clear the input field or reset the address state
-        setFormData((prevFormData) => ({
-          ...prevFormData,
-          Address: "", // Clear the previously entered or suggested address
-        }));
-        setIsAddressSelected(false); // Indicate that no valid address has been selected
+        setIsAddressSelected(false);
+        setAddressError("");
+        return;
       }
+
+      validateAddress(formattedAddress);
+      setFormData((prevFormData) => ({
+        ...prevFormData,
+        Address: formattedAddress,
+      }));
+      setIsAddressSelected(true);
+    } else {
+      setFormData((prevFormData) => ({
+        ...prevFormData,
+        Address: "",
+      }));
+      setIsAddressSelected(false);
+      setAddressError("");
+    }
+  };
+
+  const handleSendCode = async () => {
+    const phoneDigits = formData.phone.replace(/\D/g, "");
+    if (phoneDigits.length !== 10) {
+      setPhoneError("Please enter a valid 10-digit phone number.");
+      return;
+    }
+
+    setIsSending(true);
+    setPhoneError("");
+
+    const verificationCode = Math.floor(
+      100000 + Math.random() * 900000
+    ).toString();
+    const message = `Your verification code is: ${verificationCode} - Texas Premium Insurance Services`;
+    const encodedMessage = encodeURIComponent(message);
+    const toNumber = `+1${phoneDigits}`;
+    const smsUrl = `https://astraldbapi.herokuapp.com/message_send_link/?message=${encodedMessage}&To=${toNumber}`;
+
+    try {
+      const response = await fetch(smsUrl, {
+        method: "GET",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to send verification code");
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        verificationCode,
+      }));
+      alert("Verification code sent successfully!");
+    } catch (error) {
+      setPhoneError("Failed to send verification code. Please try again.");
+      console.error("Error sending SMS:", error);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  const handleVerifyCode = () => {
+    console.log(
+      "Verification Check - Code:",
+      formData.verificationCode,
+      "Input:",
+      formData.inputCode
+    );
+    if (
+      formData.inputCode === formData.verificationCode &&
+      formData.inputCode
+    ) {
+      setIsPhoneVerified(true);
+      setCodeError("");
+      setSubmitError(""); // Clear submitError when verified
+      alert("Phone number verified successfully!");
+    } else {
+      setCodeError("Invalid verification code. Please try again.");
     }
   };
 
   const handleSubmitStep1 = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    console.log(
+      "Submit Step 1 - isPhoneVerified:",
+      isPhoneVerified,
+      "Address Error:",
+      addressError
+    );
 
-    // Validate phone number
-    const phoneDigits = formData.phone.replace(/\D/g, ""); // Remove non-digits
+    const phoneDigits = formData.phone.replace(/\D/g, "");
     if (phoneDigits.length !== 10) {
-      alert("Please enter a valid 10-digit phone number.");
+      setSubmitError("Please enter a valid 10-digit phone number.");
       return;
-    }
-    if (!isAddressSelected) {
-      alert("Please select an address from the suggestions.");
+    } else if (!isAddressSelected) {
+      setSubmitError("Please enter an address.");
+      return;
+    } else if (addressError) {
+      setSubmitError("Please correct the address error before continuing.");
+      return;
+    } else if (!isPhoneVerified) {
+      setSubmitError("Please verify your phone number before continuing.");
       return;
     }
 
-    // After submitting step 1, ensure the primary applicants details
-    // are reflected in drivers[0] if DriversNo is 1 or more.
+    setSubmitError("");
     setFormData((prevFormData) => {
       const newDrivers = [...prevFormData.drivers];
       if (prevFormData.DriversNo > 0) {
         if (newDrivers.length === 0) {
-          // If drivers array is empty, initialize the first driver
           newDrivers.push({
             firstName: prevFormData.F_name,
             lastName: prevFormData.L_name,
             dateOfBirth: prevFormData.DOB,
-            gender: "", // Default or actual values for required fields
+            gender: "",
             idType: "",
             idNumber: "",
             relationship: "Policyholder",
           });
         } else {
-          // Ensure the first drivers details always match the main form fields
           newDrivers[0] = {
             ...newDrivers[0],
             firstName: prevFormData.F_name,
@@ -239,7 +340,6 @@ export default function AutoQuote() {
           };
         }
       } else {
-        // If DriversNo is 0, ensure the drivers array is empty.
         newDrivers.length = 0;
       }
 
@@ -249,25 +349,22 @@ export default function AutoQuote() {
       };
     });
 
-    setStep(2); // Go to next step
+    setStep(2);
   };
 
   const handleSubmitStep2 = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    // Check if there are drivers and vehicles
     if (formData.vehicles.length === 0 || formData.drivers.length === 0) {
       alert("Please add at least one driver and one vehicle.");
       return;
     }
 
-    // Check for vinError
     if (vinError) {
       alert(vinError);
       return;
     }
 
-    // Validate all vehicle VINs
     const invalidVehicles = formData.vehicles.filter(
       (vehicle) =>
         !vehicle.vinNumber ||
@@ -289,8 +386,7 @@ export default function AutoQuote() {
 
   const handleSubmitStep3 = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
-    setStep(4); // Go to next step
+    setStep(4);
   };
 
   const handleSubmitStep4 = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -301,19 +397,16 @@ export default function AutoQuote() {
     const toNumber = "9727486404";
     const quoteURL = `https://astraldbapi.herokuapp.com/message_send_link/?message=${encodedMessage}&To=${toNumber}`;
 
-    // Campaign Logic
     const campaign = sessionStorage.getItem("campaignName");
-    console.log(campaign);
     if (campaign?.toLowerCase() === "raviraj") {
       const fullName = `${formData.F_name} ${formData.L_name}`.toUpperCase();
-      const cleanPhone = formData.phone.replace(/\D/g, "").slice(0, 10); // digits only, max 10
+      const cleanPhone = formData.phone.replace(/\D/g, "").slice(0, 10);
 
       if (fullName && cleanPhone.length === 10) {
         const campaignURL = `https://astraldbapi.herokuapp.com/gsheetupdate/?name=${encodeURIComponent(
           fullName
         )}&phone=${cleanPhone}`;
 
-        // Send to campaign tracking sheet
         fetch(campaignURL)
           .then((res) => res.json())
           .then((data) => {
@@ -338,7 +431,6 @@ export default function AutoQuote() {
       console.log("Message sent successfully:", result);
       alert("An Agent would contact you soon, Thanks for getting a Quote");
 
-      // Reset form data and go back to Step 1
       const today = getTodayInCT();
       setFormData({
         F_name: "",
@@ -359,11 +451,15 @@ export default function AutoQuote() {
         priorCoverageMonths: "",
         expirationDate: "",
         membership: "",
+        verificationCode: "",
+        inputCode: "",
       });
       setPriorCoverage("");
       setVinLoading(null);
       setVinError("");
       setIsAddressSelected(false);
+      setIsPhoneVerified(false);
+      setAddressError("");
       setStep(1);
     } catch (error) {
       console.error("Error sending message:", error);
@@ -371,16 +467,14 @@ export default function AutoQuote() {
     }
   };
 
-  // Initialize drivers array based on DriversNo
   const initializeDrivers = (count: number): Driver[] => {
     const newDrivers = Array.from({ length: count }, (_, index) => {
       if (index === 0) {
-        // For the first driver, always pull from formDatas main fields
         return {
           firstName: formData.F_name,
           lastName: formData.L_name,
           dateOfBirth: formData.DOB,
-          gender: formData.drivers[0]?.gender || "", // Preserve if already set
+          gender: formData.drivers[0]?.gender || "",
           idType: formData.drivers[0]?.idType || "",
           idNumber: formData.drivers[0]?.idNumber || "",
           state: formData.drivers[0]?.state || "",
@@ -389,7 +483,6 @@ export default function AutoQuote() {
           relationship: "Policyholder",
         };
       } else {
-        // For additional drivers, try to preserve their existing data or create new
         return (
           formData.drivers[index] || {
             firstName: "",
@@ -409,7 +502,6 @@ export default function AutoQuote() {
     return newDrivers;
   };
 
-  // Initialize vehicles array based on VehicleNo
   const initializeVehicles = (count: number): Vehicle[] => {
     const newVehicles = Array.from({ length: count }, (_, index) => {
       const existingVehicle = formData.vehicles[index] || {
@@ -431,7 +523,6 @@ export default function AutoQuote() {
   };
 
   const handleVinSearch = async (vehicleIndex: number, vin: string) => {
-    // Validate VIN format
     if (!vin) {
       setVinError("Please enter a VIN.");
       return;
@@ -447,7 +538,6 @@ export default function AutoQuote() {
       return;
     }
 
-    // Check for duplicate VIN
     const isDuplicate = formData.vehicles.some(
       (vehicle, index) => index !== vehicleIndex && vehicle.vinNumber === vin
     );
@@ -511,7 +601,6 @@ export default function AutoQuote() {
     }
   };
 
-  // Handle VIN input change with automatic search when 17 characters
   const handleVinInputChange = (vehicleIndex: number, value: string) => {
     const updatedVehicles = [...formData.vehicles];
     updatedVehicles[vehicleIndex] = {
@@ -524,14 +613,13 @@ export default function AutoQuote() {
       vehicles: updatedVehicles,
     });
 
-    setVinError(""); // Clear previous error
+    setVinError("");
 
     if (value.length === 17) {
       handleVinSearch(vehicleIndex, value);
     }
   };
 
-  // Handle coverage selection for a vehicle
   const handleCoverageChange = (
     vehicleIndex: number,
     coverageOption: string
@@ -540,7 +628,6 @@ export default function AutoQuote() {
     const vehicle = updatedVehicles[vehicleIndex];
     const currentCoverage = vehicle.coverage || [];
 
-    // Prevent changes to Liability (mandatory)
     if (
       coverageOption === "Liability" &&
       currentCoverage.includes("Liability")
@@ -548,16 +635,13 @@ export default function AutoQuote() {
       return;
     }
 
-    // Handle mutual exclusivity between PIP and Medical Payments
     let newCoverage = [...currentCoverage];
     if (coverageOption === "Personal Injury Protection") {
       if (newCoverage.includes("Personal Injury Protection")) {
-        // Deselect PIP
         newCoverage = newCoverage.filter(
           (option) => option !== "Personal Injury Protection"
         );
       } else {
-        // Select PIP and remove Medical Payments
         newCoverage = newCoverage.filter(
           (option) => option !== "Medical Payments"
         );
@@ -565,19 +649,16 @@ export default function AutoQuote() {
       }
     } else if (coverageOption === "Medical Payments") {
       if (newCoverage.includes("Medical Payments")) {
-        // Deselect Medical Payments
         newCoverage = newCoverage.filter(
           (option) => option !== "Medical Payments"
         );
       } else {
-        // Select Medical Payments and remove PIP
         newCoverage = newCoverage.filter(
           (option) => option !== "Personal Injury Protection"
         );
         newCoverage.push("Medical Payments");
       }
     } else {
-      // Toggle other coverage options (except Liability)
       if (newCoverage.includes(coverageOption)) {
         newCoverage = newCoverage.filter((option) => option !== coverageOption);
       } else {
@@ -585,7 +666,6 @@ export default function AutoQuote() {
       }
     }
 
-    // Update vehicle coverage
     updatedVehicles[vehicleIndex] = {
       ...vehicle,
       coverage: newCoverage,
@@ -709,20 +789,20 @@ export default function AutoQuote() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 flex justify-center items-start py-10">
-      <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-5xl text-sm">
+    <div className="min-h-screen bg-gray-100 flex justify-center items-start py-4 sm:py-10 px-4 sm:px-0">
+      <div className="bg-white p-4 sm:p-6 rounded-lg shadow-lg w-full max-w-4xl text-sm">
         {/* Progress Bar */}
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-wrap justify-between items-center mb-4 sm:mb-6 gap-2">
           {[1, 2, 3, 4].map((num) => (
             <div key={num} className="flex flex-col items-center">
               <div
-                className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-bold ${
+                className={`w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center rounded-full text-xs sm:text-sm font-bold ${
                   step >= num ? "bg-blue-600 text-white" : "bg-gray-300"
                 }`}
               >
                 {num}
               </div>
-              <div className="text-xs mt-1">
+              <div className="text-xs mt-1 text-center">
                 {
                   [
                     "Info",
@@ -739,27 +819,25 @@ export default function AutoQuote() {
         {step === 1 && (
           <LoadScript googleMapsApiKey={Maps_API_KEY} libraries={libraries}>
             <form onSubmit={handleSubmitStep1}>
-              <div className="text-center mb-6">
+              <div className="text-center mb-4 sm:mb-6">
                 <Image
                   src="/autoquote.png"
                   alt="Banner"
-                  width={160}
-                  height={80}
-                  className="mx-auto mb-4"
+                  width={120}
+                  height={60}
+                  className="mx-auto mb-2 sm:mb-4"
                 />
-
-                <h1 className="text-2xl font-bold mb-2">
-                  Let&apos;s put together a plan that fits you perfectly.
+                <h1 className="text-xl sm:text-2xl font-bold mb-2">
+                  Let's put together a plan that fits you perfectly.
                 </h1>
-                <p className="text-gray-700">
+                <p className="text-gray-700 text-xs sm:text-sm">
                   Please fill out the information below as accurately as
                   possible for a precise quote.
                 </p>
               </div>
               <div className="mb-4 text-center">
-                <label className="block text-sm mb-1">
-                  Effective Date (Default to Today&apos;s Date click on Calendar
-                  to change it)
+                <label className="block text-xs sm:text-sm mb-1">
+                  Effective Date (Click calendar to change)
                 </label>
                 <input
                   type="date"
@@ -768,30 +846,34 @@ export default function AutoQuote() {
                   value={formData.effectiveDate}
                   onChange={handleChange}
                   onKeyDown={(e) => e.preventDefault()}
-                  className="border p-2 w-48 rounded text-center"
+                  className="border p-2 w-40 sm:w-48 rounded text-center text-xs sm:text-sm"
                   required
                 />
               </div>
 
-              <div className="flex gap-4 mb-4">
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">First Name</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block mb-1 font-bold text-xs sm:text-sm">
+                    First Name
+                  </label>
                   <input
                     type="text"
                     name="F_name"
-                    className="border p-2 w-full rounded"
+                    className="border p-2 w-full rounded text-xs sm:text-sm"
                     placeholder="Enter First Name"
                     value={formData.F_name}
                     onChange={handleChange}
                     required
                   />
                 </div>
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">Last Name</label>
+                <div>
+                  <label className="block mb-1 font-bold text-xs sm:text-sm">
+                    Last Name
+                  </label>
                   <input
                     type="text"
                     name="L_name"
-                    className="border p-2 w-full rounded"
+                    className="border p-2 w-full rounded text-xs sm:text-sm"
                     placeholder="Enter Last Name"
                     value={formData.L_name}
                     onChange={handleChange}
@@ -800,34 +882,54 @@ export default function AutoQuote() {
                 </div>
               </div>
 
-              <div className="flex gap-4 mb-4">
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">Address</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block mb-1 font-bold text-xs sm:text-sm">
+                    Address
+                  </label>
                   <Autocomplete
                     onLoad={(autocomplete) => {
                       autocomplete.addListener("place_changed", () =>
                         handleAddressSelect(autocomplete)
                       );
+                      autocomplete.setComponentRestrictions({ country: "us" });
+                      const texasBounds = new google.maps.LatLngBounds(
+                        new google.maps.LatLng(25.8371, -106.6456),
+                        new google.maps.LatLng(36.5007, -93.5083)
+                      );
+                      autocomplete.setOptions({
+                        bounds: texasBounds,
+                        strictBounds: true,
+                        types: [],
+                      });
                     }}
                     onPlaceChanged={() => {}}
                   >
                     <input
                       type="text"
                       name="Address"
-                      className="border p-2 w-full rounded"
-                      placeholder="Enter Address"
+                      className={`border p-2 w-full rounded text-xs sm:text-sm ${
+                        addressError ? "border-red-500" : ""
+                      }`}
+                      placeholder="Enter Address (e.g., 123 Main St Apt 1525)"
                       value={formData.Address}
                       onChange={handleChange}
                       required
+                      autoComplete="off" // Disable browser autofill
                     />
                   </Autocomplete>
+                  {addressError && (
+                    <p className="text-red-500 text-xs mt-1">{addressError}</p>
+                  )}
                 </div>
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">Date of Birth</label>
+                <div>
+                  <label className="block mb-1 font-bold text-xs sm:text-sm">
+                    Date of Birth
+                  </label>
                   <input
                     type="date"
                     name="DOB"
-                    className="border p-2 w-full rounded"
+                    className="border p-2 w-full rounded text-xs sm:text-sm"
                     value={formData.DOB}
                     onChange={handleChange}
                     required
@@ -835,31 +937,86 @@ export default function AutoQuote() {
                 </div>
               </div>
 
-              <div className="flex gap-4 mb-4">
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">Phone Number</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    name="phone"
-                    placeholder="Enter 10-digit phone number"
-                    className={`border p-2 w-full rounded ${
-                      phoneError ? "border-red-500" : ""
-                    }`}
-                    value={formData.phone || ""} // Ensure value is never undefined
-                    onChange={handleChange}
-                    required
-                  />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block mb-1 font-bold text-xs sm:text-sm">
+                    Phone Number
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      name="phone"
+                      placeholder="Enter 10-digit phone number"
+                      className={`border p-2 w-full rounded text-xs sm:text-sm ${
+                        phoneError ? "border-red-500" : ""
+                      }`}
+                      value={formData.phone || ""}
+                      onChange={handleChange}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-xs sm:text-sm"
+                      onClick={handleSendCode}
+                      disabled={isSending || isPhoneVerified}
+                    >
+                      {isSending
+                        ? "Sending..."
+                        : isPhoneVerified
+                        ? "Verified"
+                        : "Send Code"}
+                    </button>
+                  </div>
                   {phoneError && (
                     <p className="text-red-500 text-xs mt-1">{phoneError}</p>
                   )}
+                  {!isPhoneVerified && (
+                    <div className="mt-2">
+                      <label className="block mb-1 font-bold text-xs sm:text-sm">
+                        Verification Code
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          name="inputCode"
+                          placeholder="Enter 6-digit code"
+                          className={`border p-2 w-full rounded text-xs sm:text-sm ${
+                            codeError ? "border-red-500" : ""
+                          }`}
+                          value={formData.inputCode || ""}
+                          onChange={handleChange}
+                          maxLength={6}
+                        />
+                        <button
+                          type="button"
+                          className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-xs sm:text-sm"
+                          onClick={handleVerifyCode}
+                        >
+                          Verify Code
+                        </button>
+                      </div>
+                      {codeError && (
+                        <p className="text-red-500 text-xs mt-1">{codeError}</p>
+                      )}
+                    </div>
+                  )}
+                  {submitError && (
+                    <p className="text-red-500 text-xs mt-1">{submitError}</p>
+                  )}
+                  <p className="text-gray-600 text-xs mt-1">
+                    Verification Status:{" "}
+                    {isPhoneVerified ? "Verified" : "Not Verified"}
+                  </p>
                 </div>
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">Email address</label>
+                <div>
+                  <label className="block mb-1 font-bold text-xs sm:text-sm">
+                    Email Address
+                  </label>
                   <input
                     type="email"
                     name="emailAddress"
-                    className="border p-2 w-full rounded"
+                    className="border p-2 w-full rounded text-xs sm:text-sm"
                     placeholder="Enter Email Address"
                     value={formData.emailAddress}
                     onChange={handleChange}
@@ -868,18 +1025,18 @@ export default function AutoQuote() {
                 </div>
               </div>
 
-              <div className="flex gap-4 mb-4">
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">
-                    Marital Status:
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block mb-1 font-bold text-xs sm:text-sm">
+                    Marital Status
                   </label>
-                  <label className="block mb-1">
+                  <label className="block mb-1 text-xs sm:text-sm">
                     Optimize your price by choosing to include or exclude your
                     spouse.
                   </label>
                   <select
                     name="maritalStatus"
-                    className="border p-2 w-full rounded"
+                    className="border p-2 w-full rounded text-xs sm:text-sm"
                     value={formData.maritalStatus}
                     onChange={handleChange}
                     required
@@ -891,16 +1048,16 @@ export default function AutoQuote() {
                     <option value="divorced">Divorced</option>
                   </select>
                 </div>
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">
-                    Residency Type:
+                <div>
+                  <label className="block mb-1 font-bold text-xs sm:text-sm">
+                    Residency Type
                   </label>
-                  <label className="block mb-1">
+                  <label className="block mb-1 text-xs sm:text-sm">
                     Homeownership may lower your rate.
                   </label>
                   <select
                     name="residencyType"
-                    className="border p-2 w-full rounded"
+                    className="border p-2 w-full rounded text-xs sm:text-sm"
                     value={formData.residencyType}
                     onChange={handleChange}
                     required
@@ -916,10 +1073,13 @@ export default function AutoQuote() {
               <div className="text-center">
                 <button
                   type="submit"
-                  className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+                  className="bg-blue-600 text-white px-4 sm:px-6 py-2 rounded hover:bg-blue-700 text-xs sm:text-sm"
                 >
                   Continue
                 </button>
+                {submitError && (
+                  <p className="text-red-500 text-xs mt-1">{submitError}</p>
+                )}
               </div>
             </form>
           </LoadScript>
@@ -928,17 +1088,17 @@ export default function AutoQuote() {
         {step === 2 && (
           <form onSubmit={handleSubmitStep2}>
             <div>
-              <h2 className="text-xl font-bold mb-4">
+              <h2 className="text-lg sm:text-xl font-bold mb-4">
                 Step 2: Driver & Vehicle Information
               </h2>
-              <div className="flex gap-4 mb-4">
-                <div className="w-1/2">
-                  <label className="block mb-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label className="block mb-1 text-xs sm:text-sm">
                     How many Drivers (including you)
                   </label>
                   <select
                     name="DriversNo"
-                    className={`border p-2 w-full rounded ${
+                    className={`border p-2 w-full rounded text-xs sm:text-sm ${
                       formData.DriversNo === 0 ? "border-red-500" : ""
                     }`}
                     required
@@ -960,11 +1120,13 @@ export default function AutoQuote() {
                     ))}
                   </select>
                 </div>
-                <div className="w-1/2">
-                  <label className="block mb-1">How many Vehicles</label>
+                <div>
+                  <label className="block mb-1 text-xs sm:text-sm">
+                    How many Vehicles
+                  </label>
                   <select
                     name="VehicleNo"
-                    className={`border p-2 w-full rounded ${
+                    className={`border p-2 w-full rounded text-xs sm:text-sm ${
                       formData.VehicleNo === 0 ? "border-red-500" : ""
                     }`}
                     value={formData.VehicleNo}
@@ -990,16 +1152,18 @@ export default function AutoQuote() {
 
               {formData.drivers.map((driver, index) => (
                 <div key={index} className="mb-4 p-4 border rounded-lg">
-                  <h4 className="font-medium mb-2">Driver {index + 1}</h4>
-                  <div className="grid grid-cols-2 gap-4">
+                  <h4 className="font-medium mb-2 text-sm sm:text-base">
+                    Driver {index + 1}
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block mb-1 font-bold">First Name</label>
+                      <label className="block mb-1 font-bold text-xs sm:text-sm">
+                        First Name
+                      </label>
                       <input
                         type="text"
-                        // FOR THE FIRST DRIVER, ALWAYS PULL FROM formData.F_name
                         value={index === 0 ? formData.F_name : driver.firstName}
                         onChange={(e) => {
-                          // Only allow changing for additional drivers (index > 0)
                           if (index > 0) {
                             const updatedDrivers = [...formData.drivers];
                             updatedDrivers[index] = {
@@ -1012,22 +1176,22 @@ export default function AutoQuote() {
                             }));
                           }
                         }}
-                        className="border p-2 w-full rounded"
+                        className="border p-2 w-full rounded text-xs sm:text-sm"
                         placeholder="Enter First Name"
-                        disabled={index === 0} // Disable for the first driver
+                        disabled={index === 0}
                         style={
                           index === 0 ? { backgroundColor: "#f3f4f6" } : {}
                         }
                       />
                     </div>
                     <div>
-                      <label className="block mb-1 font-bold">Last Name</label>
+                      <label className="block mb-1 font-bold text-xs sm:text-sm">
+                        Last Name
+                      </label>
                       <input
                         type="text"
-                        // FOR THE FIRST DRIVER, ALWAYS PULL FROM formData.L_name
                         value={index === 0 ? formData.L_name : driver.lastName}
                         onChange={(e) => {
-                          // Only allow changing for additional drivers (index > 0)
                           if (index > 0) {
                             const updatedDrivers = [...formData.drivers];
                             updatedDrivers[index] = {
@@ -1040,24 +1204,22 @@ export default function AutoQuote() {
                             }));
                           }
                         }}
-                        className="border p-2 w-full rounded"
+                        className="border p-2 w-full rounded text-xs sm:text-sm"
                         placeholder="Enter Last Name"
-                        disabled={index === 0} // Disable for the first driver
+                        disabled={index === 0}
                         style={
                           index === 0 ? { backgroundColor: "#f3f4f6" } : {}
                         }
                       />
                     </div>
                     <div>
-                      <label className="block mb-1 font-bold">
+                      <label className="block mb-1 font-bold text-xs sm:text-sm">
                         Date of Birth
                       </label>
                       <input
                         type="date"
-                        // FOR THE FIRST DRIVER, ALWAYS PULL FROM formData.DOB
                         value={index === 0 ? formData.DOB : driver.dateOfBirth}
                         onChange={(e) => {
-                          // Only allow changing for additional drivers (index > 0)
                           if (index > 0) {
                             const updatedDrivers = [...formData.drivers];
                             updatedDrivers[index] = {
@@ -1070,22 +1232,22 @@ export default function AutoQuote() {
                             }));
                           }
                         }}
-                        className="border p-2 w-full rounded"
-                        disabled={index === 0} // Disable for the first driver
+                        className="border p-2 w-full rounded text-xs sm:text-sm"
+                        disabled={index === 0}
                         style={
                           index === 0 ? { backgroundColor: "#f3f4f6" } : {}
                         }
                       />
                     </div>
                     <div>
-                      <label className="block mb-1 font-bold">
+                      <label className="block mb-1 font-bold text-xs sm:text-sm">
                         Relationship
                       </label>
                       {index === 0 ? (
                         <input
                           type="text"
                           value="Policyholder"
-                          className="border p-2 w-full rounded bg-gray-100"
+                          className="border p-2 w-full rounded bg-gray-100 text-xs sm:text-sm"
                           disabled
                         />
                       ) : (
@@ -1102,7 +1264,7 @@ export default function AutoQuote() {
                               drivers: updatedDrivers,
                             }));
                           }}
-                          className="border p-2 w-full rounded"
+                          className="border p-2 w-full rounded text-xs sm:text-sm"
                           required
                         >
                           <option value="">Select...</option>
@@ -1115,7 +1277,9 @@ export default function AutoQuote() {
                       )}
                     </div>
                     <div>
-                      <label className="block mb-1 font-bold">Gender</label>
+                      <label className="block mb-1 font-bold text-xs sm:text-sm">
+                        Gender
+                      </label>
                       <select
                         value={driver.gender}
                         onChange={(e) => {
@@ -1130,7 +1294,7 @@ export default function AutoQuote() {
                           }));
                         }}
                         required
-                        className="border p-2 w-full rounded"
+                        className="border p-2 w-full rounded text-xs sm:text-sm"
                       >
                         <option value="">Select...</option>
                         <option value="male">Male</option>
@@ -1139,7 +1303,9 @@ export default function AutoQuote() {
                       </select>
                     </div>
                     <div>
-                      <label className="block mb-1 font-bold">ID Type</label>
+                      <label className="block mb-1 font-bold text-xs sm:text-sm">
+                        ID Type
+                      </label>
                       <select
                         value={driver.idType}
                         onChange={(e) => {
@@ -1147,26 +1313,26 @@ export default function AutoQuote() {
                           updatedDrivers[index] = {
                             ...updatedDrivers[index],
                             idType: e.target.value,
-                            idNumber: "", // Reset related fields when ID Type changes
-                            state: "", // Reset state for out-of-state options
-                            country: "", // Reset country for international option
-                            idSubType: "", // Reset Matricular/Passport selection
+                            idNumber: "",
+                            state: "",
+                            country: "",
+                            idSubType: "",
                           };
                           setFormData((prev) => ({
                             ...prev,
                             drivers: updatedDrivers,
                           }));
                         }}
-                        className="border p-2 w-full rounded"
+                        className="border p-2 w-full rounded text-xs sm:text-sm"
                         required
                       >
                         <option value="">Select...</option>
                         <option value="in-state-dl">
-                          In-State Driver&apos;s License
+                          In-State Driver's License
                         </option>
                         <option value="in-state-id">In-State ID</option>
                         <option value="out-of-state-DL">
-                          Out-of-State Driver&apos;s License
+                          Out-of-State Driver's License
                         </option>
                         <option value="out-of-state-ID">Out-of-State ID</option>
                         <option value="international">
@@ -1177,8 +1343,8 @@ export default function AutoQuote() {
 
                     {driver.idType === "in-state-dl" && (
                       <div>
-                        <label className="block mb-1 font-bold">
-                          Driver&apos;s License Number
+                        <label className="block mb-1 font-bold text-xs sm:text-sm">
+                          Driver's License Number
                         </label>
                         <input
                           type="text"
@@ -1198,16 +1364,16 @@ export default function AutoQuote() {
                               drivers: updatedDrivers,
                             }));
                           }}
-                          className="border p-2 w-full rounded"
+                          className="border p-2 w-full rounded text-xs sm:text-sm"
                           placeholder="Enter Drivers License Number"
                           required
                           maxLength={8}
-                          inputMode="numeric" // Shows numeric keyboard on mobile
-                          pattern="[0-9]*" // Allows only digits
+                          inputMode="numeric"
+                          pattern="[0-9]*"
                         />
                         {driver.idNumber && driver.idNumber.length !== 8 && (
-                          <p className="text-red-500 text-sm mt-1">
-                            Driver&apos;s License must be exactly 8 digits.
+                          <p className="text-red-500 text-xs mt-1">
+                            Driver's License must be exactly 8 digits.
                           </p>
                         )}
                       </div>
@@ -1215,7 +1381,7 @@ export default function AutoQuote() {
 
                     {driver.idType === "in-state-id" && (
                       <div>
-                        <label className="block mb-1 font-bold">
+                        <label className="block mb-1 font-bold text-xs sm:text-sm">
                           ID Number
                         </label>
                         <input
@@ -1232,7 +1398,7 @@ export default function AutoQuote() {
                               drivers: updatedDrivers,
                             }));
                           }}
-                          className="border p-2 w-full rounded"
+                          className="border p-2 w-full rounded text-xs sm:text-sm"
                           placeholder="Enter ID Number"
                           required
                         />
@@ -1242,8 +1408,8 @@ export default function AutoQuote() {
                     {driver.idType === "out-of-state-DL" && (
                       <>
                         <div>
-                          <label className="block mb-1 font-bold">
-                            Driver&apos;s License Number
+                          <label className="block mb-1 font-bold text-xs sm:text-sm">
+                            Driver's License Number
                           </label>
                           <input
                             type="text"
@@ -1259,14 +1425,16 @@ export default function AutoQuote() {
                                 drivers: updatedDrivers,
                               }));
                             }}
-                            className="border p-2 w-full rounded"
+                            className="border p-2 w-full rounded text-xs sm:text-sm"
                             placeholder="Enter Drivers License Number"
                             required
                             inputMode="numeric"
                           />
                         </div>
                         <div>
-                          <label className="block mb-1 font-bold">State</label>
+                          <label className="block mb-1 font-bold text-xs sm:text-sm">
+                            State
+                          </label>
                           <input
                             type="text"
                             value={driver.state || ""}
@@ -1281,7 +1449,7 @@ export default function AutoQuote() {
                                 drivers: updatedDrivers,
                               }));
                             }}
-                            className="border p-2 w-full rounded"
+                            className="border p-2 w-full rounded text-xs sm:text-sm"
                             placeholder="Enter State (e.g., TX)"
                             required
                           />
@@ -1292,7 +1460,7 @@ export default function AutoQuote() {
                     {driver.idType === "out-of-state-ID" && (
                       <>
                         <div>
-                          <label className="block mb-1 font-bold">
+                          <label className="block mb-1 font-bold text-xs sm:text-sm">
                             ID Number
                           </label>
                           <input
@@ -1309,13 +1477,15 @@ export default function AutoQuote() {
                                 drivers: updatedDrivers,
                               }));
                             }}
-                            className="border p-2 w-full rounded"
+                            className="border p-2 w-full rounded text-xs sm:text-sm"
                             placeholder="Enter ID Number"
                             required
                           />
                         </div>
                         <div>
-                          <label className="block mb-1 font-bold">State</label>
+                          <label className="block mb-1 font-bold text-xs sm:text-sm">
+                            State
+                          </label>
                           <input
                             type="text"
                             value={driver.state || ""}
@@ -1330,7 +1500,7 @@ export default function AutoQuote() {
                                 drivers: updatedDrivers,
                               }));
                             }}
-                            className="border p-2 w-full rounded"
+                            className="border p-2 w-full rounded text-xs sm:text-sm"
                             placeholder="Enter State (e.g., TX)"
                             required
                           />
@@ -1341,7 +1511,7 @@ export default function AutoQuote() {
                     {driver.idType === "international" && (
                       <>
                         <div>
-                          <label className="block mb-1 font-bold">
+                          <label className="block mb-1 font-bold text-xs sm:text-sm">
                             International ID Number
                           </label>
                           <input
@@ -1358,13 +1528,13 @@ export default function AutoQuote() {
                                 drivers: updatedDrivers,
                               }));
                             }}
-                            className="border p-2 w-full rounded"
+                            className="border p-2 w-full rounded text-xs sm:text-sm"
                             placeholder="Enter International ID Number"
                             required
                           />
                         </div>
                         <div>
-                          <label className="block mb-1 font-bold">
+                          <label className="block mb-1 font-bold text-xs sm:text-sm">
                             Country
                           </label>
                           <input
@@ -1381,13 +1551,13 @@ export default function AutoQuote() {
                                 drivers: updatedDrivers,
                               }));
                             }}
-                            className="border p-2 w-full rounded"
+                            className="border p-2 w-full rounded text-xs sm:text-sm"
                             placeholder="Enter Country (e.g., Mexico)"
                             required
                           />
                         </div>
                         <div>
-                          <label className="block mb-1 font-bold">
+                          <label className="block mb-1 font-bold text-xs sm:text-sm">
                             ID Type
                           </label>
                           <select
@@ -1403,7 +1573,7 @@ export default function AutoQuote() {
                                 drivers: updatedDrivers,
                               }));
                             }}
-                            className="border p-2 w-full rounded"
+                            className="border p-2 w-full rounded text-xs sm:text-sm"
                             required
                           >
                             <option value="">Select...</option>
@@ -1424,17 +1594,21 @@ export default function AutoQuote() {
 
               {formData.vehicles.map((vehicle, index) => (
                 <div key={index} className="mb-4 p-4 border rounded-lg">
-                  <h4 className="font-medium mb-2">Vehicle {index + 1}</h4>
-                  <div className="grid grid-cols-2 gap-4">
+                  <h4 className="font-medium mb-2 text-sm sm:text-base">
+                    Vehicle {index + 1}
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block mb-1 font-bold">VIN Number</label>
+                      <label className="block mb-1 font-bold text-xs sm:text-sm">
+                        VIN Number
+                      </label>
                       <input
                         type="text"
                         value={vehicle.vinNumber}
                         onChange={(e) =>
                           handleVinInputChange(index, e.target.value)
                         }
-                        className="border p-2 w-full rounded"
+                        className="border p-2 w-full rounded text-xs sm:text-sm"
                         placeholder="Enter 17-digit VIN"
                         maxLength={17}
                         required
@@ -1449,85 +1623,94 @@ export default function AutoQuote() {
                       )}
                     </div>
                     <div>
-                      <label className="block mb-1 font-bold">Make</label>
+                      <label className="block mb-1 font-bold text-xs sm:text-sm">
+                        Make
+                      </label>
                       <input
                         type="text"
                         value={vehicle.make}
                         readOnly
-                        className="border p-2 w-full rounded bg-gray-100"
+                        className="border p-2 w-full rounded bg-gray-100 text-xs sm:text-sm"
                         placeholder="Auto-filled from VIN"
                         disabled
                       />
                     </div>
                     <div>
-                      <label className="block mb-1 font-bold">Model</label>
+                      <label className="block mb-1 font-bold text-xs sm:text-sm">
+                        Model
+                      </label>
                       <input
                         type="text"
                         value={vehicle.model}
                         readOnly
-                        className="border p-2 w-full rounded bg-gray-100"
+                        className="border p-2 w-full rounded bg-gray-100 text-xs sm:text-sm"
                         placeholder="Auto-filled from VIN"
                         disabled
                       />
                     </div>
                     <div>
-                      <label className="block mb-1 font-bold">Year</label>
+                      <label className="block mb-1 font-bold text-xs sm:text-sm">
+                        Year
+                      </label>
                       <input
                         type="text"
                         value={vehicle.year}
                         readOnly
-                        className="border p-2 w-full rounded bg-gray-100"
+                        className="border p-2 w-full rounded bg-gray-100 text-xs sm:text-sm"
                         placeholder="Auto-filled from VIN"
                         disabled
                       />
                     </div>
 
-                    <div className="col-span-2">
-                      <label className="block mb-1 font-bold">
-                        Coverage Options (Hover over Coverage to see what
-                        exactly it covers)
+                    <div className="col-span-1 sm:col-span-2">
+                      <label className="block mb-1 font-bold text-xs sm:text-sm">
+                        Coverage Options
                       </label>
+                      <p className="text-gray-600 text-xs mb-2">
+                        Hover over the boxes below to see what each coverage
+                        means.
+                      </p>
                       <div className="flex flex-wrap gap-2">
                         {[
                           {
                             name: "Liability",
                             description:
-                              "Texas law requires minimum liability coverage of 30/60/25: $30,000 per person for bodily injury, $60,000 total per accident for bodily injury, and $25,000 for property damage. This coverage only pays for damages and injuries you cause to others in an at-fault accident. Liability insurance does not cover your own injuries or vehicle damage - you need additional coverage like collision or comprehensive for that protection.",
+                              "Texas law requires minimum liability coverage of 30/60/25: $30,000 per person for bodily injury, $60,000 total per accident for bodily injury, and $25,000 for property damage.",
                           },
                           {
-                            name: "Comprehensive/Collision (Basic Full coverage)",
+                            name: "Comprehensive/Collision",
                             description:
-                              "Comprehensive covers damage to your vehicle from non-collision events like theft, weather, vandalism, or animal strikes. Collision covers damage to your vehicle from crashes with other vehicles or objects. Both are optional in Texas but typically required if you have a car loan or lease - together they provide 'full coverage' protecting your own vehicle regardless of fault.",
+                              "Comprehensive covers non-collision events like theft, weather, vandalism. Collision covers crashes with vehicles or objects.",
                           },
                           {
                             name: "Personal Injury Protection",
                             description:
-                              "PIP covers your medical expenses, lost wages (up to 80%), and household services regardless of who caused the accident. Texas requires insurance companies to offer at least $2,500 of PIP coverage, though it's optional to purchase. PIP is not mandatory in Texas but provides immediate coverage for you and your passengers without waiting to determine fault in an accident.",
+                              "PIP covers medical expenses, lost wages, and household services regardless of fault.",
                           },
                           {
                             name: "Medical Payments",
                             description:
-                              "MedPay covers medical bills for you and your passengers after an accident, regardless of who's at fault. It's optional in Texas and typically offers coverage in amounts like $1,000, $2,500, or $5,000. Unlike PIP, MedPay only covers medical expenses - no lost wages or household services - making it a simpler, more focused coverage option.",
+                              "MedPay covers medical bills for you and passengers, regardless of fault.",
                           },
                           {
                             name: "Uninsured Motorist",
                             description:
-                              "Protects you when the at-fault driver has no insurance or insufficient coverage to pay for your injuries and damages. With 12% of Texas registered vehicles unmatched to insurance policies, this optional coverage is crucial. It also pays if you're in a hit-and-run accident. Texas insurers must offer this coverage, but you can reject it in writing.",
+                              "Protects you when the at-fault driver has no or insufficient insurance.",
                           },
                           {
                             name: "Towing",
                             description:
-                              "Covers the cost of towing your vehicle to a repair shop or safe location after an accident, breakdown, or if your car becomes disabled. This is specifically for towing services only, not other roadside assistance like jump-starts or tire changes. Coverage limits typically range from $50-$200 per towing incident, and it's an optional add-on that helps with unexpected towing expenses.",
+                              "Covers towing costs after an accident or breakdown.",
                           },
                           {
                             name: "Rental",
                             description:
-                              "Covers the cost of a rental car while your vehicle is being repaired after a covered claim or if it's stolen. Typically pays a daily amount (like $30-$50 per day) for a specified number of days (usually 30 days maximum). This optional coverage ensures you stay mobile while your car is out of commission, helping you maintain your daily routine during the repair process.",
+                              "Covers rental car costs while your vehicle is repaired.",
                           },
                           {
                             name: "Roadside Assistance",
                             description:
-                              "Provides emergency services when your vehicle breaks down or you're stranded, including jump-starts for dead batteries, flat tire changes, lockout assistance, and emergency fuel delivery. Available 24/7 regardless of where the breakdown occurs, this optional coverage. It's separate from towing coverage and focuses on getting you back on the road quickly for minor issues.",
+                              "Provides emergency services like jump-starts, tire changes, and fuel delivery.",
                           },
                         ].map((option) => (
                           <button
@@ -1536,7 +1719,7 @@ export default function AutoQuote() {
                             onClick={() =>
                               handleCoverageChange(index, option.name)
                             }
-                            className={`px-4 py-2 border rounded-full text-xs font-medium ${
+                            className={`px-3 py-1 sm:px-4 sm:py-2 border rounded-full text-xs font-medium ${
                               vehicle.coverage.includes(option.name)
                                 ? "bg-blue-600 text-white"
                                 : "bg-gray-200 text-gray-700 hover:bg-gray-300"
@@ -1545,8 +1728,8 @@ export default function AutoQuote() {
                                 ? "opacity-75 cursor-not-allowed"
                                 : ""
                             }`}
+                            title={option.description} // Tooltip on hover
                             disabled={option.name === "Liability"}
-                            title={option.description} // Add tooltip with description
                           >
                             {option.name}
                             {option.name === "Liability" && (
@@ -1564,23 +1747,20 @@ export default function AutoQuote() {
                 </div>
               ))}
 
-              <div className="flex justify-between mt-6">
+              <div className="flex flex-col sm:flex-row justify-between mt-4 sm:mt-6 gap-2">
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className="bg-gray-300 text-gray-800 px-6 py-2 rounded hover:bg-gray-400"
+                  className="bg-gray-300 text-gray-800 px-4 sm:px-6 py-2 rounded hover:bg-gray-400 text-xs sm:text-sm"
                 >
                   Back
                 </button>
-
-                <div className="text-center">
-                  <button
-                    type="submit"
-                    className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
-                  >
-                    Continue
-                  </button>
-                </div>
+                <button
+                  type="submit"
+                  className="bg-blue-600 text-white px-4 sm:px-6 py-2 rounded hover:bg-blue-700 text-xs sm:text-sm"
+                >
+                  Continue
+                </button>
               </div>
             </div>
           </form>
@@ -1589,19 +1769,21 @@ export default function AutoQuote() {
         {step === 3 && (
           <form onSubmit={handleSubmitStep3}>
             <div>
-              <h2 className="text-xl font-bold mb-4">
+              <h2 className="text-lg sm:text-xl font-bold mb-4">
                 Step 3: Coverage & Discounts
               </h2>
               <div className="mb-4 text-center">
                 <div className="w-full">
-                  <label className="block mb-1 font-bold">Prior Coverage</label>
-                  <label className="block mb-1">
-                    (Many companies offer a better price if you have an Active
-                    policy with the older Company)
+                  <label className="block mb-1 font-bold text-xs sm:text-sm">
+                    Prior Coverage
+                  </label>
+                  <label className="block mb-1 text-xs sm:text-sm">
+                    (Many companies offer a better price if you have an active
+                    policy)
                   </label>
                   <select
                     name="popcoverage"
-                    className="border p-2 w-full rounded"
+                    className="border p-2 w-full rounded text-xs sm:text-sm"
                     value={priorCoverage}
                     onChange={handleChange}
                     required
@@ -1613,15 +1795,17 @@ export default function AutoQuote() {
                 </div>
               </div>
               {priorCoverage === "yes" && (
-                <div className="flex gap-4 mb-4">
-                  <div className="w-1/2">
-                    <label className="block mb-1 font-bold">How long</label>
-                    <label className="block mb-1 font-bold">
-                      (How many months were you with the older company)
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block mb-1 font-bold text-xs sm:text-sm">
+                      How long
+                    </label>
+                    <label className="block mb-1 text-xs sm:text-sm">
+                      (Months with the previous company)
                     </label>
                     <select
                       name="priorCoverageMonths"
-                      className="border p-2 w-full rounded"
+                      className="border p-2 w-full rounded text-xs sm:text-sm"
                       required
                       value={formData.priorCoverageMonths}
                       onChange={handleChange}
@@ -1633,20 +1817,19 @@ export default function AutoQuote() {
                       <option value="24">24</option>
                     </select>
                   </div>
-                  <div className="w-1/2">
-                    <label className="block mb-1 font-bold">
+                  <div>
+                    <label className="block mb-1 font-bold text-xs sm:text-sm">
                       Expiration Date
                     </label>
-                    <label className="block mb-1">
-                      (When did the old policy get cancelled or is it still
-                      active)
+                    <label className="block mb-1 text-xs sm:text-sm">
+                      (When did the old policy end or is it active)
                     </label>
                     <input
                       type="date"
-                      name="expirationDate" // Match the state property name
-                      className="border p-2 w-full rounded"
+                      name="expirationDate"
+                      className="border p-2 w-full rounded text-xs sm:text-sm"
                       required
-                      value={formData.expirationDate || ""} // Bind to formData.explanationDate
+                      value={formData.expirationDate || ""}
                       onChange={handleChange}
                       max={getTodayInCT()}
                     />
@@ -1656,84 +1839,55 @@ export default function AutoQuote() {
               {priorCoverage === "no" && (
                 <div className="mb-4 text-center">
                   <div className="w-full">
-                    <label className="block mb-1 font-bold">Membership</label>
-                    <label className="block mb-1">
-                      (Many companies offer a better price if you have a
-                      Membership with Sam&apos;s or Costco)
+                    <label className="block mb-1 font-bold text-xs sm:text-sm">
+                      Membership
+                    </label>
+                    <label className="block mb-1 text-xs sm:text-sm">
+                      (Sam's or Costco membership may lower your rate)
                     </label>
                     <select
                       name="membership"
-                      className="border p-2 w-full rounded"
+                      className="border p-2 w-full rounded text-xs sm:text-sm"
                       required
-                      value={formData.membership || ""} // Bind to formData.membership
+                      value={formData.membership || ""}
                       onChange={handleChange}
                     >
                       <option value="">Select...</option>
-                      <option value="sams_club">Sam&apos;s Club</option>
+                      <option value="sams_club">Sam's Club</option>
                       <option value="costco">Costco</option>
-                      <option value="none">None</option>{" "}
-                      {/* Fixed duplicate value */}
+                      <option value="none">None</option>
                     </select>
                   </div>
                 </div>
               )}
-              <div className="flex justify-between mt-6">
+              <div className="flex flex-col sm:flex-row justify-between mt-4 sm:mt-6 gap-2">
                 <button
                   type="button"
                   onClick={() => setStep(2)}
-                  className="bg-gray-300 text-gray-800 px-6 py-2 rounded hover:bg-gray-400"
+                  className="bg-gray-300 text-gray-800 px-4 sm:px-6 py-2 rounded hover:bg-gray-400 text-xs sm:text-sm"
                 >
                   Back
                 </button>
-
-                <div className="text-center">
-                  <button
-                    type="submit"
-                    className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
-                  >
-                    Continue
-                  </button>
-                </div>
+                <button
+                  type="submit"
+                  className="bg-blue-600 text-white px-4 sm:px-6 py-2 rounded hover:bg-blue-700 text-xs sm:text-sm"
+                >
+                  Continue
+                </button>
               </div>
             </div>
           </form>
         )}
 
-        {/* {step == 4 && (
-          <div>
-            <h2 className="text-xl font-bold mb-4">
-              Step 4: Review Your Quote
-            </h2>
-            <pre className="bg-gray-100 p-4 rounded-lg overflow-auto text-xs">
-              {JSON.stringify(formData, null, 2)}
-            </pre>
-            <div className="flex justify-between mt-6">
-              <button
-                type="button"
-                onClick={() => setStep(3)}
-                className="bg-gray-300 text-gray-800 px-6 py-2 rounded hover:bg-gray-400"
-              >
-                Back
-              </button>
-              <button
-                type="submit"
-                className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
-              >
-                Get Quote
-              </button>
-            </div>
-          </div>
-        )} */}
         {step === 4 && (
           <form onSubmit={handleSubmitStep4}>
             <div>
-              <h2 className="text-xl font-bold mb-4">
+              <h2 className="text-lg sm:text-xl font-bold mb-4">
                 Step 4: Review Your Quote
               </h2>
-              <div className="bg-gray-100 p-6 rounded-lg shadow-inner text-sm">
-                {/* Personal Information Section */}
+              <div className="bg-gray-100 p-4 sm:p-6 rounded-lg shadow-inner text-xs sm:text-sm">
                 <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-300 pb-2 mb-4">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-800 border-b border-gray-300 pb-2 mb-4">
                     Personal Information
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1794,9 +1948,8 @@ export default function AutoQuote() {
                   </div>
                 </div>
 
-                {/* Drivers Section */}
                 <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-300 pb-2 mb-4">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-800 border-b border-gray-300 pb-2 mb-4">
                     Drivers
                   </h3>
                   {formData.drivers.length > 0 ? (
@@ -1805,7 +1958,7 @@ export default function AutoQuote() {
                         key={index}
                         className="mb-4 p-4 bg-white rounded-lg shadow-sm"
                       >
-                        <h4 className="font-medium text-gray-800 mb-2">
+                        <h4 className="font-medium text-gray-800 mb-2 text-sm sm:text-base">
                           Driver {index + 1}
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1889,9 +2042,8 @@ export default function AutoQuote() {
                   )}
                 </div>
 
-                {/* Vehicles Section */}
                 <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-300 pb-2 mb-4">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-800 border-b border-gray-300 pb-2 mb-4">
                     Vehicles
                   </h3>
                   {formData.vehicles.length > 0 ? (
@@ -1900,7 +2052,7 @@ export default function AutoQuote() {
                         key={index}
                         className="mb-4 p-4 bg-white rounded-lg shadow-sm"
                       >
-                        <h4 className="font-medium text-gray-800 mb-2">
+                        <h4 className="font-medium text-gray-800 mb-2 text-sm sm:text-base">
                           Vehicle {index + 1}
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1928,7 +2080,7 @@ export default function AutoQuote() {
                             </span>{" "}
                             {vehicle.year || "Not provided"}
                           </p>
-                          <p className="col-span-2">
+                          <p className="col-span-1 sm:col-span-2">
                             <span className="font-medium text-gray-700">
                               Coverage:
                             </span>{" "}
@@ -1944,9 +2096,8 @@ export default function AutoQuote() {
                   )}
                 </div>
 
-                {/* Coverage & Discounts Section */}
                 <div className="mb-6">
-                  <h3 className="text-lg font-semibold text-gray-800 border-b border-gray-300 pb-2 mb-4">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-800 border-b border-gray-300 pb-2 mb-4">
                     Coverage & Discounts
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1984,17 +2135,17 @@ export default function AutoQuote() {
                 </div>
               </div>
 
-              <div className="flex justify-between mt-6">
+              <div className="flex flex-col sm:flex-row justify-between mt-4 sm:mt-6 gap-2">
                 <button
                   type="button"
                   onClick={() => setStep(3)}
-                  className="bg-gray-300 text-gray-800 px-6 py-2 rounded hover:bg-gray-400"
+                  className="bg-gray-300 text-gray-800 px-4 sm:px-6 py-2 rounded hover:bg-gray-400 text-xs sm:text-sm"
                 >
                   Back
                 </button>
                 <button
                   type="submit"
-                  className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
+                  className="bg-green-600 text-white px-4 sm:px-6 py-2 rounded hover:bg-green-700 text-xs sm:text-sm"
                 >
                   Get Quote
                 </button>
