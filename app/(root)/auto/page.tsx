@@ -957,7 +957,13 @@ export default function AutoQuote() {
                     />
                     <button
                       type="button"
-                      className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 text-xs sm:text-sm"
+                      className={`px-4 py-2 rounded text-xs sm:text-sm ${
+                        isPhoneVerified
+                          ? "bg-green-500 text-white hover:bg-green-600"
+                          : isSending
+                          ? "bg-gray-400 text-white cursor-not-allowed"
+                          : "bg-blue-500 text-white hover:bg-blue-600"
+                      }`}
                       onClick={handleSendCode}
                       disabled={isSending || isPhoneVerified}
                     >
@@ -1388,10 +1394,14 @@ export default function AutoQuote() {
                           type="text"
                           value={driver.idNumber || ""}
                           onChange={(e) => {
+                            const onlyNumbers = e.target.value.replace(
+                              /\D/g,
+                              ""
+                            );
                             const updatedDrivers = [...formData.drivers];
                             updatedDrivers[index] = {
                               ...updatedDrivers[index],
-                              idNumber: e.target.value,
+                              idNumber: onlyNumbers,
                             };
                             setFormData((prev) => ({
                               ...prev,
@@ -1401,6 +1411,9 @@ export default function AutoQuote() {
                           className="border p-2 w-full rounded text-xs sm:text-sm"
                           placeholder="Enter ID Number"
                           required
+                          maxLength={8}
+                          inputMode="numeric"
+                          pattern="[0-9]*"
                         />
                       </div>
                     )}
@@ -1409,8 +1422,13 @@ export default function AutoQuote() {
                       <>
                         <div>
                           <label className="block mb-1 font-bold text-xs sm:text-sm">
-                            Driver&apos;s License Number
+                            Driver's License Number (Enter as shown on your
+                            license)
                           </label>
+                          <p className="text-gray-600 text-xs mb-1">
+                            Include any letters or numbers exactly as they
+                            appear (e.g., A1234567 or X123-4A56).
+                          </p>
                           <input
                             type="text"
                             value={driver.idNumber || ""}
@@ -1461,8 +1479,12 @@ export default function AutoQuote() {
                       <>
                         <div>
                           <label className="block mb-1 font-bold text-xs sm:text-sm">
-                            ID Number
+                            ID Number (Enter as shown on your State ID)
                           </label>
+                          <p className="text-gray-600 text-xs mb-1">
+                            Include any letters or numbers exactly as they
+                            appear (e.g., A1234567 or X123-4A56).
+                          </p>
                           <input
                             type="text"
                             value={driver.idNumber || ""}
