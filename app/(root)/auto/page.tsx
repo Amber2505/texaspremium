@@ -1422,7 +1422,7 @@ export default function AutoQuote() {
                       <>
                         <div>
                           <label className="block mb-1 font-bold text-xs sm:text-sm">
-                            Driver's License Number (Enter as shown on your
+                            Driver&apos;s License Number (Enter as shown on your
                             license)
                           </label>
                           <p className="text-gray-600 text-xs mb-1">
