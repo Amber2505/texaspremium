@@ -98,7 +98,7 @@ export default function AutoQuote() {
     };
   });
 
-  const Maps_API_KEY = "AIzaSyBLuP6q4FOjpst6zlSJw9wFYSfyvQZCJsk";
+  const Maps_API_KEY = "AIzaSyBmzpqcVcNNEuoCpgrmIcB3mNcRx0Z05zs";
   const libraries: "places"[] = ["places"];
 
   const handleChange = (
@@ -401,20 +401,37 @@ export default function AutoQuote() {
     if (campaign?.toLowerCase() === "raviraj") {
       const fullName = `${formData.F_name} ${formData.L_name}`.toUpperCase();
       const cleanPhone = formData.phone.replace(/\D/g, "").slice(0, 10);
+      const privateId =
+        process.env.NEXT_PUBLIC_RAVIRAJ_PRIVATE_ID || "default_private_id";
+      const publicId =
+        process.env.NEXT_PUBLIC_RAVIRAJ_PUBLIC_ID || "default_public_id";
 
-      if (fullName && cleanPhone.length === 10) {
+      if (fullName && cleanPhone.length === 10 && privateId && publicId) {
         const campaignURL = `https://astraldbapi.herokuapp.com/gsheetupdate/?name=${encodeURIComponent(
           fullName
-        )}&phone=${cleanPhone}`;
+        )}&phone=${cleanPhone}&private_id=${encodeURIComponent(
+          privateId
+        )}&public_id=${encodeURIComponent(publicId)}`;
 
-        fetch(campaignURL)
-          .then((res) => res.json())
-          .then((data) => {
-            console.log("Data sent to campaign sheet:", data);
-          })
-          .catch((err) => {
-            console.error("Campaign sheet error:", err);
+        try {
+          const campaignResponse = await fetch(campaignURL, {
+            method: "GET",
           });
+          if (!campaignResponse.ok) {
+            throw new Error(
+              `Campaign sheet update failed: ${campaignResponse.status}`
+            );
+          }
+          const campaignData = await campaignResponse.json();
+          console.log("Data sent to campaign sheet:", campaignData);
+        } catch (err) {
+          console.error("Campaign sheet error:", err);
+        }
+      } else {
+        console.warn(
+          "Campaign update skipped: Invalid name, phone, or missing IDs",
+          { fullName, cleanPhone, privateId, publicId }
+        );
       }
     }
 
@@ -915,7 +932,7 @@ export default function AutoQuote() {
                       value={formData.Address}
                       onChange={handleChange}
                       required
-                      autoComplete="off" // Disable browser autofill
+                      autoComplete="new-address" // Use a unique value like "new-address"
                     />
                   </Autocomplete>
                   {addressError && (
