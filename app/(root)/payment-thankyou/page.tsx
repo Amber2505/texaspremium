@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import confetti from "canvas-confetti";
 import { motion, easeOut } from "framer-motion";
+import Link from "next/link";
 
 export default function ThankYouPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -83,12 +84,12 @@ export default function ThankYouPage() {
           Looking for more coverage? Explore our insurance options:
         </motion.h2>
 
-        <a
+        <Link
           href="/"
           className="inline-block bg-[#A0103D] text-white font-semibold py-3 px-6 rounded-md hover:bg-[#102a56]"
         >
           GET QUOTE
-        </a>
+        </Link>
       </motion.div>
     </div>
   );
