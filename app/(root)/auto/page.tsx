@@ -130,7 +130,6 @@ export default function AutoQuote() {
           ? "Phone number must be exactly 10 digits."
           : ""
       );
-
       setFormData((prevFormData) => ({
         ...prevFormData,
         phone: formattedPhoneNumber,
@@ -152,12 +151,12 @@ export default function AutoQuote() {
     } else {
       setFormData((prevFormData) => ({
         ...prevFormData,
-        [name]: value,
+        [name === "userAddressInput" ? "Address" : name]: value,
       }));
-      if (name === "Address" && value === "") {
+      if (name === "userAddressInput" && value === "") {
         setIsAddressSelected(false);
         setAddressError("");
-      } else if (name === "Address") {
+      } else if (name === "userAddressInput") {
         validateAddress(value);
         setIsAddressSelected(value.trim() !== "");
       }
@@ -170,8 +169,11 @@ export default function AutoQuote() {
       trimmedAddress.includes("apartments") ||
       trimmedAddress.includes("apts") ||
       trimmedAddress.includes("condo") ||
+      trimmedAddress.includes("condominium") ||
       trimmedAddress.includes("tower") ||
-      trimmedAddress.includes("residence");
+      trimmedAddress.includes("residence") ||
+      trimmedAddress.includes("residences");
+
     const hasUnitNumber =
       trimmedAddress.includes("apt") ||
       trimmedAddress.includes("unit") ||
@@ -180,16 +182,12 @@ export default function AutoQuote() {
 
     if (isApartmentComplex && !hasUnitNumber) {
       setAddressError(
-        "Please verify or add your apartment number (e.g., Apt 1525)."
+        "This appears to be an apartment address. Please include the apartment/unit number (e.g., Apt 1525, Unit 4B, #202)."
       );
-    } else if (!isApartmentComplex && !hasUnitNumber) {
-      setAddressError("");
-    } else if (hasUnitNumber) {
-      setAddressError("");
-    } else {
-      setAddressError(
-        "Please verify if this is an apartment address and add the apartment number if applicable (e.g., Apt 1525)."
-      );
+    } else if (isApartmentComplex && hasUnitNumber) {
+      setAddressError(""); // Valid apartment address with unit number
+    } else if (!isApartmentComplex) {
+      setAddressError(""); // House address, no unit number required
     }
   };
 
@@ -306,7 +304,7 @@ export default function AutoQuote() {
       setSubmitError("Please enter a valid 10-digit phone number.");
       return;
     } else if (!isAddressSelected) {
-      setSubmitError("Please enter an address.");
+      setSubmitError("Please enter and select a valid address.");
       return;
     } else if (addressError) {
       setSubmitError("Please correct the address error before continuing.");
@@ -931,8 +929,12 @@ export default function AutoQuote() {
                       placeholder="Enter Address (e.g., 123 Main St Apt 1525)"
                       value={formData.Address}
                       onChange={handleChange}
+                      onFocus={() => {
+                        // Optionally clear or manage input on focus
+                        setFormData((prev) => ({ ...prev, Address: "" }));
+                      }}
                       required
-                      autoComplete="new-address" // Use a unique value like "new-address"
+                      autoComplete="new-address"
                     />
                   </Autocomplete>
                   {addressError && (
