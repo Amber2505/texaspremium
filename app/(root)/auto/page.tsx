@@ -5,7 +5,6 @@ import { LoadScript, Autocomplete } from "@react-google-maps/api";
 import Image from "next/image";
 import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import Link from "next/link";
 import {
   FaCar,
   FaMotorcycle,
