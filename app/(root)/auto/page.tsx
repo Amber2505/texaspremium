@@ -5,6 +5,7 @@ import { LoadScript, Autocomplete } from "@react-google-maps/api";
 import Image from "next/image";
 import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
+import Link from "next/link";
 import {
   FaCar,
   FaMotorcycle,
@@ -168,6 +169,16 @@ function ThankYouPage() {
             Call us now at (469) 729-5185
           </a>
         </p>
+        {/* Back to Homepage Button */}
+        <motion.a
+          href="/"
+          className="inline-block bg-[#A0103D] text-white font-semibold py-3 px-6 rounded-md hover:bg-[#102a56] transition-colors mt-4"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 2.5, duration: 0.6 }}
+        >
+          Back to Homepage
+        </motion.a>
       </motion.div>
     </div>
   );
