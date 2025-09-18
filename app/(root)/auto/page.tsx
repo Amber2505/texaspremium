@@ -1,9 +1,17 @@
 "use client";
 
-import { useState } from "react";
 import { format, toZonedTime } from "date-fns-tz";
 import { LoadScript, Autocomplete } from "@react-google-maps/api";
 import Image from "next/image";
+import { useState, useCallback } from "react";
+import { motion } from "framer-motion";
+import {
+  FaCar,
+  FaMotorcycle,
+  FaHome,
+  FaBuilding,
+  FaUmbrella,
+} from "react-icons/fa";
 
 // Define types for driver and vehicle objects
 interface Driver {
@@ -51,6 +59,120 @@ interface FormData {
   inputCode?: string;
 }
 
+// ThankYouPage component integrated directly
+function ThankYouPage() {
+  const icons = [
+    { id: 1, icon: <FaCar size={32} />, x: "-40vw", y: "-20vh" },
+    { id: 2, icon: <FaMotorcycle size={28} />, x: "35vw", y: "-25vh" },
+    { id: 3, icon: <FaHome size={30} />, x: "-30vw", y: "25vh" },
+    { id: 4, icon: <FaBuilding size={34} />, x: "40vw", y: "20vh" },
+    { id: 5, icon: <FaUmbrella size={30} />, x: "0vw", y: "35vh" },
+  ];
+
+  return (
+    <div className="relative flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-blue-100 overflow-hidden p-4">
+      {/* Floating Background Icons */}
+      {icons.map((item) => (
+        <motion.div
+          key={item.id}
+          className="absolute text-blue-300 opacity-30"
+          initial={{ x: item.x, y: item.y, scale: 0.8 }}
+          animate={{ y: [item.y, `${parseInt(item.y) + 20}vh`, item.y] }}
+          transition={{
+            repeat: Infinity,
+            duration: 8 + item.id,
+            ease: "easeInOut",
+          }}
+        >
+          {item.icon}
+        </motion.div>
+      ))}
+
+      {/* Circle with Checkmark as Watch Hand */}
+      <motion.div
+        className="relative flex items-center justify-center mb-10"
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        transition={{ duration: 0.6, ease: "backOut" }}
+      >
+        {/* Outer Circle */}
+        <motion.div
+          className="w-40 h-40 rounded-full border-4 border-green-500 flex items-center justify-center relative"
+          initial={{ rotate: 0 }}
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 20, ease: "linear" }}
+        >
+          {/* Checkmark - larger, looks like a watch hand */}
+          <motion.div
+            className="text-green-500 text-6xl font-bold"
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ delay: 0.4, duration: 0.6, ease: "easeOut" }}
+          >
+            ✓
+          </motion.div>
+        </motion.div>
+      </motion.div>
+
+      {/* Text Animations */}
+      <motion.h1
+        className="text-2xl font-bold text-gray-800 mb-3 text-center"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.6, duration: 0.6 }}
+      >
+        Thank you for your patience 🙏
+      </motion.h1>
+
+      <motion.p
+        className="text-lg text-gray-600 mb-2 text-center"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 1, duration: 0.6 }}
+      >
+        We’re carefully reviewing your options
+      </motion.p>
+
+      <motion.p
+        className="text-lg text-gray-600 mb-2 text-center"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 1.4, duration: 0.6 }}
+      >
+        and our team is working behind the scenes to find you the best possible
+        prices.
+      </motion.p>
+
+      <motion.h3
+        className="text-lg text-gray-700 font-medium text-center mb-8"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 1.8, duration: 0.6 }}
+      >
+        We&apos;ll call you shortly 📞
+      </motion.h3>
+
+      {/* Immediate Assistance Section */}
+      <motion.div
+        className="text-center mt-6"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 2.2, duration: 0.8 }}
+      >
+        <p className="text-gray-500 text-sm sm:text-base">
+          Need immediate assistance?{" "}
+          <a
+            href="tel:+14697295185"
+            className="text-blue-600 font-medium hover:underline"
+          >
+            Call us now at (469) 729-5185
+          </a>
+        </p>
+      </motion.div>
+    </div>
+  );
+}
+
 export default function AutoQuote() {
   const [step, setStep] = useState(1);
   const [priorCoverage, setPriorCoverage] = useState<string>("");
@@ -63,14 +185,16 @@ export default function AutoQuote() {
   const [codeError, setCodeError] = useState<string>("");
   const [addressError, setAddressError] = useState<string>("");
   const [submitError, setSubmitError] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false); // New state for submission status
 
   // Calculate today's date in Central Time for default effective date
   const CENTRAL_TIME_ZONE = "America/Chicago";
-  const getTodayInCT = () => {
+  const getTodayInCT = useCallback(() => {
     const now = new Date();
     const zonedNow = toZonedTime(now, CENTRAL_TIME_ZONE);
     return format(zonedNow, "yyyy-MM-dd");
-  };
+  }, [CENTRAL_TIME_ZONE]); // Include CENTRAL_TIME_ZONE as a dependency
 
   const [formData, setFormData] = useState<FormData>(() => {
     const today = getTodayInCT();
@@ -387,100 +511,121 @@ export default function AutoQuote() {
     setStep(4);
   };
 
-  const handleSubmitStep4 = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSubmitStep4 = useCallback(
+    async (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      if (isSubmitting) return; // Prevent multiple submissions
+      setIsSubmitting(true);
 
-    const message = formatQuoteMessage(formData);
-    const encodedMessage = encodeURIComponent(message);
-    const toNumber = "9727486404";
-    const quoteURL = `https://astraldbapi.herokuapp.com/message_send_link/?message=${encodedMessage}&To=${toNumber}`;
+      const submissionId = Math.random().toString(36).substring(2, 15); // Unique ID for debugging
+      console.log(`Submission started: ${submissionId}`);
 
-    const campaign = sessionStorage.getItem("campaignName");
-    if (campaign?.toLowerCase() === "raviraj") {
-      const fullName = `${formData.F_name} ${formData.L_name}`.toUpperCase();
-      const cleanPhone = formData.phone.replace(/\D/g, "").slice(0, 10);
-      const privateId =
-        process.env.NEXT_PUBLIC_RAVIRAJ_PRIVATE_ID || "default_private_id";
-      const publicId =
-        process.env.NEXT_PUBLIC_RAVIRAJ_PUBLIC_ID || "default_public_id";
+      try {
+        const message = formatQuoteMessage(formData);
+        const encodedMessage = encodeURIComponent(message);
+        const toNumber = "9727486404";
+        const uniqueId = Date.now().toString(); // Unique ID for the request
+        const quoteURL = `https://astraldbapi.herokuapp.com/message_send_link/?message=${encodedMessage}&To=${toNumber}&uniqueId=${uniqueId}`;
+        console.log(`Sending SMS for submission: ${submissionId}`, {
+          quoteURL,
+        });
 
-      if (fullName && cleanPhone.length === 10 && privateId && publicId) {
-        const campaignURL = `https://astraldbapi.herokuapp.com/gsheetupdate/?name=${encodeURIComponent(
-          fullName
-        )}&phone=${cleanPhone}&private_id=${encodeURIComponent(
-          privateId
-        )}&public_id=${encodeURIComponent(publicId)}`;
+        const campaign = sessionStorage.getItem("campaignName");
+        if (campaign?.toLowerCase() === "raviraj") {
+          const fullName =
+            `${formData.F_name} ${formData.L_name}`.toUpperCase();
+          const cleanPhone = formData.phone.replace(/\D/g, "").slice(0, 10);
+          const privateId =
+            process.env.NEXT_PUBLIC_RAVIRAJ_PRIVATE_ID || "default_private_id";
+          const publicId =
+            process.env.NEXT_PUBLIC_RAVIRAJ_PUBLIC_ID || "default_public_id";
 
-        try {
-          const campaignResponse = await fetch(campaignURL, {
-            method: "GET",
-          });
-          if (!campaignResponse.ok) {
-            throw new Error(
-              `Campaign sheet update failed: ${campaignResponse.status}`
+          if (fullName && cleanPhone.length === 10 && privateId && publicId) {
+            const campaignURL = `https://astraldbapi.herokuapp.com/gsheetupdate/?name=${encodeURIComponent(
+              fullName
+            )}&phone=${cleanPhone}&private_id=${encodeURIComponent(
+              privateId
+            )}&public_id=${encodeURIComponent(publicId)}`;
+
+            try {
+              const campaignResponse = await fetch(campaignURL, {
+                method: "GET",
+              });
+              if (!campaignResponse.ok) {
+                throw new Error(
+                  `Campaign sheet update failed: ${campaignResponse.status}`
+                );
+              }
+              const campaignData = await campaignResponse.json();
+              console.log("Data sent to campaign sheet:", campaignData);
+            } catch (err) {
+              console.error("Campaign sheet error:", err);
+            }
+          } else {
+            console.warn(
+              "Campaign update skipped: Invalid name, phone, or missing IDs",
+              { fullName, cleanPhone, privateId, publicId }
             );
           }
-          const campaignData = await campaignResponse.json();
-          console.log("Data sent to campaign sheet:", campaignData);
-        } catch (err) {
-          console.error("Campaign sheet error:", err);
         }
-      } else {
-        console.warn(
-          "Campaign update skipped: Invalid name, phone, or missing IDs",
-          { fullName, cleanPhone, privateId, publicId }
+
+        const response = await fetch(quoteURL, {
+          method: "GET",
+          cache: "no-store", // Prevent caching
+        });
+        console.log(`Fetch response for submission: ${submissionId}`, response);
+
+        if (!response.ok) {
+          throw new Error("Failed to send message");
+        }
+
+        const result = await response.json();
+        console.log(
+          `Message sent successfully for submission: ${submissionId}`,
+          result
         );
+
+        // Reset form and state
+        const today = getTodayInCT();
+        setFormData({
+          F_name: "",
+          L_name: "",
+          Address: "",
+          DOB: "",
+          phone: "",
+          maritalStatus: "",
+          residencyType: "",
+          effectiveDate: today,
+          emailAddress: "",
+          policyStartDate: today,
+          DriversNo: 0,
+          VehicleNo: 0,
+          drivers: [],
+          vehicles: [],
+          priorCoverage: "",
+          priorCoverageMonths: "",
+          expirationDate: "",
+          membership: "",
+          verificationCode: "",
+          inputCode: "",
+        });
+        setPriorCoverage("");
+        setVinLoading(null);
+        setVinError("");
+        setIsAddressSelected(false);
+        setIsPhoneVerified(false);
+        setAddressError("");
+        setStep(1);
+        setSubmitted(true); // Show ThankYouPage
+      } catch (error) {
+        console.error(`Error in submission ${submissionId}:`, error);
+        alert("Failed to send quote via SMS. Please try again.");
+      } finally {
+        setIsSubmitting(false);
       }
-    }
-
-    try {
-      const response = await fetch(quoteURL, {
-        method: "GET",
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to send message");
-      }
-
-      const result = await response.json();
-      console.log("Message sent successfully:", result);
-      alert("An Agent would contact you soon, Thanks for getting a Quote");
-
-      const today = getTodayInCT();
-      setFormData({
-        F_name: "",
-        L_name: "",
-        Address: "",
-        DOB: "",
-        phone: "",
-        maritalStatus: "",
-        residencyType: "",
-        effectiveDate: today,
-        emailAddress: "",
-        policyStartDate: today,
-        DriversNo: 0,
-        VehicleNo: 0,
-        drivers: [],
-        vehicles: [],
-        priorCoverage: "",
-        priorCoverageMonths: "",
-        expirationDate: "",
-        membership: "",
-        verificationCode: "",
-        inputCode: "",
-      });
-      setPriorCoverage("");
-      setVinLoading(null);
-      setVinError("");
-      setIsAddressSelected(false);
-      setIsPhoneVerified(false);
-      setAddressError("");
-      setStep(1);
-    } catch (error) {
-      console.error("Error sending message:", error);
-      alert("Failed to send quote via SMS. Please try again.");
-    }
-  };
+    },
+    [formData, getTodayInCT, isSubmitting]
+  );
 
   const initializeDrivers = (count: number): Driver[] => {
     const newDrivers = Array.from({ length: count }, (_, index) => {
@@ -803,6 +948,11 @@ export default function AutoQuote() {
     ${coverageDetails}`;
   };
 
+  // Conditionally render ThankYouPage or the form based on submitted state
+  if (submitted) {
+    return <ThankYouPage />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 flex justify-center items-start py-4 sm:py-10 px-4 sm:px-0">
       <div className="bg-white p-4 sm:p-6 rounded-lg shadow-lg w-full max-w-4xl text-sm">
@@ -930,11 +1080,13 @@ export default function AutoQuote() {
                       value={formData.Address}
                       onChange={handleChange}
                       onFocus={() => {
-                        // Optionally clear or manage input on focus
                         setFormData((prev) => ({ ...prev, Address: "" }));
+                        setIsAddressSelected(false); // Reset address selection state
+                        setAddressError(""); // Clear any existing address error
                       }}
                       required
-                      autoComplete="new-address"
+                      autoComplete="new-address" // Use stronger autocomplete suppression
+                      key={`address-input-${step}`} // Force re-render on step change
                     />
                   </Autocomplete>
                   {addressError && (
@@ -2093,13 +2245,14 @@ export default function AutoQuote() {
                         key={index}
                         className="mb-4 p-4 bg-white rounded-lg shadow-sm"
                       >
+                        {" "}
                         <h4 className="font-medium text-gray-800 mb-2 text-sm sm:text-base">
                           Vehicle {index + 1}
                         </h4>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <p>
                             <span className="font-medium text-gray-700">
-                              VIN Number:
+                              VIN:
                             </span>{" "}
                             {vehicle.vinNumber || "Not provided"}
                           </p>
@@ -2127,7 +2280,7 @@ export default function AutoQuote() {
                             </span>{" "}
                             {vehicle.coverage.length > 0
                               ? vehicle.coverage.join(", ")
-                              : "None selected"}
+                              : "Liability (default)"}
                           </p>
                         </div>
                       </div>
@@ -2146,13 +2299,13 @@ export default function AutoQuote() {
                       <span className="font-medium text-gray-700">
                         Prior Coverage:
                       </span>{" "}
-                      {priorCoverage || "Not provided"}
+                      {formData.priorCoverage || "Not provided"}
                     </p>
-                    {priorCoverage === "yes" && (
+                    {formData.priorCoverage === "yes" && (
                       <>
                         <p>
                           <span className="font-medium text-gray-700">
-                            Prior Coverage Months:
+                            Months of Prior Coverage:
                           </span>{" "}
                           {formData.priorCoverageMonths || "Not provided"}
                         </p>
@@ -2164,7 +2317,8 @@ export default function AutoQuote() {
                         </p>
                       </>
                     )}
-                    {priorCoverage === "no" && (
+                    {(formData.priorCoverage === "no" ||
+                      formData.membership) && (
                       <p>
                         <span className="font-medium text-gray-700">
                           Membership:
@@ -2186,9 +2340,14 @@ export default function AutoQuote() {
                 </button>
                 <button
                   type="submit"
-                  className="bg-green-600 text-white px-4 sm:px-6 py-2 rounded hover:bg-green-700 text-xs sm:text-sm"
+                  className={`bg-blue-600 text-white px-4 sm:px-6 py-2 rounded text-xs sm:text-sm ${
+                    isSubmitting
+                      ? "opacity-50 cursor-not-allowed"
+                      : "hover:bg-blue-700"
+                  }`}
+                  disabled={isSubmitting}
                 >
-                  Get Quote
+                  {isSubmitting ? "Submitting..." : "Submit Quote"}
                 </button>
               </div>
             </div>
