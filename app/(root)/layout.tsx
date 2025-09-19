@@ -266,6 +266,14 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
               </div>
 
               <Link
+                href="/view_documents"
+                onClick={handleNavClick}
+                className="block text-base md:text-lg font-medium hover:text-[#a0103d] transition-colors duration-200"
+              >
+                <b>Access My Documents</b>
+              </Link>
+
+              <Link
                 href="/about"
                 onClick={handleNavClick}
                 className="block text-base md:text-lg font-medium hover:text-[#a0103d] transition-colors duration-200"
