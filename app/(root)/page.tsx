@@ -7,7 +7,7 @@ export default function HomePage() {
   const images = [
     { src: "/car.png", alt: "Car" },
 
-    { src: "/motorcycle1.png", alt: "Motorcycle" },
+    { src: "/home_page_bike.png", alt: "Motorcycle" },
 
     { src: "/house1.png", alt: "House" }, // Add more image paths
 

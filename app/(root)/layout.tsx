@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import ChatWidget from "../components/ChatButton";
 
 const RootLayout = ({ children }: { children: React.ReactNode }) => {
   const [isGetInsuranceOpen, setIsGetInsuranceOpen] = useState(false);
@@ -293,7 +294,6 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
           </div>
         </div>
       </nav>
-
       {children}
       <footer className="bg-black text-white footer-text">
         <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
@@ -422,6 +422,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
           </div>
         </div>
       </footer>
+      {/* CHAT WIDGET 👇 */} <ChatWidget />
     </div>
   );
 };

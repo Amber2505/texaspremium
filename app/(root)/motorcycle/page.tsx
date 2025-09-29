@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { format, toZonedTime } from "date-fns-tz";
-import { LoadScript, Autocomplete } from "@react-google-maps/api";
 import Image from "next/image";
 
 // Define types for Rider and Motorcycle objects
@@ -54,9 +53,8 @@ export default function AutoQuote() {
   const [priorCoverage, setPriorCoverage] = useState<string>("");
   const [vinLoading, setVinLoading] = useState<number | null>(null);
   const [vinError, setVinError] = useState<string>("");
-  const [isAddressSelected, setIsAddressSelected] = useState(false);
 
-  // Calculate todays date in Central Time for default effective date
+  // Calculate today's date in Central Time for default effective date
   const CENTRAL_TIME_ZONE = "America/Chicago";
   const getTodayInCT = () => {
     const now = new Date();
@@ -87,9 +85,6 @@ export default function AutoQuote() {
       membership: "",
     };
   });
-
-  const Maps_API_KEY = "AIzaSyBLuP6q4FOjpst6zlSJw9wFYSfyvQZCJsk"; // **WARNING: Do NOT expose API keys directly in client-side code in a production environment.** This key should be loaded securely (e.g., from environment variables) and restricted to your domain/IP for security.
-  const libraries: "places"[] = ["places"];
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -125,36 +120,13 @@ export default function AutoQuote() {
         ...prevFormData,
         [name]: value,
       }));
-      // Only reset isAddressSelected if the Address field is cleared
-      if (name === "Address" && value === "") {
-        setIsAddressSelected(false);
-      }
-    }
-  };
-
-  const handleAddressSelect = (
-    autocomplete: google.maps.places.Autocomplete
-  ) => {
-    const place = autocomplete.getPlace();
-    if (place) {
-      // Add a check that place itself is not null/undefined
-      const formattedAddress = place.formatted_address || ""; // Provide a default empty string
-      setFormData((prevFormData) => ({
-        ...prevFormData,
-        Address: formattedAddress,
-      }));
-      setIsAddressSelected(true);
     }
   };
 
   const handleSubmitStep1 = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!isAddressSelected) {
-      alert("Please select an address from the suggestions.");
-      return;
-    }
 
-    // After submitting step 1, ensure the primary applicants details
+    // After submitting step 1, ensure the primary applicant's details
     // are reflected in Riders[0] if RidersNo is 1 or more.
     setFormData((prevFormData) => {
       const newRiders = [...prevFormData.Riders];
@@ -171,7 +143,7 @@ export default function AutoQuote() {
             relationship: "Policyholder",
           });
         } else {
-          // Ensure the first Riders details always match the main form fields
+          // Ensure the first Rider's details always match the main form fields
           newRiders[0] = {
             ...newRiders[0],
             firstName: prevFormData.F_name,
@@ -252,7 +224,6 @@ export default function AutoQuote() {
       setPriorCoverage("");
       setVinLoading(null);
       setVinError("");
-      setIsAddressSelected(false);
       setStep(1);
     } catch (error) {
       console.error("Error sending message:", error);
@@ -264,7 +235,7 @@ export default function AutoQuote() {
   const initializeRiders = (count: number): Rider[] => {
     const newRiders = Array.from({ length: count }, (_, index) => {
       if (index === 0) {
-        // For the first Rider, always pull from formDatas main fields
+        // For the first Rider, always pull from formData.F_name
         return {
           firstName: formData.F_name,
           lastName: formData.L_name,
@@ -588,190 +559,175 @@ ${coverageDetails}`;
         </div>
 
         {step === 1 && (
-          <LoadScript googleMapsApiKey={Maps_API_KEY} libraries={libraries}>
-            <form onSubmit={handleSubmitStep1}>
-              <div className="text-center mb-6">
-                <Image
-                  src="/motorcycle1.png"
-                  alt="Banner"
-                  width={160}
-                  height={80}
-                  className="mx-auto mb-4"
-                />
+          <form onSubmit={handleSubmitStep1}>
+            <div className="text-center mb-6">
+              <Image
+                src="/motorcycle1.png"
+                alt="Banner"
+                width={160}
+                height={80}
+                className="mx-auto mb-4"
+              />
 
-                <h1 className="text-2xl font-bold mb-2">
-                  Rev Up for the Perfect Motorcycle Insurance Quote!
-                </h1>
-                <p className="text-xl text-gray-1000">
-                  Your ride deserves the best—let’s make sure it’s protected.
-                </p>
-                <p className="text-gray-700">
-                  Fill out the details below to get a fast, accurate quote
-                  tailored just for you and your bike.
-                </p>
-              </div>
-              <div className="mb-4 text-center">
-                <label className="block text-sm mb-1">
-                  Effective Date (Default to Today&apos;s Date click on Calendar
-                  to change it)
-                </label>
+              <h1 className="text-2xl font-bold mb-2">
+                Rev Up for the Perfect Motorcycle Insurance Quote!
+              </h1>
+              <p className="text-xl text-gray-1000">
+                Your ride deserves the best—let’s make sure it’s protected.
+              </p>
+              <p className="text-gray-700">
+                Fill out the details below to get a fast, accurate quote
+                tailored just for you and your bike.
+              </p>
+            </div>
+            <div className="mb-4 text-center">
+              <label className="block text-sm mb-1">
+                Effective Date (Default to Today&apos;s Date click on Calendar
+                to change it)
+              </label>
+              <input
+                type="date"
+                name="effectiveDate"
+                min={getTodayInCT()}
+                value={formData.effectiveDate}
+                onChange={handleChange}
+                onKeyDown={(e) => e.preventDefault()}
+                className="border p-2 w-48 rounded text-center"
+                required
+              />
+            </div>
+
+            <div className="flex gap-4 mb-4">
+              <div className="w-1/2">
+                <label className="block mb-1 font-bold">First Name</label>
                 <input
-                  type="date"
-                  name="effectiveDate"
-                  min={getTodayInCT()}
-                  value={formData.effectiveDate}
+                  type="text"
+                  name="F_name"
+                  className="border p-2 w-full rounded"
+                  placeholder="Enter First Name"
+                  value={formData.F_name}
                   onChange={handleChange}
-                  onKeyDown={(e) => e.preventDefault()}
-                  className="border p-2 w-48 rounded text-center"
                   required
                 />
               </div>
-
-              <div className="flex gap-4 mb-4">
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">First Name</label>
-                  <input
-                    type="text"
-                    name="F_name"
-                    className="border p-2 w-full rounded"
-                    placeholder="Enter First Name"
-                    value={formData.F_name}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">Last Name</label>
-                  <input
-                    type="text"
-                    name="L_name"
-                    className="border p-2 w-full rounded"
-                    placeholder="Enter Last Name"
-                    value={formData.L_name}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
+              <div className="w-1/2">
+                <label className="block mb-1 font-bold">Last Name</label>
+                <input
+                  type="text"
+                  name="L_name"
+                  className="border p-2 w-full rounded"
+                  placeholder="Enter Last Name"
+                  value={formData.L_name}
+                  onChange={handleChange}
+                  required
+                />
               </div>
+            </div>
 
-              <div className="flex gap-4 mb-4">
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">Address</label>
-                  <Autocomplete
-                    onLoad={(autocomplete) => {
-                      autocomplete.addListener("place_changed", () =>
-                        handleAddressSelect(autocomplete)
-                      );
-                    }}
-                    onPlaceChanged={() => {}}
-                  >
-                    <input
-                      type="text"
-                      name="Address"
-                      className="border p-2 w-full rounded"
-                      placeholder="Enter Address"
-                      value={formData.Address}
-                      onChange={handleChange}
-                      required
-                    />
-                  </Autocomplete>
-                </div>
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">Date of Birth</label>
-                  <input
-                    type="date"
-                    name="DOB"
-                    className="border p-2 w-full rounded"
-                    value={formData.DOB}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
+            <div className="flex gap-4 mb-4">
+              <div className="w-1/2">
+                <label className="block mb-1 font-bold">Address</label>
+                <input
+                  type="text"
+                  name="Address"
+                  className="border p-2 w-full rounded"
+                  placeholder="Enter Address"
+                  value={formData.Address}
+                  onChange={handleChange}
+                  required
+                />
               </div>
-
-              <div className="flex gap-4 mb-4">
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">Phone Number</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    name="phone"
-                    placeholder="Enter 10-digit phone number"
-                    className="border p-2 w-full rounded"
-                    value={formData.phone || ""} // Ensure value is never undefined
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">Email address</label>
-                  <input
-                    type="email"
-                    name="emailAddress"
-                    className="border p-2 w-full rounded"
-                    placeholder="Enter Email Address"
-                    value={formData.emailAddress}
-                    onChange={handleChange}
-                    required
-                  />
-                </div>
+              <div className="w-1/2">
+                <label className="block mb-1 font-bold">Date of Birth</label>
+                <input
+                  type="date"
+                  name="DOB"
+                  className="border p-2 w-full rounded"
+                  value={formData.DOB}
+                  onChange={handleChange}
+                  required
+                />
               </div>
+            </div>
 
-              <div className="flex gap-4 mb-4">
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">
-                    Marital Status:
-                  </label>
-                  <label className="block mb-1">
-                    Optimize your price by choosing to include or exclude your
-                    spouse.
-                  </label>
-                  <select
-                    name="maritalStatus"
-                    className="border p-2 w-full rounded"
-                    value={formData.maritalStatus}
-                    onChange={handleChange}
-                    required
-                  >
-                    <option value="">Select...</option>
-                    <option value="single">Single</option>
-                    <option value="married">Married</option>
-                    <option value="civil_union">Civil Union</option>
-                    <option value="divorced">Divorced</option>
-                  </select>
-                </div>
-                <div className="w-1/2">
-                  <label className="block mb-1 font-bold">
-                    Residency Type:
-                  </label>
-                  <label className="block mb-1">
-                    Homeownership may lower your rate.
-                  </label>
-                  <select
-                    name="residencyType"
-                    className="border p-2 w-full rounded"
-                    value={formData.residencyType}
-                    onChange={handleChange}
-                    required
-                  >
-                    <option value="">Select...</option>
-                    <option value="own">Own</option>
-                    <option value="rent">Rent</option>
-                    <option value="parents">Live with Parents</option>
-                  </select>
-                </div>
+            <div className="flex gap-4 mb-4">
+              <div className="w-1/2">
+                <label className="block mb-1 font-bold">Phone Number</label>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  name="phone"
+                  placeholder="Enter 10-digit phone number"
+                  className="border p-2 w-full rounded"
+                  value={formData.phone || ""} // Ensure value is never undefined
+                  onChange={handleChange}
+                  required
+                />
               </div>
+              <div className="w-1/2">
+                <label className="block mb-1 font-bold">Email address</label>
+                <input
+                  type="email"
+                  name="emailAddress"
+                  className="border p-2 w-full rounded"
+                  placeholder="Enter Email Address"
+                  value={formData.emailAddress}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+            </div>
 
-              <div className="text-center">
-                <button
-                  type="submit"
-                  className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+            <div className="flex gap-4 mb-4">
+              <div className="w-1/2">
+                <label className="block mb-1 font-bold">Marital Status:</label>
+                <label className="block mb-1">
+                  Optimize your price by choosing to include or exclude your
+                  spouse.
+                </label>
+                <select
+                  name="maritalStatus"
+                  className="border p-2 w-full rounded"
+                  value={formData.maritalStatus}
+                  onChange={handleChange}
+                  required
                 >
-                  Continue
-                </button>
+                  <option value="">Select...</option>
+                  <option value="single">Single</option>
+                  <option value="married">Married</option>
+                  <option value="civil_union">Civil Union</option>
+                  <option value="divorced">Divorced</option>
+                </select>
               </div>
-            </form>
-          </LoadScript>
+              <div className="w-1/2">
+                <label className="block mb-1 font-bold">Residency Type:</label>
+                <label className="block mb-1">
+                  Homeownership may lower your rate.
+                </label>
+                <select
+                  name="residencyType"
+                  className="border p-2 w-full rounded"
+                  value={formData.residencyType}
+                  onChange={handleChange}
+                  required
+                >
+                  <option value="">Select...</option>
+                  <option value="own">Own</option>
+                  <option value="rent">Rent</option>
+                  <option value="parents">Live with Parents</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="text-center">
+              <button
+                type="submit"
+                className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+              >
+                Continue
+              </button>
+            </div>
+          </form>
         )}
 
         {step === 2 && (
@@ -1544,31 +1500,6 @@ ${coverageDetails}`;
           </form>
         )}
 
-        {/* {step == 4 && (
-          <div>
-            <h2 className="text-xl font-bold mb-4">
-              Step 4: Review Your Quote
-            </h2>
-            <pre className="bg-gray-100 p-4 rounded-lg overflow-auto text-xs">
-              {JSON.stringify(formData, null, 2)}
-            </pre>
-            <div className="flex justify-between mt-6">
-              <button
-                type="button"
-                onClick={() => setStep(3)}
-                className="bg-gray-300 text-gray-800 px-6 py-2 rounded hover:bg-gray-400"
-              >
-                Back
-              </button>
-              <button
-                type="submit"
-                className="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700"
-              >
-                Get Quote
-              </button>
-            </div>
-          </div>
-        )} */}
         {step === 4 && (
           <form onSubmit={handleSubmitStep4}>
             <div>
