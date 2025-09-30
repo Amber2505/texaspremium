@@ -113,25 +113,39 @@ export default function ChatButton() {
     if (!open) return;
 
     const handleResize = () => {
-      // On mobile, when keyboard opens, scroll to keep input visible
+      // On mobile, adjust container height when keyboard opens
       if (window.visualViewport && chatContainerRef.current) {
         const viewport = window.visualViewport;
-        chatContainerRef.current.style.height = `${viewport.height}px`;
+        const isMobile = window.innerWidth < 640;
+
+        if (isMobile) {
+          // Set height to visual viewport to account for keyboard
+          chatContainerRef.current.style.height = `${viewport.height}px`;
+        }
       }
     };
 
     const handleFocus = () => {
-      // Small delay to ensure keyboard is open
+      // Ensure input is visible when focused
       setTimeout(() => {
-        inputRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "nearest",
-        });
-      }, 300);
+        if (inputRef.current && chatContainerRef.current) {
+          // Scroll the messages container to bottom
+          const messagesContainer = chatContainerRef.current.querySelector(
+            "[data-messages-container]"
+          );
+          if (messagesContainer) {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+          }
+        }
+      }, 100);
     };
+
+    // Initial setup
+    handleResize();
 
     if (window.visualViewport) {
       window.visualViewport.addEventListener("resize", handleResize);
+      window.visualViewport.addEventListener("scroll", handleResize);
     }
 
     const inputElement = inputRef.current;
@@ -142,6 +156,7 @@ export default function ChatButton() {
     return () => {
       if (window.visualViewport) {
         window.visualViewport.removeEventListener("resize", handleResize);
+        window.visualViewport.removeEventListener("scroll", handleResize);
       }
       if (inputElement) {
         inputElement.removeEventListener("focus", handleFocus);
@@ -676,7 +691,7 @@ export default function ChatButton() {
       {open && (
         <div
           ref={chatContainerRef}
-          className={`fixed inset-0 sm:inset-auto sm:bottom-4 sm:right-4 
+          className={`fixed sm:inset-auto sm:bottom-4 sm:right-4 
                       z-50 
                       sm:h-[600px] sm:w-[420px] sm:max-w-[calc(100vw-2rem)]
                       sm:rounded-2xl shadow-2xl 
@@ -689,7 +704,24 @@ export default function ChatButton() {
                           : "opacity-100 scale-100"
                       }`}
           style={{
-            // On mobile, use visual viewport height to account for keyboard
+            // On mobile: use fixed positioning at top and set height to visual viewport
+            // This ensures the input bar stays above the keyboard
+            top:
+              typeof window !== "undefined" && window.innerWidth < 640
+                ? "0"
+                : undefined,
+            left:
+              typeof window !== "undefined" && window.innerWidth < 640
+                ? "0"
+                : undefined,
+            right:
+              typeof window !== "undefined" && window.innerWidth < 640
+                ? "0"
+                : undefined,
+            bottom:
+              typeof window !== "undefined" && window.innerWidth < 640
+                ? "0"
+                : undefined,
             height:
               typeof window !== "undefined" && window.innerWidth < 640
                 ? `${window.visualViewport?.height || window.innerHeight}px`
@@ -748,7 +780,10 @@ export default function ChatButton() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 text-sm min-h-0">
+          <div
+            data-messages-container
+            className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 text-sm min-h-0 overscroll-contain"
+          >
             {messages.length === 0 ? (
               <div className="text-gray-500 text-center mt-4 sm:mt-10 space-y-3 sm:space-y-4 px-2">
                 <div className="text-4xl sm:text-5xl">👋</div>
