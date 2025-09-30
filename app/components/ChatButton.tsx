@@ -101,11 +101,53 @@ export default function ChatButton() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const maxInputLength = 200;
 
   const [companyDatabase, setCompanyDatabase] = useState<CompanyDatabase>({});
   const [isDatabaseLoading, setIsDatabaseLoading] = useState(true);
   const [databaseError, setDatabaseError] = useState<string | null>(null);
+
+  // Handle mobile keyboard visibility
+  useEffect(() => {
+    if (!open) return;
+
+    const handleResize = () => {
+      // On mobile, when keyboard opens, scroll to keep input visible
+      if (window.visualViewport && chatContainerRef.current) {
+        const viewport = window.visualViewport;
+        chatContainerRef.current.style.height = `${viewport.height}px`;
+      }
+    };
+
+    const handleFocus = () => {
+      // Small delay to ensure keyboard is open
+      setTimeout(() => {
+        inputRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+      }, 300);
+    };
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", handleResize);
+    }
+
+    const inputElement = inputRef.current;
+    if (inputElement) {
+      inputElement.addEventListener("focus", handleFocus);
+    }
+
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener("resize", handleResize);
+      }
+      if (inputElement) {
+        inputElement.removeEventListener("focus", handleFocus);
+      }
+    };
+  }, [open]);
 
   useEffect(() => {
     setIsDatabaseLoading(true);
@@ -633,6 +675,7 @@ export default function ChatButton() {
       {/* Chat Box */}
       {open && (
         <div
+          ref={chatContainerRef}
           className={`fixed inset-0 sm:inset-auto sm:bottom-4 sm:right-4 
                       z-50 
                       sm:h-[600px] sm:w-[420px] sm:max-w-[calc(100vw-2rem)]
@@ -645,6 +688,13 @@ export default function ChatButton() {
                           ? "opacity-50 scale-95"
                           : "opacity-100 scale-100"
                       }`}
+          style={{
+            // On mobile, use visual viewport height to account for keyboard
+            height:
+              typeof window !== "undefined" && window.innerWidth < 640
+                ? `${window.visualViewport?.height || window.innerHeight}px`
+                : undefined,
+          }}
         >
           {/* Header */}
           <div
@@ -703,17 +753,17 @@ export default function ChatButton() {
               <div className="text-gray-500 text-center mt-4 sm:mt-10 space-y-3 sm:space-y-4 px-2">
                 <div className="text-4xl sm:text-5xl">👋</div>
                 <p className="font-medium text-gray-700 text-base sm:text-lg">
-                  I&apos;m Samantha, here to make insurance easy.
+                  Welcome to Texas Premium Insurance!
                 </p>
                 <div className="bg-blue-50 p-4 rounded-lg text-left">
                   <p className="font-medium text-blue-800 mb-2 text-sm sm:text-base">
                     I can help you with:
                   </p>
                   <ul className="text-blue-700 text-sm space-y-1.5">
-                    <li>• Get quick answers about coverage</li>
-                    <li>• Request a personalized quote</li>
-                    <li>• Access payment links & claim details</li>
-                    <li>• Ask for policy documents anytime</li>
+                    <li>• Ask any insurance questions</li>
+                    <li>• Request a quote</li>
+                    <li>• Get your payment link and claim info</li>
+                    <li>• Request documents</li>
                     <li>• Talk to a live agent (coming soon)</li>
                   </ul>
                 </div>
