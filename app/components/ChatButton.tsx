@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { MessageCircle, Phone, Globe } from "lucide-react";
+import { MessageCircle, Phone, Globe, X, Minus } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface Message {
@@ -43,14 +43,12 @@ interface CompanyDatabase {
   };
 }
 
-// Function to compute string similarity based on common words (case-insensitive)
 function getStringSimilarity(str1: string, str2: string): number {
-  // Special handling for common abbreviations and variations
   const normalizeCompanyName = (s: string) => {
     return s
       .toLowerCase()
-      .replace(/\s+/g, " ") // normalize spaces
-      .replace(/[-_]/g, " ") // treat hyphens and underscores as spaces
+      .replace(/\s+/g, " ")
+      .replace(/[-_]/g, " ")
       .replace(/\bauto\b/g, "auto")
       .replace(/\bautomobile\b/g, "auto")
       .replace(/\binsurance\b/g, "")
@@ -64,13 +62,9 @@ function getStringSimilarity(str1: string, str2: string): number {
   const norm1 = normalizeCompanyName(str1);
   const norm2 = normalizeCompanyName(str2);
 
-  // If normalized versions match exactly, return perfect score
   if (norm1 === norm2) return 1;
-
-  // Check if one contains the other (for abbreviations)
   if (norm1.includes(norm2) || norm2.includes(norm1)) return 0.9;
 
-  // Original word-based comparison
   const normalize = (s: string) =>
     s
       .toLowerCase()
@@ -96,16 +90,12 @@ export default function ChatButton() {
   const [showConfirmClose, setShowConfirmClose] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
 
-  // Phone verification states
   const [phoneInput, setPhoneInput] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [verificationSent, setVerificationSent] = useState(false);
   const [verificationLoading, setVerificationLoading] = useState(false);
   const [customerData, setCustomerData] = useState<CustomerData | null>(null);
-  const [isVerified, setIsVerified] = useState(false); // Track verification status
+  const [isVerified, setIsVerified] = useState(false);
 
-  // Verification codes storage (in memory)
   const [storedVerificationCode, setStoredVerificationCode] = useState("");
   const [codeExpiration, setCodeExpiration] = useState<Date | null>(null);
 
@@ -113,12 +103,10 @@ export default function ChatButton() {
   const inputRef = useRef<HTMLInputElement>(null);
   const maxInputLength = 200;
 
-  // Company database
   const [companyDatabase, setCompanyDatabase] = useState<CompanyDatabase>({});
   const [isDatabaseLoading, setIsDatabaseLoading] = useState(true);
   const [databaseError, setDatabaseError] = useState<string | null>(null);
 
-  // Load company database from Excel via API
   useEffect(() => {
     setIsDatabaseLoading(true);
     setDatabaseError(null);
@@ -135,13 +123,6 @@ export default function ChatButton() {
           throw new Error("Invalid company database format");
         }
         setCompanyDatabase(data.companies);
-        console.log(
-          `Loaded ${Object.keys(data.companies).length} companies from Excel`
-        );
-        console.log(
-          "Sample companies:",
-          Object.keys(data.companies).slice(0, 5)
-        );
         setIsDatabaseLoading(false);
       })
       .catch((err) => {
@@ -162,14 +143,12 @@ export default function ChatButton() {
     scrollToBottom();
   }, [messages, loading]);
 
-  // Auto-focus input after messages update
   useEffect(() => {
     if (open && !loading && !showConfirmClose) {
       inputRef.current?.focus();
     }
   }, [messages, loading, open, showConfirmClose]);
 
-  // Clean phone number function
   const cleanPhoneNumber = (phone: string): string => {
     const digits = phone.replace(/\D/g, "");
     if (digits.length === 10) return digits;
@@ -177,7 +156,6 @@ export default function ChatButton() {
     return digits;
   };
 
-  // Check if customer exists using your API
   const checkCustomerExists = async (
     phone: string
   ): Promise<{
@@ -224,7 +202,6 @@ export default function ChatButton() {
     }
   };
 
-  // Send verification code
   const sendVerificationCode = async (
     phone: string,
     serviceType?: "claim" | "payment"
@@ -232,7 +209,6 @@ export default function ChatButton() {
     setVerificationLoading(true);
 
     try {
-      // Validate phone number format
       const cleanPhone = cleanPhoneNumber(phone);
       if (cleanPhone.length !== 10) {
         throw new Error("Please enter a valid 10-digit phone number");
@@ -254,7 +230,6 @@ export default function ChatButton() {
         return;
       }
 
-      // Customer is defined here, so we can safely use it
       const customer = customerCheck.customer;
       setCustomerData({
         name: customer.name || "Unknown",
@@ -278,8 +253,7 @@ export default function ChatButton() {
 
       if (response.ok) {
         setStoredVerificationCode(verificationCode);
-        setCodeExpiration(new Date(Date.now() + 5 * 60 * 1000)); // 5 minutes
-        setVerificationSent(true);
+        setCodeExpiration(new Date(Date.now() + 5 * 60 * 1000));
 
         setMessages((prev) => [
           ...prev,
@@ -308,12 +282,10 @@ export default function ChatButton() {
     }
   };
 
-  // Verify code and show service buttons
   const verifyCodeAndShowServices = async (code: string) => {
     setVerificationLoading(true);
 
     try {
-      // Check if database is loaded
       if (isDatabaseLoading) {
         throw new Error(
           "Company database is still loading. Please wait a moment and try again."
@@ -323,37 +295,23 @@ export default function ChatButton() {
         throw new Error(databaseError);
       }
 
-      // Check code expiration
       if (!codeExpiration || new Date() > codeExpiration) {
         throw new Error("Verification code expired. Please request a new one.");
       }
 
-      // Verify code
       if (code !== storedVerificationCode) {
         throw new Error("Invalid verification code. Please try again.");
       }
 
       if (customerData) {
-        console.log("Customer company name:", customerData.company_name);
-        console.log(
-          "Available companies:",
-          Object.keys(companyDatabase).slice(0, 10)
-        );
-
-        // Find the best matching company name (case-insensitive)
         let bestMatch = null;
         let highestSimilarity = 0;
-        const SIMILARITY_THRESHOLD = 0.3; // Lowered threshold for better matching
+        const SIMILARITY_THRESHOLD = 0.3;
 
         for (const companyName of Object.keys(companyDatabase)) {
           const similarity = getStringSimilarity(
             customerData.company_name,
             companyName
-          );
-          console.log(
-            `Comparing "${
-              customerData.company_name
-            }" with "${companyName}": Similarity = ${similarity.toFixed(3)}`
           );
 
           if (
@@ -365,12 +323,6 @@ export default function ChatButton() {
           }
         }
 
-        console.log(
-          `Best match: "${bestMatch}" with similarity: ${highestSimilarity.toFixed(
-            3
-          )}`
-        );
-
         const companyInfo = bestMatch
           ? companyDatabase[bestMatch]
           : {
@@ -380,8 +332,6 @@ export default function ChatButton() {
               paymentLink: "Contact your agent",
             };
 
-        console.log("Selected company info:", companyInfo);
-
         const customerWithCompanyInfo = {
           name: customerData.company_name,
           policyNo: customerData.policy_number,
@@ -390,8 +340,7 @@ export default function ChatButton() {
           paymentLink: companyInfo.paymentLink,
         };
 
-        // Use customerData.requestedService for serviceType
-        const serviceType = customerData.requestedService || "payment"; // Fallback to "payment" if undefined
+        const serviceType = customerData.requestedService || "payment";
 
         const matchStatus = bestMatch
           ? `(Match found: ${(highestSimilarity * 100).toFixed(0)}% similarity)`
@@ -411,7 +360,6 @@ export default function ChatButton() {
           },
         ]);
 
-        // Set verification status
         setIsVerified(true);
       }
     } catch (error: unknown) {
@@ -430,7 +378,6 @@ export default function ChatButton() {
     }
   };
 
-  // AI response logic - simplified and more dynamic
   const getAIResponse = (
     userMessage: string
   ): {
@@ -440,7 +387,6 @@ export default function ChatButton() {
   } => {
     const lowerMessage = userMessage.toLowerCase().trim();
 
-    // Check for explicit filing/payment intent (not just asking questions)
     const isActuallyFiling =
       lowerMessage.includes("file a claim") ||
       lowerMessage.includes("file claim") ||
@@ -450,15 +396,22 @@ export default function ChatButton() {
       lowerMessage === "file" ||
       lowerMessage === "claim";
 
+    // More flexible payment detection
     const isActuallyPaying =
       lowerMessage.includes("make a payment") ||
       lowerMessage.includes("make payment") ||
       lowerMessage.includes("payment link") ||
       lowerMessage.includes("pay link") ||
+      lowerMessage.includes("pay my bill") ||
+      lowerMessage.includes("pay bill") ||
+      lowerMessage.includes("pay the bill") ||
+      (lowerMessage.includes("pay") && lowerMessage.includes("bill")) ||
       lowerMessage === "pay" ||
-      lowerMessage === "payment";
+      lowerMessage === "payment" ||
+      (lowerMessage.includes("can i") && lowerMessage.includes("pay")) ||
+      (lowerMessage.includes("i want to") && lowerMessage.includes("pay")) ||
+      (lowerMessage.includes("need to") && lowerMessage.includes("pay"));
 
-    // Only trigger verification for actual action intent
     if (isActuallyFiling && !isVerified) {
       return {
         content:
@@ -481,7 +434,6 @@ export default function ChatButton() {
       };
     }
 
-    // Everything else goes to AI
     return {
       content: "",
       extra: null,
@@ -499,10 +451,8 @@ export default function ChatButton() {
     setLoading(true);
 
     try {
-      // Check for local handling first
       const aiResponse = getAIResponse(currentInput);
 
-      // If it's a verification trigger, handle locally
       if (aiResponse.extra?.showPhoneVerification) {
         setMessages((prev) => [
           ...prev,
@@ -516,7 +466,6 @@ export default function ChatButton() {
         return;
       }
 
-      // Call OpenAI API for natural response
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -530,17 +479,8 @@ export default function ChatButton() {
       const quoteTypes = data.choices?.[0]?.message?.quoteTypes || null;
       const showDocuments = data.choices?.[0]?.message?.showDocuments || false;
 
-      console.log("API Response:", {
-        showDocuments,
-        quoteType,
-        quoteTypes,
-        reply: reply.substring(0, 50),
-      });
-
-      // Clean up any JSON that might have leaked through
       reply = reply.replace(/\{[^}]*quoteType[^}]*\}/g, "").trim();
 
-      // Check if verified user is asking about claims/payments
       const lowerInput = currentInput.toLowerCase();
       const isAskingAboutClaims =
         lowerInput.includes("claim") ||
@@ -553,7 +493,6 @@ export default function ChatButton() {
         lowerInput.includes("payment") ||
         lowerInput.includes("bill");
 
-      // If verified and asking about claims/payments, inject buttons
       let extraButtons: Message["extra"] = null;
       if (isVerified && (isAskingAboutClaims || isAskingAboutPayments)) {
         const lastVerifiedMessage = messages
@@ -581,7 +520,6 @@ export default function ChatButton() {
         }
       }
 
-      // Handle quote type detection
       if (!quoteType && reply.includes("{") && reply.includes("quoteType")) {
         try {
           const jsonMatch = reply.match(/\{[^}]*"quoteType"[^}]*\}/);
@@ -591,31 +529,24 @@ export default function ChatButton() {
             reply = reply.replace(jsonMatch[0], "").trim();
           }
         } catch (e) {
-          // Continue without JSON parsing
           console.debug(e);
         }
       }
 
       reply = reply.replace(/\{[^}]*quoteType[^}]*\}/g, "").trim();
 
-      // Determine final extra data
       let finalExtra: Message["extra"] = null;
 
       if (extraButtons) {
-        // Show claim/payment buttons for verified users
         finalExtra = extraButtons;
       } else if (showDocuments) {
-        // Show document button
         finalExtra = { showDocuments: true };
       } else if (quoteTypes && quoteTypes.length > 0) {
-        // Show multiple quote buttons
         finalExtra = { quoteTypes: quoteTypes };
       } else if (quoteType) {
-        // Show single quote button
         finalExtra = { quoteType: quoteType };
       }
 
-      // Add message with appropriate buttons
       setMessages((prev) => [
         ...prev,
         {
@@ -631,7 +562,7 @@ export default function ChatButton() {
         {
           role: "assistant",
           content:
-            "I'm having trouble connecting right now, Try asking the same questions in few seconds. Please call us at (469) 729-5185 or email support@TexasPremiumIns.com for immediate assistance.",
+            "I'm having trouble connecting right now. Try asking the same questions in a few seconds. Please call us at (469) 729-5185 or email support@TexasPremiumIns.com for immediate assistance.",
           extra: null,
         },
       ]);
@@ -646,11 +577,10 @@ export default function ChatButton() {
     setMessages([]);
     setPhoneInput("");
     setVerificationCode("");
-    setVerificationSent(false);
     setCustomerData(null);
     setStoredVerificationCode("");
     setCodeExpiration(null);
-    setIsVerified(false); // Reset verification status
+    setIsVerified(false);
   };
 
   const router = useRouter();
@@ -689,21 +619,27 @@ export default function ChatButton() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          className="fixed bottom-8 right-8 z-50 w-14 h-14 flex items-center justify-center 
-               rounded-full shadow-xl
-               bg-gradient-to-r from-red-700 to-blue-800  
-               text-white hover:scale-110 transition-all duration-300 animate-pulse"
+          className="fixed bottom-4 right-4 sm:bottom-8 sm:right-8 z-50 
+                     w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center 
+                     rounded-full shadow-xl
+                     bg-gradient-to-r from-red-700 to-blue-800  
+                     text-white hover:scale-110 transition-all duration-300 animate-pulse"
+          aria-label="Open chat"
         >
-          <MessageCircle size={24} />
+          <MessageCircle className="w-6 h-6 sm:w-7 sm:h-7" />
         </button>
       )}
 
       {/* Chat Box */}
       {open && (
         <div
-          className={`fixed bottom-20 right-4 z-50 h-[600px] w-[420px] rounded-2xl shadow-2xl 
+          className={`fixed inset-0 sm:inset-auto sm:bottom-4 sm:right-4 
+                      z-50 
+                      sm:h-[600px] sm:w-[420px] sm:max-w-[calc(100vw-2rem)]
+                      sm:rounded-2xl shadow-2xl 
                       flex flex-col transition-all duration-300
-                      bg-gradient-to-b from-white via-white to-gray-50 border
+                      bg-gradient-to-b from-white via-white to-gray-50 
+                      sm:border
                       ${
                         isNavigating
                           ? "opacity-50 scale-95"
@@ -712,68 +648,72 @@ export default function ChatButton() {
         >
           {/* Header */}
           <div
-            className="p-3 rounded-t-2xl text-white flex justify-between items-center 
-                        bg-gradient-to-r from-red-700 to-blue-800"
+            className="p-3 sm:p-4 sm:rounded-t-2xl text-white flex justify-between items-center 
+                        bg-gradient-to-r from-red-700 to-blue-800 flex-shrink-0"
           >
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center">
-                <span className="text-blue-800 text-xs font-bold">TP</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 bg-white rounded-full flex items-center justify-center flex-shrink-0">
+                <span className="text-blue-800 text-xs sm:text-sm font-bold">
+                  TP
+                </span>
               </div>
-              <span className="font-semibold tracking-wide">
+              <span className="font-semibold tracking-wide text-sm sm:text-base truncate">
                 Samantha – Virtual Assistant
               </span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
               <button
                 onClick={() => setOpen(false)}
-                className="hover:text-gray-200 transition text-lg font-bold"
+                className="hover:text-gray-200 transition p-1.5 sm:p-1"
+                aria-label="Minimize chat"
               >
-                –
+                <Minus className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
               <button
                 onClick={() => setShowConfirmClose(true)}
-                className="hover:text-gray-200 transition text-lg"
+                className="hover:text-gray-200 transition p-1.5 sm:p-1"
+                aria-label="Close chat"
               >
-                ✕
+                <X className="w-5 h-5 sm:w-6 sm:h-6" />
               </button>
             </div>
           </div>
 
           {/* Quick Action Buttons */}
-          <div className="flex gap-2 p-3 bg-gray-100 border-b">
+          <div className="flex gap-2 p-3 bg-gray-100 border-b flex-shrink-0">
             <a
               href="tel:4697295185"
               className="flex-1 text-center px-3 py-2 rounded-lg text-white 
-                         bg-green-600 text-sm font-medium hover:opacity-90 transition"
+                         bg-green-600 text-sm font-medium hover:opacity-90 transition active:scale-95"
             >
               Call
             </a>
             <a
               href="mailto:support@TexasPremiumIns.com"
               className="flex-1 text-center px-3 py-2 rounded-lg text-white 
-                         bg-blue-600 text-sm font-medium hover:opacity-90 transition"
+                         bg-blue-600 text-sm font-medium hover:opacity-90 transition active:scale-95"
             >
               Email
             </a>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3 text-sm">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 text-sm min-h-0">
             {messages.length === 0 ? (
-              <div className="text-gray-500 text-center mt-10 space-y-4">
-                <div className="text-4xl">👋</div>
-                <p className="font-medium text-gray-700">
-                  Welcome to Texas Premium Insurance!
+              <div className="text-gray-500 text-center mt-4 sm:mt-10 space-y-3 sm:space-y-4 px-2">
+                <div className="text-4xl sm:text-5xl">👋</div>
+                <p className="font-medium text-gray-700 text-base sm:text-lg">
+                  I&apos;m Samantha, here to make insurance easy.
                 </p>
-                <div className="bg-blue-50 p-3 rounded-lg text-left">
-                  <p className="font-medium text-blue-800 mb-2">
+                <div className="bg-blue-50 p-4 rounded-lg text-left">
+                  <p className="font-medium text-blue-800 mb-2 text-sm sm:text-base">
                     I can help you with:
                   </p>
                   <ul className="text-blue-700 text-sm space-y-1.5">
-                    <li>• Ask any insurance questions</li>
-                    <li>• Request a quote</li>
-                    <li>• Get your payment link and claim info</li>
-                    <li>• Request documents</li>
+                    <li>• Get quick answers about coverage</li>
+                    <li>• Request a personalized quote</li>
+                    <li>• Access payment links & claim details</li>
+                    <li>• Ask for policy documents anytime</li>
                     <li>• Talk to a live agent (coming soon)</li>
                   </ul>
                 </div>
@@ -782,13 +722,15 @@ export default function ChatButton() {
               messages.map((msg, idx) => (
                 <div key={idx}>
                   <div
-                    className={`p-3 rounded-xl shadow-sm max-w-[75%] transition-all duration-300 ${
+                    className={`p-3 rounded-xl shadow-sm max-w-[85%] sm:max-w-[75%] transition-all duration-300 ${
                       msg.role === "user"
                         ? "ml-auto bg-gradient-to-r from-red-50 to-blue-50 text-gray-800 border border-red-100"
                         : "mr-auto bg-gray-100 text-gray-700 border border-gray-200"
                     }`}
                   >
-                    <div className="whitespace-pre-line">{msg.content}</div>
+                    <div className="whitespace-pre-line text-sm">
+                      {msg.content}
+                    </div>
 
                     {/* Single Quote Button */}
                     {msg.role === "assistant" &&
@@ -798,10 +740,10 @@ export default function ChatButton() {
                           onClick={() =>
                             handleQuoteNavigation(msg.extra!.quoteType!)
                           }
-                          className="mt-3 inline-block px-4 py-2 rounded-lg text-white 
+                          className="mt-3 w-full sm:w-auto inline-block px-4 py-2.5 rounded-lg text-white 
                                    bg-gradient-to-r from-red-700 to-blue-800 
                                    text-sm font-medium hover:opacity-90 transition-all duration-200
-                                   hover:scale-105 shadow-md"
+                                   active:scale-95 shadow-md"
                         >
                           Get a {msg.extra!.quoteType} Quote →
                         </button>
@@ -811,15 +753,15 @@ export default function ChatButton() {
                     {msg.role === "assistant" &&
                       msg.extra?.quoteTypes &&
                       msg.extra.quoteTypes.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {msg.extra.quoteTypes.map((type, idx) => (
+                        <div className="mt-3 flex flex-col gap-2">
+                          {msg.extra.quoteTypes.map((type, typeIdx) => (
                             <button
-                              key={idx}
+                              key={typeIdx}
                               onClick={() => handleQuoteNavigation(type)}
-                              className="px-4 py-2 rounded-lg text-white 
+                              className="w-full px-4 py-2.5 rounded-lg text-white 
                                      bg-gradient-to-r from-red-700 to-blue-800 
                                      text-sm font-medium hover:opacity-90 transition-all duration-200
-                                     hover:scale-105 shadow-md"
+                                     active:scale-95 shadow-md"
                             >
                               Get {type} Quote →
                             </button>
@@ -831,10 +773,10 @@ export default function ChatButton() {
                     {msg.role === "assistant" && msg.extra?.showDocuments && (
                       <button
                         onClick={() => handleQuoteNavigation("view_documents")}
-                        className="mt-3 inline-block px-4 py-2 rounded-lg text-white 
+                        className="mt-3 w-full sm:w-auto inline-block px-4 py-2.5 rounded-lg text-white 
                                    bg-gradient-to-r from-purple-600 to-indigo-700 
                                    text-sm font-medium hover:opacity-90 transition-all duration-200
-                                   hover:scale-105 shadow-md"
+                                   active:scale-95 shadow-md"
                       >
                         📄 View Documents →
                       </button>
@@ -868,12 +810,11 @@ export default function ChatButton() {
                                 }
                               }}
                               placeholder="(555) 123-4567"
-                              className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                               maxLength={14}
                             />
                             <button
                               onClick={() => {
-                                // Determine service type from the message context
                                 const serviceType =
                                   msg.extra?.verificationType ||
                                   (msg.content.toLowerCase().includes("claim")
@@ -884,8 +825,8 @@ export default function ChatButton() {
                               disabled={
                                 verificationLoading || !phoneInput.trim()
                               }
-                              className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium 
-                                     hover:bg-blue-700 transition disabled:opacity-50"
+                              className="w-full px-3 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium 
+                                     hover:bg-blue-700 transition disabled:opacity-50 active:scale-95"
                             >
                               {verificationLoading
                                 ? "Sending..."
@@ -922,7 +863,7 @@ export default function ChatButton() {
                                 }
                               }}
                               placeholder="123456"
-                              className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                              className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                               maxLength={6}
                             />
                             <button
@@ -933,8 +874,8 @@ export default function ChatButton() {
                                 verificationLoading ||
                                 verificationCode.length !== 6
                               }
-                              className="w-full px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium 
-                                     hover:bg-green-700 transition disabled:opacity-50"
+                              className="w-full px-3 py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium 
+                                     hover:bg-green-700 transition disabled:opacity-50 active:scale-95"
                             >
                               {verificationLoading
                                 ? "Verifying..."
@@ -954,7 +895,7 @@ export default function ChatButton() {
                           </p>
                           <button
                             disabled
-                            className="w-full px-3 py-2 bg-gray-300 text-gray-600 rounded-lg text-sm font-medium 
+                            className="w-full px-3 py-2.5 bg-gray-300 text-gray-600 rounded-lg text-sm font-medium 
                                      cursor-not-allowed"
                           >
                             Verified
@@ -976,7 +917,7 @@ export default function ChatButton() {
                                   {company.name} - Policy #{company.policyNo}
                                 </div>
 
-                                <div className="flex gap-2">
+                                <div className="flex flex-col sm:flex-row gap-2">
                                   {msg.extra!.showServiceButtons!.type ===
                                   "claim" ? (
                                     <>
@@ -987,9 +928,9 @@ export default function ChatButton() {
                                             ""
                                           ) || ""
                                         }`}
-                                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 
+                                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 
                                              bg-green-600 text-white rounded-lg text-sm font-medium 
-                                             hover:bg-green-700 transition"
+                                             hover:bg-green-700 transition active:scale-95"
                                       >
                                         <Phone className="w-4 h-4" />
                                         Call Claims
@@ -999,9 +940,9 @@ export default function ChatButton() {
                                         href={company.claimLink}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 
+                                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 
                                              bg-blue-600 text-white rounded-lg text-sm font-medium 
-                                             hover:bg-blue-700 transition"
+                                             hover:bg-blue-700 transition active:scale-95"
                                       >
                                         <Globe className="w-4 h-4" />
                                         Website
@@ -1012,9 +953,9 @@ export default function ChatButton() {
                                       href={company.paymentLink}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="w-full flex items-center justify-center gap-2 px-3 py-2 
+                                      className="w-full flex items-center justify-center gap-2 px-3 py-2.5 
                                            bg-purple-600 text-white rounded-lg text-sm font-medium 
-                                           hover:bg-purple-700 transition"
+                                           hover:bg-purple-700 transition active:scale-95"
                                     >
                                       <Globe className="w-4 h-4" />
                                       Make Payment
@@ -1032,7 +973,7 @@ export default function ChatButton() {
             )}
 
             {loading && (
-              <div className="mr-auto bg-gray-100 p-3 rounded-xl max-w-[75%] border border-gray-200">
+              <div className="mr-auto bg-gray-100 p-3 rounded-xl max-w-[85%] sm:max-w-[75%] border border-gray-200">
                 <div className="flex items-center gap-2">
                   <div className="flex space-x-1">
                     <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
@@ -1045,7 +986,9 @@ export default function ChatButton() {
                       style={{ animationDelay: "0.2s" }}
                     ></div>
                   </div>
-                  <span className="text-gray-500">Samantha is typing...</span>
+                  <span className="text-gray-500 text-sm">
+                    Samantha is typing...
+                  </span>
                 </div>
               </div>
             )}
@@ -1054,7 +997,7 @@ export default function ChatButton() {
 
           {/* Confirm Close Modal */}
           {showConfirmClose && (
-            <div className="fixed inset-0 backdrop-blur-[1px] flex items-center justify-center z-[60]">
+            <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
               <div className="bg-white rounded-2xl p-6 mx-4 max-w-sm w-full shadow-2xl">
                 <div className="text-center">
                   <div className="text-4xl mb-4">❓</div>
@@ -1068,13 +1011,13 @@ export default function ChatButton() {
                   <div className="flex gap-3">
                     <button
                       onClick={() => setShowConfirmClose(false)}
-                      className="flex-1 px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50 transition font-medium"
+                      className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 hover:bg-gray-50 transition font-medium text-sm active:scale-95"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleCloseChat}
-                      className="flex-1 px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition font-medium"
+                      className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 text-white hover:bg-red-700 transition font-medium text-sm active:scale-95"
                     >
                       Close Chat
                     </button>
@@ -1086,7 +1029,7 @@ export default function ChatButton() {
 
           {/* Input */}
           {!showConfirmClose && (
-            <div className="p-3 border-t flex items-center gap-2 bg-gray-50 rounded-b-2xl">
+            <div className="p-3 sm:p-4 border-t flex items-center gap-2 bg-gray-50 sm:rounded-b-2xl flex-shrink-0">
               <input
                 ref={inputRef}
                 value={input}
@@ -1098,24 +1041,24 @@ export default function ChatButton() {
                 onKeyDown={(e) =>
                   e.key === "Enter" && !loading && sendMessage()
                 }
-                placeholder="Ask about coverage, claims, or payments..."
-                className="flex-1 px-3 py-2 text-sm rounded-xl border 
+                placeholder="Ask about coverage, claims..."
+                className="flex-1 px-3 py-2.5 text-sm rounded-xl border 
                           focus:outline-none focus:ring-2 focus:ring-red-500/30
-                          disabled:opacity-50"
+                          disabled:opacity-50 min-w-0"
                 maxLength={maxInputLength}
                 disabled={loading}
               />
-              <div className="text-xs text-gray-400 min-w-[40px] text-right">
+              <div className="text-xs text-gray-400 hidden sm:block min-w-[45px] text-right flex-shrink-0">
                 {input.length}/{maxInputLength}
               </div>
               <button
                 onClick={sendMessage}
                 disabled={loading || !input.trim()}
-                className="px-4 py-2 rounded-xl shadow 
+                className="px-4 py-2.5 rounded-xl shadow 
                           bg-gradient-to-r from-red-700 to-blue-800 
-                          text-white font-medium hover:opacity-90 transition
+                          text-white text-sm font-medium hover:opacity-90 transition
                           disabled:opacity-50 disabled:cursor-not-allowed
-                          hover:scale-105"
+                          active:scale-95 flex-shrink-0"
               >
                 Send
               </button>
