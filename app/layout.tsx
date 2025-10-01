@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Texas Premium Insurance Services",
-  description: "We Compare, You Save!",
+  description: "Your Savings, Our Priority!",
 };
 
 export default function RootLayout({
