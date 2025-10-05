@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { MessageCircle, Phone, Globe, X, Minus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import io from "socket.io-client";
-import type { Socket } from "socket.io-client";
 
 const SOCKET_URL =
   process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
@@ -121,7 +120,7 @@ export default function ChatButton() {
   const [isConnectedToAgent, setIsConnectedToAgent] = useState(false);
   const [agentName, setAgentName] = useState("");
   const [agentTyping, setAgentTyping] = useState(false);
-  const socketRef = useRef<any>(null);
+  const socketRef = useRef<ReturnType<typeof io> | null>(null);
 
   // Handle mobile keyboard visibility
   useEffect(() => {
@@ -513,17 +512,20 @@ export default function ChatButton() {
       }
     );
 
-    socketRef.current.on("new-message", (message: any) => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: message.isAdmin ? "assistant" : "user",
-          content: message.content,
-          extra: null,
-        },
-      ]);
-      setAgentTyping(false);
-    });
+    socketRef.current.on(
+      "new-message",
+      (message: { isAdmin: boolean; content: string }) => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: message.isAdmin ? "assistant" : "user",
+            content: message.content,
+            extra: null,
+          },
+        ]);
+        setAgentTyping(false);
+      }
+    );
 
     socketRef.current.on(
       "agent-typing-indicator",
