@@ -36,9 +36,6 @@ export default function AdminLiveChatDashboard() {
   const [isConnected, setIsConnected] = useState(false);
   const [adminName, setAdminName] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [claimedSessions, setClaimedSessions] = useState<Set<string>>(
-    new Set()
-  );
   const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(
     null
   );
@@ -162,11 +159,6 @@ export default function AdminLiveChatDashboard() {
         setSelectedSession(null);
         setMessages([]);
       }
-      setClaimedSessions((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(userId);
-        return newSet;
-      });
     });
 
     socketRef.current.on("disconnect", () => {
@@ -188,7 +180,6 @@ export default function AdminLiveChatDashboard() {
         adminName,
       });
 
-      setClaimedSessions((prev) => new Set(prev).add(session.userId));
       setSelectedSession(session);
       setMessages(session.conversationHistory || []);
     }
@@ -260,11 +251,6 @@ export default function AdminLiveChatDashboard() {
 
       setSelectedSession(null);
       setMessages([]);
-      setClaimedSessions((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(selectedSession.userId);
-        return newSet;
-      });
     }
   };
 
