@@ -15,6 +15,8 @@ interface ContextAnalysis {
   suggestedAction: string | null;
 }
 
+
+
 function analyzeContext(messages: ChatMessage[]): ContextAnalysis {
   const lastMessage = messages[messages.length - 1]?.content?.toLowerCase() || '';
   const fullConversation = messages.map((m) => m.content).join(' ').toLowerCase();
@@ -54,6 +56,44 @@ function analyzeContext(messages: ChatMessage[]): ContextAnalysis {
     suggestedAction
   };
 }
+
+// Check if user is requesting a live agent
+function isLiveAgentRequest(userMessage: string): boolean {
+  const lowerMessage = userMessage.toLowerCase().trim();
+  
+  const liveAgentKeywords = [
+    'live agent',
+    'real person',
+    'human agent',
+    'speak to someone',
+    'talk to someone',
+    'representative',
+    'customer service',
+    'speak with agent',
+    'talk to agent',
+    'human help',
+    'real help',
+    'actual person',
+    'transfer me',
+    'connect me to',
+    'speak to representative',
+    'live support',
+    'live person',
+    'speak to human',
+    'talk to human',
+    'real agent',
+    'customer support',
+    'support agent',
+    'help desk',
+    'live help',
+    'speak with someone',
+    'talk with someone',
+    'connect to agent'
+  ];
+  
+  return liveAgentKeywords.some(keyword => lowerMessage.includes(keyword));
+}
+
 
 // Enhanced function to detect insurance types and determine if quote button should show
 function detectInsuranceTypes(userMessage: string, aiResponse: string): string[] {
