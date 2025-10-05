@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { MessageCircle, Phone, Globe, X, Minus } from "lucide-react";
 import { useRouter } from "next/navigation";
+import io from "socket.io-client";
+import type { Socket } from "socket.io-client";
+
+const SOCKET_URL =
+  process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
 
 interface Message {
   role: string;
@@ -12,6 +17,8 @@ interface Message {
     showPhoneVerification?: boolean;
     verificationSent?: boolean;
     verificationType?: "claim" | "payment";
+    requestLiveAgent?: boolean; // ADD THIS
+    liveAgentFormSubmitted?: boolean; // ADD THIS
     showServiceButtons?: {
       type: "claim" | "payment";
       companies: Array<{
@@ -107,6 +114,14 @@ export default function ChatButton() {
   const [companyDatabase, setCompanyDatabase] = useState<CompanyDatabase>({});
   const [isDatabaseLoading, setIsDatabaseLoading] = useState(true);
   const [databaseError, setDatabaseError] = useState<string | null>(null);
+  // Live chat states
+  const [isLiveChat, setIsLiveChat] = useState(false);
+  const [liveAgentName, setLiveAgentName] = useState("");
+  const [liveAgentPhone, setLiveAgentPhone] = useState("");
+  const [isConnectedToAgent, setIsConnectedToAgent] = useState(false);
+  const [agentName, setAgentName] = useState("");
+  const [agentTyping, setAgentTyping] = useState(false);
+  const socketRef = useRef<any>(null);
 
   // Handle mobile keyboard visibility
   useEffect(() => {
@@ -164,6 +179,15 @@ export default function ChatButton() {
     };
   }, [open]);
 
+  // Cleanup socket on unmount
+  useEffect(() => {
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+    };
+  }, []);
+
   useEffect(() => {
     setIsDatabaseLoading(true);
     setDatabaseError(null);
@@ -198,7 +222,7 @@ export default function ChatButton() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, loading]);
+  }, [messages, loading, agentTyping]); // ADD agentTyping here
 
   useEffect(() => {
     if (open && !loading && !showConfirmClose) {
@@ -435,6 +459,113 @@ export default function ChatButton() {
     }
   };
 
+  // Connect to live chat
+  const connectToLiveChat = (name: string, phone: string) => {
+    setLiveAgentName(name);
+    setLiveAgentPhone(phone);
+    setIsLiveChat(true);
+
+    let userId = localStorage.getItem("chat-user-id");
+    if (!userId) {
+      userId = `user-${Math.random().toString(36).substr(2, 9)}`;
+      localStorage.setItem("chat-user-id", userId);
+    }
+
+    socketRef.current = io(SOCKET_URL);
+
+    socketRef.current.on("connect", () => {
+      console.log("Connected to live chat server");
+
+      socketRef.current?.emit("customer-join", {
+        userId,
+        userName: name,
+        conversationHistory: messages.map((msg) => ({
+          content: msg.content,
+          isAdmin: msg.role === "assistant",
+          timestamp: new Date().toISOString(),
+        })),
+      });
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Connecting you to a live agent... Please wait.",
+          extra: { liveAgentFormSubmitted: true },
+        },
+      ]);
+    });
+
+    socketRef.current.on(
+      "agent-joined",
+      ({ agentName, message }: { agentName: string; message: string }) => {
+        setIsConnectedToAgent(true);
+        setAgentName(agentName);
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: message,
+            extra: null,
+          },
+        ]);
+      }
+    );
+
+    socketRef.current.on("new-message", (message: any) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: message.isAdmin ? "assistant" : "user",
+          content: message.content,
+          extra: null,
+        },
+      ]);
+      setAgentTyping(false);
+    });
+
+    socketRef.current.on(
+      "agent-typing-indicator",
+      ({ isTyping }: { isTyping: boolean }) => {
+        setAgentTyping(isTyping);
+      }
+    );
+
+    socketRef.current.on("agent-left", ({ message }: { message: string }) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: message,
+          extra: null,
+        },
+      ]);
+      setIsConnectedToAgent(false);
+    });
+
+    socketRef.current.on(
+      "session-ended",
+      ({ message }: { message: string }) => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: message,
+            extra: null,
+          },
+        ]);
+        setIsLiveChat(false);
+        setIsConnectedToAgent(false);
+        socketRef.current?.disconnect();
+      }
+    );
+
+    socketRef.current.on("disconnect", () => {
+      console.log("Disconnected from live chat server");
+    });
+  };
+
   const getAIResponse = (
     userMessage: string
   ): {
@@ -507,6 +638,18 @@ export default function ChatButton() {
     setInput("");
     setLoading(true);
 
+    // If in live chat mode, send via socket
+    if (isLiveChat && socketRef.current) {
+      const userId = localStorage.getItem("chat-user-id");
+      socketRef.current.emit("customer-message", {
+        userId,
+        userName: liveAgentName,
+        content: currentInput,
+      });
+      setLoading(false);
+      return;
+    }
+
     try {
       const aiResponse = getAIResponse(currentInput);
 
@@ -530,6 +673,20 @@ export default function ChatButton() {
       });
 
       const data = await res.json();
+
+      // Check if user requested live agent
+      if (data.choices?.[0]?.message?.requestLiveAgent) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: data.choices[0].message.content,
+            extra: { requestLiveAgent: true },
+          },
+        ]);
+        setLoading(false);
+        return;
+      }
       let reply =
         data.choices?.[0]?.message?.content || "Sorry, something went wrong.";
       let quoteType = data.choices?.[0]?.message?.quoteType || null;
@@ -629,6 +786,9 @@ export default function ChatButton() {
   };
 
   const handleCloseChat = () => {
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+    }
     setShowConfirmClose(false);
     setOpen(false);
     setMessages([]);
@@ -638,6 +798,10 @@ export default function ChatButton() {
     setStoredVerificationCode("");
     setCodeExpiration(null);
     setIsVerified(false);
+    setIsLiveChat(false);
+    setIsConnectedToAgent(false);
+    setLiveAgentName("");
+    setLiveAgentPhone("");
   };
 
   const router = useRouter();
@@ -739,9 +903,20 @@ export default function ChatButton() {
                   TP
                 </span>
               </div>
-              <span className="font-semibold tracking-wide text-sm sm:text-base truncate">
-                Samantha – Virtual Assistant
-              </span>
+              <div className="flex flex-col">
+                <span className="font-semibold tracking-wide text-sm sm:text-base truncate">
+                  {isConnectedToAgent
+                    ? agentName
+                    : "Samantha – Virtual Assistant"}
+                </span>
+                {isLiveChat && (
+                  <span className="text-xs text-blue-100">
+                    {isConnectedToAgent
+                      ? "● Live Agent"
+                      : "○ Waiting for agent..."}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
               <button
@@ -799,7 +974,7 @@ export default function ChatButton() {
                     <li>• Request a quote</li>
                     <li>• Get your payment link and claim info</li>
                     <li>• Request documents</li>
-                    <li>• Talk to a live agent (coming soon)</li>
+                    <li>• Talk to a live agent</li>
                   </ul>
                 </div>
               </div>
@@ -1052,6 +1227,60 @@ export default function ChatButton() {
                           )}
                         </div>
                       )}
+
+                    {/* Live Agent Request Form */}
+                    {msg.role === "assistant" &&
+                      msg.extra?.requestLiveAgent &&
+                      !isLiveChat && (
+                        <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                          <p className="text-sm font-medium text-purple-800 mb-2">
+                            Connect with a Live Agent
+                          </p>
+                          <div className="space-y-2">
+                            <input
+                              type="text"
+                              value={liveAgentName}
+                              onChange={(e) => setLiveAgentName(e.target.value)}
+                              placeholder="Your Name"
+                              className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                            <input
+                              type="tel"
+                              value={liveAgentPhone}
+                              onChange={(e) =>
+                                setLiveAgentPhone(e.target.value)
+                              }
+                              onKeyDown={(e) => {
+                                if (
+                                  e.key === "Enter" &&
+                                  liveAgentName.trim() &&
+                                  liveAgentPhone.trim()
+                                ) {
+                                  connectToLiveChat(
+                                    liveAgentName,
+                                    liveAgentPhone
+                                  );
+                                }
+                              }}
+                              placeholder="Phone Number"
+                              className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              maxLength={14}
+                            />
+                            <button
+                              onClick={() =>
+                                connectToLiveChat(liveAgentName, liveAgentPhone)
+                              }
+                              disabled={
+                                !liveAgentName.trim() || !liveAgentPhone.trim()
+                              }
+                              className="w-full px-3 py-2.5 bg-purple-600 text-white rounded-lg text-sm font-medium 
+                   hover:bg-purple-700 transition disabled:opacity-50 active:scale-95"
+                            >
+                              Connect to Live Agent
+                            </button>
+                          </div>
+                        </div>
+                      )}
                   </div>
                 </div>
               ))
@@ -1073,6 +1302,27 @@ export default function ChatButton() {
                   </div>
                   <span className="text-gray-500 text-sm">
                     Samantha is typing...
+                  </span>
+                </div>
+              </div>
+            )}
+            {/* Agent Typing Indicator */}
+            {agentTyping && isLiveChat && (
+              <div className="mr-auto bg-gray-100 p-3 rounded-xl max-w-[85%] sm:max-w-[75%] border border-gray-200">
+                <div className="flex items-center gap-2">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                    <div
+                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                      style={{ animationDelay: "0.1s" }}
+                    ></div>
+                    <div
+                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                      style={{ animationDelay: "0.2s" }}
+                    ></div>
+                  </div>
+                  <span className="text-gray-500 text-sm">
+                    {agentName || "Agent"} is typing...
                   </span>
                 </div>
               </div>
