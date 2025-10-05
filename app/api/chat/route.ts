@@ -15,7 +15,42 @@ interface ContextAnalysis {
   suggestedAction: string | null;
 }
 
-
+// Check if user is requesting a live agent
+function isLiveAgentRequest(userMessage: string): boolean {
+  const lowerMessage = userMessage.toLowerCase().trim();
+  
+  const liveAgentKeywords = [
+    'live agent',
+    'real person',
+    'human agent',
+    'speak to someone',
+    'talk to someone',
+    'representative',
+    'customer service',
+    'speak with agent',
+    'talk to agent',
+    'human help',
+    'real help',
+    'actual person',
+    'transfer me',
+    'connect me to',
+    'speak to representative',
+    'live support',
+    'live person',
+    'speak to human',
+    'talk to human',
+    'real agent',
+    'customer support',
+    'support agent',
+    'help desk',
+    'live help',
+    'speak with someone',
+    'talk with someone',
+    'connect to agent'
+  ];
+  
+  return liveAgentKeywords.some(keyword => lowerMessage.includes(keyword));
+}
 
 function analyzeContext(messages: ChatMessage[]): ContextAnalysis {
   const lastMessage = messages[messages.length - 1]?.content?.toLowerCase() || '';
@@ -56,44 +91,6 @@ function analyzeContext(messages: ChatMessage[]): ContextAnalysis {
     suggestedAction
   };
 }
-
-// Check if user is requesting a live agent
-function isLiveAgentRequest(userMessage: string): boolean {
-  const lowerMessage = userMessage.toLowerCase().trim();
-  
-  const liveAgentKeywords = [
-    'live agent',
-    'real person',
-    'human agent',
-    'speak to someone',
-    'talk to someone',
-    'representative',
-    'customer service',
-    'speak with agent',
-    'talk to agent',
-    'human help',
-    'real help',
-    'actual person',
-    'transfer me',
-    'connect me to',
-    'speak to representative',
-    'live support',
-    'live person',
-    'speak to human',
-    'talk to human',
-    'real agent',
-    'customer support',
-    'support agent',
-    'help desk',
-    'live help',
-    'speak with someone',
-    'talk with someone',
-    'connect to agent'
-  ];
-  
-  return liveAgentKeywords.some(keyword => lowerMessage.includes(keyword));
-}
-
 
 // Enhanced function to detect insurance types and determine if quote button should show
 function detectInsuranceTypes(userMessage: string, aiResponse: string): string[] {
@@ -226,8 +223,26 @@ export async function POST(req: Request) {
   const { messages } = await req.json();
 
   try {
-    const context = analyzeContext(messages);
     const userMessage = messages[messages.length - 1]?.content || '';
+    
+    // Check for live agent request FIRST - before any AI processing
+    if (isLiveAgentRequest(userMessage)) {
+      return NextResponse.json({
+        choices: [
+          {
+            message: {
+              content: "I'd be happy to connect you with a live agent! Please provide your name and phone number so we can get you connected.",
+              requestLiveAgent: true,
+              quoteType: null,
+              quoteTypes: null,
+              showDocuments: false
+            },
+          },
+        ],
+      });
+    }
+
+    const context = analyzeContext(messages);
     
     console.log('Context Analysis:', context);
     console.log('User Message:', userMessage);
@@ -285,7 +300,8 @@ export async function POST(req: Request) {
             message: {
               content: "I'm having trouble connecting right now, Try asking the same questions in few seconds. Please call us at (469) 729-5185 for immediate assistance.",
               quoteType: null,
-              quoteTypes: null
+              quoteTypes: null,
+              requestLiveAgent: false
             },
           },
         ],
@@ -328,7 +344,8 @@ export async function POST(req: Request) {
             content,
             quoteType: quoteTypes && quoteTypes.length === 1 ? quoteTypes[0] : null,
             quoteTypes: quoteTypes && quoteTypes.length > 1 ? quoteTypes : null,
-            showDocuments: documentButton
+            showDocuments: documentButton,
+            requestLiveAgent: false
           },
         },
       ],
@@ -342,7 +359,8 @@ export async function POST(req: Request) {
           message: {
             content: "I'm experiencing technical difficulties. Please call us at (469) 729-5185 for assistance.",
             quoteType: null,
-            quoteTypes: null
+            quoteTypes: null,
+            requestLiveAgent: false
           },
         },
       ],
