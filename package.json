@@ -26,6 +26,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
+    "emoji-picker-react": "^4.14.0",
     "framer-motion": "^12.23.12",
     "lucide-react": "^0.511.0",
     "marked": "^15.0.11",

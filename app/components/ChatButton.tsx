@@ -1,7 +1,16 @@
 import { useState, useEffect, useRef } from "react";
-import { MessageCircle, Phone, Globe, X, Minus } from "lucide-react";
+import {
+  MessageCircle,
+  Phone,
+  Globe,
+  X,
+  Minus,
+  Paperclip,
+  Smile,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import io from "socket.io-client";
+import EmojiPicker from "emoji-picker-react";
 
 const SOCKET_URL =
   process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
@@ -9,6 +18,7 @@ const SOCKET_URL =
 interface Message {
   role: string;
   content: string;
+  userName?: string; // ADD THIS LINE
   extra?: {
     quoteType?: string;
     quoteTypes?: string[];
@@ -16,8 +26,8 @@ interface Message {
     showPhoneVerification?: boolean;
     verificationSent?: boolean;
     verificationType?: "claim" | "payment";
-    requestLiveAgent?: boolean; // ADD THIS
-    liveAgentFormSubmitted?: boolean; // ADD THIS
+    requestLiveAgent?: boolean;
+    liveAgentFormSubmitted?: boolean;
     showServiceButtons?: {
       type: "claim" | "payment";
       companies: Array<{
@@ -29,6 +39,8 @@ interface Message {
       }>;
     };
   } | null;
+  fileUrl?: string;
+  fileName?: string;
 }
 
 interface CustomerData {
@@ -113,6 +125,7 @@ export default function ChatButton() {
   const [companyDatabase, setCompanyDatabase] = useState<CompanyDatabase>({});
   const [isDatabaseLoading, setIsDatabaseLoading] = useState(true);
   const [databaseError, setDatabaseError] = useState<string | null>(null);
+
   // Live chat states
   const [isLiveChat, setIsLiveChat] = useState(false);
   const [liveAgentName, setLiveAgentName] = useState("");
@@ -121,29 +134,31 @@ export default function ChatButton() {
   const [agentName, setAgentName] = useState("");
   const [agentTyping, setAgentTyping] = useState(false);
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Handle mobile keyboard visibility
+  // Emoji and file states
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (!open) return;
 
     const handleResize = () => {
-      // On mobile, adjust container height when keyboard opens
       if (window.visualViewport && chatContainerRef.current) {
         const viewport = window.visualViewport;
         const isMobile = window.innerWidth < 640;
 
         if (isMobile) {
-          // Set height to visual viewport to account for keyboard
           chatContainerRef.current.style.height = `${viewport.height}px`;
         }
       }
     };
 
     const handleFocus = () => {
-      // Ensure input is visible when focused
       setTimeout(() => {
         if (inputRef.current && chatContainerRef.current) {
-          // Scroll the messages container to bottom
           const messagesContainer = chatContainerRef.current.querySelector(
             "[data-messages-container]"
           );
@@ -154,7 +169,6 @@ export default function ChatButton() {
       }, 100);
     };
 
-    // Initial setup
     handleResize();
 
     if (window.visualViewport) {
@@ -178,7 +192,6 @@ export default function ChatButton() {
     };
   }, [open]);
 
-  // Cleanup socket on unmount
   useEffect(() => {
     return () => {
       if (socketRef.current) {
@@ -221,7 +234,7 @@ export default function ChatButton() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, loading, agentTyping]); // ADD agentTyping here
+  }, [messages, loading, agentTyping]);
 
   useEffect(() => {
     if (open && !loading && !showConfirmClose) {
@@ -458,7 +471,6 @@ export default function ChatButton() {
     }
   };
 
-  // Connect to live chat
   const connectToLiveChat = (name: string, phone: string) => {
     setLiveAgentName(name);
     setLiveAgentPhone(phone);
@@ -478,6 +490,7 @@ export default function ChatButton() {
       socketRef.current?.emit("customer-join", {
         userId,
         userName: name,
+        userPhone: phone,
         conversationHistory: messages.map((msg) => ({
           content: msg.content,
           isAdmin: msg.role === "assistant",
@@ -514,12 +527,21 @@ export default function ChatButton() {
 
     socketRef.current.on(
       "new-message",
-      (message: { isAdmin: boolean; content: string }) => {
+      (message: {
+        isAdmin: boolean;
+        content: string;
+        userName?: string;
+        fileUrl?: string;
+        fileName?: string;
+      }) => {
         setMessages((prev) => [
           ...prev,
           {
             role: message.isAdmin ? "assistant" : "user",
             content: message.content,
+            userName: message.userName,
+            fileUrl: message.fileUrl,
+            fileName: message.fileName,
             extra: null,
           },
         ]);
@@ -553,7 +575,9 @@ export default function ChatButton() {
           ...prev,
           {
             role: "assistant",
-            content: message,
+            content:
+              message ||
+              "The agent has ended the chat session. Thank you for contacting us!",
             extra: null,
           },
         ]);
@@ -566,6 +590,37 @@ export default function ChatButton() {
     socketRef.current.on("disconnect", () => {
       console.log("Disconnected from live chat server");
     });
+  };
+
+  const handleCustomerTyping = (value: string) => {
+    setInput(value);
+
+    if (isLiveChat && socketRef.current) {
+      const userId = localStorage.getItem("chat-user-id");
+
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      if (value.length > 0) {
+        socketRef.current.emit("customer-typing", {
+          userId,
+          isTyping: true,
+        });
+
+        typingTimeoutRef.current = setTimeout(() => {
+          socketRef.current?.emit("customer-typing", {
+            userId,
+            isTyping: false,
+          });
+        }, 2000);
+      } else {
+        socketRef.current.emit("customer-typing", {
+          userId,
+          isTyping: false,
+        });
+      }
+    }
   };
 
   const getAIResponse = (
@@ -586,7 +641,6 @@ export default function ChatButton() {
       lowerMessage === "file" ||
       lowerMessage === "claim";
 
-    // More flexible payment detection
     const isActuallyPaying =
       lowerMessage.includes("make a payment") ||
       lowerMessage.includes("make payment") ||
@@ -635,14 +689,21 @@ export default function ChatButton() {
     if (!input.trim()) return;
 
     const newMessage: Message = { role: "user", content: input };
-    setMessages((prev) => [...prev, newMessage]);
     const currentInput = input;
     setInput("");
     setLoading(true);
 
-    // If in live chat mode, send via socket
     if (isLiveChat && socketRef.current) {
       const userId = localStorage.getItem("chat-user-id");
+      socketRef.current.emit("customer-typing", {
+        userId,
+        isTyping: false,
+      });
+    }
+
+    if (isLiveChat && socketRef.current) {
+      const userId = localStorage.getItem("chat-user-id");
+
       socketRef.current.emit("customer-message", {
         userId,
         userName: liveAgentName,
@@ -651,6 +712,8 @@ export default function ChatButton() {
       setLoading(false);
       return;
     }
+
+    setMessages((prev) => [...prev, newMessage]);
 
     try {
       const aiResponse = getAIResponse(currentInput);
@@ -676,7 +739,6 @@ export default function ChatButton() {
 
       const data = await res.json();
 
-      // Check if user requested live agent
       if (data.choices?.[0]?.message?.requestLiveAgent) {
         setMessages((prev) => [
           ...prev,
@@ -689,6 +751,7 @@ export default function ChatButton() {
         setLoading(false);
         return;
       }
+
       let reply =
         data.choices?.[0]?.message?.content || "Sorry, something went wrong.";
       let quoteType = data.choices?.[0]?.message?.quoteType || null;
@@ -836,9 +899,57 @@ export default function ChatButton() {
     }, 300);
   };
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      setSelectedFile(file);
+
+      // Create FormData for file upload
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        // Upload file to your server
+        const response = await fetch("/api/upload-file", {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          // Send message with file attachment
+          if (isLiveChat && socketRef.current) {
+            const userId = localStorage.getItem("chat-user-id");
+            socketRef.current.emit("customer-message", {
+              userId,
+              userName: liveAgentName,
+              content: `📎 Sent file: ${file.name}`,
+              fileUrl: data.fileUrl,
+              fileName: file.name,
+            });
+          }
+
+          // setMessages((prev) => [
+          //   ...prev,
+          //   {
+          //     role: "user",
+          //     content: `📎 Sent file: ${file.name}`,
+          //     extra: null,
+          //   },
+          // ]);
+
+          setSelectedFile(null);
+        }
+      } catch (error) {
+        console.error("File upload error:", error);
+        alert("Failed to upload file. Please try again.");
+      }
+    }
+  };
+
   return (
     <>
-      {/* Floating Button */}
       {!open && (
         <button
           onClick={() => setOpen(true)}
@@ -853,7 +964,6 @@ export default function ChatButton() {
         </button>
       )}
 
-      {/* Chat Box */}
       {open && (
         <div
           ref={chatContainerRef}
@@ -870,8 +980,6 @@ export default function ChatButton() {
                           : "opacity-100 scale-100"
                       }`}
           style={{
-            // On mobile: use fixed positioning at top and set height to visual viewport
-            // This ensures the input bar stays above the keyboard
             top:
               typeof window !== "undefined" && window.innerWidth < 640
                 ? "0"
@@ -894,7 +1002,6 @@ export default function ChatButton() {
                 : undefined,
           }}
         >
-          {/* Header */}
           <div
             className="p-3 sm:p-4 sm:rounded-t-2xl text-white flex justify-between items-center 
                         bg-gradient-to-r from-red-700 to-blue-800 flex-shrink-0"
@@ -938,7 +1045,6 @@ export default function ChatButton() {
             </div>
           </div>
 
-          {/* Quick Action Buttons */}
           <div className="flex gap-2 p-3 bg-gray-100 border-b flex-shrink-0">
             <a
               href="tel:4697295185"
@@ -954,9 +1060,55 @@ export default function ChatButton() {
             >
               Email
             </a>
+            {isLiveChat && (
+              <button
+                onClick={() => {
+                  console.log("🔴 USER: Clicking End Chat button");
+                  if (socketRef.current) {
+                    const userId = localStorage.getItem("chat-user-id");
+                    console.log("🔴 USER: userId from localStorage:", userId);
+                    console.log(
+                      "🔴 USER: Socket connected:",
+                      socketRef.current.connected
+                    );
+
+                    // Small delay to ensure emit completes
+                    setTimeout(() => {
+                      socketRef.current?.emit("customer-end-session", {
+                        userId,
+                      });
+                      console.log("🔴 USER: Emitted customer-end-session");
+                    }, 50);
+
+                    setMessages((prev) => [
+                      ...prev,
+                      {
+                        role: "assistant",
+                        content:
+                          "You have ended the chat session. Thank you for contacting us!",
+                        extra: null,
+                      },
+                    ]);
+
+                    setIsLiveChat(false);
+                    setIsConnectedToAgent(false);
+
+                    // Disconnect after event is sent
+                    setTimeout(() => {
+                      socketRef.current?.disconnect();
+                    }, 500);
+                  } else {
+                    console.log("🔴 USER: Socket ref is null!");
+                  }
+                }}
+                className="flex-1 text-center px-3 py-2 rounded-lg text-white 
+               bg-red-600 text-sm font-medium hover:opacity-90 transition active:scale-95"
+              >
+                End Chat
+              </button>
+            )}
           </div>
 
-          {/* Messages */}
           <div
             data-messages-container
             className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 text-sm min-h-0 overscroll-contain"
@@ -990,11 +1142,28 @@ export default function ChatButton() {
                         : "mr-auto bg-gray-100 text-gray-700 border border-gray-200"
                     }`}
                   >
+                    <p className="text-xs font-semibold mb-1 text-gray-600">
+                      {msg.role === "user"
+                        ? liveAgentName || "You"
+                        : msg.userName || "Samantha"}
+                    </p>
+
                     <div className="whitespace-pre-line text-sm">
                       {msg.content}
                     </div>
 
-                    {/* Single Quote Button */}
+                    {msg.fileUrl && (
+                      <a
+                        href={msg.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm hover:bg-blue-100 transition"
+                      >
+                        <Paperclip className="w-4 h-4" />
+                        {msg.fileName || "Download file"}
+                      </a>
+                    )}
+
                     {msg.role === "assistant" &&
                       msg.extra?.quoteType &&
                       !msg.extra?.quoteTypes && (
@@ -1003,15 +1172,14 @@ export default function ChatButton() {
                             handleQuoteNavigation(msg.extra!.quoteType!)
                           }
                           className="mt-3 w-full sm:w-auto inline-block px-4 py-2.5 rounded-lg text-white 
-                                   bg-gradient-to-r from-red-700 to-blue-800 
-                                   text-sm font-medium hover:opacity-90 transition-all duration-200
-                                   active:scale-95 shadow-md"
+                     bg-gradient-to-r from-red-700 to-blue-800 
+                     text-sm font-medium hover:opacity-90 transition-all duration-200
+                     active:scale-95 shadow-md"
                         >
                           Get a {msg.extra!.quoteType} Quote →
                         </button>
                       )}
 
-                    {/* Multiple Quote Buttons */}
                     {msg.role === "assistant" &&
                       msg.extra?.quoteTypes &&
                       msg.extra.quoteTypes.length > 0 && (
@@ -1031,7 +1199,6 @@ export default function ChatButton() {
                         </div>
                       )}
 
-                    {/* View Documents Button */}
                     {msg.role === "assistant" && msg.extra?.showDocuments && (
                       <button
                         onClick={() => handleQuoteNavigation("view_documents")}
@@ -1044,7 +1211,6 @@ export default function ChatButton() {
                       </button>
                     )}
 
-                    {/* Phone Verification UI */}
                     {msg.role === "assistant" &&
                       msg.extra?.showPhoneVerification &&
                       !isVerified && (
@@ -1098,7 +1264,6 @@ export default function ChatButton() {
                         </div>
                       )}
 
-                    {/* Verification Code Input */}
                     {msg.role === "assistant" &&
                       msg.extra?.verificationSent &&
                       !isVerified && (
@@ -1147,7 +1312,6 @@ export default function ChatButton() {
                         </div>
                       )}
 
-                    {/* Verified Status */}
                     {msg.role === "assistant" &&
                       isVerified &&
                       msg.extra?.showServiceButtons && (
@@ -1165,7 +1329,6 @@ export default function ChatButton() {
                         </div>
                       )}
 
-                    {/* Service Buttons (Claims/Payment) */}
                     {msg.role === "assistant" &&
                       msg.extra?.showServiceButtons && (
                         <div className="mt-3 space-y-3">
@@ -1230,9 +1393,9 @@ export default function ChatButton() {
                         </div>
                       )}
 
-                    {/* Live Agent Request Form */}
                     {msg.role === "assistant" &&
                       msg.extra?.requestLiveAgent &&
+                      !msg.extra?.liveAgentFormSubmitted &&
                       !isLiveChat && (
                         <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
                           <p className="text-sm font-medium text-purple-800 mb-2">
@@ -1276,11 +1439,20 @@ export default function ChatButton() {
                                 !liveAgentName.trim() || !liveAgentPhone.trim()
                               }
                               className="w-full px-3 py-2.5 bg-purple-600 text-white rounded-lg text-sm font-medium 
-                   hover:bg-purple-700 transition disabled:opacity-50 active:scale-95"
+                         hover:bg-purple-700 transition disabled:opacity-50 active:scale-95"
                             >
                               Connect to Live Agent
                             </button>
                           </div>
+                        </div>
+                      )}
+
+                    {msg.role === "assistant" &&
+                      msg.extra?.liveAgentFormSubmitted && (
+                        <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                          <p className="text-sm font-medium text-purple-800">
+                            ✓ Request submitted. Connecting you to an agent...
+                          </p>
                         </div>
                       )}
                   </div>
@@ -1308,7 +1480,7 @@ export default function ChatButton() {
                 </div>
               </div>
             )}
-            {/* Agent Typing Indicator */}
+
             {agentTyping && isLiveChat && (
               <div className="mr-auto bg-gray-100 p-3 rounded-xl max-w-[85%] sm:max-w-[75%] border border-gray-200">
                 <div className="flex items-center gap-2">
@@ -1332,7 +1504,6 @@ export default function ChatButton() {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Confirm Close Modal */}
           {showConfirmClose && (
             <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[70] p-4">
               <div className="bg-white rounded-2xl p-6 mx-4 max-w-sm w-full shadow-2xl">
@@ -1364,26 +1535,68 @@ export default function ChatButton() {
             </div>
           )}
 
-          {/* Input */}
           {!showConfirmClose && (
             <div className="p-3 sm:p-4 border-t flex items-center gap-2 bg-gray-50 sm:rounded-b-2xl flex-shrink-0">
+              <input
+                ref={fileInputRef}
+                type="file"
+                onChange={handleFileSelect}
+                className="hidden"
+                accept="image/*,.pdf,.doc,.docx"
+              />
+
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 text-gray-600 hover:text-gray-800 transition flex-shrink-0"
+                type="button"
+                aria-label="Attach file"
+              >
+                <Paperclip className="w-5 h-5" />
+              </button>
+
+              <div className="relative flex-shrink-0">
+                <button
+                  onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                  className="p-2 text-gray-600 hover:text-gray-800 transition"
+                  type="button"
+                  aria-label="Add emoji"
+                >
+                  <Smile className="w-5 h-5" />
+                </button>
+
+                {showEmojiPicker && (
+                  <div className="absolute bottom-12 left-0 z-50">
+                    <EmojiPicker
+                      onEmojiClick={(emojiData) => {
+                        setInput(input + emojiData.emoji);
+                        setShowEmojiPicker(false);
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
               <input
                 ref={inputRef}
                 value={input}
                 onChange={(e) => {
                   if (e.target.value.length <= maxInputLength) {
-                    setInput(e.target.value);
+                    handleCustomerTyping(e.target.value);
                   }
                 }}
-                onKeyDown={(e) =>
-                  e.key === "Enter" && !loading && sendMessage()
-                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !loading) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
                 placeholder="Ask about coverage, claims..."
                 className="flex-1 px-3 py-2.5 text-sm rounded-xl border 
                           focus:outline-none focus:ring-2 focus:ring-red-500/30
                           disabled:opacity-50 min-w-0"
                 maxLength={maxInputLength}
                 disabled={loading}
+                suppressHydrationWarning
               />
               <div className="text-xs text-gray-400 hidden sm:block min-w-[45px] text-right flex-shrink-0">
                 {input.length}/{maxInputLength}

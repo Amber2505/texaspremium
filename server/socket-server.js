@@ -31,10 +31,11 @@ io.on('connection', (socket) => {
     socket.emit('active-sessions', sessions);
   });
 
-  socket.on('customer-join', ({ userId, userName, conversationHistory }) => {
+  socket.on('customer-join', ({ userId, userName, userPhone, conversationHistory }) => {
     const sessionData = {
       userId,
       userName,
+      userPhone,
       socketId: socket.id,
       joinedAt: new Date().toISOString(),
       isActive: true,
@@ -71,49 +72,49 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('customer-message', ({ userId, userName, content }) => {
-    const session = activeSessions.get(userId);
-    if (session) {
-      const message = {
-        id: Date.now().toString(),
-        userId,
-        userName,
-        content,
-        isAdmin: false,
-        timestamp: new Date().toISOString()
-      };
-      
-      session.conversationHistory.push(message);
-      
-      io.to(`customer-${userId}`).emit('new-message', message);
-      io.to('admins').emit('customer-message-notification', {
-        userId,
-        userName,
-        message
-      });
-      
-      console.log(`Message from customer ${userId}:`, content);
-    }
-  });
+  socket.on('customer-message', ({ userId, userName, content, fileUrl, fileName }) => {
+  const session = activeSessions.get(userId);
+  if (session) {
+    const message = {
+      id: Date.now().toString(),
+      userId,
+      userName,
+      content,
+      fileUrl: fileUrl || null,
+      fileName: fileName || null,
+      isAdmin: false,
+      timestamp: new Date().toISOString()
+    };
+    
+    session.conversationHistory.push(message);
+    
+    io.to(`customer-${userId}`).emit('new-message', message);
+    io.to('admins').emit('customer-message-notification', {
+      userId,
+      userName,
+      message
+    });
+  }
+});
 
-  socket.on('admin-message', ({ userId, agentName, content }) => {
-    const session = activeSessions.get(userId);
-    if (session) {
-      const message = {
-        id: Date.now().toString(),
-        userId,
-        userName: agentName,
-        content,
-        isAdmin: true,
-        timestamp: new Date().toISOString()
-      };
-      
-      session.conversationHistory.push(message);
-      io.to(`customer-${userId}`).emit('new-message', message);
-      
-      console.log(`Message from admin to ${userId}:`, content);
-    }
-  });
+socket.on('admin-message', ({ userId, agentName, content, fileUrl, fileName }) => {
+  const session = activeSessions.get(userId);
+  if (session) {
+    const message = {
+      id: Date.now().toString(),
+      userId,
+      userName: agentName,
+      content,
+      fileUrl: fileUrl || null,
+      fileName: fileName || null,
+      isAdmin: true,
+      timestamp: new Date().toISOString()
+    };
+    
+    session.conversationHistory.push(message);
+    io.to(`customer-${userId}`).emit('new-message', message);
+  }
+});
 
   socket.on('customer-typing', ({ userId, isTyping }) => {
     io.to('admins').emit('customer-typing-indicator', { userId, isTyping });
@@ -130,7 +131,7 @@ io.on('connection', (socket) => {
       session.endedAt = new Date().toISOString();
       
       io.to(`customer-${userId}`).emit('session-ended', {
-        message: 'Chat session ended. Thank you for contacting us!'
+        message: `${session.agentName} has ended the chat session. Thank you for contacting us!`
       });
       
       io.to('admins').emit('session-ended', { userId });
@@ -142,6 +143,33 @@ io.on('connection', (socket) => {
       console.log('Session ended:', userId);
     }
   });
+
+  socket.on('customer-end-session', ({ userId }) => {
+  console.log('🔴 SERVER: Received customer-end-session');
+  console.log('🔴 SERVER: userId:', userId);
+  console.log('🔴 SERVER: socket.id:', socket.id);
+  
+  const session = activeSessions.get(userId);
+  console.log('🔴 SERVER: Found session:', !!session);
+  
+  if (session) {
+    console.log('🔴 SERVER: About to emit to admins');
+    
+    io.to('admins').emit('customer-ended-session', {
+      userId: userId,
+      userName: session.userName,
+      message: `${session.userName} has ended the chat session.`
+    });
+    
+    io.to('admins').emit('session-ended', { userId });
+    
+    activeSessions.delete(userId);
+    console.log('🔴 SERVER: Events emitted, session deleted');
+    
+    // Send confirmation back to customer
+    socket.emit('session-end-confirmed');
+  }
+});
 
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);

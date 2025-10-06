@@ -1,9 +1,18 @@
-//app\admin\live-chat
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Send, Users, X, Clock } from "lucide-react";
+import {
+  Send,
+  Users,
+  X,
+  Clock,
+  Paperclip,
+  Smile,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import io from "socket.io-client";
+import EmojiPicker from "emoji-picker-react";
 
 const SOCKET_URL =
   process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001";
@@ -14,17 +23,22 @@ interface ChatMessage {
   isAdmin: boolean;
   timestamp: string;
   userName?: string;
+  fileUrl?: string;
+  fileName?: string;
 }
 
 interface ChatSession {
   userId: string;
   userName: string;
+  userPhone?: string;
   socketId: string;
   joinedAt: string;
   isActive: boolean;
   hasAgent: boolean;
   agentName?: string;
   conversationHistory: ChatMessage[];
+  customerEnded?: boolean;
+  adminEnded?: boolean;
 }
 
 export default function AdminLiveChatDashboard() {
@@ -36,11 +50,19 @@ export default function AdminLiveChatDashboard() {
   const [inputMessage, setInputMessage] = useState("");
   const [isConnected, setIsConnected] = useState(false);
   const [adminName, setAdminName] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(
     null
   );
+  const [customerTyping, setCustomerTyping] = useState<{
+    [key: string]: boolean;
+  }>({});
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
+  const ADMIN_PASSWORD = "Insurance2024";
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -52,7 +74,7 @@ export default function AdminLiveChatDashboard() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, customerTyping]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -72,18 +94,27 @@ export default function AdminLiveChatDashboard() {
     setAdminName(name);
     setIsLoggedIn(true);
 
+    console.log("Attempting to connect to:", SOCKET_URL);
     socketRef.current = io(SOCKET_URL);
 
     socketRef.current.on("connect", () => {
+      console.log("✅ Admin connected successfully");
       setIsConnected(true);
       socketRef.current?.emit("admin-join");
     });
 
+    socketRef.current.on("connect_error", (error: Error) => {
+      console.error("❌ Connection error:", error);
+      setIsConnected(false);
+    });
+
     socketRef.current.on("active-sessions", (activeSessions: ChatSession[]) => {
+      console.log("Received active sessions:", activeSessions);
       setSessions(activeSessions);
     });
 
     socketRef.current.on("customer-joined", (session: ChatSession) => {
+      console.log("Customer joined:", session);
       setSessions((prev) => [...prev, session]);
       playNotificationSound();
 
@@ -146,6 +177,13 @@ export default function AdminLiveChatDashboard() {
     });
 
     socketRef.current.on(
+      "customer-typing-indicator",
+      ({ userId, isTyping }: { userId: string; isTyping: boolean }) => {
+        setCustomerTyping((prev) => ({ ...prev, [userId]: isTyping }));
+      }
+    );
+
+    socketRef.current.on(
       "customer-disconnected",
       ({ userId }: { userId: string }) => {
         setSessions((prev) =>
@@ -154,15 +192,70 @@ export default function AdminLiveChatDashboard() {
       }
     );
 
+    socketRef.current.on(
+      "customer-ended-session",
+      (data: { message: string; userId: string; userName: string }) => {
+        console.log("🟢 ADMIN: RECEIVED customer-ended-session event");
+        console.log("🟢 ADMIN: Data:", data);
+
+        const { message, userId } = data;
+
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.userId === userId
+              ? { ...s, isActive: false, customerEnded: true }
+              : s
+          )
+        );
+
+        if (selectedSession?.userId === userId) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Date.now().toString(),
+              content: message,
+              isAdmin: false,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        } else {
+          setSessions((prev) =>
+            prev.map((s) =>
+              s.userId === userId
+                ? {
+                    ...s,
+                    conversationHistory: [
+                      ...s.conversationHistory,
+                      {
+                        id: Date.now().toString(),
+                        content: message,
+                        isAdmin: false,
+                        timestamp: new Date().toISOString(),
+                      },
+                    ],
+                  }
+                : s
+            )
+          );
+        }
+      }
+    );
+
     socketRef.current.on("session-ended", ({ userId }: { userId: string }) => {
-      setSessions((prev) => prev.filter((s) => s.userId !== userId));
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.userId === userId ? { ...s, isActive: false, adminEnded: true } : s
+        )
+      );
+
       if (selectedSession?.userId === userId) {
         setSelectedSession(null);
         setMessages([]);
       }
     });
 
-    socketRef.current.on("disconnect", () => {
+    socketRef.current.on("disconnect", (reason: string) => {
+      console.log("Disconnected:", reason);
       setIsConnected(false);
     });
 
@@ -175,6 +268,12 @@ export default function AdminLiveChatDashboard() {
   };
 
   const claimCustomer = (session: ChatSession) => {
+    if (session.customerEnded || session.adminEnded) {
+      setSelectedSession(session);
+      setMessages(session.conversationHistory || []);
+      return;
+    }
+
     if (socketRef.current && !session.hasAgent) {
       socketRef.current.emit("admin-claim-customer", {
         userId: session.userId,
@@ -196,15 +295,6 @@ export default function AdminLiveChatDashboard() {
         content: inputMessage,
       });
 
-      const message: ChatMessage = {
-        id: Date.now().toString(),
-        content: inputMessage,
-        isAdmin: true,
-        timestamp: new Date().toISOString(),
-        userName: adminName,
-      };
-
-      setMessages((prev) => [...prev, message]);
       setInputMessage("");
 
       if (typingTimeout) {
@@ -268,6 +358,37 @@ export default function AdminLiveChatDashboard() {
     return minutes < 1 ? "< 1 min" : `${minutes} min`;
   };
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0] && selectedSession) {
+      const file = e.target.files[0];
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      try {
+        const response = await fetch("/api/upload-file", {
+          method: "POST",
+          body: formData,
+        });
+
+        const data = await response.json();
+
+        if (data.success && socketRef.current) {
+          socketRef.current.emit("admin-message", {
+            userId: selectedSession.userId,
+            agentName: adminName,
+            content: `📎 Sent file: ${file.name}`,
+            fileUrl: data.fileUrl,
+            fileName: file.name,
+          });
+        }
+      } catch (error) {
+        console.error("File upload error:", error);
+        alert("Failed to upload file.");
+      }
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (socketRef.current) {
@@ -293,8 +414,10 @@ export default function AdminLiveChatDashboard() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (adminName.trim()) {
+              if (adminName.trim() && adminPassword === ADMIN_PASSWORD) {
                 loginAsAdmin(adminName);
+              } else if (adminPassword !== ADMIN_PASSWORD) {
+                alert("Incorrect password. Please try again.");
               }
             }}
           >
@@ -310,7 +433,39 @@ export default function AdminLiveChatDashboard() {
                   placeholder="Enter your name"
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
+                  suppressHydrationWarning
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    placeholder="Enter password"
+                    className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                    suppressHydrationWarning
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 transition"
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               <button
@@ -354,7 +509,7 @@ export default function AdminLiveChatDashboard() {
               <p className="text-sm mt-2">Waiting for customers...</p>
             </div>
           ) : (
-            sessions.map((session) => {
+            sessions.map((session, sessionIndex) => {
               const isClaimedByMe =
                 session.hasAgent && session.agentName === adminName;
               const isClaimedByOther =
@@ -366,43 +521,82 @@ export default function AdminLiveChatDashboard() {
 
               return (
                 <button
-                  key={session.userId}
+                  key={`${session.userId}-${sessionIndex}`}
                   onClick={() => {
-                    if (!session.hasAgent || isClaimedByMe) {
+                    if (session.customerEnded || session.adminEnded) {
+                      setSelectedSession(session);
+                      setMessages(session.conversationHistory || []);
+                    } else if (!session.hasAgent || isClaimedByMe) {
                       claimCustomer(session);
                     }
                   }}
-                  disabled={isClaimedByOther}
+                  disabled={
+                    isClaimedByOther &&
+                    !session.customerEnded &&
+                    !session.adminEnded
+                  }
                   className={`w-full p-4 border-b text-left hover:bg-gray-50 transition ${
                     selectedSession?.userId === session.userId
                       ? "bg-blue-50 border-l-4 border-l-blue-600"
                       : ""
-                  } ${isClaimedByOther ? "opacity-50 cursor-not-allowed" : ""}`}
+                  } ${
+                    isClaimedByOther &&
+                    !session.customerEnded &&
+                    !session.adminEnded
+                      ? "opacity-50 cursor-not-allowed"
+                      : ""
+                  }
+                    ${session.customerEnded ? "bg-red-50" : ""}
+                    ${session.adminEnded ? "bg-orange-50" : ""}`}
                 >
                   <div className="flex items-start justify-between mb-1">
                     <div className="flex-1">
                       <p className="font-semibold text-gray-800">
                         {session.userName}
                       </p>
-                      {isClaimedByMe && (
-                        <span className="text-xs text-green-600 font-medium">
-                          You&apos;re chatting
+                      {session.userPhone && (
+                        <p className="text-xs text-gray-500">
+                          {session.userPhone}
+                        </p>
+                      )}
+                      {session.customerEnded && (
+                        <span className="text-xs text-red-600 font-medium">
+                          ● Customer ended chat
                         </span>
                       )}
-                      {isClaimedByOther && (
+                      {session.adminEnded && (
                         <span className="text-xs text-orange-600 font-medium">
-                          {session.agentName} is chatting
+                          ● Admin ended chat
                         </span>
                       )}
-                      {!session.hasAgent && (
-                        <span className="text-xs text-blue-600 font-medium">
-                          New chat
-                        </span>
-                      )}
+                      {!session.customerEnded &&
+                        !session.adminEnded &&
+                        isClaimedByMe && (
+                          <span className="text-xs text-green-600 font-medium">
+                            You&apos;re chatting
+                          </span>
+                        )}
+                      {!session.customerEnded &&
+                        !session.adminEnded &&
+                        isClaimedByOther && (
+                          <span className="text-xs text-orange-600 font-medium">
+                            {session.agentName} is chatting
+                          </span>
+                        )}
+                      {!session.customerEnded &&
+                        !session.adminEnded &&
+                        !session.hasAgent && (
+                          <span className="text-xs text-blue-600 font-medium">
+                            New chat
+                          </span>
+                        )}
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      {session.isActive && (
+                      {session.isActive && !session.customerEnded && (
                         <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                      )}
+                      {session.customerEnded && (
+                        <span className="w-2 h-2 bg-red-500 rounded-full"></span>
                       )}
                       <div className="flex items-center gap-1 text-xs text-gray-500">
                         <Clock size={12} />
@@ -432,6 +626,8 @@ export default function AdminLiveChatDashboard() {
                   {selectedSession.userName}
                 </h3>
                 <p className="text-sm text-gray-500">
+                  {selectedSession.userPhone &&
+                    `${selectedSession.userPhone} • `}
                   User ID: {selectedSession.userId}
                 </p>
               </div>
@@ -445,9 +641,9 @@ export default function AdminLiveChatDashboard() {
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50">
-              {messages.map((msg) => (
+              {messages.map((msg, index) => (
                 <div
-                  key={msg.id}
+                  key={msg.id || `msg-${index}`}
                   className={`flex ${
                     msg.isAdmin ? "justify-end" : "justify-start"
                   }`}
@@ -459,12 +655,28 @@ export default function AdminLiveChatDashboard() {
                         : "bg-white text-gray-800 shadow"
                     }`}
                   >
-                    {!msg.isAdmin && (
-                      <p className="text-xs font-semibold text-gray-600 mb-1">
-                        {selectedSession.userName}
-                      </p>
-                    )}
+                    <p
+                      className={`text-xs font-semibold mb-1 ${
+                        msg.isAdmin ? "text-blue-100" : "text-gray-600"
+                      }`}
+                    >
+                      {msg.isAdmin
+                        ? msg.userName || adminName
+                        : selectedSession.userName}
+                    </p>
+
                     <p className="whitespace-pre-line">{msg.content}</p>
+                    {msg.fileUrl && (
+                      <a
+                        href={msg.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm hover:bg-blue-100 transition"
+                      >
+                        <Paperclip className="w-4 h-4" />
+                        {msg.fileName || "Download file"}
+                      </a>
+                    )}
                     <p
                       className={`text-xs mt-1 ${
                         msg.isAdmin ? "text-blue-100" : "text-gray-500"
@@ -475,28 +687,100 @@ export default function AdminLiveChatDashboard() {
                   </div>
                 </div>
               ))}
+
+              {selectedSession && customerTyping[selectedSession.userId] && (
+                <div className="flex justify-start">
+                  <div className="max-w-[70%] rounded-lg px-4 py-3 bg-gray-100 border border-gray-200">
+                    <div className="flex items-center gap-2">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                        <div
+                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.1s" }}
+                        ></div>
+                        <div
+                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                          style={{ animationDelay: "0.2s" }}
+                        ></div>
+                      </div>
+                      <span className="text-gray-500 text-sm">
+                        {selectedSession.userName} is typing...
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div ref={messagesEndRef} />
             </div>
 
             <div className="p-4 bg-white border-t">
-              <form onSubmit={sendMessage} className="flex gap-3">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={inputMessage}
-                  onChange={(e) => handleTyping(e.target.value)}
-                  placeholder="Type your message..."
-                  className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  type="submit"
-                  disabled={!inputMessage.trim()}
-                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  <Send size={20} />
-                  Send
-                </button>
-              </form>
+              {selectedSession.customerEnded || selectedSession.adminEnded ? (
+                <div className="text-center py-3 text-gray-500 bg-gray-50 rounded-lg">
+                  <p className="font-medium">
+                    This chat session has ended - Read-only mode
+                  </p>
+                </div>
+              ) : (
+                <form onSubmit={sendMessage} className="flex gap-3">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    accept="image/*,.pdf,.doc,.docx"
+                  />
+
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-2 text-gray-600 hover:text-gray-800 transition"
+                    type="button"
+                    aria-label="Attach file"
+                  >
+                    <Paperclip className="w-5 h-5" />
+                  </button>
+
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                      className="p-2 text-gray-600 hover:text-gray-800 transition"
+                      type="button"
+                      aria-label="Add emoji"
+                    >
+                      <Smile className="w-5 h-5" />
+                    </button>
+
+                    {showEmojiPicker && (
+                      <div className="absolute bottom-12 left-0 z-50">
+                        <EmojiPicker
+                          onEmojiClick={(emojiData) => {
+                            handleTyping(inputMessage + emojiData.emoji);
+                            setShowEmojiPicker(false);
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={inputMessage}
+                    onChange={(e) => handleTyping(e.target.value)}
+                    placeholder="Type your message..."
+                    className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    suppressHydrationWarning
+                  />
+                  <button
+                    type="submit"
+                    disabled={!inputMessage.trim()}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <Send size={20} />
+                    Send
+                  </button>
+                </form>
+              )}
             </div>
           </>
         ) : (
