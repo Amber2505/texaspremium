@@ -1,11 +1,18 @@
+//server
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || "*",
-    methods: ["GET", "POST"]
+    origin: [
+      "http://localhost:3000",
+      "https://texaspremium-git-main-amber2505s-projects.vercel.app",
+      "https://www.texaspremiumins.com",  // Your actual production domain
+      "https://texaspremium-elczh28e2-amber2505s-projects.vercel.app"   // Your main Vercel domain
+    ],
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 

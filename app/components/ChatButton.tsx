@@ -475,7 +475,7 @@ export default function ChatButton() {
     socketRef.current.on("connect", () => {
       console.log("Connected to live chat server");
 
-      socketRef.current?.emit("customer-joined", {
+      socketRef.current?.emit("customer-join", {
         userId,
         userName: name,
         conversationHistory: messages.map((msg) => ({
