@@ -137,6 +137,7 @@ export default function ChatButton() {
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const typingDebounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const heartbeatInterval = useRef<NodeJS.Timeout | null>(null);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -263,6 +264,9 @@ export default function ChatButton() {
       }
       if (typingDebounceTimer.current) {
         clearTimeout(typingDebounceTimer.current);
+      }
+      if (heartbeatInterval.current) {
+        clearInterval(heartbeatInterval.current);
       }
     };
   }, []);
@@ -604,7 +608,20 @@ export default function ChatButton() {
       localStorage.setItem("chat-user-id", userId);
     }
 
-    socketRef.current = io(SOCKET_URL);
+    // Request notification permission
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
+
+    socketRef.current = io(SOCKET_URL, {
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 10,
+      transports: ["websocket", "polling"],
+    });
 
     socketRef.current.on("connect", () => {
       console.log("Connected to live chat server");
@@ -628,6 +645,50 @@ export default function ChatButton() {
           extra: { liveAgentFormSubmitted: true },
         },
       ]);
+
+      // Start heartbeat to keep connection alive
+      if (heartbeatInterval.current) {
+        clearInterval(heartbeatInterval.current);
+      }
+      heartbeatInterval.current = setInterval(() => {
+        if (socketRef.current?.connected) {
+          socketRef.current.emit("heartbeat", {
+            userId,
+            userType: "customer",
+          });
+        }
+      }, 30000); // Every 30 seconds
+    });
+
+    socketRef.current.on("reconnect_attempt", (attempt: number) => {
+      console.log(`Reconnection attempt ${attempt}...`);
+    });
+
+    socketRef.current.on("reconnect", () => {
+      console.log("Reconnected successfully");
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Reconnected to chat.",
+          extra: null,
+        },
+      ]);
+    });
+
+    socketRef.current.on("chat-history", (history: any[]) => {
+      // Restore conversation history on reconnect
+      if (history && history.length > 0) {
+        const restoredMessages: Message[] = history.map((msg) => ({
+          role: msg.isAdmin ? "assistant" : "user",
+          content: msg.content,
+          userName: msg.userName,
+          fileUrl: msg.fileUrl,
+          fileName: msg.fileName,
+          extra: null,
+        }));
+        setMessages(restoredMessages);
+      }
     });
 
     socketRef.current.on(
@@ -644,6 +705,14 @@ export default function ChatButton() {
             extra: null,
           },
         ]);
+
+        // Show notification
+        if (Notification.permission === "granted") {
+          new Notification("Agent Joined", {
+            body: message,
+            icon: "/logo.png",
+          });
+        }
       }
     );
 
@@ -668,6 +737,18 @@ export default function ChatButton() {
           },
         ]);
         setAgentTyping(false);
+
+        // Show notification for new agent messages when tab is not focused
+        if (
+          message.isAdmin &&
+          document.hidden &&
+          Notification.permission === "granted"
+        ) {
+          new Notification(message.userName || "Agent", {
+            body: message.content,
+            icon: "/logo.png",
+          });
+        }
       }
     );
 
@@ -705,12 +786,37 @@ export default function ChatButton() {
         ]);
         setIsLiveChat(false);
         setIsConnectedToAgent(false);
+
+        if (heartbeatInterval.current) {
+          clearInterval(heartbeatInterval.current);
+        }
+
         socketRef.current?.disconnect();
       }
     );
 
-    socketRef.current.on("disconnect", () => {
-      console.log("Disconnected from live chat server");
+    socketRef.current.on("disconnect", (reason: string) => {
+      console.log("Disconnected from live chat server:", reason);
+
+      if (heartbeatInterval.current) {
+        clearInterval(heartbeatInterval.current);
+      }
+
+      // Only show disconnection message if it wasn't intentional
+      if (reason === "io server disconnect" || reason === "transport close") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "Connection lost. Attempting to reconnect...",
+            extra: null,
+          },
+        ]);
+      }
+    });
+
+    socketRef.current.on("connect_error", (error: Error) => {
+      console.error("Connection error:", error);
     });
   };
 
@@ -1719,26 +1825,35 @@ export default function ChatButton() {
                 onBlur={(e) => {
                   // Allow blur if user is clicking on other inputs in the chat
                   const relatedTarget = e.relatedTarget as HTMLElement;
+
+                  // If focusing another input/textarea in the chat, allow it completely
                   if (
                     relatedTarget &&
-                    chatContainerRef.current?.contains(relatedTarget)
+                    chatContainerRef.current?.contains(relatedTarget) &&
+                    (relatedTarget.tagName === "INPUT" ||
+                      relatedTarget.tagName === "TEXTAREA" ||
+                      relatedTarget.tagName === "BUTTON")
                   ) {
-                    // User is focusing another input in chat, allow it
-                    return;
+                    return; // Don't do anything, let the other input get focus
                   }
 
-                  // Prevent keyboard from closing unless minimizing
-                  if (keepKeyboardOpen && window.innerWidth < 640) {
-                    e.preventDefault();
-                    // Only refocus if not clicking on another input
+                  // Only refocus if clicking completely outside the chat
+                  if (
+                    keepKeyboardOpen &&
+                    window.innerWidth < 640 &&
+                    !relatedTarget
+                  ) {
                     setTimeout(() => {
                       const activeEl = document.activeElement as HTMLElement;
-                      if (chatContainerRef.current?.contains(activeEl)) {
-                        // User clicked on something else in chat, don't refocus main input
-                        return;
+                      // Only refocus if no input in the chat has focus
+                      if (
+                        !chatContainerRef.current?.contains(activeEl) ||
+                        (activeEl.tagName !== "INPUT" &&
+                          activeEl.tagName !== "TEXTAREA")
+                      ) {
+                        inputRef.current?.focus();
                       }
-                      inputRef.current?.focus();
-                    }, 0);
+                    }, 100);
                   }
                 }}
                 placeholder="Ask about coverage, claims..."

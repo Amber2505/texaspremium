@@ -14,10 +14,12 @@ const io = new Server(httpServer, {
     methods: ["GET", "POST"],
     credentials: true
   },
-  // Add these options for better debugging
-  pingTimeout: 60000,
+  // Increased timeouts for persistent connections
+  pingTimeout: 120000, // 2 minutes
   pingInterval: 25000,
-  transports: ['websocket', 'polling']
+  transports: ['websocket', 'polling'],
+  // Allow reconnection
+  allowEIO3: true
 });
 
 const activeSessions = new Map();
@@ -33,38 +35,54 @@ io.on('connection', (socket) => {
     
     const sessions = Array.from(activeSessions.values());
     socket.emit('active-sessions', sessions);
-    
-    // Send confirmation that admin joined successfully
     socket.emit('admin-connected', { success: true });
   });
 
   socket.on('customer-join', ({ userId, userName, userPhone, conversationHistory }) => {
-    const sessionData = {
-      userId,
-      userName,
-      userPhone,
-      socketId: socket.id,
-      joinedAt: new Date().toISOString(),
-      isActive: true,
-      hasAgent: false,
-      conversationHistory: conversationHistory || []
-    };
+    // Check if session already exists (reconnection)
+    let sessionData = activeSessions.get(userId);
     
-    activeSessions.set(userId, sessionData);
+    if (sessionData) {
+      // Reconnecting customer
+      console.log('🔄 Customer reconnecting:', userId);
+      sessionData.socketId = socket.id;
+      sessionData.isActive = true;
+      sessionData.lastSeen = new Date().toISOString();
+      
+      // Send conversation history back
+      socket.emit('chat-history', sessionData.conversationHistory);
+      
+      // Notify admins of reconnection
+      io.to('admins').emit('customer-reconnected', sessionData);
+    } else {
+      // New customer
+      sessionData = {
+        userId,
+        userName,
+        userPhone,
+        socketId: socket.id,
+        joinedAt: new Date().toISOString(),
+        lastSeen: new Date().toISOString(),
+        isActive: true,
+        hasAgent: false,
+        conversationHistory: conversationHistory || []
+      };
+      
+      activeSessions.set(userId, sessionData);
+      io.to('admins').emit('customer-joined', sessionData);
+      console.log('🙋 New customer joined:', userId, userName);
+    }
+    
     socket.join(`customer-${userId}`);
-    
-    io.to('admins').emit('customer-joined', sessionData);
-    socket.emit('chat-history', sessionData.conversationHistory);
-    
-    console.log('🙋 Customer joined:', userId, userName);
   });
 
   socket.on('admin-claim-customer', ({ userId, adminName }) => {
     const session = activeSessions.get(userId);
-    if (session) {
+    if (session && !session.hasAgent) {
       session.hasAgent = true;
       session.agentName = adminName;
       session.agentSocketId = socket.id;
+      session.claimedAt = new Date().toISOString();
       
       socket.join(`customer-${userId}`);
       
@@ -82,6 +100,8 @@ io.on('connection', (socket) => {
   socket.on('customer-message', ({ userId, userName, content, fileUrl, fileName }) => {
     const session = activeSessions.get(userId);
     if (session) {
+      session.lastSeen = new Date().toISOString();
+      
       const message = {
         id: Date.now().toString(),
         userId,
@@ -121,9 +141,17 @@ io.on('connection', (socket) => {
       };
       
       session.conversationHistory.push(message);
+      
+      // Send to customer
       io.to(`customer-${userId}`).emit('new-message', message);
       
-      console.log(`💬 Admin message from ${agentName}`);
+      // Also update other admins viewing this session
+      io.to('admins').emit('admin-message-sent', {
+        userId,
+        message
+      });
+      
+      console.log(`💬 Admin message from ${agentName} to ${userId}`);
     }
   });
 
@@ -148,9 +176,11 @@ io.on('connection', (socket) => {
       
       io.to('admins').emit('session-ended', { userId });
       
+      // Keep session data for 30 minutes for potential reconnection
       setTimeout(() => {
         activeSessions.delete(userId);
-      }, 5 * 60 * 1000);
+        console.log('🗑️ Session data cleared:', userId);
+      }, 30 * 60 * 1000);
       
       console.log('🔴 Session ended by admin:', userId);
     }
@@ -158,15 +188,13 @@ io.on('connection', (socket) => {
 
   socket.on('customer-end-session', ({ userId }) => {
     console.log('🔴 SERVER: Received customer-end-session');
-    console.log('🔴 SERVER: userId:', userId);
     
     const session = activeSessions.get(userId);
     
     if (session) {
       session.isActive = false;
       session.customerEnded = true;
-      
-      console.log('🔴 SERVER: Emitting to admins');
+      session.endedAt = new Date().toISOString();
       
       io.to('admins').emit('customer-ended-session', {
         userId: userId,
@@ -176,16 +204,32 @@ io.on('connection', (socket) => {
       
       io.to('admins').emit('session-ended', { userId });
       
-      activeSessions.delete(userId);
-      console.log('🔴 SERVER: Events emitted, session deleted');
+      // Keep session data for 30 minutes
+      setTimeout(() => {
+        activeSessions.delete(userId);
+      }, 30 * 60 * 1000);
       
       socket.emit('session-end-confirmed');
+      console.log('🔴 SERVER: Customer ended session:', userId);
     }
+  });
+
+  // Handle heartbeat to keep connection alive
+  socket.on('heartbeat', ({ userId, userType }) => {
+    if (userType === 'customer') {
+      const session = activeSessions.get(userId);
+      if (session) {
+        session.lastSeen = new Date().toISOString();
+        session.isActive = true;
+      }
+    }
+    socket.emit('heartbeat-ack');
   });
 
   socket.on('disconnect', (reason) => {
     console.log('❌ Client disconnected:', socket.id, 'Reason:', reason);
     
+    // Handle admin disconnect
     if (adminSockets.has(socket.id)) {
       adminSockets.delete(socket.id);
       
@@ -203,10 +247,13 @@ io.on('connection', (socket) => {
       });
     }
     
+    // Handle customer disconnect - mark as inactive but keep session
     activeSessions.forEach((session, userId) => {
       if (session.socketId === socket.id) {
         session.isActive = false;
-        io.to('admins').emit('customer-disconnected', { userId });
+        session.lastSeen = new Date().toISOString();
+        io.to('admins').emit('customer-disconnected', { userId, session });
+        console.log('📱 Customer went inactive:', userId);
       }
     });
   });
@@ -215,6 +262,21 @@ io.on('connection', (socket) => {
     console.error('❌ Socket error:', error);
   });
 });
+
+// Clean up old inactive sessions every 5 minutes
+setInterval(() => {
+  const now = new Date();
+  activeSessions.forEach((session, userId) => {
+    const lastSeen = new Date(session.lastSeen);
+    const minutesInactive = (now - lastSeen) / (1000 * 60);
+    
+    // Remove sessions inactive for more than 2 hours
+    if (minutesInactive > 120) {
+      activeSessions.delete(userId);
+      console.log('🧹 Cleaned up inactive session:', userId);
+    }
+  });
+}, 5 * 60 * 1000);
 
 io.engine.on('connection_error', (err) => {
   console.error('❌ Connection error:', err);
