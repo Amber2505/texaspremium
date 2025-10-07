@@ -194,13 +194,21 @@ export default function ChatButton() {
       // Only close keyboard if user is minimizing chat or truly blurring
       // Don't close if they're clicking within the chat
       const relatedTarget = e.relatedTarget as HTMLElement;
+
+      // Allow blur if focusing on other inputs in the chat (like verification fields, live agent form, etc.)
+      if (relatedTarget && chatContainerRef.current?.contains(relatedTarget)) {
+        // User is clicking on another input within the chat, allow it
+        return;
+      }
+
       if (
         !relatedTarget ||
         !chatContainerRef.current?.contains(relatedTarget)
       ) {
         // Check if chat is still open before allowing blur
         setTimeout(() => {
-          if (!chatContainerRef.current?.contains(document.activeElement)) {
+          const activeEl = document.activeElement as HTMLElement;
+          if (!chatContainerRef.current?.contains(activeEl)) {
             setKeepKeyboardOpen(false);
             if (document.body && window.innerWidth < 640) {
               document.body.style.overflow = "";
@@ -210,13 +218,6 @@ export default function ChatButton() {
             }
           }
         }, 100);
-      } else {
-        // Keep focus in chat, refocus input after a short delay
-        setTimeout(() => {
-          if (keepKeyboardOpen && inputRef.current) {
-            inputRef.current.focus();
-          }
-        }, 0);
       }
     };
 
