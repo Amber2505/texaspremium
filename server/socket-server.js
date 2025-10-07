@@ -1,4 +1,3 @@
-//server
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 
@@ -9,26 +8,34 @@ const io = new Server(httpServer, {
       "http://localhost:3000",
       "https://www.texaspremiumins.com",
       "https://texaspremium-git-main-amber2505s-projects.vercel.app",
-      "https://texaspremium-elczh28e2-amber2505s-projects.vercel.app"
+      "https://texaspremium-elczh28e2-amber2505s-projects.vercel.app",
+      "https://texaspremium-production.up.railway.app"
     ],
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  // Add these options for better debugging
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  transports: ['websocket', 'polling']
 });
 
 const activeSessions = new Map();
 const adminSockets = new Set();
 
 io.on('connection', (socket) => {
-  console.log('Client connected:', socket.id);
+  console.log('✅ Client connected:', socket.id, 'at', new Date().toISOString());
 
   socket.on('admin-join', () => {
     adminSockets.add(socket.id);
     socket.join('admins');
-    console.log('Admin joined:', socket.id);
+    console.log('👤 Admin joined:', socket.id);
     
     const sessions = Array.from(activeSessions.values());
     socket.emit('active-sessions', sessions);
+    
+    // Send confirmation that admin joined successfully
+    socket.emit('admin-connected', { success: true });
   });
 
   socket.on('customer-join', ({ userId, userName, userPhone, conversationHistory }) => {
@@ -49,7 +56,7 @@ io.on('connection', (socket) => {
     io.to('admins').emit('customer-joined', sessionData);
     socket.emit('chat-history', sessionData.conversationHistory);
     
-    console.log('Customer joined:', userId, userName);
+    console.log('🙋 Customer joined:', userId, userName);
   });
 
   socket.on('admin-claim-customer', ({ userId, adminName }) => {
@@ -68,53 +75,57 @@ io.on('connection', (socket) => {
       
       io.to('admins').emit('session-updated', session);
       
-      console.log(`Admin ${adminName} claimed customer ${userId}`);
+      console.log(`🤝 Admin ${adminName} claimed customer ${userId}`);
     }
   });
 
   socket.on('customer-message', ({ userId, userName, content, fileUrl, fileName }) => {
-  const session = activeSessions.get(userId);
-  if (session) {
-    const message = {
-      id: Date.now().toString(),
-      userId,
-      userName,
-      content,
-      fileUrl: fileUrl || null,
-      fileName: fileName || null,
-      isAdmin: false,
-      timestamp: new Date().toISOString()
-    };
-    
-    session.conversationHistory.push(message);
-    
-    io.to(`customer-${userId}`).emit('new-message', message);
-    io.to('admins').emit('customer-message-notification', {
-      userId,
-      userName,
-      message
-    });
-  }
-});
+    const session = activeSessions.get(userId);
+    if (session) {
+      const message = {
+        id: Date.now().toString(),
+        userId,
+        userName,
+        content,
+        fileUrl: fileUrl || null,
+        fileName: fileName || null,
+        isAdmin: false,
+        timestamp: new Date().toISOString()
+      };
+      
+      session.conversationHistory.push(message);
+      
+      io.to(`customer-${userId}`).emit('new-message', message);
+      io.to('admins').emit('customer-message-notification', {
+        userId,
+        userName,
+        message
+      });
+      
+      console.log(`💬 Customer message from ${userName}`);
+    }
+  });
 
-socket.on('admin-message', ({ userId, agentName, content, fileUrl, fileName }) => {
-  const session = activeSessions.get(userId);
-  if (session) {
-    const message = {
-      id: Date.now().toString(),
-      userId,
-      userName: agentName,
-      content,
-      fileUrl: fileUrl || null,
-      fileName: fileName || null,
-      isAdmin: true,
-      timestamp: new Date().toISOString()
-    };
-    
-    session.conversationHistory.push(message);
-    io.to(`customer-${userId}`).emit('new-message', message);
-  }
-});
+  socket.on('admin-message', ({ userId, agentName, content, fileUrl, fileName }) => {
+    const session = activeSessions.get(userId);
+    if (session) {
+      const message = {
+        id: Date.now().toString(),
+        userId,
+        userName: agentName,
+        content,
+        fileUrl: fileUrl || null,
+        fileName: fileName || null,
+        isAdmin: true,
+        timestamp: new Date().toISOString()
+      };
+      
+      session.conversationHistory.push(message);
+      io.to(`customer-${userId}`).emit('new-message', message);
+      
+      console.log(`💬 Admin message from ${agentName}`);
+    }
+  });
 
   socket.on('customer-typing', ({ userId, isTyping }) => {
     io.to('admins').emit('customer-typing-indicator', { userId, isTyping });
@@ -128,6 +139,7 @@ socket.on('admin-message', ({ userId, agentName, content, fileUrl, fileName }) =
     const session = activeSessions.get(userId);
     if (session) {
       session.isActive = false;
+      session.adminEnded = true;
       session.endedAt = new Date().toISOString();
       
       io.to(`customer-${userId}`).emit('session-ended', {
@@ -140,39 +152,39 @@ socket.on('admin-message', ({ userId, agentName, content, fileUrl, fileName }) =
         activeSessions.delete(userId);
       }, 5 * 60 * 1000);
       
-      console.log('Session ended:', userId);
+      console.log('🔴 Session ended by admin:', userId);
     }
   });
 
   socket.on('customer-end-session', ({ userId }) => {
-  console.log('🔴 SERVER: Received customer-end-session');
-  console.log('🔴 SERVER: userId:', userId);
-  console.log('🔴 SERVER: socket.id:', socket.id);
-  
-  const session = activeSessions.get(userId);
-  console.log('🔴 SERVER: Found session:', !!session);
-  
-  if (session) {
-    console.log('🔴 SERVER: About to emit to admins');
+    console.log('🔴 SERVER: Received customer-end-session');
+    console.log('🔴 SERVER: userId:', userId);
     
-    io.to('admins').emit('customer-ended-session', {
-      userId: userId,
-      userName: session.userName,
-      message: `${session.userName} has ended the chat session.`
-    });
+    const session = activeSessions.get(userId);
     
-    io.to('admins').emit('session-ended', { userId });
-    
-    activeSessions.delete(userId);
-    console.log('🔴 SERVER: Events emitted, session deleted');
-    
-    // Send confirmation back to customer
-    socket.emit('session-end-confirmed');
-  }
-});
+    if (session) {
+      session.isActive = false;
+      session.customerEnded = true;
+      
+      console.log('🔴 SERVER: Emitting to admins');
+      
+      io.to('admins').emit('customer-ended-session', {
+        userId: userId,
+        userName: session.userName,
+        message: `${session.userName} has ended the chat session.`
+      });
+      
+      io.to('admins').emit('session-ended', { userId });
+      
+      activeSessions.delete(userId);
+      console.log('🔴 SERVER: Events emitted, session deleted');
+      
+      socket.emit('session-end-confirmed');
+    }
+  });
 
-  socket.on('disconnect', () => {
-    console.log('Client disconnected:', socket.id);
+  socket.on('disconnect', (reason) => {
+    console.log('❌ Client disconnected:', socket.id, 'Reason:', reason);
     
     if (adminSockets.has(socket.id)) {
       adminSockets.delete(socket.id);
@@ -198,9 +210,18 @@ socket.on('admin-message', ({ userId, agentName, content, fileUrl, fileName }) =
       }
     });
   });
+
+  socket.on('error', (error) => {
+    console.error('❌ Socket error:', error);
+  });
+});
+
+io.engine.on('connection_error', (err) => {
+  console.error('❌ Connection error:', err);
 });
 
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`WebSocket server running on port ${PORT}`);
+  console.log(`🚀 WebSocket server running on port ${PORT}`);
+  console.log(`📡 Server ready to accept connections at ${new Date().toISOString()}`);
 });
