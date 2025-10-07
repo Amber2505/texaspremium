@@ -7,9 +7,9 @@ const io = new Server(httpServer, {
   cors: {
     origin: [
       "http://localhost:3000",
+      "https://www.texaspremiumins.com",
       "https://texaspremium-git-main-amber2505s-projects.vercel.app",
-      "https://www.texaspremiumins.com",  // Your actual production domain
-      "https://texaspremium-elczh28e2-amber2505s-projects.vercel.app"   // Your main Vercel domain
+      "https://texaspremium-elczh28e2-amber2505s-projects.vercel.app"
     ],
     methods: ["GET", "POST"],
     credentials: true
@@ -201,6 +201,6 @@ socket.on('admin-message', ({ userId, agentName, content, fileUrl, fileName }) =
 });
 
 const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`WebSocket server running on port ${PORT}`);
 });
