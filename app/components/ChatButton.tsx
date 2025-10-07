@@ -676,20 +676,32 @@ export default function ChatButton() {
       ]);
     });
 
-    socketRef.current.on("chat-history", (history: any[]) => {
-      // Restore conversation history on reconnect
-      if (history && history.length > 0) {
-        const restoredMessages: Message[] = history.map((msg) => ({
-          role: msg.isAdmin ? "assistant" : "user",
-          content: msg.content,
-          userName: msg.userName,
-          fileUrl: msg.fileUrl,
-          fileName: msg.fileName,
-          extra: null,
-        }));
-        setMessages(restoredMessages);
+    socketRef.current.on(
+      "chat-history",
+      (
+        history: Array<{
+          content: string;
+          isAdmin: boolean;
+          userName?: string;
+          fileUrl?: string;
+          fileName?: string;
+          timestamp: string;
+        }>
+      ) => {
+        // Restore conversation history on reconnect
+        if (history && history.length > 0) {
+          const restoredMessages: Message[] = history.map((msg) => ({
+            role: msg.isAdmin ? "assistant" : "user",
+            content: msg.content,
+            userName: msg.userName,
+            fileUrl: msg.fileUrl,
+            fileName: msg.fileName,
+            extra: null,
+          }));
+          setMessages(restoredMessages);
+        }
       }
-    });
+    );
 
     socketRef.current.on(
       "agent-joined",
