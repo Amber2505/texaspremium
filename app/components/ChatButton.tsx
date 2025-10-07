@@ -138,9 +138,10 @@ export default function ChatButton() {
   const typingDebounceTimer = useRef<NodeJS.Timeout | null>(null);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const router = useRouter();
 
   useEffect(() => {
     if (!open) return;
@@ -153,7 +154,12 @@ export default function ChatButton() {
         if (isMobile) {
           requestAnimationFrame(() => {
             if (chatContainerRef.current) {
-              chatContainerRef.current.style.height = `${viewport.height}px`;
+              const viewportHeight = viewport.height;
+              const offsetTop = viewport.offsetTop || 0;
+
+              chatContainerRef.current.style.height = `${viewportHeight}px`;
+              chatContainerRef.current.style.top = `${offsetTop}px`;
+              chatContainerRef.current.style.position = "fixed";
             }
           });
         }
@@ -161,6 +167,13 @@ export default function ChatButton() {
     };
 
     const handleFocus = () => {
+      if (document.body && window.innerWidth < 640) {
+        document.body.style.overflow = "hidden";
+        document.body.style.position = "fixed";
+        document.body.style.width = "100%";
+        document.body.style.height = "100%";
+      }
+
       setTimeout(() => {
         if (inputRef.current && chatContainerRef.current) {
           const messagesContainer = chatContainerRef.current.querySelector(
@@ -170,7 +183,16 @@ export default function ChatButton() {
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
           }
         }
-      }, 100);
+      }, 300);
+    };
+
+    const handleBlur = () => {
+      if (document.body && window.innerWidth < 640) {
+        document.body.style.overflow = "";
+        document.body.style.position = "";
+        document.body.style.width = "";
+        document.body.style.height = "";
+      }
     };
 
     handleResize();
@@ -183,6 +205,7 @@ export default function ChatButton() {
     const inputElement = inputRef.current;
     if (inputElement) {
       inputElement.addEventListener("focus", handleFocus);
+      inputElement.addEventListener("blur", handleBlur);
     }
 
     return () => {
@@ -192,6 +215,14 @@ export default function ChatButton() {
       }
       if (inputElement) {
         inputElement.removeEventListener("focus", handleFocus);
+        inputElement.removeEventListener("blur", handleBlur);
+      }
+
+      if (document.body) {
+        document.body.style.overflow = "";
+        document.body.style.position = "";
+        document.body.style.width = "";
+        document.body.style.height = "";
       }
     };
   }, [open]);
@@ -895,8 +926,6 @@ export default function ChatButton() {
     setLiveAgentPhone("");
   };
 
-  const router = useRouter();
-
   const handleQuoteNavigation = (quoteType: string) => {
     setIsNavigating(true);
 
@@ -982,7 +1011,7 @@ export default function ChatButton() {
         <div
           ref={chatContainerRef}
           className={`fixed sm:inset-auto sm:bottom-4 sm:right-4 
-                      z-50 
+                      z-[9999]
                       sm:h-[600px] sm:w-[420px] sm:max-w-[calc(100vw-2rem)]
                       sm:rounded-2xl shadow-2xl 
                       flex flex-col transition-all duration-300
@@ -1246,6 +1275,7 @@ export default function ChatButton() {
                               }}
                               placeholder="(555) 123-4567"
                               className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              style={{ fontSize: "16px" }}
                               maxLength={14}
                             />
                             <button
@@ -1298,6 +1328,7 @@ export default function ChatButton() {
                               }}
                               placeholder="123456"
                               className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                              style={{ fontSize: "16px" }}
                               maxLength={6}
                             />
                             <button
@@ -1415,6 +1446,7 @@ export default function ChatButton() {
                               onChange={(e) => setLiveAgentName(e.target.value)}
                               placeholder="Your Name"
                               className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              style={{ fontSize: "16px" }}
                             />
                             <input
                               type="tel"
@@ -1436,6 +1468,7 @@ export default function ChatButton() {
                               }}
                               placeholder="Phone Number"
                               className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                              style={{ fontSize: "16px" }}
                               maxLength={14}
                             />
                             <button
@@ -1601,6 +1634,7 @@ export default function ChatButton() {
                 className="flex-1 px-3 py-2.5 text-sm rounded-xl border 
                           focus:outline-none focus:ring-2 focus:ring-red-500/30
                           disabled:opacity-50 min-w-0"
+                style={{ fontSize: "16px" }}
                 maxLength={maxInputLength}
                 disabled={loading}
                 suppressHydrationWarning
