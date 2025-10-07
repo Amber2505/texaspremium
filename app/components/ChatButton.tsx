@@ -335,6 +335,29 @@ export default function ChatButton() {
     }
   }, [open]);
 
+  // Prevent auto-refocus when other inputs are focused
+  useEffect(() => {
+    if (!open || !keepKeyboardOpen) return;
+
+    const handleFocusIn = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      // If user is focusing on any input/textarea that's not the main input, allow it
+      if (
+        chatContainerRef.current?.contains(target) &&
+        target !== inputRef.current &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA")
+      ) {
+        // User is focusing on another input, don't interfere
+        return;
+      }
+    };
+
+    document.addEventListener("focusin", handleFocusIn);
+    return () => {
+      document.removeEventListener("focusin", handleFocusIn);
+    };
+  }, [open, keepKeyboardOpen]);
+
   useEffect(() => {
     if (open && !loading && !showConfirmClose) {
       inputRef.current?.focus();
@@ -1694,10 +1717,26 @@ export default function ChatButton() {
                   }
                 }}
                 onBlur={(e) => {
+                  // Allow blur if user is clicking on other inputs in the chat
+                  const relatedTarget = e.relatedTarget as HTMLElement;
+                  if (
+                    relatedTarget &&
+                    chatContainerRef.current?.contains(relatedTarget)
+                  ) {
+                    // User is focusing another input in chat, allow it
+                    return;
+                  }
+
                   // Prevent keyboard from closing unless minimizing
                   if (keepKeyboardOpen && window.innerWidth < 640) {
                     e.preventDefault();
+                    // Only refocus if not clicking on another input
                     setTimeout(() => {
+                      const activeEl = document.activeElement as HTMLElement;
+                      if (chatContainerRef.current?.contains(activeEl)) {
+                        // User clicked on something else in chat, don't refocus main input
+                        return;
+                      }
                       inputRef.current?.focus();
                     }, 0);
                   }
