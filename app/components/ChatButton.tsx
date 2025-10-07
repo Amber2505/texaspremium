@@ -108,6 +108,7 @@ export default function ChatButton() {
   const [loading, setLoading] = useState(false);
   const [showConfirmClose, setShowConfirmClose] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [keepKeyboardOpen, setKeepKeyboardOpen] = useState(false);
 
   const [phoneInput, setPhoneInput] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
@@ -168,6 +169,8 @@ export default function ChatButton() {
     };
 
     const handleFocus = () => {
+      setKeepKeyboardOpen(true);
+
       if (document.body && window.innerWidth < 640) {
         document.body.style.overflow = "hidden";
         document.body.style.position = "fixed";
@@ -187,12 +190,33 @@ export default function ChatButton() {
       }, 300);
     };
 
-    const handleBlur = () => {
-      if (document.body && window.innerWidth < 640) {
-        document.body.style.overflow = "";
-        document.body.style.position = "";
-        document.body.style.width = "";
-        document.body.style.height = "";
+    const handleBlur = (e: FocusEvent) => {
+      // Only close keyboard if user is minimizing chat or truly blurring
+      // Don't close if they're clicking within the chat
+      const relatedTarget = e.relatedTarget as HTMLElement;
+      if (
+        !relatedTarget ||
+        !chatContainerRef.current?.contains(relatedTarget)
+      ) {
+        // Check if chat is still open before allowing blur
+        setTimeout(() => {
+          if (!chatContainerRef.current?.contains(document.activeElement)) {
+            setKeepKeyboardOpen(false);
+            if (document.body && window.innerWidth < 640) {
+              document.body.style.overflow = "";
+              document.body.style.position = "";
+              document.body.style.width = "";
+              document.body.style.height = "";
+            }
+          }
+        }, 100);
+      } else {
+        // Keep focus in chat, refocus input after a short delay
+        setTimeout(() => {
+          if (keepKeyboardOpen && inputRef.current) {
+            inputRef.current.focus();
+          }
+        }, 0);
       }
     };
 
@@ -297,6 +321,18 @@ export default function ChatButton() {
       });
     }
   }, [agentTyping]);
+
+  // Auto-focus input when chat opens on mobile to keep keyboard up
+  useEffect(() => {
+    if (open && window.innerWidth < 640) {
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          setKeepKeyboardOpen(true);
+        }
+      }, 100);
+    }
+  }, [open]);
 
   useEffect(() => {
     if (open && !loading && !showConfirmClose) {
@@ -760,6 +796,13 @@ export default function ChatButton() {
     setInput("");
     setLoading(true);
 
+    // Keep keyboard open after sending on mobile
+    if (window.innerWidth < 640 && inputRef.current) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+    }
+
     if (isLiveChat && socketRef.current) {
       const userId = localStorage.getItem("chat-user-id");
       socketRef.current.emit("customer-typing", {
@@ -934,6 +977,15 @@ export default function ChatButton() {
     setIsConnectedToAgent(false);
     setLiveAgentName("");
     setLiveAgentPhone("");
+    setKeepKeyboardOpen(false);
+
+    // Clean up body styles when closing
+    if (document.body) {
+      document.body.style.overflow = "";
+      document.body.style.position = "";
+      document.body.style.width = "";
+      document.body.style.height = "";
+    }
   };
 
   const handleQuoteNavigation = (quoteType: string) => {
@@ -1638,6 +1690,15 @@ export default function ChatButton() {
                   if (e.key === "Enter" && !loading) {
                     e.preventDefault();
                     sendMessage();
+                  }
+                }}
+                onBlur={(e) => {
+                  // Prevent keyboard from closing unless minimizing
+                  if (keepKeyboardOpen && window.innerWidth < 640) {
+                    e.preventDefault();
+                    setTimeout(() => {
+                      inputRef.current?.focus();
+                    }, 0);
                   }
                 }}
                 placeholder="Ask about coverage, claims..."
