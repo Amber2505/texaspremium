@@ -289,6 +289,15 @@ export default function ChatButton() {
     }
   }, [messages]);
 
+  // Add this new useEffect to scroll when agent starts typing
+  useEffect(() => {
+    if (agentTyping) {
+      requestAnimationFrame(() => {
+        scrollToBottom();
+      });
+    }
+  }, [agentTyping]);
+
   useEffect(() => {
     if (open && !loading && !showConfirmClose) {
       inputRef.current?.focus();
