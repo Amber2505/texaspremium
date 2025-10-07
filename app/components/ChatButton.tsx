@@ -19,7 +19,7 @@ const SOCKET_URL =
 interface Message {
   role: string;
   content: string;
-  userName?: string; // ADD THIS LINE
+  userName?: string;
   extra?: {
     quoteType?: string;
     quoteTypes?: string[];
@@ -127,7 +127,6 @@ export default function ChatButton() {
   const [isDatabaseLoading, setIsDatabaseLoading] = useState(true);
   const [databaseError, setDatabaseError] = useState<string | null>(null);
 
-  // Live chat states
   const [isLiveChat, setIsLiveChat] = useState(false);
   const [liveAgentName, setLiveAgentName] = useState("");
   const [liveAgentPhone, setLiveAgentPhone] = useState("");
@@ -136,10 +135,9 @@ export default function ChatButton() {
   const [agentTyping, setAgentTyping] = useState(false);
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingDebounceTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Emoji and file states
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -152,7 +150,11 @@ export default function ChatButton() {
         const isMobile = window.innerWidth < 640;
 
         if (isMobile) {
-          chatContainerRef.current.style.height = `${viewport.height}px`;
+          requestAnimationFrame(() => {
+            if (chatContainerRef.current) {
+              chatContainerRef.current.style.height = `${viewport.height}px`;
+            }
+          });
         }
       }
     };
@@ -198,6 +200,12 @@ export default function ChatButton() {
       if (socketRef.current) {
         socketRef.current.disconnect();
       }
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      if (typingDebounceTimer.current) {
+        clearTimeout(typingDebounceTimer.current);
+      }
     };
   }, []);
 
@@ -230,12 +238,23 @@ export default function ChatButton() {
   }, []);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "end",
+        inline: "nearest",
+      });
+    }
   };
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, loading, agentTyping]);
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage) {
+      requestAnimationFrame(() => {
+        scrollToBottom();
+      });
+    }
+  }, [messages]);
 
   useEffect(() => {
     if (open && !loading && !showConfirmClose) {
@@ -602,25 +621,30 @@ export default function ChatButton() {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
+      if (typingDebounceTimer.current) {
+        clearTimeout(typingDebounceTimer.current);
+      }
 
-      if (value.length > 0) {
-        socketRef.current.emit("customer-typing", {
-          userId,
-          isTyping: true,
-        });
+      typingDebounceTimer.current = setTimeout(() => {
+        if (value.length > 0) {
+          socketRef.current?.emit("customer-typing", {
+            userId,
+            isTyping: true,
+          });
 
-        typingTimeoutRef.current = setTimeout(() => {
+          typingTimeoutRef.current = setTimeout(() => {
+            socketRef.current?.emit("customer-typing", {
+              userId,
+              isTyping: false,
+            });
+          }, 2000);
+        } else {
           socketRef.current?.emit("customer-typing", {
             userId,
             isTyping: false,
           });
-        }, 2000);
-      } else {
-        socketRef.current.emit("customer-typing", {
-          userId,
-          isTyping: false,
-        });
-      }
+        }
+      }, 150);
     }
   };
 
@@ -905,12 +929,10 @@ export default function ChatButton() {
       const file = e.target.files[0];
       setSelectedFile(file);
 
-      // Create FormData for file upload
       const formData = new FormData();
       formData.append("file", file);
 
       try {
-        // Upload file to your server
         const response = await fetch("/api/upload-file", {
           method: "POST",
           body: formData,
@@ -919,7 +941,6 @@ export default function ChatButton() {
         const data = await response.json();
 
         if (data.success) {
-          // Send message with file attachment
           if (isLiveChat && socketRef.current) {
             const userId = localStorage.getItem("chat-user-id");
             socketRef.current.emit("customer-message", {
@@ -930,15 +951,6 @@ export default function ChatButton() {
               fileName: file.name,
             });
           }
-
-          // setMessages((prev) => [
-          //   ...prev,
-          //   {
-          //     role: "user",
-          //     content: `📎 Sent file: ${file.name}`,
-          //     extra: null,
-          //   },
-          // ]);
 
           setSelectedFile(null);
         }
@@ -1064,21 +1076,13 @@ export default function ChatButton() {
             {isLiveChat && (
               <button
                 onClick={() => {
-                  console.log("🔴 USER: Clicking End Chat button");
                   if (socketRef.current) {
                     const userId = localStorage.getItem("chat-user-id");
-                    console.log("🔴 USER: userId from localStorage:", userId);
-                    console.log(
-                      "🔴 USER: Socket connected:",
-                      socketRef.current.connected
-                    );
 
-                    // Small delay to ensure emit completes
                     setTimeout(() => {
                       socketRef.current?.emit("customer-end-session", {
                         userId,
                       });
-                      console.log("🔴 USER: Emitted customer-end-session");
                     }, 50);
 
                     setMessages((prev) => [
@@ -1094,12 +1098,9 @@ export default function ChatButton() {
                     setIsLiveChat(false);
                     setIsConnectedToAgent(false);
 
-                    // Disconnect after event is sent
                     setTimeout(() => {
                       socketRef.current?.disconnect();
                     }, 500);
-                  } else {
-                    console.log("🔴 USER: Socket ref is null!");
                   }
                 }}
                 className="flex-1 text-center px-3 py-2 rounded-lg text-white 
@@ -1113,6 +1114,10 @@ export default function ChatButton() {
           <div
             data-messages-container
             className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 text-sm min-h-0 overscroll-contain"
+            style={{
+              scrollBehavior: "smooth",
+              overscrollBehavior: "contain",
+            }}
           >
             {messages.length === 0 ? (
               <div className="text-gray-500 text-center mt-4 sm:mt-10 space-y-3 sm:space-y-4 px-2">
@@ -1462,7 +1467,7 @@ export default function ChatButton() {
             )}
 
             {loading && (
-              <div className="mr-auto bg-gray-100 p-3 rounded-xl max-w-[85%] sm:max-w-[75%] border border-gray-200">
+              <div className="mr-auto bg-gray-100 p-3 rounded-xl max-w-[85%] sm:max-w-[75%] border border-gray-200 min-h-[52px] flex items-center">
                 <div className="flex items-center gap-2">
                   <div className="flex space-x-1">
                     <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
@@ -1483,7 +1488,7 @@ export default function ChatButton() {
             )}
 
             {agentTyping && isLiveChat && (
-              <div className="mr-auto bg-gray-100 p-3 rounded-xl max-w-[85%] sm:max-w-[75%] border border-gray-200">
+              <div className="mr-auto bg-gray-100 p-3 rounded-xl max-w-[85%] sm:max-w-[75%] border border-gray-200 min-h-[52px] flex items-center">
                 <div className="flex items-center gap-2">
                   <div className="flex space-x-1">
                     <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
