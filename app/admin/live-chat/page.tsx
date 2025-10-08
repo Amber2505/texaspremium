@@ -1,5 +1,4 @@
 "use client";
-
 import { useState, useEffect, useRef } from "react";
 import {
   Send,
@@ -12,13 +11,21 @@ import {
   EyeOff,
   ChevronDown,
   Loader2,
+  LogOut,
+  Search,
+  Filter,
+  Download,
+  MessageSquare,
+  Zap,
+  StickyNote,
+  Bell,
+  BellOff,
+  CheckCheck,
 } from "lucide-react";
 import io from "socket.io-client";
 import EmojiPicker from "emoji-picker-react";
 
-const SOCKET_URL =
-  process.env.NEXT_PUBLIC_SOCKET_URL ||
-  "https://texaspremium-production.up.railway.app";
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "";
 
 interface ChatMessage {
   id: string;
@@ -28,6 +35,7 @@ interface ChatMessage {
   userName?: string;
   fileUrl?: string;
   fileName?: string;
+  read?: boolean;
 }
 
 interface ChatSession {
@@ -43,7 +51,86 @@ interface ChatSession {
   conversationHistory: ChatMessage[];
   customerEnded?: boolean;
   adminEnded?: boolean;
+  notes?: string;
+  tags?: string[];
+  unreadCount?: number;
 }
+
+interface AdminSession {
+  name: string;
+  loginTime: number;
+  expiresAt: number;
+}
+
+interface QuickResponse {
+  id: string;
+  shortcut: string;
+  message: string;
+  category: string;
+}
+
+const ADMIN_PASSWORD = "Insurance2024";
+const SESSION_KEY = "admin_chat_session";
+
+// Quick Response Templates
+const DEFAULT_QUICK_RESPONSES: QuickResponse[] = [
+  {
+    id: "1",
+    shortcut: "/greeting",
+    message:
+      "Hello! Thank you for contacting Texas Premium Insurance. How can I help you today?",
+    category: "Greetings",
+  },
+  {
+    id: "2",
+    shortcut: "/wait",
+    message:
+      "Thank you for your patience. Let me check that information for you.",
+    category: "Common",
+  },
+  {
+    id: "3",
+    shortcut: "/quote",
+    message:
+      "I'd be happy to help you get a quote! Can you tell me what type of insurance you're interested in?",
+    category: "Sales",
+  },
+  {
+    id: "4",
+    shortcut: "/claim",
+    message:
+      "I understand you need help with a claim. Let me verify your information first. Can you provide your policy number or the phone no. on the account please?",
+    category: "Claims",
+  },
+  {
+    id: "5",
+    shortcut: "/payment",
+    message:
+      "For payment assistance, I can send you your payment link. Can you confirm your phone number please?",
+    category: "Payments",
+  },
+  {
+    id: "6",
+    shortcut: "/callback",
+    message:
+      "I'll have someone call you back as soon as possible at the number on file. Is there a better number to reach you?",
+    category: "Follow-up",
+  },
+  {
+    id: "7",
+    shortcut: "/thanks",
+    message:
+      "Thank you for contacting us! Is there anything else I can help you with today?",
+    category: "Closing",
+  },
+  {
+    id: "8",
+    shortcut: "/bye",
+    message:
+      "Thank you for choosing Texas Premium Insurance Services! Have a great day!",
+    category: "Closing",
+  },
+];
 
 export default function AdminLiveChatDashboard() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -64,25 +151,63 @@ export default function AdminLiveChatDashboard() {
     [key: string]: boolean;
   }>({});
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-
   const [loadedCount, setLoadedCount] = useState(20);
   const [hasMoreChats, setHasMoreChats] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [totalChatsCount, setTotalChatsCount] = useState(0);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
 
-  const ADMIN_PASSWORD = "Insurance2024";
+  // New state for enhanced features
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterStatus, setFilterStatus] = useState<
+    "all" | "active" | "ended" | "unassigned"
+  >("all");
+  const [showQuickResponses, setShowQuickResponses] = useState(false);
+  const [quickResponses] = useState<QuickResponse[]>(DEFAULT_QUICK_RESPONSES);
+  const [sessionNotes, setSessionNotes] = useState("");
+  const [showNotesModal, setShowNotesModal] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const selectedSessionRef = useRef<ChatSession | null>(null);
 
-  // Sort sessions by most recent activity
-  const sortedSessions = [...sessions].sort((a, b) => {
-    const aTime = a.lastSeen || a.joinedAt;
-    const bTime = b.lastSeen || b.joinedAt;
-    return new Date(bTime).getTime() - new Date(aTime).getTime();
-  });
+  // Filter and search sessions
+  const filteredSessions = sessions
+    .filter((session) => {
+      // Search filter
+      const matchesSearch =
+        searchQuery === "" ||
+        session.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        session.userPhone?.includes(searchQuery) ||
+        session.userId.toLowerCase().includes(searchQuery.toLowerCase());
+
+      // Status filter
+      let matchesStatus = true;
+
+      if (filterStatus === "active") {
+        // !! converts any truthy/falsy value (including undefined) to a strict boolean
+        matchesStatus =
+          !!session.isActive && !session.customerEnded && !session.adminEnded;
+      } else if (filterStatus === "ended") {
+        // This is the most likely culprit: if customerEnded or adminEnded is undefined,
+        // the result of the || operation could be undefined.
+        matchesStatus = !!(session.customerEnded || session.adminEnded);
+      } else if (filterStatus === "unassigned") {
+        matchesStatus = !!(!session.hasAgent && session.isActive);
+      }
+
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => {
+      const aTime = a.lastSeen || a.joinedAt;
+      const bTime = b.lastSeen || b.joinedAt;
+      return new Date(bTime).getTime() - new Date(aTime).getTime();
+    });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -98,8 +223,103 @@ export default function AdminLiveChatDashboard() {
     }
   }, []);
 
+  useEffect(() => {
+    selectedSessionRef.current = selectedSession;
+  }, [selectedSession]);
+
+  // Check for existing session on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedSession = localStorage.getItem(SESSION_KEY);
+      if (savedSession) {
+        try {
+          const session: AdminSession = JSON.parse(savedSession);
+          const now = Date.now();
+
+          if (now < session.expiresAt) {
+            console.log("✅ Restoring admin session for:", session.name);
+            loginAsAdmin(session.name);
+          } else {
+            console.log("⏰ Session expired, clearing...");
+            localStorage.removeItem(SESSION_KEY);
+            setIsCheckingSession(false);
+          }
+        } catch (error) {
+          console.error("Error parsing saved session:", error);
+          localStorage.removeItem(SESSION_KEY);
+          setIsCheckingSession(false);
+        }
+      } else {
+        setIsCheckingSession(false);
+      }
+    }
+  }, []);
+
+  // Set up session expiry checker
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const checkExpiry = setInterval(() => {
+      const savedSession = localStorage.getItem(SESSION_KEY);
+      if (savedSession) {
+        try {
+          const session: AdminSession = JSON.parse(savedSession);
+          const now = Date.now();
+
+          if (now >= session.expiresAt) {
+            console.log("⏰ Session expired at 11:59 PM");
+            handleLogout();
+          }
+        } catch (error) {
+          console.error("Error checking session expiry:", error);
+        }
+      }
+    }, 60000);
+
+    return () => clearInterval(checkExpiry);
+  }, [isLoggedIn]);
+
+  const getEndOfDayTimestamp = () => {
+    const now = new Date();
+    const endOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23,
+      59,
+      59,
+      999
+    );
+    return endOfDay.getTime();
+  };
+
+  const saveAdminSession = (name: string) => {
+    const session: AdminSession = {
+      name,
+      loginTime: Date.now(),
+      expiresAt: getEndOfDayTimestamp(),
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  };
+
+  const handleLogout = () => {
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+    localStorage.removeItem(SESSION_KEY);
+    setIsLoggedIn(false);
+    setAdminName("");
+    setAdminPassword("");
+    setIsConnected(false);
+    setSessions([]);
+    setSelectedSession(null);
+    setMessages([]);
+    console.log("👋 Admin logged out");
+  };
+
   const playNotificationSound = () => {
-    if (audioRef.current) {
+    if (audioRef.current && notificationsEnabled) {
       audioRef.current
         .play()
         .catch((err) => console.log("Audio play failed:", err));
@@ -116,9 +336,83 @@ export default function AdminLiveChatDashboard() {
     });
   };
 
+  const insertQuickResponse = (response: QuickResponse) => {
+    setInputMessage(response.message);
+    setShowQuickResponses(false);
+    inputRef.current?.focus();
+  };
+
+  const handleShortcutInput = (value: string) => {
+    if (value.startsWith("/")) {
+      const matchingResponse = quickResponses.find(
+        (qr) => qr.shortcut === value
+      );
+      if (matchingResponse) {
+        setInputMessage(matchingResponse.message);
+        return;
+      }
+    }
+    setInputMessage(value);
+  };
+
+  const downloadTranscript = () => {
+    if (!selectedSession) return;
+
+    const transcript = messages
+      .map((msg) => {
+        const timestamp = new Date(msg.timestamp).toLocaleString();
+        const sender = msg.isAdmin
+          ? msg.userName || adminName
+          : selectedSession.userName;
+        return `[${timestamp}] ${sender}: ${msg.content}`;
+      })
+      .join("\n");
+
+    const blob = new Blob([transcript], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `chat-transcript-${selectedSession.userId}-${Date.now()}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const saveSessionNotes = () => {
+    if (!selectedSession) return;
+
+    const updatedSession = {
+      ...selectedSession,
+      notes: sessionNotes,
+    };
+
+    setSelectedSession(updatedSession);
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.userId === selectedSession.userId ? updatedSession : s
+      )
+    );
+
+    setShowNotesModal(false);
+  };
+
   const loginAsAdmin = (name: string) => {
     setAdminName(name);
     setIsLoggedIn(true);
+    setIsCheckingSession(false);
+
+    saveAdminSession(name);
+
+    if (!SOCKET_URL) {
+      console.error(
+        "❌ NEXT_PUBLIC_SOCKET_URL is not defined in environment variables"
+      );
+      alert(
+        "Socket URL is not configured. Please check your environment variables."
+      );
+      return;
+    }
 
     console.log("Attempting to connect to:", SOCKET_URL);
     socketRef.current = io(SOCKET_URL);
@@ -152,7 +446,6 @@ export default function AdminLiveChatDashboard() {
         total: number;
       }) => {
         console.log(`Received ${chats.length} more chats`);
-
         setSessions((prev) => {
           const existingIds = new Set(prev.map((s) => s.userId));
           const newChats = chats.filter(
@@ -160,7 +453,6 @@ export default function AdminLiveChatDashboard() {
           );
           return [...prev, ...newChats];
         });
-
         setLoadedCount((prev) => prev + chats.length);
         setHasMoreChats(hasMore);
         setTotalChatsCount(total);
@@ -210,12 +502,18 @@ export default function AdminLiveChatDashboard() {
                     message,
                   ],
                   lastSeen: new Date().toISOString(),
+                  unreadCount:
+                    selectedSessionRef.current?.userId === userId // ⬅️ CHANGE THIS
+                      ? 0
+                      : (session.unreadCount || 0) + 1,
                 }
               : session
           )
         );
 
-        if (selectedSession?.userId === userId) {
+        // Use ref to check current selected session
+        if (selectedSessionRef.current?.userId === userId) {
+          // ⬅️ CHANGE THIS
           setMessages((prev) => [...prev, message]);
         }
 
@@ -248,7 +546,9 @@ export default function AdminLiveChatDashboard() {
           )
         );
 
-        if (selectedSession?.userId === userId) {
+        // Use ref to check current selected session
+        if (selectedSessionRef.current?.userId === userId) {
+          // ⬅️ CHANGE THIS
           setMessages((prev) => [...prev, message]);
         }
       }
@@ -267,7 +567,10 @@ export default function AdminLiveChatDashboard() {
     socketRef.current.on(
       "customer-typing-indicator",
       ({ userId, isTyping }: { userId: string; isTyping: boolean }) => {
-        setCustomerTyping((prev) => ({ ...prev, [userId]: isTyping }));
+        setCustomerTyping((prev) => ({
+          ...prev,
+          [userId]: isTyping,
+        }));
       }
     );
 
@@ -288,7 +591,6 @@ export default function AdminLiveChatDashboard() {
       "customer-ended-session",
       (data: { message: string; userId: string; userName: string }) => {
         const { message, userId } = data;
-
         setSessions((prev) =>
           prev.map((s) =>
             s.userId === userId
@@ -302,7 +604,9 @@ export default function AdminLiveChatDashboard() {
           )
         );
 
-        if (selectedSession?.userId === userId) {
+        // Use ref to check current selected session
+        if (selectedSessionRef.current?.userId === userId) {
+          // ⬅️ CHANGE THIS
           setMessages((prev) => [
             ...prev,
             {
@@ -330,7 +634,9 @@ export default function AdminLiveChatDashboard() {
         )
       );
 
-      if (selectedSession?.userId === userId) {
+      // Use ref to check current selected session
+      if (selectedSessionRef.current?.userId === userId) {
+        // ⬅️ CHANGE THIS
         setSelectedSession(null);
         setMessages([]);
       }
@@ -353,6 +659,7 @@ export default function AdminLiveChatDashboard() {
     if (session.customerEnded || session.adminEnded) {
       setSelectedSession(session);
       setMessages(session.conversationHistory || []);
+      setSessionNotes(session.notes || "");
       return;
     }
 
@@ -360,6 +667,14 @@ export default function AdminLiveChatDashboard() {
     if (isClaimedByMe) {
       setSelectedSession(session);
       setMessages(session.conversationHistory || []);
+      setSessionNotes(session.notes || "");
+
+      // Clear unread count
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.userId === session.userId ? { ...s, unreadCount: 0 } : s
+        )
+      );
       return;
     }
 
@@ -368,22 +683,20 @@ export default function AdminLiveChatDashboard() {
         userId: session.userId,
         adminName,
       });
-
       setSelectedSession(session);
       setMessages(session.conversationHistory || []);
+      setSessionNotes(session.notes || "");
     }
   };
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-
     if (inputMessage.trim() && socketRef.current && selectedSession) {
       socketRef.current.emit("admin-message", {
         userId: selectedSession.userId,
         agentName: adminName,
         content: inputMessage,
       });
-
       setInputMessage("");
 
       if (typingTimeout) {
@@ -398,7 +711,7 @@ export default function AdminLiveChatDashboard() {
   };
 
   const handleTyping = (value: string) => {
-    setInputMessage(value);
+    handleShortcutInput(value);
 
     if (socketRef.current && selectedSession) {
       if (typingTimeout) {
@@ -428,7 +741,6 @@ export default function AdminLiveChatDashboard() {
       socketRef.current.emit("end-session", {
         userId: selectedSession.userId,
       });
-
       setSelectedSession(null);
       setMessages([]);
     }
@@ -436,7 +748,10 @@ export default function AdminLiveChatDashboard() {
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   const getSessionDuration = (joinedAt: string) => {
@@ -484,6 +799,20 @@ export default function AdminLiveChatDashboard() {
       }
     };
   }, []);
+
+  if (isCheckingSession) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gradient-to-r from-red-700 to-blue-800 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Users className="w-8 h-8 text-white" />
+          </div>
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto" />
+          <p className="text-gray-600 mt-4">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isLoggedIn) {
     return (
@@ -579,11 +908,27 @@ export default function AdminLiveChatDashboard() {
 
   return (
     <div className="h-screen flex bg-gray-100">
-      <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
-        <div className="p-4 border-b bg-gradient-to-r from-red-700 to-blue-800 text-white">
+      {/* Sidebar */}
+      <div className="w-96 bg-white border-r border-gray-200 flex flex-col">
+        <div className="p-4 border-b bg-gradient-to-r from-red-700 to-blue-800 text-white flex-shrink-0">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-xl font-bold">Live Chats</h2>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setNotificationsEnabled(!notificationsEnabled)}
+                className="p-1.5 hover:bg-white/20 rounded transition"
+                title={
+                  notificationsEnabled
+                    ? "Mute notifications"
+                    : "Enable notifications"
+                }
+              >
+                {notificationsEnabled ? (
+                  <Bell className="w-4 h-4" />
+                ) : (
+                  <BellOff className="w-4 h-4" />
+                )}
+              </button>
               <div
                 className={`w-2 h-2 rounded-full ${
                   isConnected ? "bg-green-400" : "bg-red-400"
@@ -594,7 +939,17 @@ export default function AdminLiveChatDashboard() {
               </span>
             </div>
           </div>
-          <p className="text-sm text-blue-100">Logged in as {adminName}</p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-blue-100">Logged in as {adminName}</p>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1 px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-xs transition"
+              title="Logout"
+            >
+              <LogOut className="w-3 h-3" />
+              Logout
+            </button>
+          </div>
           {totalChatsCount > 0 && (
             <p className="text-xs text-blue-200 mt-1">
               Showing {sessions.length} of {totalChatsCount} chats
@@ -602,16 +957,72 @@ export default function AdminLiveChatDashboard() {
           )}
         </div>
 
+        {/* Search and Filter */}
+        <div className="p-3 border-b bg-gray-50 space-y-2 flex-shrink-0">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by name, phone, or ID..."
+              className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <button
+                onClick={() => setShowFilterMenu(!showFilterMenu)}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+              >
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4" />
+                  <span className="capitalize">{filterStatus}</span>
+                </div>
+                <ChevronDown className="w-4 h-4" />
+              </button>
+              {showFilterMenu && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-10">
+                  {["all", "active", "ended", "unassigned"].map((status) => (
+                    <button
+                      key={status}
+                      onClick={() => {
+                        setFilterStatus(status as typeof filterStatus);
+                        setShowFilterMenu(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition first:rounded-t-lg last:rounded-b-lg ${
+                        filterStatus === status
+                          ? "bg-blue-50 text-blue-700 font-medium"
+                          : ""
+                      }`}
+                    >
+                      <span className="capitalize">{status}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto">
-          {sortedSessions.length === 0 ? (
+          {filteredSessions.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
               <Users size={48} className="mx-auto mb-4 opacity-50" />
-              <p className="font-medium">No active chats</p>
-              <p className="text-sm mt-2">Waiting for customers...</p>
+              <p className="font-medium">
+                {searchQuery || filterStatus !== "all"
+                  ? "No matching chats"
+                  : "No active chats"}
+              </p>
+              <p className="text-sm mt-2">
+                {searchQuery || filterStatus !== "all"
+                  ? "Try adjusting your filters"
+                  : "Waiting for customers..."}
+              </p>
             </div>
           ) : (
             <>
-              {sortedSessions.map((session, sessionIndex) => {
+              {filteredSessions.map((session, sessionIndex) => {
                 const isClaimedByMe =
                   session.hasAgent && session.agentName === adminName;
                 const isClaimedByOther =
@@ -620,6 +1031,7 @@ export default function AdminLiveChatDashboard() {
                   session.conversationHistory[
                     session.conversationHistory.length - 1
                   ];
+                const unreadCount = session.unreadCount || 0;
 
                 return (
                   <button
@@ -640,15 +1052,22 @@ export default function AdminLiveChatDashboard() {
                       !session.adminEnded
                         ? "opacity-50 cursor-not-allowed"
                         : ""
-                    }
-                    ${session.customerEnded ? "bg-red-50" : ""}
-                    ${session.adminEnded ? "bg-orange-50" : ""}`}
+                    } ${session.customerEnded ? "bg-red-50" : ""} ${
+                      session.adminEnded ? "bg-orange-50" : ""
+                    }`}
                   >
                     <div className="flex items-start justify-between mb-1">
                       <div className="flex-1">
-                        <p className="font-semibold text-gray-800">
-                          {session.userName}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-gray-800">
+                            {session.userName}
+                          </p>
+                          {unreadCount > 0 && (
+                            <span className="bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                              {unreadCount}
+                            </span>
+                          )}
+                        </div>
                         {session.userPhone && (
                           <p className="text-xs text-gray-500">
                             {session.userPhone}
@@ -713,7 +1132,7 @@ export default function AdminLiveChatDashboard() {
                 );
               })}
 
-              {hasMoreChats && (
+              {hasMoreChats && filterStatus === "all" && !searchQuery && (
                 <button
                   onClick={loadMoreChats}
                   disabled={isLoadingMore}
@@ -743,11 +1162,13 @@ export default function AdminLiveChatDashboard() {
         </div>
       </div>
 
+      {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
         {selectedSession ? (
           <>
+            {/* Chat Header */}
             <div className="p-4 bg-white border-b shadow-sm flex items-center justify-between">
-              <div>
+              <div className="flex-1">
                 <h3 className="font-semibold text-lg text-gray-800">
                   {selectedSession.userName}
                 </h3>
@@ -757,15 +1178,55 @@ export default function AdminLiveChatDashboard() {
                   User ID: {selectedSession.userId}
                 </p>
               </div>
-              <button
-                onClick={endSession}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center gap-2"
-              >
-                <X size={16} />
-                End Chat
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowNotesModal(true)}
+                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                  title="Add notes"
+                >
+                  <StickyNote className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={downloadTranscript}
+                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                  title="Download transcript"
+                >
+                  <Download className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={endSession}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center gap-2"
+                >
+                  <X size={16} />
+                  End Chat
+                </button>
+              </div>
             </div>
 
+            {/* Session Notes Banner */}
+            {selectedSession.notes && (
+              <div className="px-4 py-2 bg-yellow-50 border-b border-yellow-200">
+                <div className="flex items-start gap-2">
+                  <StickyNote className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-yellow-800">
+                      Internal Notes:
+                    </p>
+                    <p className="text-sm text-yellow-700 truncate">
+                      {selectedSession.notes}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowNotesModal(true)}
+                    className="text-yellow-600 hover:text-yellow-800 text-xs"
+                  >
+                    Edit
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Messages */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50">
               {messages.map((msg, index) => (
                 <div
@@ -781,15 +1242,20 @@ export default function AdminLiveChatDashboard() {
                         : "bg-white text-gray-800 shadow"
                     }`}
                   >
-                    <p
-                      className={`text-xs font-semibold mb-1 ${
-                        msg.isAdmin ? "text-blue-100" : "text-gray-600"
-                      }`}
-                    >
-                      {msg.isAdmin
-                        ? msg.userName || adminName
-                        : selectedSession.userName}
-                    </p>
+                    <div className="flex items-center gap-2 mb-1">
+                      <p
+                        className={`text-xs font-semibold ${
+                          msg.isAdmin ? "text-blue-100" : "text-gray-600"
+                        }`}
+                      >
+                        {msg.isAdmin
+                          ? msg.userName || adminName
+                          : selectedSession.userName}
+                      </p>
+                      {msg.isAdmin && msg.read && (
+                        <CheckCheck className="w-3 h-3 text-blue-200" />
+                      )}
+                    </div>
                     <p className="whitespace-pre-line">{msg.content}</p>
                     {msg.fileUrl && (
                       <a
@@ -835,10 +1301,54 @@ export default function AdminLiveChatDashboard() {
                   </div>
                 </div>
               )}
-
               <div ref={messagesEndRef} />
             </div>
 
+            {/* Quick Responses Panel */}
+            {showQuickResponses && (
+              <div className="border-t bg-white p-3 max-h-64 overflow-y-auto">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-yellow-600" />
+                    <h4 className="text-sm font-semibold text-gray-800">
+                      Quick Responses
+                    </h4>
+                    <span className="text-xs text-gray-500">
+                      (Type shortcuts like /greeting)
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setShowQuickResponses(false)}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {quickResponses.map((qr) => (
+                    <button
+                      key={qr.id}
+                      onClick={() => insertQuickResponse(qr)}
+                      className="text-left p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded text-blue-600">
+                          {qr.shortcut}
+                        </code>
+                        <span className="text-xs text-gray-500">
+                          {qr.category}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-700 line-clamp-2">
+                        {qr.message}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Input Area */}
             <div className="p-4 bg-white border-t">
               {selectedSession.customerEnded || selectedSession.adminEnded ? (
                 <div className="text-center py-3 text-gray-500 bg-gray-50 rounded-lg">
@@ -847,83 +1357,186 @@ export default function AdminLiveChatDashboard() {
                   </p>
                 </div>
               ) : (
-                <div className="flex gap-3">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    accept="image/*,.pdf,.doc,.docx"
-                  />
-
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="p-2 text-gray-600 hover:text-gray-800 transition"
-                    type="button"
-                  >
-                    <Paperclip className="w-5 h-5" />
-                  </button>
-
-                  <div className="relative">
+                <div className="space-y-2">
+                  <div className="flex gap-3">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      accept="image/*,.pdf,.doc,.docx"
+                    />
                     <button
-                      onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                      onClick={() => fileInputRef.current?.click()}
                       className="p-2 text-gray-600 hover:text-gray-800 transition"
                       type="button"
+                      title="Attach file"
                     >
-                      <Smile className="w-5 h-5" />
+                      <Paperclip className="w-5 h-5" />
                     </button>
 
-                    {showEmojiPicker && (
-                      <div className="absolute bottom-12 left-0 z-50">
-                        <EmojiPicker
-                          onEmojiClick={(emojiData) => {
-                            handleTyping(inputMessage + emojiData.emoji);
-                            setShowEmojiPicker(false);
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
+                    <button
+                      onClick={() => setShowQuickResponses(!showQuickResponses)}
+                      className={`p-2 transition ${
+                        showQuickResponses
+                          ? "text-yellow-600 bg-yellow-50"
+                          : "text-gray-600 hover:text-gray-800"
+                      }`}
+                      type="button"
+                      title="Quick responses (type / to use shortcuts)"
+                    >
+                      <Zap className="w-5 h-5" />
+                    </button>
 
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={inputMessage}
-                    onChange={(e) => handleTyping(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        sendMessage(e);
-                      }
-                    }}
-                    placeholder="Type your message..."
-                    className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    suppressHydrationWarning
-                  />
-                  <button
-                    onClick={sendMessage}
-                    disabled={!inputMessage.trim()}
-                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    <Send size={20} />
-                    Send
-                  </button>
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                        className="p-2 text-gray-600 hover:text-gray-800 transition"
+                        type="button"
+                        title="Add emoji"
+                      >
+                        <Smile className="w-5 h-5" />
+                      </button>
+                      {showEmojiPicker && (
+                        <div className="absolute bottom-12 left-0 z-50">
+                          <EmojiPicker
+                            onEmojiClick={(emojiData) => {
+                              handleTyping(inputMessage + emojiData.emoji);
+                              setShowEmojiPicker(false);
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={inputMessage}
+                      onChange={(e) => handleTyping(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          sendMessage(e);
+                        }
+                      }}
+                      placeholder="Type your message... (use / for quick responses)"
+                      className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      suppressHydrationWarning
+                    />
+                    <button
+                      onClick={sendMessage}
+                      disabled={!inputMessage.trim()}
+                      className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      <Send size={20} />
+                      Send
+                    </button>
+                  </div>
+                  {inputMessage.startsWith("/") && (
+                    <div className="text-xs text-gray-500 flex items-center gap-1">
+                      <Zap className="w-3 h-3" />
+                      Shortcut detected - press Enter or click Quick Response
+                      button above
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center bg-gray-50">
-            <div className="text-center text-gray-500">
-              <Users size={64} className="mx-auto mb-4 opacity-30" />
+            <div className="text-center text-gray-500 max-w-md">
+              <MessageSquare size={64} className="mx-auto mb-4 opacity-30" />
               <p className="text-xl font-semibold">No Chat Selected</p>
               <p className="mt-2">
                 Select a customer from the sidebar to start chatting
               </p>
+
+              <div className="mt-8 p-4 bg-blue-50 rounded-lg text-left">
+                <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                  <Zap className="w-4 h-4" />
+                  Quick Response Shortcuts
+                </h3>
+                <div className="space-y-1 text-sm text-blue-800">
+                  <p>
+                    <code className="bg-blue-100 px-1 rounded">/greeting</code>{" "}
+                    - Welcome message
+                  </p>
+                  <p>
+                    <code className="bg-blue-100 px-1 rounded">/quote</code> -
+                    Quote assistance
+                  </p>
+                  <p>
+                    <code className="bg-blue-100 px-1 rounded">/claim</code> -
+                    Claim help
+                  </p>
+                  <p>
+                    <code className="bg-blue-100 px-1 rounded">/payment</code> -
+                    Payment link
+                  </p>
+                  <p>
+                    <code className="bg-blue-100 px-1 rounded">/thanks</code> -
+                    Thank you
+                  </p>
+                  <p>
+                    <code className="bg-blue-100 px-1 rounded">/bye</code> -
+                    Goodbye
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* Notes Modal */}
+      {showNotesModal && selectedSession && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <StickyNote className="w-5 h-5 text-yellow-600" />
+                <h3 className="text-lg font-semibold text-gray-800">
+                  Internal Notes
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowNotesModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mb-3">
+              Add notes for {selectedSession.userName} (visible only to admins)
+            </p>
+            <textarea
+              value={sessionNotes}
+              onChange={(e) => setSessionNotes(e.target.value)}
+              placeholder="Add internal notes about this conversation..."
+              className="w-full h-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            />
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => {
+                  setShowNotesModal(false);
+                  setSessionNotes(selectedSession.notes || "");
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveSessionNotes}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+              >
+                Save Notes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

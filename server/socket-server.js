@@ -265,11 +265,15 @@ io.on('connection', (socket) => {
       };
       
       session.conversationHistory.push(message);
-      io.to(`customer-${userId}`).emit('new-message', message);
+      
+      // Emit to this specific customer room only
+      socket.to(`customer-${userId}`).emit('new-message', message);
+      
+      // Notify admins separately
       io.to('admins').emit('customer-message-notification', { userId, userName, message });
       
       await saveChatHistory(session);
-      console.log(`💬 Customer message from ${userName}`);
+      console.log(`💬 Customer message from ${userName} (${userId})`);
     }
   });
 
