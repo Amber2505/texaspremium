@@ -1,7 +1,8 @@
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const { MongoClient } = require('mongodb');
-const fetch = require('node-fetch');
+
+// ✅ Node 22 has global fetch — no need for node-fetch
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
@@ -28,7 +29,11 @@ let liveChatHistoryCollection;
 
 async function connectMongoDB() {
   try {
-    const client = new MongoClient(process.env.MONGODB_URI || 'mongodb+srv://amber1810:chatriwala25@cluster0.p8aou.mongodb.net/myFirstDatabase?retryWrites=true&w=majority');
+    if (!process.env.MONGODB_URI) {
+      throw new Error("❌ Missing MONGODB_URI environment variable");
+    }
+
+    const client = new MongoClient(process.env.MONGODB_URI);
     await client.connect();
     db = client.db('db');
     liveChatHistoryCollection = db.collection('live_chat_history');
@@ -52,7 +57,7 @@ async function sendNoAgentNotification(session) {
     const toNumber = '+19727486404';
     const smsUrl = `https://astraldbapi.herokuapp.com/message_send_link/?message=${encodedMessage}&To=${toNumber}`;
     
-    await fetch(smsUrl);
+    await fetch(smsUrl); // ✅ Using built-in fetch
     console.log('📱 Sent no-agent notification SMS for:', session.userName);
   } catch (error) {
     console.error('❌ Failed to send SMS notification:', error);
@@ -110,8 +115,7 @@ io.on('connection', (socket) => {
     socket.join('admins');
     console.log('👤 Admin joined:', socket.id);
     
-    // Send active sessions from memory
-    const activeSessions = Array.from(activeSessions.values());
+    const activeSessionsArray = Array.from(activeSessions.values());
     
     // Load recent chat history from MongoDB (top 20)
     let recentChats = [];
@@ -127,17 +131,15 @@ io.on('connection', (socket) => {
       }
     }
     
-    // Merge active sessions with recent history (avoid duplicates)
-    const activeUserIds = new Set(activeSessions.map(s => s.userId));
+    const activeUserIds = new Set(activeSessionsArray.map(s => s.userId));
     const historicalChats = recentChats.filter(chat => !activeUserIds.has(chat.userId));
     
-    const allSessions = [...activeSessions, ...historicalChats];
+    const allSessions = [...activeSessionsArray, ...historicalChats];
     
     socket.emit('active-sessions', allSessions);
     socket.emit('admin-connected', { success: true });
   });
 
-  // New event: Load more chat history
   socket.on('load-more-chats', async ({ skip = 0, limit = 20 }) => {
     if (!liveChatHistoryCollection) {
       socket.emit('more-chats', { chats: [], hasMore: false });
@@ -167,7 +169,6 @@ io.on('connection', (socket) => {
     let sessionData = activeSessions.get(userId);
     
     if (sessionData) {
-      // Reconnecting customer
       console.log('🔄 Customer reconnecting:', userId);
       sessionData.socketId = socket.id;
       sessionData.isActive = true;
@@ -176,11 +177,9 @@ io.on('connection', (socket) => {
       socket.emit('chat-history', sessionData.conversationHistory);
       io.to('admins').emit('customer-reconnected', sessionData);
     } else {
-      // Try to load from MongoDB first
       const savedSession = await loadChatHistory(userId);
       
       if (savedSession && !savedSession.customerEnded && !savedSession.adminEnded) {
-        // Restore from MongoDB
         sessionData = {
           ...savedSession,
           socketId: socket.id,
@@ -190,7 +189,6 @@ io.on('connection', (socket) => {
         console.log('📂 Restored session from MongoDB:', userId);
         socket.emit('chat-history', sessionData.conversationHistory);
       } else {
-        // New customer
         sessionData = {
           userId,
           userName,
@@ -208,13 +206,12 @@ io.on('connection', (socket) => {
       activeSessions.set(userId, sessionData);
       io.to('admins').emit('customer-joined', sessionData);
       
-      // Start 5-minute timer for agent response
       const timer = setTimeout(() => {
         const session = activeSessions.get(userId);
         if (session && !session.hasAgent && session.isActive) {
           sendNoAgentNotification(session);
         }
-      }, 5 * 60 * 1000); // 5 minutes
+      }, 5 * 60 * 1000);
       
       agentWaitTimers.set(userId, timer);
     }
@@ -226,7 +223,6 @@ io.on('connection', (socket) => {
   socket.on('admin-claim-customer', async ({ userId, adminName }) => {
     const session = activeSessions.get(userId);
     if (session && !session.hasAgent) {
-      // Clear the 5-minute timer since agent claimed
       const timer = agentWaitTimers.get(userId);
       if (timer) {
         clearTimeout(timer);
@@ -253,74 +249,51 @@ io.on('connection', (socket) => {
   });
 
   socket.on('customer-message', async ({ userId, userName, content, fileUrl, fileName }) => {
-  const session = activeSessions.get(userId);
-  if (session) {
-    session.lastSeen = new Date().toISOString();
-    
-    const message = {
-      id: Date.now().toString(),
-      userId,
-      userName,
-      content,
-      fileUrl: fileUrl || null,
-      fileName: fileName || null,
-      isAdmin: false,
-      timestamp: new Date().toISOString()
-    };
-    
-    session.conversationHistory.push(message);
-    
-    // Send to customer's room (including the customer and their agent)
-    io.to(`customer-${userId}`).emit('new-message', message);
-    
-    // Send notification to ALL admins (they can decide if they care)
-    io.to('admins').emit('customer-message-notification', {
-      userId,
-      userName,
-      message
-    });
-    
-    await saveChatHistory(session);
-    console.log(`💬 Customer message from ${userName}`);
-  }
-});
-
-  socket.on('admin-message', async ({ userId, agentName, content, fileUrl, fileName }) => {
-  const session = activeSessions.get(userId);
-  if (session) {
-    const message = {
-      id: Date.now().toString(),
-      userId,
-      userName: agentName,
-      content,
-      fileUrl: fileUrl || null,
-      fileName: fileName || null,
-      isAdmin: true,
-      timestamp: new Date().toISOString()
-    };
-    
-    session.conversationHistory.push(message);
-    
-    // Send to customer in their specific room ONLY
-    io.to(`customer-${userId}`).emit('new-message', message);
-    
-    // Send to OTHER admins viewing this session (exclude sender)
-    socket.to('admins').emit('admin-message-sent', {
-      userId,
-      message
-    });
-    
-    await saveChatHistory(session);
-    console.log(`💬 Admin message from ${agentName} to ${userId}`);
-  }
-});
-
-  socket.on('customer-typing', ({ userId, isTyping }) => {
-    io.to('admins').emit('customer-typing-indicator', { userId, isTyping });
+    const session = activeSessions.get(userId);
+    if (session) {
+      session.lastSeen = new Date().toISOString();
+      
+      const message = {
+        id: Date.now().toString(),
+        userId,
+        userName,
+        content,
+        fileUrl: fileUrl || null,
+        fileName: fileName || null,
+        isAdmin: false,
+        timestamp: new Date().toISOString()
+      };
+      
+      session.conversationHistory.push(message);
+      io.to(`customer-${userId}`).emit('new-message', message);
+      io.to('admins').emit('customer-message-notification', { userId, userName, message });
+      
+      await saveChatHistory(session);
+      console.log(`💬 Customer message from ${userName}`);
+    }
   });
 
-  socket.on('admin-typing', ({ userId, isTyping, agentName }) => {
-    io.to(`customer-${userId}`).emit('agent-typing-indicator', { isTyping, agentName });
+  socket.on('admin-message', async ({ userId, agentName, content, fileUrl, fileName }) => {
+    const session = activeSessions.get(userId);
+    if (session) {
+      const message = {
+        id: Date.now().toString(),
+        userId,
+        userName: agentName,
+        content,
+        fileUrl: fileUrl || null,
+        fileName: fileName || null,
+        isAdmin: true,
+        timestamp: new Date().toISOString()
+      };
+      
+      session.conversationHistory.push(message);
+      io.to(`customer-${userId}`).emit('new-message', message);
+      socket.to('admins').emit('admin-message-sent', { userId, message });
+      
+      await saveChatHistory(session);
+      console.log(`💬 Admin message from ${agentName} to ${userId}`);
+    }
   });
 
   socket.on('end-session', async ({ userId }) => {
@@ -336,7 +309,6 @@ io.on('connection', (socket) => {
       
       io.to('admins').emit('session-ended', { userId });
       
-      // Clear timer
       const timer = agentWaitTimers.get(userId);
       if (timer) {
         clearTimeout(timer);
@@ -344,32 +316,26 @@ io.on('connection', (socket) => {
       }
       
       await saveChatHistory(session);
-      
-      setTimeout(() => {
-        activeSessions.delete(userId);
-      }, 30 * 60 * 1000);
-      
+      setTimeout(() => activeSessions.delete(userId), 30 * 60 * 1000);
       console.log('🔴 Session ended by admin:', userId);
     }
   });
 
   socket.on('customer-end-session', async ({ userId }) => {
     const session = activeSessions.get(userId);
-    
     if (session) {
       session.isActive = false;
       session.customerEnded = true;
       session.endedAt = new Date().toISOString();
       
       io.to('admins').emit('customer-ended-session', {
-        userId: userId,
+        userId,
         userName: session.userName,
         message: `${session.userName} has ended the chat session.`
       });
       
       io.to('admins').emit('session-ended', { userId });
       
-      // Clear timer
       const timer = agentWaitTimers.get(userId);
       if (timer) {
         clearTimeout(timer);
@@ -377,26 +343,11 @@ io.on('connection', (socket) => {
       }
       
       await saveChatHistory(session);
-      
-      setTimeout(() => {
-        activeSessions.delete(userId);
-      }, 30 * 60 * 1000);
+      setTimeout(() => activeSessions.delete(userId), 30 * 60 * 1000);
       
       socket.emit('session-end-confirmed');
       console.log('🔴 Customer ended session:', userId);
     }
-  });
-
-  socket.on('heartbeat', async ({ userId, userType }) => {
-    if (userType === 'customer') {
-      const session = activeSessions.get(userId);
-      if (session) {
-        session.lastSeen = new Date().toISOString();
-        session.isActive = true;
-        await saveChatHistory(session);
-      }
-    }
-    socket.emit('heartbeat-ack');
   });
 
   socket.on('disconnect', async (reason) => {
@@ -404,7 +355,6 @@ io.on('connection', (socket) => {
     
     if (adminSockets.has(socket.id)) {
       adminSockets.delete(socket.id);
-      
       for (const [userId, session] of activeSessions.entries()) {
         if (session.agentSocketId === socket.id) {
           session.hasAgent = false;
@@ -412,10 +362,7 @@ io.on('connection', (socket) => {
           delete session.agentSocketId;
           
           io.to('admins').emit('session-updated', session);
-          io.to(`customer-${userId}`).emit('agent-left', {
-            message: 'Agent has disconnected'
-          });
-          
+          io.to(`customer-${userId}`).emit('agent-left', { message: 'Agent has disconnected' });
           await saveChatHistory(session);
         }
       }
@@ -437,7 +384,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// Clean up old inactive sessions every 5 minutes
+// Clean up inactive sessions every 5 minutes
 setInterval(async () => {
   const now = new Date();
   for (const [userId, session] of activeSessions.entries()) {
