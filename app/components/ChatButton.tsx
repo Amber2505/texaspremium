@@ -134,6 +134,7 @@ export default function ChatButton() {
   const [isConnectedToAgent, setIsConnectedToAgent] = useState(false);
   const [agentName, setAgentName] = useState("");
   const [agentTyping, setAgentTyping] = useState(false);
+  const [showLiveAgentForm, setShowLiveAgentForm] = useState(false);
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const typingDebounceTimer = useRef<NodeJS.Timeout | null>(null);
@@ -144,7 +145,46 @@ export default function ChatButton() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Notification sound
+  const notificationSoundRef = useRef<HTMLAudioElement | null>(null);
+
   const router = useRouter();
+
+  // Initialize notification sound
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      notificationSoundRef.current = new Audio(
+        "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZURI="
+      );
+    }
+  }, []);
+
+  // Play notification sound
+  const playNotificationSound = () => {
+    if (notificationSoundRef.current) {
+      notificationSoundRef.current.currentTime = 0;
+      notificationSoundRef.current
+        .play()
+        .catch((e) => console.log("Sound play failed:", e));
+    }
+  };
+
+  // Show browser notification with sound
+  const showNotification = (title: string, body: string, playSound = true) => {
+    if (playSound) {
+      playNotificationSound();
+    }
+
+    if (Notification.permission === "granted" && document.hidden) {
+      new Notification(title, {
+        body,
+        icon: "/logo.png",
+        badge: "/logo.png",
+        tag: "chat-notification",
+        requireInteraction: false,
+      });
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -192,13 +232,9 @@ export default function ChatButton() {
     };
 
     const handleBlur = (e: FocusEvent) => {
-      // Only close keyboard if user is minimizing chat or truly blurring
-      // Don't close if they're clicking within the chat
       const relatedTarget = e.relatedTarget as HTMLElement;
 
-      // Allow blur if focusing on other inputs in the chat (like verification fields, live agent form, etc.)
       if (relatedTarget && chatContainerRef.current?.contains(relatedTarget)) {
-        // User is clicking on another input within the chat, allow it
         return;
       }
 
@@ -206,7 +242,6 @@ export default function ChatButton() {
         !relatedTarget ||
         !chatContainerRef.current?.contains(relatedTarget)
       ) {
-        // Check if chat is still open before allowing blur
         setTimeout(() => {
           const activeEl = document.activeElement as HTMLElement;
           if (!chatContainerRef.current?.contains(activeEl)) {
@@ -318,7 +353,6 @@ export default function ChatButton() {
     }
   }, [messages]);
 
-  // Add this new useEffect to scroll when agent starts typing
   useEffect(() => {
     if (agentTyping) {
       requestAnimationFrame(() => {
@@ -327,7 +361,6 @@ export default function ChatButton() {
     }
   }, [agentTyping]);
 
-  // Auto-focus input when chat opens on mobile to keep keyboard up
   useEffect(() => {
     if (open && window.innerWidth < 640) {
       setTimeout(() => {
@@ -339,19 +372,16 @@ export default function ChatButton() {
     }
   }, [open]);
 
-  // Prevent auto-refocus when other inputs are focused
   useEffect(() => {
     if (!open || !keepKeyboardOpen) return;
 
     const handleFocusIn = (e: FocusEvent) => {
       const target = e.target as HTMLElement;
-      // If user is focusing on any input/textarea that's not the main input, allow it
       if (
         chatContainerRef.current?.contains(target) &&
         target !== inputRef.current &&
         (target.tagName === "INPUT" || target.tagName === "TEXTAREA")
       ) {
-        // User is focusing on another input, don't interfere
         return;
       }
     };
@@ -597,6 +627,14 @@ export default function ChatButton() {
     }
   };
 
+  const handleLiveAgentPhoneChange = (value: string) => {
+    // Only allow digits and limit to 10
+    const digitsOnly = value.replace(/\D/g, "");
+    if (digitsOnly.length <= 10) {
+      setLiveAgentPhone(digitsOnly);
+    }
+  };
+
   const connectToLiveChat = (name: string, phone: string) => {
     setLiveAgentName(name);
     setLiveAgentPhone(phone);
@@ -608,7 +646,6 @@ export default function ChatButton() {
       localStorage.setItem("chat-user-id", userId);
     }
 
-    // Request notification permission
     if (typeof window !== "undefined" && "Notification" in window) {
       if (Notification.permission === "default") {
         Notification.requestPermission();
@@ -646,7 +683,6 @@ export default function ChatButton() {
         },
       ]);
 
-      // Start heartbeat to keep connection alive
       if (heartbeatInterval.current) {
         clearInterval(heartbeatInterval.current);
       }
@@ -657,7 +693,7 @@ export default function ChatButton() {
             userType: "customer",
           });
         }
-      }, 30000); // Every 30 seconds
+      }, 30000);
     });
 
     socketRef.current.on("reconnect_attempt", (attempt: number) => {
@@ -688,7 +724,6 @@ export default function ChatButton() {
           timestamp: string;
         }>
       ) => {
-        // Restore conversation history on reconnect
         if (history && history.length > 0) {
           const restoredMessages: Message[] = history.map((msg) => ({
             role: msg.isAdmin ? "assistant" : "user",
@@ -718,13 +753,7 @@ export default function ChatButton() {
           },
         ]);
 
-        // Show notification
-        if (Notification.permission === "granted") {
-          new Notification("Agent Joined", {
-            body: message,
-            icon: "/logo.png",
-          });
-        }
+        showNotification("Agent Joined", message);
       }
     );
 
@@ -750,16 +779,8 @@ export default function ChatButton() {
         ]);
         setAgentTyping(false);
 
-        // Show notification for new agent messages when tab is not focused
-        if (
-          message.isAdmin &&
-          document.hidden &&
-          Notification.permission === "granted"
-        ) {
-          new Notification(message.userName || "Agent", {
-            body: message.content,
-            icon: "/logo.png",
-          });
+        if (message.isAdmin) {
+          showNotification(message.userName || "Agent", message.content);
         }
       }
     );
@@ -781,6 +802,7 @@ export default function ChatButton() {
         },
       ]);
       setIsConnectedToAgent(false);
+      showNotification("Agent Left", message);
     });
 
     socketRef.current.on(
@@ -804,6 +826,7 @@ export default function ChatButton() {
         }
 
         socketRef.current?.disconnect();
+        showNotification("Chat Ended", message || "Chat session ended");
       }
     );
 
@@ -814,7 +837,6 @@ export default function ChatButton() {
         clearInterval(heartbeatInterval.current);
       }
 
-      // Only show disconnection message if it wasn't intentional
       if (reason === "io server disconnect" || reason === "transport close") {
         setMessages((prev) => [
           ...prev,
@@ -938,7 +960,6 @@ export default function ChatButton() {
     setInput("");
     setLoading(true);
 
-    // Keep keyboard open after sending on mobile
     if (window.innerWidth < 640 && inputRef.current) {
       setTimeout(() => {
         inputRef.current?.focus();
@@ -1009,6 +1030,8 @@ export default function ChatButton() {
       let quoteType = data.choices?.[0]?.message?.quoteType || null;
       const quoteTypes = data.choices?.[0]?.message?.quoteTypes || null;
       const showDocuments = data.choices?.[0]?.message?.showDocuments || false;
+      const requestLiveAgent =
+        data.choices?.[0]?.message?.requestLiveAgent || false;
 
       reply = reply.replace(/\{[^}]*quoteType[^}]*\}/g, "").trim();
 
@@ -1072,6 +1095,8 @@ export default function ChatButton() {
         finalExtra = extraButtons;
       } else if (showDocuments) {
         finalExtra = { showDocuments: true };
+      } else if (requestLiveAgent) {
+        finalExtra = { requestLiveAgent: true };
       } else if (quoteTypes && quoteTypes.length > 0) {
         finalExtra = { quoteTypes: quoteTypes };
       } else if (quoteType) {
@@ -1119,9 +1144,9 @@ export default function ChatButton() {
     setIsConnectedToAgent(false);
     setLiveAgentName("");
     setLiveAgentPhone("");
+    setShowLiveAgentForm(false);
     setKeepKeyboardOpen(false);
 
-    // Clean up body styles when closing
     if (document.body) {
       document.body.style.overflow = "";
       document.body.style.position = "";
@@ -1373,335 +1398,416 @@ export default function ChatButton() {
                 </div>
               </div>
             ) : (
-              messages.map((msg, idx) => (
-                <div key={idx}>
-                  <div
-                    className={`p-3 rounded-xl shadow-sm max-w-[85%] sm:max-w-[75%] transition-all duration-300 ${
-                      msg.role === "user"
-                        ? "ml-auto bg-gradient-to-r from-red-50 to-blue-50 text-gray-800 border border-red-100"
-                        : "mr-auto bg-gray-100 text-gray-700 border border-gray-200"
-                    }`}
-                  >
-                    <p className="text-xs font-semibold mb-1 text-gray-600">
-                      {msg.role === "user"
-                        ? liveAgentName || "You"
-                        : msg.userName || "Samantha"}
-                    </p>
+              messages.map((msg, idx) => {
+                // Find the index of the most recent live agent request
+                let latestLiveAgentIndex = -1;
+                for (let i = messages.length - 1; i >= 0; i--) {
+                  if (
+                    messages[i].role === "assistant" &&
+                    messages[i].extra?.requestLiveAgent &&
+                    !isLiveChat
+                  ) {
+                    latestLiveAgentIndex = i;
+                    break;
+                  }
+                }
 
-                    <div className="whitespace-pre-line text-sm">
-                      {msg.content}
-                    </div>
+                // Check if this is the most recent live agent request
+                const isLatestLiveAgentRequest =
+                  msg.role === "assistant" &&
+                  msg.extra?.requestLiveAgent &&
+                  !isLiveChat &&
+                  idx === latestLiveAgentIndex;
 
-                    {msg.fileUrl && (
-                      <a
-                        href={msg.fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-2 inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm hover:bg-blue-100 transition"
-                      >
-                        <Paperclip className="w-4 h-4" />
-                        {msg.fileName || "Download file"}
-                      </a>
-                    )}
+                return (
+                  <div key={idx}>
+                    <div
+                      className={`p-3 rounded-xl shadow-sm max-w-[85%] sm:max-w-[75%] transition-all duration-300 ${
+                        msg.role === "user"
+                          ? "ml-auto bg-gradient-to-r from-red-50 to-blue-50 text-gray-800 border border-red-100"
+                          : "mr-auto bg-gray-100 text-gray-700 border border-gray-200"
+                      }`}
+                    >
+                      <p className="text-xs font-semibold mb-1 text-gray-600">
+                        {msg.role === "user"
+                          ? liveAgentName || "You"
+                          : msg.userName || "Samantha"}
+                      </p>
 
-                    {msg.role === "assistant" &&
-                      msg.extra?.quoteType &&
-                      !msg.extra?.quoteTypes && (
-                        <button
-                          onClick={() =>
-                            handleQuoteNavigation(msg.extra!.quoteType!)
-                          }
-                          className="mt-3 w-full sm:w-auto inline-block px-4 py-2.5 rounded-lg text-white 
+                      <div className="whitespace-pre-line text-sm">
+                        {msg.content}
+                      </div>
+
+                      {msg.fileUrl && (
+                        <a
+                          href={msg.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm hover:bg-blue-100 transition"
+                        >
+                          <Paperclip className="w-4 h-4" />
+                          {msg.fileName || "Download file"}
+                        </a>
+                      )}
+
+                      {msg.role === "assistant" &&
+                        msg.extra?.quoteType &&
+                        !msg.extra?.quoteTypes && (
+                          <button
+                            onClick={() =>
+                              handleQuoteNavigation(msg.extra!.quoteType!)
+                            }
+                            className="mt-3 w-full sm:w-auto inline-block px-4 py-2.5 rounded-lg text-white 
                      bg-gradient-to-r from-red-700 to-blue-800 
                      text-sm font-medium hover:opacity-90 transition-all duration-200
                      active:scale-95 shadow-md"
-                        >
-                          Get a {msg.extra!.quoteType} Quote →
-                        </button>
-                      )}
+                          >
+                            Get a {msg.extra!.quoteType} Quote →
+                          </button>
+                        )}
 
-                    {msg.role === "assistant" &&
-                      msg.extra?.quoteTypes &&
-                      msg.extra.quoteTypes.length > 0 && (
-                        <div className="mt-3 flex flex-col gap-2">
-                          {msg.extra.quoteTypes.map((type, typeIdx) => (
-                            <button
-                              key={typeIdx}
-                              onClick={() => handleQuoteNavigation(type)}
-                              className="w-full px-4 py-2.5 rounded-lg text-white 
+                      {msg.role === "assistant" &&
+                        msg.extra?.quoteTypes &&
+                        msg.extra.quoteTypes.length > 0 && (
+                          <div className="mt-3 flex flex-col gap-2">
+                            {msg.extra.quoteTypes.map((type, typeIdx) => (
+                              <button
+                                key={typeIdx}
+                                onClick={() => handleQuoteNavigation(type)}
+                                className="w-full px-4 py-2.5 rounded-lg text-white 
                                      bg-gradient-to-r from-red-700 to-blue-800 
                                      text-sm font-medium hover:opacity-90 transition-all duration-200
                                      active:scale-95 shadow-md"
-                            >
-                              Get {type} Quote →
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                              >
+                                Get {type} Quote →
+                              </button>
+                            ))}
+                          </div>
+                        )}
 
-                    {msg.role === "assistant" && msg.extra?.showDocuments && (
-                      <button
-                        onClick={() => handleQuoteNavigation("view_documents")}
-                        className="mt-3 w-full sm:w-auto inline-block px-4 py-2.5 rounded-lg text-white 
+                      {msg.role === "assistant" && msg.extra?.showDocuments && (
+                        <button
+                          onClick={() =>
+                            handleQuoteNavigation("view_documents")
+                          }
+                          className="mt-3 w-full sm:w-auto inline-block px-4 py-2.5 rounded-lg text-white 
                                    bg-gradient-to-r from-purple-600 to-indigo-700 
                                    text-sm font-medium hover:opacity-90 transition-all duration-200
                                    active:scale-95 shadow-md"
-                      >
-                        📄 View Documents →
-                      </button>
-                    )}
+                        >
+                          📄 View Documents →
+                        </button>
+                      )}
 
-                    {msg.role === "assistant" &&
-                      msg.extra?.showPhoneVerification &&
-                      !isVerified && (
-                        <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                          <p className="text-sm font-medium text-blue-800 mb-2">
-                            Enter your phone number:
-                          </p>
-                          <div className="space-y-2">
-                            <input
-                              type="tel"
-                              value={phoneInput}
-                              onChange={(e) => setPhoneInput(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (
-                                  e.key === "Enter" &&
-                                  phoneInput.trim() &&
-                                  !verificationLoading
-                                ) {
+                      {msg.role === "assistant" &&
+                        msg.extra?.showPhoneVerification &&
+                        !isVerified && (
+                          <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                            <p className="text-sm font-medium text-blue-800 mb-2">
+                              Enter your phone number:
+                            </p>
+                            <div className="space-y-2">
+                              <input
+                                type="tel"
+                                value={phoneInput}
+                                onChange={(e) => setPhoneInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (
+                                    e.key === "Enter" &&
+                                    phoneInput.trim() &&
+                                    !verificationLoading
+                                  ) {
+                                    const serviceType =
+                                      msg.extra?.verificationType ||
+                                      (msg.content
+                                        .toLowerCase()
+                                        .includes("claim")
+                                        ? "claim"
+                                        : "payment");
+                                    sendVerificationCode(
+                                      phoneInput,
+                                      serviceType
+                                    );
+                                  }
+                                }}
+                                placeholder="(555) 123-4567"
+                                className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                style={{ fontSize: "16px" }}
+                                maxLength={14}
+                              />
+                              <button
+                                onClick={() => {
                                   const serviceType =
                                     msg.extra?.verificationType ||
                                     (msg.content.toLowerCase().includes("claim")
                                       ? "claim"
                                       : "payment");
                                   sendVerificationCode(phoneInput, serviceType);
+                                }}
+                                disabled={
+                                  verificationLoading || !phoneInput.trim()
                                 }
-                              }}
-                              placeholder="(555) 123-4567"
-                              className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              style={{ fontSize: "16px" }}
-                              maxLength={14}
-                            />
-                            <button
-                              onClick={() => {
-                                const serviceType =
-                                  msg.extra?.verificationType ||
-                                  (msg.content.toLowerCase().includes("claim")
-                                    ? "claim"
-                                    : "payment");
-                                sendVerificationCode(phoneInput, serviceType);
-                              }}
-                              disabled={
-                                verificationLoading || !phoneInput.trim()
-                              }
-                              className="w-full px-3 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium 
+                                className="w-full px-3 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium 
                                      hover:bg-blue-700 transition disabled:opacity-50 active:scale-95"
-                            >
-                              {verificationLoading
-                                ? "Sending..."
-                                : "Send Verification Code"}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                    {msg.role === "assistant" &&
-                      msg.extra?.verificationSent &&
-                      !isVerified && (
-                        <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                          <p className="text-sm font-medium text-green-800 mb-2">
-                            Enter verification code:
-                          </p>
-                          <div className="space-y-2">
-                            <input
-                              type="text"
-                              value={verificationCode}
-                              onChange={(e) =>
-                                setVerificationCode(
-                                  e.target.value.replace(/\D/g, "").slice(0, 6)
-                                )
-                              }
-                              onKeyDown={(e) => {
-                                if (
-                                  e.key === "Enter" &&
-                                  verificationCode.length === 6 &&
-                                  !verificationLoading
-                                ) {
-                                  verifyCodeAndShowServices(verificationCode);
-                                }
-                              }}
-                              placeholder="123456"
-                              className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                              style={{ fontSize: "16px" }}
-                              maxLength={6}
-                            />
-                            <button
-                              onClick={() =>
-                                verifyCodeAndShowServices(verificationCode)
-                              }
-                              disabled={
-                                verificationLoading ||
-                                verificationCode.length !== 6
-                              }
-                              className="w-full px-3 py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium 
-                                     hover:bg-green-700 transition disabled:opacity-50 active:scale-95"
-                            >
-                              {verificationLoading
-                                ? "Verifying..."
-                                : "Verify Code"}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-
-                    {msg.role === "assistant" &&
-                      isVerified &&
-                      msg.extra?.showServiceButtons && (
-                        <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                          <p className="text-sm font-medium text-green-800 mb-2">
-                            ✓ Phone number verified
-                          </p>
-                          <button
-                            disabled
-                            className="w-full px-3 py-2.5 bg-gray-300 text-gray-600 rounded-lg text-sm font-medium 
-                                     cursor-not-allowed"
-                          >
-                            Verified
-                          </button>
-                        </div>
-                      )}
-
-                    {msg.role === "assistant" &&
-                      msg.extra?.showServiceButtons && (
-                        <div className="mt-3 space-y-3">
-                          {msg.extra.showServiceButtons.companies.map(
-                            (company, companyIdx) => (
-                              <div
-                                key={companyIdx}
-                                className="p-3 bg-white rounded-lg border border-gray-200 shadow-sm"
                               >
-                                <div className="font-medium text-gray-800 mb-2 text-sm">
-                                  {company.name} - Policy #{company.policyNo}
-                                </div>
+                                {verificationLoading
+                                  ? "Sending..."
+                                  : "Send Verification Code"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
 
-                                <div className="flex flex-col sm:flex-row gap-2">
-                                  {msg.extra!.showServiceButtons!.type ===
-                                  "claim" ? (
-                                    <>
-                                      <a
-                                        href={`tel:${
-                                          company.claimPhone?.replace(
-                                            /\D/g,
-                                            ""
-                                          ) || ""
-                                        }`}
-                                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 
+                      {msg.role === "assistant" &&
+                        msg.extra?.verificationSent &&
+                        !isVerified && (
+                          <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                            <p className="text-sm font-medium text-green-800 mb-2">
+                              Enter verification code:
+                            </p>
+                            <div className="space-y-2">
+                              <input
+                                type="text"
+                                value={verificationCode}
+                                onChange={(e) =>
+                                  setVerificationCode(
+                                    e.target.value
+                                      .replace(/\D/g, "")
+                                      .slice(0, 6)
+                                  )
+                                }
+                                onKeyDown={(e) => {
+                                  if (
+                                    e.key === "Enter" &&
+                                    verificationCode.length === 6 &&
+                                    !verificationLoading
+                                  ) {
+                                    verifyCodeAndShowServices(verificationCode);
+                                  }
+                                }}
+                                placeholder="123456"
+                                className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                                style={{ fontSize: "16px" }}
+                                maxLength={6}
+                              />
+                              <button
+                                onClick={() =>
+                                  verifyCodeAndShowServices(verificationCode)
+                                }
+                                disabled={
+                                  verificationLoading ||
+                                  verificationCode.length !== 6
+                                }
+                                className="w-full px-3 py-2.5 bg-green-600 text-white rounded-lg text-sm font-medium 
+                                     hover:bg-green-700 transition disabled:opacity-50 active:scale-95"
+                              >
+                                {verificationLoading
+                                  ? "Verifying..."
+                                  : "Verify Code"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                      {msg.role === "assistant" &&
+                        isVerified &&
+                        msg.extra?.showServiceButtons && (
+                          <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                            <p className="text-sm font-medium text-green-800 mb-2">
+                              ✓ Phone number verified
+                            </p>
+                            <button
+                              disabled
+                              className="w-full px-3 py-2.5 bg-gray-300 text-gray-600 rounded-lg text-sm font-medium 
+                                     cursor-not-allowed"
+                            >
+                              Verified
+                            </button>
+                          </div>
+                        )}
+
+                      {msg.role === "assistant" &&
+                        msg.extra?.showServiceButtons && (
+                          <div className="mt-3 space-y-3">
+                            {msg.extra.showServiceButtons.companies.map(
+                              (company, companyIdx) => (
+                                <div
+                                  key={companyIdx}
+                                  className="p-3 bg-white rounded-lg border border-gray-200 shadow-sm"
+                                >
+                                  <div className="font-medium text-gray-800 mb-2 text-sm">
+                                    {company.name} - Policy #{company.policyNo}
+                                  </div>
+
+                                  <div className="flex flex-col sm:flex-row gap-2">
+                                    {msg.extra!.showServiceButtons!.type ===
+                                    "claim" ? (
+                                      <>
+                                        <a
+                                          href={`tel:${
+                                            company.claimPhone?.replace(
+                                              /\D/g,
+                                              ""
+                                            ) || ""
+                                          }`}
+                                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 
                                              bg-green-600 text-white rounded-lg text-sm font-medium 
                                              hover:bg-green-700 transition active:scale-95"
-                                      >
-                                        <Phone className="w-4 h-4" />
-                                        Call Claims
-                                      </a>
+                                        >
+                                          <Phone className="w-4 h-4" />
+                                          Call Claims
+                                        </a>
 
-                                      <a
-                                        href={company.claimLink}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 
+                                        <a
+                                          href={company.claimLink}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 
                                              bg-blue-600 text-white rounded-lg text-sm font-medium 
                                              hover:bg-blue-700 transition active:scale-95"
-                                      >
-                                        <Globe className="w-4 h-4" />
-                                        Website
-                                      </a>
-                                    </>
-                                  ) : (
-                                    <a
-                                      href={company.paymentLink}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="w-full flex items-center justify-center gap-2 px-3 py-2.5 
+                                        >
+                                          <Globe className="w-4 h-4" />
+                                          Website
+                                        </a>
+                                      </>
+                                    ) : (
+                                      <a
+                                        href={company.paymentLink}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="w-full flex items-center justify-center gap-2 px-3 py-2.5 
                                            bg-purple-600 text-white rounded-lg text-sm font-medium 
                                            hover:bg-purple-700 transition active:scale-95"
+                                      >
+                                        <Globe className="w-4 h-4" />
+                                        Make Payment
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            )}
+                          </div>
+                        )}
+
+                      {msg.role === "assistant" &&
+                        msg.extra?.requestLiveAgent &&
+                        !isLiveChat && (
+                          <>
+                            {isLatestLiveAgentRequest && !showLiveAgentForm ? (
+                              <button
+                                onClick={() => setShowLiveAgentForm(true)}
+                                className="mt-3 w-full sm:w-auto inline-block px-4 py-2.5 rounded-lg text-white 
+                                     bg-gradient-to-r from-red-700 to-blue-800 
+                                     text-sm font-medium hover:opacity-90 transition-all duration-200
+                                     active:scale-95 shadow-md"
+                              >
+                                💬 Connect to Live Agent
+                              </button>
+                            ) : isLatestLiveAgentRequest &&
+                              showLiveAgentForm ? (
+                              <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                                <p className="text-sm font-medium text-purple-800 mb-2">
+                                  Connect with a Live Agent
+                                </p>
+                                <div className="space-y-2">
+                                  <input
+                                    type="text"
+                                    value={liveAgentName}
+                                    onChange={(e) =>
+                                      setLiveAgentName(e.target.value)
+                                    }
+                                    placeholder="Your Name"
+                                    className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    style={{ fontSize: "16px" }}
+                                  />
+                                  <input
+                                    type="tel"
+                                    value={liveAgentPhone}
+                                    onChange={(e) =>
+                                      handleLiveAgentPhoneChange(e.target.value)
+                                    }
+                                    onKeyDown={(e) => {
+                                      if (
+                                        e.key === "Enter" &&
+                                        liveAgentName.trim() &&
+                                        liveAgentPhone.length === 10
+                                      ) {
+                                        connectToLiveChat(
+                                          liveAgentName,
+                                          liveAgentPhone
+                                        );
+                                        setShowLiveAgentForm(false);
+                                      }
+                                    }}
+                                    placeholder="Phone Number (10 digits)"
+                                    className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                    style={{ fontSize: "16px" }}
+                                    maxLength={10}
+                                  />
+                                  {liveAgentPhone.length > 0 &&
+                                    liveAgentPhone.length < 10 && (
+                                      <p className="text-xs text-red-600">
+                                        Please enter exactly 10 digits
+                                      </p>
+                                    )}
+                                  <div className="flex gap-2">
+                                    <button
+                                      onClick={() => {
+                                        connectToLiveChat(
+                                          liveAgentName,
+                                          liveAgentPhone
+                                        );
+                                        setShowLiveAgentForm(false);
+                                      }}
+                                      disabled={
+                                        !liveAgentName.trim() ||
+                                        liveAgentPhone.length !== 10
+                                      }
+                                      className="flex-1 px-3 py-2.5 bg-purple-600 text-white rounded-lg text-sm font-medium 
+                                 hover:bg-purple-700 transition disabled:opacity-50 active:scale-95"
                                     >
-                                      <Globe className="w-4 h-4" />
-                                      Make Payment
-                                    </a>
-                                  )}
+                                      Connect
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setShowLiveAgentForm(false);
+                                        setLiveAgentName("");
+                                        setLiveAgentPhone("");
+                                      }}
+                                      className="px-3 py-2.5 bg-gray-300 text-gray-700 rounded-lg text-sm font-medium 
+                                 hover:bg-gray-400 transition active:scale-95"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
-                            )
-                          )}
-                        </div>
-                      )}
+                            ) : (
+                              <button
+                                disabled
+                                className="mt-3 w-full sm:w-auto inline-block px-4 py-2.5 rounded-lg text-white 
+                                     bg-gray-400 
+                                     text-sm font-medium cursor-not-allowed opacity-50"
+                              >
+                                💬 Connect to Live Agent
+                              </button>
+                            )}
+                          </>
+                        )}
 
-                    {msg.role === "assistant" &&
-                      msg.extra?.requestLiveAgent &&
-                      !msg.extra?.liveAgentFormSubmitted &&
-                      !isLiveChat && (
-                        <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
-                          <p className="text-sm font-medium text-purple-800 mb-2">
-                            Connect with a Live Agent
-                          </p>
-                          <div className="space-y-2">
-                            <input
-                              type="text"
-                              value={liveAgentName}
-                              onChange={(e) => setLiveAgentName(e.target.value)}
-                              placeholder="Your Name"
-                              className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                              style={{ fontSize: "16px" }}
-                            />
-                            <input
-                              type="tel"
-                              value={liveAgentPhone}
-                              onChange={(e) =>
-                                setLiveAgentPhone(e.target.value)
-                              }
-                              onKeyDown={(e) => {
-                                if (
-                                  e.key === "Enter" &&
-                                  liveAgentName.trim() &&
-                                  liveAgentPhone.trim()
-                                ) {
-                                  connectToLiveChat(
-                                    liveAgentName,
-                                    liveAgentPhone
-                                  );
-                                }
-                              }}
-                              placeholder="Phone Number"
-                              className="w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-                              style={{ fontSize: "16px" }}
-                              maxLength={14}
-                            />
-                            <button
-                              onClick={() =>
-                                connectToLiveChat(liveAgentName, liveAgentPhone)
-                              }
-                              disabled={
-                                !liveAgentName.trim() || !liveAgentPhone.trim()
-                              }
-                              className="w-full px-3 py-2.5 bg-purple-600 text-white rounded-lg text-sm font-medium 
-                         hover:bg-purple-700 transition disabled:opacity-50 active:scale-95"
-                            >
-                              Connect to Live Agent
-                            </button>
+                      {msg.role === "assistant" &&
+                        msg.extra?.liveAgentFormSubmitted && (
+                          <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                            <p className="text-sm font-medium text-purple-800">
+                              ✓ Request submitted. Connecting you to an agent...
+                            </p>
                           </div>
-                        </div>
-                      )}
-
-                    {msg.role === "assistant" &&
-                      msg.extra?.liveAgentFormSubmitted && (
-                        <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
-                          <p className="text-sm font-medium text-purple-800">
-                            ✓ Request submitted. Connecting you to an agent...
-                          </p>
-                        </div>
-                      )}
+                        )}
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
 
             {loading && (
@@ -1835,10 +1941,8 @@ export default function ChatButton() {
                   }
                 }}
                 onBlur={(e) => {
-                  // Allow blur if user is clicking on other inputs in the chat
                   const relatedTarget = e.relatedTarget as HTMLElement;
 
-                  // If focusing another input/textarea in the chat, allow it completely
                   if (
                     relatedTarget &&
                     chatContainerRef.current?.contains(relatedTarget) &&
@@ -1846,10 +1950,9 @@ export default function ChatButton() {
                       relatedTarget.tagName === "TEXTAREA" ||
                       relatedTarget.tagName === "BUTTON")
                   ) {
-                    return; // Don't do anything, let the other input get focus
+                    return;
                   }
 
-                  // Only refocus if clicking completely outside the chat
                   if (
                     keepKeyboardOpen &&
                     window.innerWidth < 640 &&
@@ -1857,7 +1960,6 @@ export default function ChatButton() {
                   ) {
                     setTimeout(() => {
                       const activeEl = document.activeElement as HTMLElement;
-                      // Only refocus if no input in the chat has focus
                       if (
                         !chatContainerRef.current?.contains(activeEl) ||
                         (activeEl.tagName !== "INPUT" &&

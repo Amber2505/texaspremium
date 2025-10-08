@@ -21,6 +21,8 @@ function isLiveAgentRequest(userMessage: string): boolean {
   
   const liveAgentKeywords = [
     'live agent',
+    'live chat',
+    'chat with someone',
     'real person',
     'human agent',
     'speak to someone',
@@ -50,6 +52,28 @@ function isLiveAgentRequest(userMessage: string): boolean {
   ];
   
   return liveAgentKeywords.some(keyword => lowerMessage.includes(keyword));
+}
+
+// Check if AI response contains contact suggestion (phone/email)
+function containsContactSuggestion(aiResponse: string): boolean {
+  const lowerText = aiResponse.toLowerCase();
+  const originalText = aiResponse;
+  
+  // Check for YOUR specific phone number (469) 729-5185 in any format
+  const hasYourPhoneNumber = 
+    lowerText.includes("469") && lowerText.includes("729") && lowerText.includes("5185") ||
+    originalText.includes("4697295185") ||
+    originalText.includes("469-729-5185") ||
+    originalText.includes("(469) 729-5185") ||
+    originalText.includes("469.729.5185");
+  
+  // Check for YOUR specific email address
+  const hasYourEmail = 
+    lowerText.includes("support@texaspremiumins.com") ||
+    lowerText.includes("support@texaspremiumins");
+  
+  // Return true ONLY if it contains YOUR contact information
+  return hasYourPhoneNumber || hasYourEmail;
 }
 
 function analyzeContext(messages: ChatMessage[]): ContextAnalysis {
@@ -301,7 +325,8 @@ export async function POST(req: Request) {
               content: "I'm having trouble connecting right now, Try asking the same questions in few seconds. Please call us at (469) 729-5185 for immediate assistance.",
               quoteType: null,
               quoteTypes: null,
-              requestLiveAgent: false
+              requestLiveAgent: true, // Show live chat button on errors
+              showDocuments: false
             },
           },
         ],
@@ -313,6 +338,9 @@ export async function POST(req: Request) {
     
     // Clean up any JSON that might have leaked through
     content = content.replace(/\{[^}]*quoteType[^}]*\}/g, '').trim();
+    
+    // Check if AI response contains contact suggestion (phone/email)
+    const hasContactSuggestion = containsContactSuggestion(content);
     
     // Detect insurance types mentioned in user message and AI response
     const detectedTypes = detectInsuranceTypes(userMessage, content);
@@ -326,15 +354,22 @@ export async function POST(req: Request) {
     console.log('Detected Types:', detectedTypes);
     console.log('Show Button:', showButton);
     console.log('Document Request:', requestingDocuments);
+    console.log('Has Contact Suggestion:', hasContactSuggestion);
     
     // Return appropriate button type
     let quoteTypes = null;
     let documentButton = false;
+    let liveAgentButton = false;
     
     if (requestingDocuments) {
       documentButton = true;
     } else if (showButton && detectedTypes.length > 0) {
       quoteTypes = detectedTypes;
+    }
+    
+    // Show live agent button if AI suggested calling/emailing
+    if (hasContactSuggestion) {
+      liveAgentButton = true;
     }
     
     return NextResponse.json({
@@ -345,7 +380,7 @@ export async function POST(req: Request) {
             quoteType: quoteTypes && quoteTypes.length === 1 ? quoteTypes[0] : null,
             quoteTypes: quoteTypes && quoteTypes.length > 1 ? quoteTypes : null,
             showDocuments: documentButton,
-            requestLiveAgent: false
+            requestLiveAgent: liveAgentButton
           },
         },
       ],
@@ -360,7 +395,8 @@ export async function POST(req: Request) {
             content: "I'm experiencing technical difficulties. Please call us at (469) 729-5185 for assistance.",
             quoteType: null,
             quoteTypes: null,
-            requestLiveAgent: false
+            requestLiveAgent: true, // Show live chat button on errors
+            showDocuments: false
           },
         },
       ],
