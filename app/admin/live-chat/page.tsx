@@ -21,6 +21,8 @@ import {
   Bell,
   BellOff,
   CheckCheck,
+  Trash2,
+  Menu,
 } from "lucide-react";
 import io from "socket.io-client";
 import EmojiPicker from "emoji-picker-react";
@@ -72,7 +74,6 @@ interface QuickResponse {
 const ADMIN_PASSWORD = "Insurance2024";
 const SESSION_KEY = "admin_chat_session";
 
-// Quick Response Templates
 const DEFAULT_QUICK_RESPONSES: QuickResponse[] = [
   {
     id: "1",
@@ -156,8 +157,6 @@ export default function AdminLiveChatDashboard() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [totalChatsCount, setTotalChatsCount] = useState(0);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
-
-  // New state for enhanced features
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<
     "all" | "active" | "ended" | "unassigned"
@@ -168,6 +167,7 @@ export default function AdminLiveChatDashboard() {
   const [showNotesModal, setShowNotesModal] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [showMobileSidebar, setShowMobileSidebar] = useState(true);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
@@ -176,26 +176,19 @@ export default function AdminLiveChatDashboard() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const selectedSessionRef = useRef<ChatSession | null>(null);
 
-  // Filter and search sessions
   const filteredSessions = sessions
     .filter((session) => {
-      // Search filter
       const matchesSearch =
         searchQuery === "" ||
         session.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         session.userPhone?.includes(searchQuery) ||
         session.userId.toLowerCase().includes(searchQuery.toLowerCase());
 
-      // Status filter
       let matchesStatus = true;
-
       if (filterStatus === "active") {
-        // !! converts any truthy/falsy value (including undefined) to a strict boolean
         matchesStatus =
           !!session.isActive && !session.customerEnded && !session.adminEnded;
       } else if (filterStatus === "ended") {
-        // This is the most likely culprit: if customerEnded or adminEnded is undefined,
-        // the result of the || operation could be undefined.
         matchesStatus = !!(session.customerEnded || session.adminEnded);
       } else if (filterStatus === "unassigned") {
         matchesStatus = !!(!session.hasAgent && session.isActive);
@@ -227,7 +220,6 @@ export default function AdminLiveChatDashboard() {
     selectedSessionRef.current = selectedSession;
   }, [selectedSession]);
 
-  // Check for existing session on mount
   useEffect(() => {
     if (typeof window !== "undefined") {
       const savedSession = localStorage.getItem(SESSION_KEY);
@@ -255,7 +247,6 @@ export default function AdminLiveChatDashboard() {
     }
   }, []);
 
-  // Set up session expiry checker
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -328,12 +319,8 @@ export default function AdminLiveChatDashboard() {
 
   const loadMoreChats = () => {
     if (!socketRef.current || isLoadingMore || !hasMoreChats) return;
-
     setIsLoadingMore(true);
-    socketRef.current.emit("load-more-chats", {
-      skip: loadedCount,
-      limit: 20,
-    });
+    socketRef.current.emit("load-more-chats", { skip: loadedCount, limit: 20 });
   };
 
   const insertQuickResponse = (response: QuickResponse) => {
@@ -353,6 +340,28 @@ export default function AdminLiveChatDashboard() {
       }
     }
     setInputMessage(value);
+  };
+
+  const deleteChat = (userId: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+
+    if (
+      !confirm(
+        "Are you sure you want to delete this chat? This action cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    if (socketRef.current) {
+      socketRef.current.emit("admin-delete-chat", { userId, adminName });
+      setSessions((prev) => prev.filter((s) => s.userId !== userId));
+
+      if (selectedSession?.userId === userId) {
+        setSelectedSession(null);
+        setMessages([]);
+      }
+    }
   };
 
   const downloadTranscript = () => {
@@ -382,18 +391,13 @@ export default function AdminLiveChatDashboard() {
   const saveSessionNotes = () => {
     if (!selectedSession) return;
 
-    const updatedSession = {
-      ...selectedSession,
-      notes: sessionNotes,
-    };
-
+    const updatedSession = { ...selectedSession, notes: sessionNotes };
     setSelectedSession(updatedSession);
     setSessions((prev) =>
       prev.map((s) =>
         s.userId === selectedSession.userId ? updatedSession : s
       )
     );
-
     setShowNotesModal(false);
   };
 
@@ -401,13 +405,10 @@ export default function AdminLiveChatDashboard() {
     setAdminName(name);
     setIsLoggedIn(true);
     setIsCheckingSession(false);
-
     saveAdminSession(name);
 
     if (!SOCKET_URL) {
-      console.error(
-        "❌ NEXT_PUBLIC_SOCKET_URL is not defined in environment variables"
-      );
+      console.error("❌ NEXT_PUBLIC_SOCKET_URL is not defined");
       alert(
         "Socket URL is not configured. Please check your environment variables."
       );
@@ -460,6 +461,23 @@ export default function AdminLiveChatDashboard() {
       }
     );
 
+    socketRef.current.on(
+      "chat-deleted",
+      ({ userId, deletedBy }: { userId: string; deletedBy: string }) => {
+        console.log(`Chat ${userId} was deleted by ${deletedBy}`);
+        setSessions((prev) => prev.filter((s) => s.userId !== userId));
+        if (selectedSessionRef.current?.userId === userId) {
+          setSelectedSession(null);
+          setMessages([]);
+        }
+      }
+    );
+
+    socketRef.current.on("delete-error", ({ message }: { message: string }) => {
+      console.error("Delete error:", message);
+      alert(`Failed to delete chat: ${message}`);
+    });
+
     socketRef.current.on("customer-joined", (session: ChatSession) => {
       console.log("Customer joined:", session);
       setSessions((prev) => {
@@ -503,7 +521,7 @@ export default function AdminLiveChatDashboard() {
                   ],
                   lastSeen: new Date().toISOString(),
                   unreadCount:
-                    selectedSessionRef.current?.userId === userId // ⬅️ CHANGE THIS
+                    selectedSessionRef.current?.userId === userId
                       ? 0
                       : (session.unreadCount || 0) + 1,
                 }
@@ -511,9 +529,7 @@ export default function AdminLiveChatDashboard() {
           )
         );
 
-        // Use ref to check current selected session
         if (selectedSessionRef.current?.userId === userId) {
-          // ⬅️ CHANGE THIS
           setMessages((prev) => [...prev, message]);
         }
 
@@ -546,9 +562,7 @@ export default function AdminLiveChatDashboard() {
           )
         );
 
-        // Use ref to check current selected session
         if (selectedSessionRef.current?.userId === userId) {
-          // ⬅️ CHANGE THIS
           setMessages((prev) => [...prev, message]);
         }
       }
@@ -567,10 +581,7 @@ export default function AdminLiveChatDashboard() {
     socketRef.current.on(
       "customer-typing-indicator",
       ({ userId, isTyping }: { userId: string; isTyping: boolean }) => {
-        setCustomerTyping((prev) => ({
-          ...prev,
-          [userId]: isTyping,
-        }));
+        setCustomerTyping((prev) => ({ ...prev, [userId]: isTyping }));
       }
     );
 
@@ -604,9 +615,7 @@ export default function AdminLiveChatDashboard() {
           )
         );
 
-        // Use ref to check current selected session
         if (selectedSessionRef.current?.userId === userId) {
-          // ⬅️ CHANGE THIS
           setMessages((prev) => [
             ...prev,
             {
@@ -634,9 +643,7 @@ export default function AdminLiveChatDashboard() {
         )
       );
 
-      // Use ref to check current selected session
       if (selectedSessionRef.current?.userId === userId) {
-        // ⬅️ CHANGE THIS
         setSelectedSession(null);
         setMessages([]);
       }
@@ -668,8 +675,6 @@ export default function AdminLiveChatDashboard() {
       setSelectedSession(session);
       setMessages(session.conversationHistory || []);
       setSessionNotes(session.notes || "");
-
-      // Clear unread count
       setSessions((prev) =>
         prev.map((s) =>
           s.userId === session.userId ? { ...s, unreadCount: 0 } : s
@@ -738,9 +743,7 @@ export default function AdminLiveChatDashboard() {
 
   const endSession = () => {
     if (socketRef.current && selectedSession) {
-      socketRef.current.emit("end-session", {
-        userId: selectedSession.userId,
-      });
+      socketRef.current.emit("end-session", { userId: selectedSession.userId });
       setSelectedSession(null);
       setMessages([]);
     }
@@ -748,10 +751,7 @@ export default function AdminLiveChatDashboard() {
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);
-    return date.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
   const getSessionDuration = (joinedAt: string) => {
@@ -759,7 +759,14 @@ export default function AdminLiveChatDashboard() {
     const now = new Date();
     const diffMs = now.getTime() - start.getTime();
     const minutes = Math.floor(diffMs / 60000);
-    return minutes < 1 ? "< 1 min" : `${minutes} min`;
+
+    if (minutes < 1) return "< 1 min";
+    if (minutes >= 60) {
+      const hours = Math.floor(minutes / 60);
+      const remainingMins = minutes % 60;
+      return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
+    }
+    return `${minutes} min`;
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -816,7 +823,7 @@ export default function AdminLiveChatDashboard() {
 
   if (!isLoggedIn) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50">
+      <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50 p-4">
         <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
           <div className="text-center mb-6">
             <div className="w-16 h-16 bg-gradient-to-r from-red-700 to-blue-800 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -848,7 +855,6 @@ export default function AdminLiveChatDashboard() {
                 }}
                 placeholder="Enter your name"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                suppressHydrationWarning
               />
             </div>
 
@@ -872,7 +878,6 @@ export default function AdminLiveChatDashboard() {
                   }}
                   placeholder="Enter password"
                   className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  suppressHydrationWarning
                 />
                 <button
                   type="button"
@@ -908,12 +913,28 @@ export default function AdminLiveChatDashboard() {
 
   return (
     <div className="h-screen flex bg-gray-100">
-      {/* Sidebar */}
-      <div className="w-96 bg-white border-r border-gray-200 flex flex-col">
+      <button
+        onClick={() => setShowMobileSidebar(!showMobileSidebar)}
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-blue-600 text-white rounded-lg shadow-lg"
+      >
+        <Menu className="w-6 h-6" />
+      </button>
+
+      <div
+        className={`${
+          showMobileSidebar ? "translate-x-0" : "-translate-x-full"
+        } lg:translate-x-0 fixed lg:relative z-40 w-full sm:w-96 bg-white border-r border-gray-200 flex flex-col transition-transform duration-300 h-full`}
+      >
         <div className="p-4 border-b bg-gradient-to-r from-red-700 to-blue-800 text-white flex-shrink-0">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-xl font-bold">Live Chats</h2>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowMobileSidebar(false)}
+                className="lg:hidden p-1.5 hover:bg-white/20 rounded transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
               <button
                 onClick={() => setNotificationsEnabled(!notificationsEnabled)}
                 className="p-1.5 hover:bg-white/20 rounded transition"
@@ -934,20 +955,22 @@ export default function AdminLiveChatDashboard() {
                   isConnected ? "bg-green-400" : "bg-red-400"
                 }`}
               ></div>
-              <span className="text-sm">
+              <span className="text-sm hidden sm:inline">
                 {isConnected ? "Online" : "Offline"}
               </span>
             </div>
           </div>
           <div className="flex items-center justify-between">
-            <p className="text-sm text-blue-100">Logged in as {adminName}</p>
+            <p className="text-sm text-blue-100 truncate">
+              Logged in as {adminName}
+            </p>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-1 px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-xs transition"
+              className="flex items-center gap-1 px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-xs transition flex-shrink-0"
               title="Logout"
             >
               <LogOut className="w-3 h-3" />
-              Logout
+              <span className="hidden sm:inline">Logout</span>
             </button>
           </div>
           {totalChatsCount > 0 && (
@@ -957,7 +980,6 @@ export default function AdminLiveChatDashboard() {
           )}
         </div>
 
-        {/* Search and Filter */}
         <div className="p-3 border-b bg-gray-50 space-y-2 flex-shrink-0">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1034,15 +1056,9 @@ export default function AdminLiveChatDashboard() {
                 const unreadCount = session.unreadCount || 0;
 
                 return (
-                  <button
+                  <div
                     key={`${session.userId}-${sessionIndex}`}
-                    onClick={() => claimCustomer(session)}
-                    disabled={
-                      isClaimedByOther &&
-                      !session.customerEnded &&
-                      !session.adminEnded
-                    }
-                    className={`w-full p-4 border-b text-left hover:bg-gray-50 transition ${
+                    className={`w-full border-b relative group ${
                       selectedSession?.userId === session.userId
                         ? "bg-blue-50 border-l-4 border-l-blue-600"
                         : ""
@@ -1050,85 +1066,108 @@ export default function AdminLiveChatDashboard() {
                       isClaimedByOther &&
                       !session.customerEnded &&
                       !session.adminEnded
-                        ? "opacity-50 cursor-not-allowed"
+                        ? "opacity-50"
                         : ""
                     } ${session.customerEnded ? "bg-red-50" : ""} ${
                       session.adminEnded ? "bg-orange-50" : ""
                     }`}
                   >
-                    <div className="flex items-start justify-between mb-1">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="font-semibold text-gray-800">
-                            {session.userName}
-                          </p>
-                          {unreadCount > 0 && (
-                            <span className="bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                              {unreadCount}
+                    <button
+                      onClick={() => {
+                        claimCustomer(session);
+                        setShowMobileSidebar(false);
+                      }}
+                      disabled={
+                        isClaimedByOther &&
+                        !session.customerEnded &&
+                        !session.adminEnded
+                      }
+                      className="w-full p-4 text-left hover:bg-gray-50 transition disabled:cursor-not-allowed"
+                    >
+                      <div className="flex items-start justify-between mb-1">
+                        <div className="flex-1 min-w-0 pr-10">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-gray-800 truncate">
+                              {session.userName}
+                            </p>
+                            {unreadCount > 0 && (
+                              <span className="bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">
+                                {unreadCount}
+                              </span>
+                            )}
+                          </div>
+                          {session.userPhone && (
+                            <p className="text-xs text-gray-500 truncate">
+                              {session.userPhone}
+                            </p>
+                          )}
+                          {session.customerEnded && (
+                            <span className="text-xs text-red-600 font-medium">
+                              ● Customer ended chat
                             </span>
                           )}
-                        </div>
-                        {session.userPhone && (
-                          <p className="text-xs text-gray-500">
-                            {session.userPhone}
-                          </p>
-                        )}
-                        {session.customerEnded && (
-                          <span className="text-xs text-red-600 font-medium">
-                            ● Customer ended chat
-                          </span>
-                        )}
-                        {session.adminEnded && (
-                          <span className="text-xs text-orange-600 font-medium">
-                            ● Admin ended chat
-                          </span>
-                        )}
-                        {!session.customerEnded &&
-                          !session.adminEnded &&
-                          isClaimedByMe && (
-                            <span className="text-xs text-green-600 font-medium">
-                              You&apos;re chatting
-                            </span>
-                          )}
-                        {!session.customerEnded &&
-                          !session.adminEnded &&
-                          isClaimedByOther && (
+                          {session.adminEnded && (
                             <span className="text-xs text-orange-600 font-medium">
-                              {session.agentName} is chatting
+                              ● Admin ended chat
                             </span>
                           )}
-                        {!session.customerEnded &&
-                          !session.adminEnded &&
-                          !session.hasAgent && (
-                            <span className="text-xs text-blue-600 font-medium">
-                              New chat
-                            </span>
+                          {!session.customerEnded &&
+                            !session.adminEnded &&
+                            isClaimedByMe && (
+                              <span className="text-xs text-green-600 font-medium">
+                                You&apos;re chatting
+                              </span>
+                            )}
+                          {!session.customerEnded &&
+                            !session.adminEnded &&
+                            isClaimedByOther && (
+                              <span className="text-xs text-orange-600 font-medium">
+                                {session.agentName} is chatting
+                              </span>
+                            )}
+                          {!session.customerEnded &&
+                            !session.adminEnded &&
+                            !session.hasAgent && (
+                              <span className="text-xs text-blue-600 font-medium">
+                                New chat
+                              </span>
+                            )}
+                        </div>
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0 pr-8">
+                          {session.isActive && !session.customerEnded && (
+                            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                           )}
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        {session.isActive && !session.customerEnded && (
-                          <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                        )}
-                        {session.customerEnded && (
-                          <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                        )}
-                        <div className="flex items-center gap-1 text-xs text-gray-500">
-                          <Clock size={12} />
-                          {getSessionDuration(session.joinedAt)}
+                          {session.customerEnded && (
+                            <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                          )}
+                          <div className="flex items-center gap-1 text-xs text-gray-500 whitespace-nowrap">
+                            <Clock size={12} />
+                            {getSessionDuration(session.joinedAt)}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    {customerTyping[session.userId] ? (
-                      <p className="text-sm text-blue-600 italic truncate">
-                        {session.userName} is typing...
-                      </p>
-                    ) : lastMessage ? (
-                      <p className="text-sm text-gray-600 truncate">
-                        {lastMessage.isAdmin ? "You: " : ""}
-                        {lastMessage.content}
-                      </p>
-                    ) : null}
-                  </button>
+                      {customerTyping[session.userId] ? (
+                        <p className="text-sm text-blue-600 italic truncate">
+                          {session.userName} is typing...
+                        </p>
+                      ) : lastMessage ? (
+                        <p className="text-sm text-gray-600 truncate">
+                          {lastMessage.isAdmin ? "You: " : ""}
+                          {lastMessage.content}
+                        </p>
+                      ) : null}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteChat(session.userId);
+                      }}
+                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1.5 text-red-600 hover:bg-red-100 rounded transition-opacity z-10"
+                      title="Delete chat"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 );
               })}
 
@@ -1162,48 +1201,53 @@ export default function AdminLiveChatDashboard() {
         </div>
       </div>
 
-      {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
         {selectedSession ? (
           <>
-            {/* Chat Header */}
-            <div className="p-4 bg-white border-b shadow-sm flex items-center justify-between">
-              <div className="flex-1">
-                <h3 className="font-semibold text-lg text-gray-800">
+            <div className="p-3 sm:p-4 bg-white border-b shadow-sm flex items-center justify-between flex-wrap gap-2">
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-base sm:text-lg text-gray-800 truncate">
                   {selectedSession.userName}
                 </h3>
-                <p className="text-sm text-gray-500">
+                <p className="text-xs sm:text-sm text-gray-500 truncate">
                   {selectedSession.userPhone &&
                     `${selectedSession.userPhone} • `}
                   User ID: {selectedSession.userId}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                 <button
                   onClick={() => setShowNotesModal(true)}
-                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                  className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
                   title="Add notes"
                 >
-                  <StickyNote className="w-5 h-5" />
+                  <StickyNote className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
                 <button
                   onClick={downloadTranscript}
-                  className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                  className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
                   title="Download transcript"
                 >
-                  <Download className="w-5 h-5" />
+                  <Download className="w-4 h-4 sm:w-5 sm:h-5" />
+                </button>
+                <button
+                  onClick={() => deleteChat(selectedSession.userId)}
+                  className="p-1.5 sm:p-2 text-red-600 hover:bg-red-100 rounded-lg transition"
+                  title="Delete chat"
+                >
+                  <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
                 <button
                   onClick={endSession}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center gap-2"
+                  className="px-2 sm:px-4 py-1.5 sm:py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center gap-1 sm:gap-2 text-sm"
                 >
-                  <X size={16} />
-                  End Chat
+                  <X size={14} className="sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">End Chat</span>
+                  <span className="sm:hidden">End</span>
                 </button>
               </div>
             </div>
 
-            {/* Session Notes Banner */}
             {selectedSession.notes && (
               <div className="px-4 py-2 bg-yellow-50 border-b border-yellow-200">
                 <div className="flex items-start gap-2">
@@ -1226,8 +1270,7 @@ export default function AdminLiveChatDashboard() {
               </div>
             )}
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50">
+            <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 bg-gray-50">
               {messages.map((msg, index) => (
                 <div
                   key={msg.id || `msg-${index}`}
@@ -1236,7 +1279,7 @@ export default function AdminLiveChatDashboard() {
                   }`}
                 >
                   <div
-                    className={`max-w-[70%] rounded-lg px-4 py-3 ${
+                    className={`max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 ${
                       msg.isAdmin
                         ? "bg-blue-600 text-white"
                         : "bg-white text-gray-800 shadow"
@@ -1256,7 +1299,9 @@ export default function AdminLiveChatDashboard() {
                         <CheckCheck className="w-3 h-3 text-blue-200" />
                       )}
                     </div>
-                    <p className="whitespace-pre-line">{msg.content}</p>
+                    <p className="whitespace-pre-line text-sm sm:text-base">
+                      {msg.content}
+                    </p>
                     {msg.fileUrl && (
                       <a
                         href={msg.fileUrl}
@@ -1281,7 +1326,7 @@ export default function AdminLiveChatDashboard() {
 
               {selectedSession && customerTyping[selectedSession.userId] && (
                 <div className="flex justify-start">
-                  <div className="max-w-[70%] rounded-lg px-4 py-3 bg-gray-100 border border-gray-200">
+                  <div className="max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 bg-gray-100 border border-gray-200">
                     <div className="flex items-center gap-2">
                       <div className="flex space-x-1">
                         <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
@@ -1304,7 +1349,6 @@ export default function AdminLiveChatDashboard() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Quick Responses Panel */}
             {showQuickResponses && (
               <div className="border-t bg-white p-3 max-h-64 overflow-y-auto">
                 <div className="flex items-center justify-between mb-2">
@@ -1313,7 +1357,7 @@ export default function AdminLiveChatDashboard() {
                     <h4 className="text-sm font-semibold text-gray-800">
                       Quick Responses
                     </h4>
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-gray-500 hidden sm:inline">
                       (Type shortcuts like /greeting)
                     </span>
                   </div>
@@ -1324,7 +1368,7 @@ export default function AdminLiveChatDashboard() {
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {quickResponses.map((qr) => (
                     <button
                       key={qr.id}
@@ -1348,17 +1392,16 @@ export default function AdminLiveChatDashboard() {
               </div>
             )}
 
-            {/* Input Area */}
-            <div className="p-4 bg-white border-t">
+            <div className="p-3 sm:p-4 bg-white border-t">
               {selectedSession.customerEnded || selectedSession.adminEnded ? (
-                <div className="text-center py-3 text-gray-500 bg-gray-50 rounded-lg">
+                <div className="text-center py-3 text-gray-500 bg-gray-50 rounded-lg text-sm sm:text-base">
                   <p className="font-medium">
                     This chat session has ended - Read-only mode
                   </p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <div className="flex gap-3">
+                  <div className="flex gap-1 sm:gap-3">
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -1368,34 +1411,32 @@ export default function AdminLiveChatDashboard() {
                     />
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      className="p-2 text-gray-600 hover:text-gray-800 transition"
+                      className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-800 transition flex-shrink-0"
                       type="button"
                       title="Attach file"
                     >
-                      <Paperclip className="w-5 h-5" />
+                      <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
-
                     <button
                       onClick={() => setShowQuickResponses(!showQuickResponses)}
-                      className={`p-2 transition ${
+                      className={`p-1.5 sm:p-2 transition flex-shrink-0 ${
                         showQuickResponses
                           ? "text-yellow-600 bg-yellow-50"
                           : "text-gray-600 hover:text-gray-800"
                       }`}
                       type="button"
-                      title="Quick responses (type / to use shortcuts)"
+                      title="Quick responses"
                     >
-                      <Zap className="w-5 h-5" />
+                      <Zap className="w-4 h-4 sm:w-5 sm:h-5" />
                     </button>
-
-                    <div className="relative">
+                    <div className="relative flex-shrink-0">
                       <button
                         onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                        className="p-2 text-gray-600 hover:text-gray-800 transition"
+                        className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-800 transition"
                         type="button"
                         title="Add emoji"
                       >
-                        <Smile className="w-5 h-5" />
+                        <Smile className="w-4 h-4 sm:w-5 sm:h-5" />
                       </button>
                       {showEmojiPicker && (
                         <div className="absolute bottom-12 left-0 z-50">
@@ -1408,7 +1449,6 @@ export default function AdminLiveChatDashboard() {
                         </div>
                       )}
                     </div>
-
                     <input
                       ref={inputRef}
                       type="text"
@@ -1420,17 +1460,16 @@ export default function AdminLiveChatDashboard() {
                           sendMessage(e);
                         }
                       }}
-                      placeholder="Type your message... (use / for quick responses)"
-                      className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      suppressHydrationWarning
+                      placeholder="Type message..."
+                      className="flex-1 px-2 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base min-w-0"
                     />
                     <button
                       onClick={sendMessage}
                       disabled={!inputMessage.trim()}
-                      className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                      className="px-3 sm:px-6 py-2 sm:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 sm:gap-2 flex-shrink-0"
                     >
-                      <Send size={20} />
-                      Send
+                      <Send size={16} className="sm:w-5 sm:h-5" />
+                      <span className="hidden sm:inline">Send</span>
                     </button>
                   </div>
                   {inputMessage.startsWith("/") && (
@@ -1446,13 +1485,12 @@ export default function AdminLiveChatDashboard() {
           </>
         ) : (
           <div className="flex-1 flex items-center justify-center bg-gray-50">
-            <div className="text-center text-gray-500 max-w-md">
+            <div className="text-center text-gray-500 max-w-md p-4">
               <MessageSquare size={64} className="mx-auto mb-4 opacity-30" />
               <p className="text-xl font-semibold">No Chat Selected</p>
               <p className="mt-2">
                 Select a customer from the sidebar to start chatting
               </p>
-
               <div className="mt-8 p-4 bg-blue-50 rounded-lg text-left">
                 <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
                   <Zap className="w-4 h-4" />
@@ -1490,7 +1528,6 @@ export default function AdminLiveChatDashboard() {
         )}
       </div>
 
-      {/* Notes Modal */}
       {showNotesModal && selectedSession && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl">

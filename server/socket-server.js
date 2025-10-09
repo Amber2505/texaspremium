@@ -165,6 +165,53 @@ io.on('connection', (socket) => {
     }
   });
 
+  // NEW: Delete chat handler
+  socket.on('admin-delete-chat', async ({ userId, adminName }) => {
+    try {
+      console.log(`🗑️ Admin ${adminName} deleting chat for user ${userId}`);
+      
+      if (!liveChatHistoryCollection) {
+        socket.emit('delete-error', { message: 'Database not available' });
+        return;
+      }
+      
+      // Delete from MongoDB
+      const result = await liveChatHistoryCollection.deleteOne({ userId: userId });
+      
+      if (result.deletedCount > 0) {
+        console.log(`✅ Chat deleted from MongoDB for user ${userId}`);
+        
+        // Remove from active sessions
+        activeSessions.delete(userId);
+        
+        // Clear any timers
+        const timer = agentWaitTimers.get(userId);
+        if (timer) {
+          clearTimeout(timer);
+          agentWaitTimers.delete(userId);
+        }
+        
+        // Notify all admins that the chat was deleted
+        io.to('admins').emit('chat-deleted', { userId, deletedBy: adminName });
+        
+        // Notify the customer if they're still connected
+        io.to(`customer-${userId}`).emit('session-ended', {
+          message: 'This chat session has been closed by an administrator.'
+        });
+        
+        console.log(`✅ Chat ${userId} deleted successfully by ${adminName}`);
+      } else {
+        console.log(`⚠️ No chat found in MongoDB for user ${userId}`);
+        socket.emit('delete-error', { message: 'Chat not found in database' });
+      }
+    } catch (error) {
+      console.error('❌ Error deleting chat:', error);
+      socket.emit('delete-error', { 
+        message: 'Failed to delete chat from database' 
+      });
+    }
+  });
+
   socket.on('customer-join', async ({ userId, userName, userPhone, conversationHistory }) => {
     let sessionData = activeSessions.get(userId);
     
@@ -298,6 +345,14 @@ io.on('connection', (socket) => {
       await saveChatHistory(session);
       console.log(`💬 Admin message from ${agentName} to ${userId}`);
     }
+  });
+
+  socket.on('admin-typing', ({ userId, isTyping, agentName }) => {
+    io.to(`customer-${userId}`).emit('admin-typing-indicator', { isTyping, agentName });
+  });
+
+  socket.on('customer-typing', ({ userId, isTyping }) => {
+    io.to('admins').emit('customer-typing-indicator', { userId, isTyping });
   });
 
   socket.on('end-session', async ({ userId }) => {
