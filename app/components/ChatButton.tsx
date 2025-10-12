@@ -1149,8 +1149,8 @@ export default function ChatButton() {
       });
     }
 
-    // ✅ FIX: Always add user message to local state first
-    setMessages((prev) => [...prev, newMessage]);
+    // // ✅ FIX: Always add user message to local state first
+    // setMessages((prev) => [...prev, newMessage]);
 
     if (isLiveChat && socketRef.current) {
       const userId = localStorage.getItem("chat-user-id");

@@ -38,6 +38,9 @@ interface ChatMessage {
   fileUrl?: string;
   fileName?: string;
   read?: boolean;
+  deleted?: boolean;
+  deletedBy?: string;
+  deletedAt?: string;
 }
 
 interface ChatSession {
@@ -470,6 +473,49 @@ export default function AdminLiveChatDashboard() {
         setHasMoreChats(hasMore);
         setTotalChatsCount(total);
         setIsLoadingMore(false);
+      }
+    );
+
+    // Add this socket listener in your loginAsAdmin function, after the other socket listeners
+    socketRef.current.on(
+      "message-deleted",
+      ({ messageId }: { messageId: string }) => {
+        console.log(`🗑️ Message ${messageId} was deleted`);
+
+        // Mark the message as deleted instead of removing it
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === messageId
+              ? {
+                  ...msg,
+                  deleted: true,
+                  deletedBy: adminName,
+                  deletedAt: new Date().toISOString(),
+                }
+              : msg
+          )
+        );
+
+        // Also update in sessions
+        setSessions((prev) =>
+          prev.map((session) =>
+            session.userId === selectedSessionRef.current?.userId
+              ? {
+                  ...session,
+                  conversationHistory: session.conversationHistory.map((msg) =>
+                    msg.id === messageId
+                      ? {
+                          ...msg,
+                          deleted: true,
+                          deletedBy: adminName,
+                          deletedAt: new Date().toISOString(),
+                        }
+                      : msg
+                  ),
+                }
+              : session
+          )
+        );
       }
     );
 
@@ -1401,69 +1447,94 @@ export default function AdminLiveChatDashboard() {
                     msg.isAdmin ? "justify-end" : "justify-start"
                   }`}
                 >
-                  <div
-                    className={`relative group max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 ${
-                      msg.isAdmin
-                        ? "bg-blue-600 text-white"
-                        : "bg-white text-gray-800 shadow"
-                    }`}
-                  >
-                    {/* 🗑️ Delete button - only for admin messages */}
-                    {msg.isAdmin && (
-                      <button
-                        onClick={() =>
-                          handleDeleteMessage(msg.id, selectedSession.userId)
-                        }
-                        className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-white/70 hover:text-red-400 transition"
-                        title="Delete message"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-
-                    <div className="flex items-center gap-2 mb-1">
-                      <p
-                        className={`text-xs font-semibold ${
-                          msg.isAdmin ? "text-blue-100" : "text-gray-600"
-                        }`}
-                      >
-                        {msg.isAdmin
-                          ? msg.userName || adminName
-                          : selectedSession.userName}
-                      </p>
-                      {msg.isAdmin && msg.read && (
-                        <CheckCheck className="w-3 h-3 text-blue-200" />
-                      )}
-                    </div>
-
-                    <p className="whitespace-pre-line text-sm sm:text-base break-words">
-                      {msg.content}
-                    </p>
-
-                    {msg.fileUrl && (
-                      <a
-                        href={msg.fileUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-2 inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm hover:bg-blue-100 transition max-w-full"
-                      >
-                        <Paperclip className="w-4 h-4 flex-shrink-0" />
-                        <span className="truncate">
-                          {msg.fileName && msg.fileName.length > 30
-                            ? `${msg.fileName.substring(0, 27)}...`
-                            : msg.fileName || "Download file"}
-                        </span>
-                      </a>
-                    )}
-
-                    <p
-                      className={`text-xs mt-1 ${
-                        msg.isAdmin ? "text-blue-100" : "text-gray-500"
+                  {msg.deleted ? (
+                    // 🗑️ DELETED MESSAGE PLACEHOLDER
+                    <div
+                      className={`max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 border-2 border-dashed ${
+                        msg.isAdmin
+                          ? "bg-red-50 border-red-300 text-red-700"
+                          : "bg-gray-100 border-gray-300 text-gray-500"
                       }`}
                     >
-                      {formatTime(msg.timestamp)}
-                    </p>
-                  </div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Trash2 className="w-4 h-4" />
+                        <p className="text-xs font-semibold italic">
+                          Message deleted by {msg.deletedBy || "Admin"}
+                        </p>
+                      </div>
+                      <p className="text-sm italic opacity-75">
+                        This message was removed
+                      </p>
+                      <p className="text-xs mt-1 opacity-60">
+                        {formatTime(msg.deletedAt || msg.timestamp)}
+                      </p>
+                    </div>
+                  ) : (
+                    // 📝 NORMAL MESSAGE
+                    <div
+                      className={`relative group max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 ${
+                        msg.isAdmin
+                          ? "bg-blue-600 text-white"
+                          : "bg-white text-gray-800 shadow"
+                      }`}
+                    >
+                      {/* 🗑️ Delete button - only for admin messages */}
+                      {msg.isAdmin && (
+                        <button
+                          onClick={() =>
+                            handleDeleteMessage(msg.id, selectedSession.userId)
+                          }
+                          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-white/70 hover:text-red-400 transition"
+                          title="Delete message"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+
+                      <div className="flex items-center gap-2 mb-1">
+                        <p
+                          className={`text-xs font-semibold ${
+                            msg.isAdmin ? "text-blue-100" : "text-gray-600"
+                          }`}
+                        >
+                          {msg.isAdmin
+                            ? msg.userName || adminName
+                            : selectedSession.userName}
+                        </p>
+                        {msg.isAdmin && msg.read && (
+                          <CheckCheck className="w-3 h-3 text-blue-200" />
+                        )}
+                      </div>
+
+                      <p className="whitespace-pre-line text-sm sm:text-base break-words">
+                        {msg.content}
+                      </p>
+
+                      {msg.fileUrl && (
+                        <a
+                          href={msg.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-2 inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm hover:bg-blue-100 transition max-w-full"
+                        >
+                          <Paperclip className="w-4 h-4 flex-shrink-0" />
+                          <span className="truncate">
+                            {msg.fileName && msg.fileName.length > 30
+                              ? `${msg.fileName.substring(0, 27)}...`
+                              : msg.fileName || "Download file"}
+                          </span>
+                        </a>
+                      )}
+
+                      <p
+                        className={`text-xs mt-1 ${
+                          msg.isAdmin ? "text-blue-100" : "text-gray-500"
+                        }`}
+                      >
+                        {formatTime(msg.timestamp)}
+                      </p>
+                    </div>
+                  )}
                 </div>
               ))}
 
