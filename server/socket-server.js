@@ -74,12 +74,12 @@ async function startServer() {
     console.error('⚠️ Chat history and delete features will not work');
   }
 
-  const PORT = process.env.PORT || 3001;
-  httpServer.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 WebSocket server running on port ${PORT}`);
-    console.log(`📡 Server ready at ${new Date().toISOString()}`);
-    console.log(`💾 Database status: ${dbConnected ? 'CONNECTED ✅' : 'DISCONNECTED ❌'}`);
-  });
+//   const PORT = process.env.PORT || 3001;
+//   httpServer.listen(PORT, '0.0.0.0', () => {
+//     console.log(`🚀 WebSocket server running on port ${PORT}`);
+//     console.log(`📡 Server ready at ${new Date().toISOString()}`);
+//     console.log(`💾 Database status: ${dbConnected ? 'CONNECTED ✅' : 'DISCONNECTED ❌'}`);
+//   });
 }
 
 // Start the server
