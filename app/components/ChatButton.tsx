@@ -215,9 +215,8 @@ export default function ChatButton() {
   // Initialize notification sound
   useEffect(() => {
     if (typeof window !== "undefined") {
-      notificationSoundRef.current = new Audio(
-        "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTGH0fPTgjMGHm7A7+OZURI="
-      );
+      notificationSoundRef.current = new Audio("/customer_notification.mp3");
+      notificationSoundRef.current.volume = 1.0;
     }
   }, []);
 

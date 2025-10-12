@@ -213,7 +213,8 @@ export default function AdminLiveChatDashboard() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      audioRef.current = new Audio("/notification.mp3");
+      audioRef.current = new Audio("/Notification.mp3");
+      audioRef.current.volume = 1.0;
     }
   }, []);
 

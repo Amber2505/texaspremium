@@ -29,7 +29,7 @@ let liveChatHistoryCollection;
 
 async function connectMongoDB() {
   try {
-    if (!process.env.MONGODB_URI) {
+    if (!process.env.MONGODB_URI || "mongodb+srv://amber1810:chatriwala25@cluster0.p8aou.mongodb.net/myFirstDatabase?retryWrites=true&w=majority") {
       throw new Error("❌ Missing MONGODB_URI environment variable");
     }
 
