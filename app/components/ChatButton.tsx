@@ -1,3 +1,5 @@
+// Chatbutton.tsx
+
 import { useState, useEffect, useRef } from "react";
 import {
   MessageCircle,
@@ -12,9 +14,10 @@ import { useRouter } from "next/navigation";
 import io from "socket.io-client";
 import EmojiPicker from "emoji-picker-react";
 
-const SOCKET_URL =
-  process.env.NEXT_PUBLIC_SOCKET_URL ||
-  "https://texaspremium-production.up.railway.app";
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "";
+
+const CHAT_STORAGE_KEY = "texas-premium-chat-session";
+const CHAT_EXPIRY_TIME = 60 * 60 * 1000; // 1 hour in milliseconds
 
 interface Message {
   role: string;
@@ -42,6 +45,8 @@ interface Message {
   } | null;
   fileUrl?: string;
   fileName?: string;
+  id?: string;
+  _id?: string;
 }
 
 interface CustomerData {
@@ -61,6 +66,63 @@ interface CompanyDatabase {
     paymentLink?: string;
   };
 }
+
+interface StoredChatSession {
+  messages: Message[];
+  isLiveChat: boolean;
+  liveAgentName: string;
+  liveAgentPhone: string;
+  isConnectedToAgent: boolean;
+  agentName: string;
+  userId: string;
+  timestamp: number;
+  isVerified: boolean;
+  customerData: CustomerData | null;
+  sessionEnded: boolean;
+}
+
+const saveChatToStorage = (sessionData: StoredChatSession) => {
+  try {
+    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(sessionData));
+  } catch (error) {
+    console.error("Failed to save chat to storage:", error);
+  }
+};
+
+const loadChatFromStorage = (): StoredChatSession | null => {
+  try {
+    const stored = localStorage.getItem(CHAT_STORAGE_KEY);
+    if (!stored) return null;
+
+    const session: StoredChatSession = JSON.parse(stored);
+    const now = Date.now();
+
+    // ✅ ADD THIS: Don't restore if session was ended
+    if (session.sessionEnded) {
+      localStorage.removeItem(CHAT_STORAGE_KEY);
+      return null;
+    }
+
+    // Check if session expired (1 hour)
+    if (now - session.timestamp > CHAT_EXPIRY_TIME) {
+      localStorage.removeItem(CHAT_STORAGE_KEY);
+      return null;
+    }
+
+    return session;
+  } catch (error) {
+    console.error("Failed to load chat from storage:", error);
+    return null;
+  }
+};
+
+const clearChatFromStorage = () => {
+  try {
+    localStorage.removeItem(CHAT_STORAGE_KEY);
+  } catch (error) {
+    console.error("Failed to clear chat from storage:", error);
+  }
+};
 
 function getStringSimilarity(str1: string, str2: string): number {
   const normalizeCompanyName = (s: string) => {
@@ -141,9 +203,9 @@ export default function ChatButton() {
   const heartbeatInterval = useRef<NodeJS.Timeout | null>(null);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
 
   // Notification sound
   const notificationSoundRef = useRef<HTMLAudioElement | null>(null);
@@ -398,6 +460,64 @@ export default function ChatButton() {
     }
   }, [messages, loading, open, showConfirmClose]);
 
+  // Restore chat session on mount
+  useEffect(() => {
+    const restoredSession = loadChatFromStorage();
+
+    if (restoredSession) {
+      console.log("🔄 Restoring chat session from storage");
+      setMessages(restoredSession.messages);
+      setIsLiveChat(restoredSession.isLiveChat);
+      setLiveAgentName(restoredSession.liveAgentName);
+      setLiveAgentPhone(restoredSession.liveAgentPhone);
+      setIsConnectedToAgent(restoredSession.isConnectedToAgent);
+      setAgentName(restoredSession.agentName);
+      setIsVerified(restoredSession.isVerified);
+      setCustomerData(restoredSession.customerData);
+
+      // If it was a live chat, reconnect to socket
+      if (restoredSession.isLiveChat) {
+        connectToLiveChat(
+          restoredSession.liveAgentName,
+          restoredSession.liveAgentPhone
+        );
+      }
+    }
+  }, []);
+
+  // Save chat session to storage whenever critical state changes
+  // Save chat session to storage whenever critical state changes
+  useEffect(() => {
+    if (messages.length > 0 || isLiveChat) {
+      const userId = localStorage.getItem("chat-user-id") || "";
+
+      const sessionData: StoredChatSession = {
+        messages,
+        isLiveChat,
+        liveAgentName,
+        liveAgentPhone,
+        isConnectedToAgent,
+        agentName,
+        userId,
+        timestamp: Date.now(),
+        isVerified,
+        customerData,
+        sessionEnded: false, // ✅ ADD THIS
+      };
+
+      saveChatToStorage(sessionData);
+    }
+  }, [
+    messages,
+    isLiveChat,
+    liveAgentName,
+    liveAgentPhone,
+    isConnectedToAgent,
+    agentName,
+    isVerified,
+    customerData,
+  ]);
+
   const cleanPhoneNumber = (phone: string): string => {
     const digits = phone.replace(/\D/g, "");
     if (digits.length === 10) return digits;
@@ -636,15 +756,28 @@ export default function ChatButton() {
   };
 
   const connectToLiveChat = (name: string, phone: string) => {
+    // ✅ CLEAR OLD SESSION AND CREATE FRESH ONE
+    // Remove old user ID to force new session creation
+    localStorage.removeItem("chat-user-id");
+
+    // Clear any existing socket connection
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+
+    // Clear old chat storage to prevent restoration of ended session
+    clearChatFromStorage();
+
     setLiveAgentName(name);
     setLiveAgentPhone(phone);
     setIsLiveChat(true);
 
-    let userId = localStorage.getItem("chat-user-id");
-    if (!userId) {
-      userId = `user-${Math.random().toString(36).substr(2, 9)}`;
-      localStorage.setItem("chat-user-id", userId);
-    }
+    // ✅ CREATE NEW USER ID FOR FRESH SESSION
+    const userId = `user-${Math.random()
+      .toString(36)
+      .substr(2, 9)}-${Date.now()}`;
+    localStorage.setItem("chat-user-id", userId);
 
     if (typeof window !== "undefined" && "Notification" in window) {
       if (Notification.permission === "default") {
@@ -667,11 +800,7 @@ export default function ChatButton() {
         userId,
         userName: name,
         userPhone: phone,
-        conversationHistory: messages.map((msg) => ({
-          content: msg.content,
-          isAdmin: msg.role === "assistant",
-          timestamp: new Date().toISOString(),
-        })),
+        conversationHistory: [], // ✅ Start fresh - no old history
       });
 
       setMessages((prev) => [
@@ -766,20 +895,20 @@ export default function ChatButton() {
         fileUrl?: string;
         fileName?: string;
       }) => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: message.isAdmin ? "assistant" : "user",
-            content: message.content,
-            userName: message.userName,
-            fileUrl: message.fileUrl,
-            fileName: message.fileName,
-            extra: null,
-          },
-        ]);
-        setAgentTyping(false);
-
+        // ✅ ONLY add admin messages (user messages are already added locally)
         if (message.isAdmin) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: message.content,
+              userName: message.userName,
+              fileUrl: message.fileUrl,
+              fileName: message.fileName,
+              extra: null,
+            },
+          ]);
+          setAgentTyping(false);
           showNotification(message.userName || "Agent", message.content);
         }
       }
@@ -825,7 +954,30 @@ export default function ChatButton() {
           clearInterval(heartbeatInterval.current);
         }
 
+        // ✅ MARK AS ENDED BEFORE CLEARING
+        const userId = localStorage.getItem("chat-user-id") || "";
+        const sessionData: StoredChatSession = {
+          messages,
+          isLiveChat: false,
+          liveAgentName,
+          liveAgentPhone,
+          isConnectedToAgent: false,
+          agentName,
+          userId,
+          timestamp: Date.now(),
+          isVerified,
+          customerData,
+          sessionEnded: true, // ✅ Mark as ended
+        };
+        saveChatToStorage(sessionData);
+
         socketRef.current?.disconnect();
+
+        // Clear after a short delay
+        setTimeout(() => {
+          clearChatFromStorage();
+        }, 1000);
+
         showNotification("Chat Ended", message || "Chat session ended");
       }
     );
@@ -852,6 +1004,13 @@ export default function ChatButton() {
     socketRef.current.on("connect_error", (error: Error) => {
       console.error("Connection error:", error);
     });
+
+    socketRef.current.on(
+      "message-deleted",
+      ({ messageId }: { messageId: string }) => {
+        setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+      }
+    );
   };
 
   const handleCustomerTyping = (value: string) => {
@@ -974,6 +1133,9 @@ export default function ChatButton() {
       });
     }
 
+    // ✅ FIX: Always add user message to local state first
+    setMessages((prev) => [...prev, newMessage]);
+
     if (isLiveChat && socketRef.current) {
       const userId = localStorage.getItem("chat-user-id");
 
@@ -985,8 +1147,6 @@ export default function ChatButton() {
       setLoading(false);
       return;
     }
-
-    setMessages((prev) => [...prev, newMessage]);
 
     try {
       const aiResponse = getAIResponse(currentInput);
@@ -1131,6 +1291,13 @@ export default function ChatButton() {
     if (socketRef.current) {
       socketRef.current.disconnect();
     }
+
+    // ✅ Clear storage immediately when manually closing the chat window
+    clearChatFromStorage();
+
+    // Also clear the user ID so a fresh one is generated next time
+    localStorage.removeItem("chat-user-id");
+
     setShowConfirmClose(false);
     setOpen(false);
     setMessages([]);
@@ -1186,6 +1353,13 @@ export default function ChatButton() {
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+
+      // Prevent multiple uploads
+      if (isUploadingFile) {
+        return;
+      }
+
+      setIsUploadingFile(true);
       setSelectedFile(file);
 
       const formData = new FormData();
@@ -1200,6 +1374,17 @@ export default function ChatButton() {
         const data = await response.json();
 
         if (data.success) {
+          const fileMessage: Message = {
+            role: "user",
+            content: `📎 Sent file: ${file.name}`,
+            fileUrl: data.fileUrl,
+            fileName: file.name,
+            extra: null,
+          };
+
+          setMessages((prev) => [...prev, fileMessage]);
+
+          // If in live chat, emit to socket (server will broadcast to admin)
           if (isLiveChat && socketRef.current) {
             const userId = localStorage.getItem("chat-user-id");
             socketRef.current.emit("customer-message", {
@@ -1210,12 +1395,29 @@ export default function ChatButton() {
               fileName: file.name,
             });
           }
-
-          setSelectedFile(null);
+        } else {
+          throw new Error(data.error || "Upload failed");
         }
+
+        setSelectedFile(null);
       } catch (error) {
         console.error("File upload error:", error);
-        alert("Failed to upload file. Please try again.");
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content:
+              "❌ Failed to upload file. Please try again or contact support.",
+            extra: null,
+          },
+        ]);
+      } finally {
+        setIsUploadingFile(false);
+        // Reset the file input
+        if (e.target) {
+          e.target.value = "";
+        }
       }
     }
   };
@@ -1338,6 +1540,22 @@ export default function ChatButton() {
                   if (socketRef.current) {
                     const userId = localStorage.getItem("chat-user-id");
 
+                    // ✅ MARK SESSION AS ENDED BEFORE CLEARING
+                    const sessionData: StoredChatSession = {
+                      messages,
+                      isLiveChat,
+                      liveAgentName,
+                      liveAgentPhone,
+                      isConnectedToAgent,
+                      agentName,
+                      userId: userId || "",
+                      timestamp: Date.now(),
+                      isVerified,
+                      customerData,
+                      sessionEnded: true, // ✅ Mark as ended
+                    };
+                    saveChatToStorage(sessionData);
+
                     setTimeout(() => {
                       socketRef.current?.emit("customer-end-session", {
                         userId,
@@ -1356,6 +1574,11 @@ export default function ChatButton() {
 
                     setIsLiveChat(false);
                     setIsConnectedToAgent(false);
+
+                    // Clear after a short delay to ensure the end message is saved
+                    setTimeout(() => {
+                      clearChatFromStorage();
+                    }, 1000);
 
                     setTimeout(() => {
                       socketRef.current?.disconnect();
@@ -1434,7 +1657,7 @@ export default function ChatButton() {
                           : msg.userName || "Samantha"}
                       </p>
 
-                      <div className="whitespace-pre-line text-sm">
+                      <div className="whitespace-pre-line text-sm break-words">
                         {msg.content}
                       </div>
 
@@ -1443,10 +1666,14 @@ export default function ChatButton() {
                           href={msg.fileUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="mt-2 inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm hover:bg-blue-100 transition"
+                          className="mt-2 inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm hover:bg-blue-100 transition max-w-full"
                         >
-                          <Paperclip className="w-4 h-4" />
-                          {msg.fileName || "Download file"}
+                          <Paperclip className="w-4 h-4 flex-shrink-0" />
+                          <span className="truncate">
+                            {msg.fileName && msg.fileName.length > 30
+                              ? `${msg.fileName.substring(0, 27)}...`
+                              : msg.fileName || "Download file"}
+                          </span>
                         </a>
                       )}
 
@@ -1754,6 +1981,11 @@ export default function ChatButton() {
                                   <div className="flex gap-2">
                                     <button
                                       onClick={() => {
+                                        // ✅ Clear previous messages before connecting
+                                        setMessages([]);
+                                        setIsVerified(false);
+                                        setCustomerData(null);
+
                                         connectToLiveChat(
                                           liveAgentName,
                                           liveAgentPhone
@@ -1894,16 +2126,32 @@ export default function ChatButton() {
                 className="hidden"
                 accept="image/*,.pdf,.doc,.docx"
               />
-
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="p-2 text-gray-600 hover:text-gray-800 transition flex-shrink-0"
+                disabled={isUploadingFile}
+                className={`p-2 transition flex-shrink-0 ${
+                  isUploadingFile
+                    ? "text-gray-400 cursor-not-allowed"
+                    : "text-gray-600 hover:text-gray-800"
+                }`}
                 type="button"
                 aria-label="Attach file"
               >
-                <Paperclip className="w-5 h-5" />
+                {isUploadingFile ? (
+                  <div className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Paperclip className="w-5 h-5" />
+                )}
               </button>
 
+              {isUploadingFile && (
+                <div className="absolute top-0 left-0 right-0 h-1 bg-blue-100 overflow-hidden">
+                  <div
+                    className="h-full bg-blue-600 animate-pulse"
+                    style={{ width: "100%" }}
+                  />
+                </div>
+              )}
               <div className="relative flex-shrink-0">
                 <button
                   onClick={() => setShowEmojiPicker(!showEmojiPicker)}
@@ -1925,7 +2173,6 @@ export default function ChatButton() {
                   </div>
                 )}
               </div>
-
               <input
                 ref={inputRef}
                 value={input}

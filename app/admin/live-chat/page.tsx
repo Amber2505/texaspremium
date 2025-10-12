@@ -168,6 +168,7 @@ export default function AdminLiveChatDashboard() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(true);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
@@ -510,6 +511,7 @@ export default function AdminLiveChatDashboard() {
         userName: string;
         message: ChatMessage;
       }) => {
+        // ✅ Update sessions with new message in conversation history
         setSessions((prev) =>
           prev.map((session) =>
             session.userId === userId
@@ -529,8 +531,16 @@ export default function AdminLiveChatDashboard() {
           )
         );
 
+        // ✅ ONLY add to local messages if this session is currently selected
         if (selectedSessionRef.current?.userId === userId) {
-          setMessages((prev) => [...prev, message]);
+          setMessages((prev) => {
+            // ✅ Check if message already exists to prevent duplicates
+            const messageExists = prev.some((m) => m.id === message.id);
+            if (messageExists) {
+              return prev;
+            }
+            return [...prev, message];
+          });
         }
 
         const session = sessions.find((s) => s.userId === userId);
@@ -540,13 +550,28 @@ export default function AdminLiveChatDashboard() {
       }
     );
 
+    // page.tsx (replace existing new-message handler)
     socketRef.current.on("new-message", (message: ChatMessage) => {
-      setMessages((prev) => [...prev, message]);
+      // Ignore server echo of my own admin message
+      if (message.userName === adminName) return;
+
+      // Prevent duplicates by id
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === message.id)) return prev;
+        return [...prev, message];
+      });
     });
 
     socketRef.current.on(
       "admin-message-sent",
       ({ userId, message }: { userId: string; message: ChatMessage }) => {
+        // ✅ CRITICAL: Only process if message is NOT from current admin
+        if (message.userName === adminName) {
+          // This is MY message - skip it (already added locally)
+          return;
+        }
+
+        // Update the session history for OTHER admin's messages
         setSessions((prev) =>
           prev.map((session) =>
             session.userId === userId
@@ -562,8 +587,16 @@ export default function AdminLiveChatDashboard() {
           )
         );
 
+        // If viewing this session, add to local messages
         if (selectedSessionRef.current?.userId === userId) {
-          setMessages((prev) => [...prev, message]);
+          setMessages((prev) => {
+            // Check if message already exists
+            const exists = prev.some((m) => m.id === message.id);
+            if (!exists) {
+              return [...prev, message];
+            }
+            return prev;
+          });
         }
       }
     );
@@ -663,18 +696,22 @@ export default function AdminLiveChatDashboard() {
   };
 
   const claimCustomer = (session: ChatSession) => {
+    // ✅ Set selected session first
+    setSelectedSession(session);
+    setSessionNotes(session.notes || "");
+
+    // ✅ Load conversation history from the session
+    setMessages(session.conversationHistory || []);
+
+    // If session is ended, just view it (read-only)
     if (session.customerEnded || session.adminEnded) {
-      setSelectedSession(session);
-      setMessages(session.conversationHistory || []);
-      setSessionNotes(session.notes || "");
       return;
     }
 
     const isClaimedByMe = session.hasAgent && session.agentName === adminName;
+
+    // If already claimed by me, just clear unread count
     if (isClaimedByMe) {
-      setSelectedSession(session);
-      setMessages(session.conversationHistory || []);
-      setSessionNotes(session.notes || "");
       setSessions((prev) =>
         prev.map((s) =>
           s.userId === session.userId ? { ...s, unreadCount: 0 } : s
@@ -683,25 +720,49 @@ export default function AdminLiveChatDashboard() {
       return;
     }
 
+    // If unclaimed, claim it
     if (socketRef.current && !session.hasAgent) {
       socketRef.current.emit("admin-claim-customer", {
         userId: session.userId,
         adminName,
       });
-      setSelectedSession(session);
-      setMessages(session.conversationHistory || []);
-      setSessionNotes(session.notes || "");
     }
   };
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (inputMessage.trim() && socketRef.current && selectedSession) {
+      const newMessage: ChatMessage = {
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        content: inputMessage,
+        isAdmin: true,
+        timestamp: new Date().toISOString(),
+        userName: adminName,
+      };
+
+      // ✅ Also update the session's conversation history immediately
+      setSessions((prev) =>
+        prev.map((session) =>
+          session.userId === selectedSession.userId
+            ? {
+                ...session,
+                conversationHistory: [
+                  ...session.conversationHistory,
+                  newMessage,
+                ],
+                lastSeen: new Date().toISOString(),
+              }
+            : session
+        )
+      );
+
+      // Then emit to socket
       socketRef.current.emit("admin-message", {
         userId: selectedSession.userId,
         agentName: adminName,
         content: inputMessage,
       });
+
       setInputMessage("");
 
       if (typingTimeout) {
@@ -772,6 +833,9 @@ export default function AdminLiveChatDashboard() {
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0] && selectedSession) {
       const file = e.target.files[0];
+
+      setIsUploadingFile(true);
+
       const formData = new FormData();
       formData.append("file", file);
 
@@ -784,6 +848,34 @@ export default function AdminLiveChatDashboard() {
         const data = await response.json();
 
         if (data.success && socketRef.current) {
+          // ✅ Create message locally first
+          const fileMessage: ChatMessage = {
+            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            content: `📎 Sent file: ${file.name}`,
+            fileUrl: data.fileUrl,
+            fileName: file.name,
+            isAdmin: true,
+            timestamp: new Date().toISOString(),
+            userName: adminName,
+          };
+
+          // ✅ Also update the session's conversation history
+          setSessions((prev) =>
+            prev.map((session) =>
+              session.userId === selectedSession.userId
+                ? {
+                    ...session,
+                    conversationHistory: [
+                      ...session.conversationHistory,
+                      fileMessage,
+                    ],
+                    lastSeen: new Date().toISOString(),
+                  }
+                : session
+            )
+          );
+
+          // Then emit to socket
           socketRef.current.emit("admin-message", {
             userId: selectedSession.userId,
             agentName: adminName,
@@ -795,7 +887,18 @@ export default function AdminLiveChatDashboard() {
       } catch (error) {
         console.error("File upload error:", error);
         alert("Failed to upload file.");
+      } finally {
+        setIsUploadingFile(false);
+        if (e.target) {
+          e.target.value = "";
+        }
       }
+    }
+  };
+
+  const handleDeleteMessage = (messageId: string, userId: string) => {
+    if (confirm("Are you sure you want to delete this message?")) {
+      socketRef.current?.emit("delete-message", { messageId, userId });
     }
   };
 
@@ -1273,18 +1376,31 @@ export default function AdminLiveChatDashboard() {
             <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 bg-gray-50">
               {messages.map((msg, index) => (
                 <div
-                  key={msg.id || `msg-${index}`}
+                  key={`${msg.id}-${index}` || `msg-${index}`}
                   className={`flex ${
                     msg.isAdmin ? "justify-end" : "justify-start"
                   }`}
                 >
                   <div
-                    className={`max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 ${
+                    className={`relative group max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 ${
                       msg.isAdmin
                         ? "bg-blue-600 text-white"
                         : "bg-white text-gray-800 shadow"
                     }`}
                   >
+                    {/* 🗑️ Delete button - only for admin messages */}
+                    {msg.isAdmin && (
+                      <button
+                        onClick={() =>
+                          handleDeleteMessage(msg.id, selectedSession.userId)
+                        }
+                        className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-white/70 hover:text-red-400 transition"
+                        title="Delete message"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+
                     <div className="flex items-center gap-2 mb-1">
                       <p
                         className={`text-xs font-semibold ${
@@ -1299,20 +1415,27 @@ export default function AdminLiveChatDashboard() {
                         <CheckCheck className="w-3 h-3 text-blue-200" />
                       )}
                     </div>
-                    <p className="whitespace-pre-line text-sm sm:text-base">
+
+                    <p className="whitespace-pre-line text-sm sm:text-base break-words">
                       {msg.content}
                     </p>
+
                     {msg.fileUrl && (
                       <a
                         href={msg.fileUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-2 inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm hover:bg-blue-100 transition"
+                        className="mt-2 inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm hover:bg-blue-100 transition max-w-full"
                       >
-                        <Paperclip className="w-4 h-4" />
-                        {msg.fileName || "Download file"}
+                        <Paperclip className="w-4 h-4 flex-shrink-0" />
+                        <span className="truncate">
+                          {msg.fileName && msg.fileName.length > 30
+                            ? `${msg.fileName.substring(0, 27)}...`
+                            : msg.fileName || "Download file"}
+                        </span>
                       </a>
                     )}
+
                     <p
                       className={`text-xs mt-1 ${
                         msg.isAdmin ? "text-blue-100" : "text-gray-500"
@@ -1411,11 +1534,20 @@ export default function AdminLiveChatDashboard() {
                     />
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-800 transition flex-shrink-0"
+                      disabled={isUploadingFile}
+                      className={`p-1.5 sm:p-2 transition flex-shrink-0 ${
+                        isUploadingFile
+                          ? "text-gray-400 cursor-not-allowed"
+                          : "text-gray-600 hover:text-gray-800"
+                      }`}
                       type="button"
                       title="Attach file"
                     >
-                      <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
+                      {isUploadingFile ? (
+                        <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
+                      )}
                     </button>
                     <button
                       onClick={() => setShowQuickResponses(!showQuickResponses)}

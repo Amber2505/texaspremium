@@ -295,57 +295,80 @@ io.on('connection', (socket) => {
     }
   });
 
+
   socket.on('customer-message', async ({ userId, userName, content, fileUrl, fileName }) => {
-    const session = activeSessions.get(userId);
-    if (session) {
-      session.lastSeen = new Date().toISOString();
-      
-      const message = {
-        id: Date.now().toString(),
-        userId,
-        userName,
-        content,
-        fileUrl: fileUrl || null,
-        fileName: fileName || null,
-        isAdmin: false,
-        timestamp: new Date().toISOString()
-      };
-      
-      session.conversationHistory.push(message);
-      
-      // Emit to this specific customer room only
-      socket.to(`customer-${userId}`).emit('new-message', message);
-      
-      // Notify admins separately
-      io.to('admins').emit('customer-message-notification', { userId, userName, message });
-      
-      await saveChatHistory(session);
-      console.log(`💬 Customer message from ${userName} (${userId})`);
+  const session = activeSessions.get(userId);
+  if (session) {
+    session.lastSeen = new Date().toISOString();
+    
+    const message = {
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      userId,
+      userName,
+      content,
+      fileUrl: fileUrl || null,
+      fileName: fileName || null,
+      isAdmin: false,
+      timestamp: new Date().toISOString()
+    };
+    
+    session.conversationHistory.push(message);
+    
+    // ✅ FIX: Don't emit to customer room at all, only notify admins
+    // Admins will get the message through customer-message-notification
+    io.to('admins').emit('customer-message-notification', { userId, userName, message });
+    
+    await saveChatHistory(session);
+    console.log(`💬 Customer message from ${userName} (${userId})`);
+  }
+});
+
+  socket.on('admin-message', async ({ userId, agentName, content, fileUrl, fileName }) => {
+  const session = activeSessions.get(userId);
+  if (session) {
+    const message = {
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      userId,
+      userName: agentName,
+      content,
+      fileUrl: fileUrl || null,
+      fileName: fileName || null,
+      isAdmin: true,
+      timestamp: new Date().toISOString()
+    };
+    
+    session.conversationHistory.push(message);
+    
+    // ✅ Send to customer
+    io.to(`customer-${userId}`).emit('new-message', message);
+    
+    // ✅ FIX: Broadcast to OTHER admins ONLY - exclude the sender
+    socket.broadcast.to('admins').emit('admin-message-sent', { userId, message });
+    // OR even better, exclude this specific socket:
+    
+    await saveChatHistory(session);
+    console.log(`💬 Admin message from ${agentName} to ${userId}`);
+  }
+});
+
+  // 🗑️ Admin deletes a message
+  socket.on("delete-message", async ({ messageId, userId }) => {
+    try {
+      // Only allow admins to delete
+      if (!socket.isAdmin) return;
+
+      // Delete from MongoDB
+      await messagesCollection.deleteOne({ id: messageId });
+
+      // Notify everyone to remove that message
+      io.to(`customer-${userId}`).emit("message-deleted", { messageId });
+      io.to("admins").emit("message-deleted", { messageId });
+    } catch (err) {
+      console.error("❌ Error deleting message:", err);
     }
   });
 
-  socket.on('admin-message', async ({ userId, agentName, content, fileUrl, fileName }) => {
-    const session = activeSessions.get(userId);
-    if (session) {
-      const message = {
-        id: Date.now().toString(),
-        userId,
-        userName: agentName,
-        content,
-        fileUrl: fileUrl || null,
-        fileName: fileName || null,
-        isAdmin: true,
-        timestamp: new Date().toISOString()
-      };
-      
-      session.conversationHistory.push(message);
-      io.to(`customer-${userId}`).emit('new-message', message);
-      socket.to('admins').emit('admin-message-sent', { userId, message });
-      
-      await saveChatHistory(session);
-      console.log(`💬 Admin message from ${agentName} to ${userId}`);
-    }
-  });
+
 
   socket.on('admin-typing', ({ userId, isTyping, agentName }) => {
     io.to(`customer-${userId}`).emit('admin-typing-indicator', { isTyping, agentName });
