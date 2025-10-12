@@ -165,52 +165,58 @@ io.on('connection', (socket) => {
     }
   });
 
-  // NEW: Delete chat handler
   socket.on('admin-delete-chat', async ({ userId, adminName }) => {
-    try {
-      console.log(`🗑️ Admin ${adminName} deleting chat for user ${userId}`);
-      
-      if (!liveChatHistoryCollection) {
-        socket.emit('delete-error', { message: 'Database not available' });
-        return;
-      }
-      
-      // Delete from MongoDB
-      const result = await liveChatHistoryCollection.deleteOne({ userId: userId });
-      
-      if (result.deletedCount > 0) {
-        console.log(`✅ Chat deleted from MongoDB for user ${userId}`);
-        
-        // Remove from active sessions
-        activeSessions.delete(userId);
-        
-        // Clear any timers
-        const timer = agentWaitTimers.get(userId);
-        if (timer) {
-          clearTimeout(timer);
-          agentWaitTimers.delete(userId);
-        }
-        
-        // Notify all admins that the chat was deleted
-        io.to('admins').emit('chat-deleted', { userId, deletedBy: adminName });
-        
-        // Notify the customer if they're still connected
-        io.to(`customer-${userId}`).emit('session-ended', {
-          message: 'This chat session has been closed by an administrator.'
-        });
-        
-        console.log(`✅ Chat ${userId} deleted successfully by ${adminName}`);
-      } else {
-        console.log(`⚠️ No chat found in MongoDB for user ${userId}`);
-        socket.emit('delete-error', { message: 'Chat not found in database' });
-      }
-    } catch (error) {
-      console.error('❌ Error deleting chat:', error);
-      socket.emit('delete-error', { 
-        message: 'Failed to delete chat from database' 
-      });
+  try {
+    console.log(`🗑️ Admin ${adminName} attempting to delete chat for user ${userId}`);
+    
+    if (!liveChatHistoryCollection) {
+      console.error('❌ Database not available');
+      socket.emit('delete-error', { message: 'Database not available' });
+      return;
     }
-  });
+    
+    // Delete from MongoDB
+    const result = await liveChatHistoryCollection.deleteOne({ userId: userId });
+    
+    console.log(`📊 MongoDB delete result:`, result);
+    
+    if (result.deletedCount > 0) {
+      console.log(`✅ Chat deleted from MongoDB for user ${userId}`);
+      
+      // Remove from active sessions
+      activeSessions.delete(userId);
+      
+      // Clear any timers
+      const timer = agentWaitTimers.get(userId);
+      if (timer) {
+        clearTimeout(timer);
+        agentWaitTimers.delete(userId);
+      }
+      
+      // Notify ALL admins that the chat was deleted (including the one who deleted it)
+      io.to('admins').emit('chat-deleted', { 
+        userId, 
+        deletedBy: adminName 
+      });
+      
+      // Notify the customer if they're still connected
+      io.to(`customer-${userId}`).emit('session-ended', {
+        message: 'This chat session has been closed by an administrator.'
+      });
+      
+      console.log(`✅ Delete notifications sent for chat ${userId}`);
+    } else {
+      console.log(`⚠️ No chat found in MongoDB for user ${userId}`);
+      socket.emit('delete-error', { message: 'Chat not found in database' });
+    }
+  } catch (error) {
+    console.error('❌ Error deleting chat:', error);
+    socket.emit('delete-error', { 
+      message: 'Failed to delete chat from database',
+      error: error.message 
+    });
+  }
+});
 
   socket.on('customer-join', async ({ userId, userName, userPhone, conversationHistory }) => {
     let sessionData = activeSessions.get(userId);

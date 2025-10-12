@@ -346,22 +346,32 @@ export default function AdminLiveChatDashboard() {
   const deleteChat = (userId: string, e?: React.MouseEvent) => {
     e?.stopPropagation();
 
+    const sessionToDelete = sessions.find((s) => s.userId === userId);
+    const displayName = sessionToDelete?.userName || userId;
+
     if (
       !confirm(
-        "Are you sure you want to delete this chat? This action cannot be undone."
+        `Are you sure you want to delete the chat with ${displayName}?\n\nThis action cannot be undone and will remove all messages permanently.`
       )
     ) {
       return;
     }
 
-    if (socketRef.current) {
-      socketRef.current.emit("admin-delete-chat", { userId, adminName });
-      setSessions((prev) => prev.filter((s) => s.userId !== userId));
+    console.log(`🗑️ Requesting deletion of chat: ${userId}`);
 
-      if (selectedSession?.userId === userId) {
-        setSelectedSession(null);
-        setMessages([]);
-      }
+    if (socketRef.current && socketRef.current.connected) {
+      // Emit delete request to server
+      socketRef.current.emit("admin-delete-chat", {
+        userId,
+        adminName,
+      });
+
+      console.log(`📤 Delete request sent to server for ${userId}`);
+    } else {
+      console.error("❌ Socket not connected, cannot delete chat");
+      alert(
+        "Cannot delete chat: Connection to server lost. Please refresh the page."
+      );
     }
   };
 
@@ -465,11 +475,27 @@ export default function AdminLiveChatDashboard() {
     socketRef.current.on(
       "chat-deleted",
       ({ userId, deletedBy }: { userId: string; deletedBy: string }) => {
-        console.log(`Chat ${userId} was deleted by ${deletedBy}`);
-        setSessions((prev) => prev.filter((s) => s.userId !== userId));
+        console.log(`✅ Chat ${userId} was deleted by ${deletedBy}`);
+
+        // Remove from sessions list
+        setSessions((prev) => {
+          const filtered = prev.filter((s) => s.userId !== userId);
+          console.log(
+            `📊 Sessions before: ${prev.length}, after: ${filtered.length}`
+          );
+          return filtered;
+        });
+
+        // If the deleted chat is currently selected, deselect it
         if (selectedSessionRef.current?.userId === userId) {
+          console.log(`🔄 Deselecting deleted chat ${userId}`);
           setSelectedSession(null);
           setMessages([]);
+        }
+
+        // Show notification to admin
+        if (deletedBy !== adminName) {
+          alert(`Chat with ${userId} was deleted by ${deletedBy}`);
         }
       }
     );

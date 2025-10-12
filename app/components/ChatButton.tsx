@@ -203,7 +203,7 @@ export default function ChatButton() {
   const heartbeatInterval = useRef<NodeJS.Timeout | null>(null);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
 
@@ -911,6 +911,14 @@ export default function ChatButton() {
           setAgentTyping(false);
           showNotification(message.userName || "Agent", message.content);
         }
+      }
+    );
+
+    socketRef.current.on(
+      "message-deleted",
+      ({ messageId }: { messageId: string }) => {
+        console.log(`🗑️ Message ${messageId} was deleted`);
+        setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
       }
     );
 
