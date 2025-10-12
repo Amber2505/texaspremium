@@ -388,11 +388,57 @@ export default function AdminLiveChatDashboard() {
         const sender = msg.isAdmin
           ? msg.userName || adminName
           : selectedSession.userName;
+
+        // ✅ Handle deleted messages
+        if (msg.deleted) {
+          const deletedTime = msg.deletedAt
+            ? new Date(msg.deletedAt).toLocaleString()
+            : timestamp;
+          return `[${timestamp}] ${sender}: ${
+            msg.content
+          }\n[${deletedTime}] *** MESSAGE DELETED by ${
+            msg.deletedBy || "Admin"
+          } ***`;
+        }
+
+        // ✅ Handle file attachments with complete URL
+        if (msg.fileUrl) {
+          return `[${timestamp}] ${sender}: ${msg.content}\nFile Name: ${
+            msg.fileName || "Attachment"
+          }\nFile URL: ${msg.fileUrl}`;
+        }
+
+        // ✅ Normal message
         return `[${timestamp}] ${sender}: ${msg.content}`;
       })
-      .join("\n");
+      .join("\n\n");
 
-    const blob = new Blob([transcript], { type: "text/plain" });
+    // ✅ Add header with session information
+    const header = `
+========================================
+CHAT TRANSCRIPT
+========================================
+Customer: ${selectedSession.userName}
+Phone: ${selectedSession.userPhone || "N/A"}
+User ID: ${selectedSession.userId}
+Session Started: ${new Date(selectedSession.joinedAt).toLocaleString()}
+Agent: ${selectedSession.agentName || "Unassigned"}
+Status: ${
+      selectedSession.customerEnded
+        ? "Customer Ended"
+        : selectedSession.adminEnded
+        ? "Admin Ended"
+        : "Active"
+    }
+Downloaded: ${new Date().toLocaleString()}
+${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
+========================================
+
+`;
+
+    const fullTranscript = header + transcript;
+
+    const blob = new Blob([fullTranscript], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
