@@ -341,14 +341,28 @@ socket.on('restore-deleted-chat', async ({ deletedChatId, adminName }) => {
   }
   
   try {
-    const deletedChat = await deletedChatsCollection.findOne({ _id: deletedChatId });
+    const { ObjectId } = require('mongodb');
+    
+    // Convert string ID to MongoDB ObjectId
+    let objectId;
+    try {
+      objectId = new ObjectId(deletedChatId);
+    } catch (err) {
+      socket.emit('restore-error', { message: 'Invalid chat ID format' });
+      return;
+    }
+    
+    const deletedChat = await deletedChatsCollection.findOne({ _id: objectId });
     
     if (!deletedChat) {
+      console.log(`⚠️ Deleted chat not found with ID: ${deletedChatId}`);
       socket.emit('restore-error', { message: 'Deleted chat not found' });
       return;
     }
     
-    // Remove deletion metadata
+    console.log(`♻️ Found deleted chat for restoration:`, deletedChat.userId);
+    
+    // Remove deletion metadata and _id to allow fresh insert
     const { deletedBy, deletedAt, originalChatId, messageCount, chatDuration, _id, ...chatToRestore } = deletedChat;
     
     // Restore to active chats
@@ -356,10 +370,15 @@ socket.on('restore-deleted-chat', async ({ deletedChatId, adminName }) => {
       ...chatToRestore,
       restoredBy: adminName,
       restoredAt: new Date().toISOString(),
+      isActive: false, // Set as inactive restored session
+      customerEnded: false,
+      adminEnded: false,
     });
     
     // Remove from deleted chats
-    await deletedChatsCollection.deleteOne({ _id: deletedChatId });
+    await deletedChatsCollection.deleteOne({ _id: objectId });
+    
+    console.log(`✅ Chat restored successfully: ${chatToRestore.userId}`);
     
     socket.emit('restore-success', { 
       message: 'Chat restored successfully',

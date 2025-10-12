@@ -483,11 +483,16 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
   };
 
   const restoreDeletedChat = (deletedChat: ChatSession) => {
-    if (!socketRef.current || !deletedChat._id) return;
+    if (!socketRef.current || !deletedChat._id) {
+      console.error("❌ Cannot restore: Missing socket or chat ID");
+      return;
+    }
 
     if (!confirm(`Restore chat with ${deletedChat.userName}?`)) {
       return;
     }
+
+    console.log(`♻️ Restoring chat with ID: ${deletedChat._id}`);
 
     socketRef.current.emit("restore-deleted-chat", {
       deletedChatId: deletedChat._id,
