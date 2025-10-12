@@ -29,21 +29,61 @@ let liveChatHistoryCollection;
 
 async function connectMongoDB() {
   try {
-    if (!process.env.MONGODB_URI || "mongodb+srv://amber1810:chatriwala25@cluster0.p8aou.mongodb.net/myFirstDatabase?retryWrites=true&w=majority") {
+    if (!process.env.MONGODB_URI) {
       throw new Error("❌ Missing MONGODB_URI environment variable");
     }
 
-    const client = new MongoClient(process.env.MONGODB_URI);
+    console.log('🔄 Attempting to connect to MongoDB...');
+    
+    const client = new MongoClient(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    });
+    
     await client.connect();
-    db = client.db('db');
+    
+    // Test the connection
+    await client.db().admin().ping();
+    console.log('✅ MongoDB ping successful');
+    
+    // ✅ FIX: Use 'myFirstDatabase' to match your connection string
+    // Or you can use any database name you want
+    db = client.db('myFirstDatabase'); // Changed from 'db' to 'myFirstDatabase'
     liveChatHistoryCollection = db.collection('live_chat_history');
-    console.log('✅ MongoDB connected successfully');
+    
+    // Verify collection access
+    const count = await liveChatHistoryCollection.countDocuments();
+    console.log(`✅ MongoDB connected successfully. Found ${count} existing chat records.`);
+    
+    return true;
   } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
+    console.error('❌ MongoDB connection error:', error.message);
+    console.error('Stack:', error.stack);
+    db = null;
+    liveChatHistoryCollection = null;
+    return false;
   }
 }
 
-connectMongoDB();
+// Wait for MongoDB connection before starting server
+async function startServer() {
+  const dbConnected = await connectMongoDB();
+  
+  if (!dbConnected) {
+    console.error('⚠️ Server starting WITHOUT database connection');
+    console.error('⚠️ Chat history and delete features will not work');
+  }
+
+  const PORT = process.env.PORT || 3001;
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 WebSocket server running on port ${PORT}`);
+    console.log(`📡 Server ready at ${new Date().toISOString()}`);
+    console.log(`💾 Database status: ${dbConnected ? 'CONNECTED ✅' : 'DISCONNECTED ❌'}`);
+  });
+}
+
+// Start the server
+startServer();
 
 const activeSessions = new Map();
 const adminSockets = new Set();
@@ -167,18 +207,34 @@ io.on('connection', (socket) => {
 
   socket.on('admin-delete-chat', async ({ userId, adminName }) => {
   try {
-    console.log(`🗑️ Admin ${adminName} attempting to delete chat for user ${userId}`);
+    console.log(`🗑️ Admin ${adminName} requesting deletion of chat ${userId}`);
     
-    if (!liveChatHistoryCollection) {
-      console.error('❌ Database not available');
-      socket.emit('delete-error', { message: 'Database not available' });
+    // Check database availability
+    if (!db) {
+      console.error('❌ Database connection not established');
+      socket.emit('delete-error', { 
+        message: 'Database connection not available. Please check server logs and try again.' 
+      });
       return;
     }
+    
+    if (!liveChatHistoryCollection) {
+      console.error('❌ Chat history collection not initialized');
+      socket.emit('delete-error', { 
+        message: 'Chat history collection not available. Please contact support.' 
+      });
+      return;
+    }
+    
+    console.log(`📊 Attempting to delete from collection...`);
     
     // Delete from MongoDB
     const result = await liveChatHistoryCollection.deleteOne({ userId: userId });
     
-    console.log(`📊 MongoDB delete result:`, result);
+    console.log(`📊 MongoDB delete result:`, {
+      deletedCount: result.deletedCount,
+      acknowledged: result.acknowledged
+    });
     
     if (result.deletedCount > 0) {
       console.log(`✅ Chat deleted from MongoDB for user ${userId}`);
@@ -193,27 +249,82 @@ io.on('connection', (socket) => {
         agentWaitTimers.delete(userId);
       }
       
-      // Notify ALL admins that the chat was deleted (including the one who deleted it)
+      // Notify ALL admins
       io.to('admins').emit('chat-deleted', { 
         userId, 
         deletedBy: adminName 
       });
       
-      // Notify the customer if they're still connected
+      // Notify customer if connected
       io.to(`customer-${userId}`).emit('session-ended', {
         message: 'This chat session has been closed by an administrator.'
       });
       
-      console.log(`✅ Delete notifications sent for chat ${userId}`);
+      console.log(`✅ All deletion notifications sent for ${userId}`);
     } else {
-      console.log(`⚠️ No chat found in MongoDB for user ${userId}`);
-      socket.emit('delete-error', { message: 'Chat not found in database' });
+      console.log(`⚠️ No chat found in database for user ${userId}`);
+      socket.emit('delete-error', { 
+        message: 'Chat not found in database. It may have already been deleted.' 
+      });
     }
   } catch (error) {
-    console.error('❌ Error deleting chat:', error);
+    console.error('❌ Error during chat deletion:', error);
     socket.emit('delete-error', { 
-      message: 'Failed to delete chat from database',
+      message: `Failed to delete chat: ${error.message}`,
       error: error.message 
+    });
+  }
+});
+
+socket.on('delete-message', async ({ messageId, userId }) => {
+  try {
+    console.log(`🗑️ Attempting to delete message ${messageId} from chat ${userId}`);
+    
+    // Check database availability
+    if (!db || !liveChatHistoryCollection) {
+      console.error('❌ Database not available');
+      socket.emit('delete-error', { 
+        message: 'Database connection not available. Please try again.' 
+      });
+      return;
+    }
+
+    // Delete from MongoDB conversation history
+    const result = await liveChatHistoryCollection.updateOne(
+      { userId: userId },
+      { $pull: { conversationHistory: { id: messageId } } }
+    );
+
+    console.log(`📊 Message delete result:`, {
+      matchedCount: result.matchedCount,
+      modifiedCount: result.modifiedCount
+    });
+
+    if (result.modifiedCount > 0) {
+      // Remove from active session
+      const session = activeSessions.get(userId);
+      if (session) {
+        session.conversationHistory = session.conversationHistory.filter(
+          msg => msg.id !== messageId
+        );
+      }
+
+      // Notify all clients
+      io.to(`customer-${userId}`).emit('message-deleted', { messageId });
+      io.to('admins').emit('message-deleted', { messageId });
+      
+      console.log(`✅ Message ${messageId} deleted successfully`);
+    } else {
+      console.log(`⚠️ Message ${messageId} not found or chat ${userId} doesn't exist`);
+      socket.emit('delete-error', { 
+        message: 'Message not found. It may have already been deleted.' 
+      });
+    }
+  } catch (err) {
+    console.error('❌ Error deleting message:', err);
+    socket.emit('delete-error', { 
+      message: `Failed to delete message: ${err.message}`,
+      error: err.message 
     });
   }
 });
@@ -320,8 +431,10 @@ io.on('connection', (socket) => {
     
     session.conversationHistory.push(message);
     
-    // ✅ FIX: Don't emit to customer room at all, only notify admins
-    // Admins will get the message through customer-message-notification
+    // ✅ Emit to customer room (so customer sees it)
+    io.to(`customer-${userId}`).emit('new-message', message);
+    
+    // ✅ Notify all admins
     io.to('admins').emit('customer-message-notification', { userId, userName, message });
     
     await saveChatHistory(session);
@@ -340,7 +453,8 @@ io.on('connection', (socket) => {
       fileUrl: fileUrl || null,
       fileName: fileName || null,
       isAdmin: true,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      read: false
     };
     
     session.conversationHistory.push(message);
@@ -348,9 +462,8 @@ io.on('connection', (socket) => {
     // ✅ Send to customer
     io.to(`customer-${userId}`).emit('new-message', message);
     
-    // ✅ FIX: Broadcast to OTHER admins ONLY - exclude the sender
-    socket.broadcast.to('admins').emit('admin-message-sent', { userId, message });
-    // OR even better, exclude this specific socket:
+    // ✅ FIX: Send to ALL admins (including sender) so everyone sees it
+    io.to('admins').emit('admin-message-sent', { userId, message });
     
     await saveChatHistory(session);
     console.log(`💬 Admin message from ${agentName} to ${userId}`);

@@ -592,13 +592,7 @@ export default function AdminLiveChatDashboard() {
     socketRef.current.on(
       "admin-message-sent",
       ({ userId, message }: { userId: string; message: ChatMessage }) => {
-        // ✅ CRITICAL: Only process if message is NOT from current admin
-        if (message.userName === adminName) {
-          // This is MY message - skip it (already added locally)
-          return;
-        }
-
-        // Update the session history for OTHER admin's messages
+        // Update the session history for ALL admin messages
         setSessions((prev) =>
           prev.map((session) =>
             session.userId === userId
@@ -614,10 +608,9 @@ export default function AdminLiveChatDashboard() {
           )
         );
 
-        // If viewing this session, add to local messages
+        // If viewing this session, add to local messages ONLY if not already there
         if (selectedSessionRef.current?.userId === userId) {
           setMessages((prev) => {
-            // Check if message already exists
             const exists = prev.some((m) => m.id === message.id);
             if (!exists) {
               return [...prev, message];

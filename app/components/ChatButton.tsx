@@ -893,20 +893,29 @@ export default function ChatButton() {
         userName?: string;
         fileUrl?: string;
         fileName?: string;
+        id?: string;
       }) => {
-        // ✅ ONLY add admin messages (user messages are already added locally)
-        if (message.isAdmin) {
-          setMessages((prev) => [
+        // Show ALL messages (both customer and admin)
+        setMessages((prev) => {
+          // Check if message already exists
+          const exists = prev.some((m) => m.id === message.id);
+          if (exists) return prev;
+
+          return [
             ...prev,
             {
-              role: "assistant",
+              role: message.isAdmin ? "assistant" : "user",
               content: message.content,
               userName: message.userName,
               fileUrl: message.fileUrl,
               fileName: message.fileName,
+              id: message.id,
               extra: null,
             },
-          ]);
+          ];
+        });
+
+        if (message.isAdmin) {
           setAgentTyping(false);
           showNotification(message.userName || "Agent", message.content);
         }
