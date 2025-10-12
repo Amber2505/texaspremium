@@ -1,5 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { History, RotateCcw } from "lucide-react";
+
 import {
   Send,
   Users,
@@ -59,6 +61,11 @@ interface ChatSession {
   notes?: string;
   tags?: string[];
   unreadCount?: number;
+  _id?: string;
+  deletedAt?: string;
+  deletedBy?: string;
+  messageCount?: number;
+  chatDuration?: string;
 }
 
 interface AdminSession {
@@ -82,7 +89,7 @@ const DEFAULT_QUICK_RESPONSES: QuickResponse[] = [
     id: "1",
     shortcut: "/greeting",
     message:
-      "Hello! Thank you for contacting Texas Premium Insurance. How can I help you today?",
+      "Hello! Thank you for contacting Texas Premium Insurance Services. How can I help you today?",
     category: "Greetings",
   },
   {
@@ -172,6 +179,12 @@ export default function AdminLiveChatDashboard() {
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(true);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [showDeletedChatsModal, setShowDeletedChatsModal] = useState(false);
+  const [deletedChats, setDeletedChats] = useState<ChatSession[]>([]);
+  const [deletedChatsLoading, setDeletedChatsLoading] = useState(false);
+  const [deletedChatsTotal, setDeletedChatsTotal] = useState(0);
+  const [deletedChatsSkip, setDeletedChatsSkip] = useState(0);
+  const [hasMoreDeletedChats, setHasMoreDeletedChats] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const socketRef = useRef<ReturnType<typeof io> | null>(null);
@@ -226,30 +239,34 @@ export default function AdminLiveChatDashboard() {
   }, [selectedSession]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const savedSession = localStorage.getItem(SESSION_KEY);
-      if (savedSession) {
-        try {
-          const session: AdminSession = JSON.parse(savedSession);
-          const now = Date.now();
+    const initSession = () => {
+      if (typeof window !== "undefined") {
+        const savedSession = localStorage.getItem(SESSION_KEY);
+        if (savedSession) {
+          try {
+            const session: AdminSession = JSON.parse(savedSession);
+            const now = Date.now();
 
-          if (now < session.expiresAt) {
-            console.log("✅ Restoring admin session for:", session.name);
-            loginAsAdmin(session.name);
-          } else {
-            console.log("⏰ Session expired, clearing...");
+            if (now < session.expiresAt) {
+              console.log("✅ Restoring admin session for:", session.name);
+              loginAsAdmin(session.name);
+            } else {
+              console.log("⏰ Session expired, clearing...");
+              localStorage.removeItem(SESSION_KEY);
+              setIsCheckingSession(false);
+            }
+          } catch (error) {
+            console.error("Error parsing saved session:", error);
             localStorage.removeItem(SESSION_KEY);
             setIsCheckingSession(false);
           }
-        } catch (error) {
-          console.error("Error parsing saved session:", error);
-          localStorage.removeItem(SESSION_KEY);
+        } else {
           setIsCheckingSession(false);
         }
-      } else {
-        setIsCheckingSession(false);
       }
-    }
+    };
+    initSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -364,7 +381,6 @@ export default function AdminLiveChatDashboard() {
     console.log(`🗑️ Requesting deletion of chat: ${userId}`);
 
     if (socketRef.current && socketRef.current.connected) {
-      // Emit delete request to server
       socketRef.current.emit("admin-delete-chat", {
         userId,
         adminName,
@@ -389,7 +405,6 @@ export default function AdminLiveChatDashboard() {
           ? msg.userName || adminName
           : selectedSession.userName;
 
-        // ✅ Handle deleted messages
         if (msg.deleted) {
           const deletedTime = msg.deletedAt
             ? new Date(msg.deletedAt).toLocaleString()
@@ -401,19 +416,16 @@ export default function AdminLiveChatDashboard() {
           } ***`;
         }
 
-        // ✅ Handle file attachments with complete URL
         if (msg.fileUrl) {
           return `[${timestamp}] ${sender}: ${msg.content}\nFile Name: ${
             msg.fileName || "Attachment"
           }\nFile URL: ${msg.fileUrl}`;
         }
 
-        // ✅ Normal message
         return `[${timestamp}] ${sender}: ${msg.content}`;
       })
       .join("\n\n");
 
-    // ✅ Add header with session information
     const header = `
 ========================================
 CHAT TRANSCRIPT
@@ -460,6 +472,27 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
       )
     );
     setShowNotesModal(false);
+  };
+
+  const loadDeletedChats = (skip: number = 0) => {
+    if (!socketRef.current) return;
+
+    setDeletedChatsLoading(true);
+    setDeletedChatsSkip(skip);
+    socketRef.current.emit("get-deleted-chats", { skip, limit: 20 });
+  };
+
+  const restoreDeletedChat = (deletedChat: ChatSession) => {
+    if (!socketRef.current || !deletedChat._id) return;
+
+    if (!confirm(`Restore chat with ${deletedChat.userName}?`)) {
+      return;
+    }
+
+    socketRef.current.emit("restore-deleted-chat", {
+      deletedChatId: deletedChat._id,
+      adminName: adminName,
+    });
   };
 
   const loginAsAdmin = (name: string) => {
@@ -522,13 +555,11 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
       }
     );
 
-    // Add this socket listener in your loginAsAdmin function, after the other socket listeners
     socketRef.current.on(
       "message-deleted",
       ({ messageId }: { messageId: string }) => {
         console.log(`🗑️ Message ${messageId} was deleted`);
 
-        // Mark the message as deleted instead of removing it
         setMessages((prev) =>
           prev.map((msg) =>
             msg.id === messageId
@@ -542,7 +573,6 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
           )
         );
 
-        // Also update in sessions
         setSessions((prev) =>
           prev.map((session) =>
             session.userId === selectedSessionRef.current?.userId
@@ -570,7 +600,6 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
       ({ userId, deletedBy }: { userId: string; deletedBy: string }) => {
         console.log(`✅ Chat ${userId} was deleted by ${deletedBy}`);
 
-        // Remove from sessions list
         setSessions((prev) => {
           const filtered = prev.filter((s) => s.userId !== userId);
           console.log(
@@ -579,14 +608,12 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
           return filtered;
         });
 
-        // If the deleted chat is currently selected, deselect it
         if (selectedSessionRef.current?.userId === userId) {
           console.log(`🔄 Deselecting deleted chat ${userId}`);
           setSelectedSession(null);
           setMessages([]);
         }
 
-        // Show notification to admin
         if (deletedBy !== adminName) {
           alert(`Chat with ${userId} was deleted by ${deletedBy}`);
         }
@@ -597,6 +624,49 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
       console.error("Delete error:", message);
       alert(`Failed to delete chat: ${message}`);
     });
+
+    socketRef.current.on(
+      "deleted-chats-response",
+      ({
+        chats,
+        hasMore,
+        total,
+      }: {
+        chats: ChatSession[];
+        hasMore: boolean;
+        total: number;
+      }) => {
+        console.log(`📜 Received ${chats.length} deleted chats`);
+        setDeletedChats((prev) => {
+          if (deletedChatsSkip === 0) {
+            return chats;
+          }
+          return [...prev, ...chats];
+        });
+        setHasMoreDeletedChats(hasMore);
+        setDeletedChatsTotal(total);
+        setDeletedChatsLoading(false);
+      }
+    );
+
+    socketRef.current.on(
+      "restore-success",
+      ({ message }: { message: string }) => {
+        console.log(`♻️ ${message}`);
+        alert(message);
+        loadDeletedChats(0);
+        socketRef.current?.emit("admin-join");
+      }
+    );
+
+    socketRef.current.on(
+      "restore-error",
+      ({ message }: { message: string }) => {
+        console.error("❌ Restore error:", message);
+        alert(`Failed to restore: ${message}`);
+        setDeletedChatsLoading(false);
+      }
+    );
 
     socketRef.current.on("customer-joined", (session: ChatSession) => {
       console.log("Customer joined:", session);
@@ -630,7 +700,6 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         userName: string;
         message: ChatMessage;
       }) => {
-        // ✅ Update sessions with new message in conversation history
         setSessions((prev) =>
           prev.map((session) =>
             session.userId === userId
@@ -650,10 +719,8 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
           )
         );
 
-        // ✅ ONLY add to local messages if this session is currently selected
         if (selectedSessionRef.current?.userId === userId) {
           setMessages((prev) => {
-            // ✅ Check if message already exists to prevent duplicates
             const messageExists = prev.some((m) => m.id === message.id);
             if (messageExists) {
               return prev;
@@ -669,12 +736,9 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
       }
     );
 
-    // page.tsx (replace existing new-message handler)
     socketRef.current.on("new-message", (message: ChatMessage) => {
-      // Ignore server echo of my own admin message
       if (message.userName === adminName) return;
 
-      // Prevent duplicates by id
       setMessages((prev) => {
         if (prev.some((m) => m.id === message.id)) return prev;
         return [...prev, message];
@@ -684,7 +748,6 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
     socketRef.current.on(
       "admin-message-sent",
       ({ userId, message }: { userId: string; message: ChatMessage }) => {
-        // Update the session history for ALL admin messages
         setSessions((prev) =>
           prev.map((session) =>
             session.userId === userId
@@ -700,7 +763,6 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
           )
         );
 
-        // If viewing this session, add to local messages ONLY if not already there
         if (selectedSessionRef.current?.userId === userId) {
           setMessages((prev) => {
             const exists = prev.some((m) => m.id === message.id);
@@ -808,21 +870,17 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
   };
 
   const claimCustomer = (session: ChatSession) => {
-    // ✅ Set selected session first
     setSelectedSession(session);
     setSessionNotes(session.notes || "");
 
-    // ✅ Load conversation history from the session
     setMessages(session.conversationHistory || []);
 
-    // If session is ended, just view it (read-only)
     if (session.customerEnded || session.adminEnded) {
       return;
     }
 
     const isClaimedByMe = session.hasAgent && session.agentName === adminName;
 
-    // If already claimed by me, just clear unread count
     if (isClaimedByMe) {
       setSessions((prev) =>
         prev.map((s) =>
@@ -832,7 +890,6 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
       return;
     }
 
-    // If unclaimed, claim it
     if (socketRef.current && !session.hasAgent) {
       socketRef.current.emit("admin-claim-customer", {
         userId: session.userId,
@@ -852,7 +909,6 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         userName: adminName,
       };
 
-      // ✅ Also update the session's conversation history immediately
       setSessions((prev) =>
         prev.map((session) =>
           session.userId === selectedSession.userId
@@ -868,7 +924,6 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         )
       );
 
-      // Then emit to socket
       socketRef.current.emit("admin-message", {
         userId: selectedSession.userId,
         agentName: adminName,
@@ -960,7 +1015,6 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         const data = await response.json();
 
         if (data.success && socketRef.current) {
-          // ✅ Create message locally first
           const fileMessage: ChatMessage = {
             id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             content: `📎 Sent file: ${file.name}`,
@@ -971,7 +1025,6 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
             userName: adminName,
           };
 
-          // ✅ Also update the session's conversation history
           setSessions((prev) =>
             prev.map((session) =>
               session.userId === selectedSession.userId
@@ -987,7 +1040,6 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
             )
           );
 
-          // Then emit to socket
           socketRef.current.emit("admin-message", {
             userId: selectedSession.userId,
             agentName: adminName,
@@ -1047,7 +1099,9 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
             <h1 className="text-2xl font-bold text-gray-800">
               Admin Live Chat
             </h1>
-            <p className="text-gray-600 mt-2">Texas Premium Insurance</p>
+            <p className="text-gray-600 mt-2">
+              Texas Premium Insurance Services
+            </p>
           </div>
 
           <div className="space-y-4">
@@ -1128,6 +1182,19 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
 
   return (
     <div className="h-screen flex bg-gray-100">
+      {/* History Button - Bottom Left Corner */}
+      <button
+        onClick={() => {
+          setShowDeletedChatsModal(true);
+          loadDeletedChats(0);
+        }}
+        className="fixed bottom-4 left-4 z-50 p-4 bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-full shadow-xl hover:scale-110 transition-all duration-300 flex items-center gap-2"
+        title="View Deleted Chats History"
+      >
+        <History className="w-6 h-6" />
+        <span className="hidden sm:inline text-sm font-medium">History</span>
+      </button>
+
       <button
         onClick={() => setShowMobileSidebar(!showMobileSidebar)}
         className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-blue-600 text-white rounded-lg shadow-lg"
@@ -1494,7 +1561,6 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                   }`}
                 >
                   {msg.deleted ? (
-                    // 🗑️ DELETED MESSAGE PLACEHOLDER
                     <div
                       className={`max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 border-2 border-dashed ${
                         msg.isAdmin
@@ -1516,7 +1582,6 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                       </p>
                     </div>
                   ) : (
-                    // 📝 NORMAL MESSAGE
                     <div
                       className={`relative group max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 ${
                         msg.isAdmin
@@ -1524,7 +1589,6 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                           : "bg-white text-gray-800 shadow"
                       }`}
                     >
-                      {/* 🗑️ Delete button - only for admin messages */}
                       {msg.isAdmin && (
                         <button
                           onClick={() =>
@@ -1839,6 +1903,248 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
               >
                 Save Notes
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Deleted Chats History Modal */}
+      {showDeletedChatsModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="p-6 border-b bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-t-2xl flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <History className="w-6 h-6" />
+                <div>
+                  <h2 className="text-2xl font-bold">Deleted Chats History</h2>
+                  <p className="text-sm text-purple-100">
+                    {deletedChatsTotal > 0
+                      ? `${deletedChatsTotal} deleted chats`
+                      : "No deleted chats"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowDeletedChatsModal(false);
+                  setDeletedChats([]);
+                  setDeletedChatsSkip(0);
+                }}
+                className="text-white hover:text-gray-200 transition"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {deletedChatsLoading && deletedChats.length === 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+                </div>
+              ) : deletedChats.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  <History size={64} className="mx-auto mb-4 opacity-30" />
+                  <p className="text-lg font-medium">No Deleted Chats</p>
+                  <p className="text-sm mt-2">
+                    Deleted chat history will appear here
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {deletedChats.map((chat, index) => (
+                    <div
+                      key={`${chat._id}-${index}`}
+                      className="border border-gray-200 rounded-xl p-4 hover:shadow-lg transition-shadow bg-gradient-to-r from-gray-50 to-white"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                          {/* Customer Info */}
+                          <div className="flex items-center gap-2 mb-2">
+                            <h3 className="text-lg font-semibold text-gray-800">
+                              {chat.userName}
+                            </h3>
+                            {chat.userPhone && (
+                              <span className="text-sm text-gray-500">
+                                • {chat.userPhone}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Chat Details */}
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-3">
+                            <div>
+                              <p className="text-gray-500">User ID</p>
+                              <p className="font-medium text-gray-700 truncate">
+                                {chat.userId}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500">Messages</p>
+                              <p className="font-medium text-gray-700">
+                                {chat.messageCount ||
+                                  chat.conversationHistory?.length ||
+                                  0}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500">Duration</p>
+                              <p className="font-medium text-gray-700">
+                                {chat.chatDuration || "N/A"}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-gray-500">Agent</p>
+                              <p className="font-medium text-gray-700">
+                                {chat.agentName || "Unassigned"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Deletion Info */}
+                          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                              <div>
+                                <p className="text-red-600 font-medium">
+                                  Deleted By
+                                </p>
+                                <p className="text-red-800">{chat.deletedBy}</p>
+                              </div>
+                              <div>
+                                <p className="text-red-600 font-medium">
+                                  Deleted At
+                                </p>
+                                <p className="text-red-800">
+                                  {chat.deletedAt
+                                    ? new Date(chat.deletedAt).toLocaleString()
+                                    : "N/A"}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-red-600 font-medium">
+                                  Original Session
+                                </p>
+                                <p className="text-red-800">
+                                  {new Date(chat.joinedAt).toLocaleString()}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Notes if any */}
+                          {chat.notes && (
+                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                              <p className="text-xs font-medium text-yellow-800 mb-1">
+                                Notes:
+                              </p>
+                              <p className="text-sm text-yellow-900">
+                                {chat.notes}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex flex-col gap-2 flex-shrink-0">
+                          <button
+                            onClick={() => restoreDeletedChat(chat)}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2 text-sm whitespace-nowrap"
+                            title="Restore this chat"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                            Restore
+                          </button>
+                          <button
+                            onClick={() => {
+                              const transcript = `
+========================================
+DELETED CHAT TRANSCRIPT
+========================================
+Customer: ${chat.userName}
+Phone: ${chat.userPhone || "N/A"}
+User ID: ${chat.userId}
+Session Started: ${new Date(chat.joinedAt).toLocaleString()}
+Session Ended: ${
+                                chat.lastSeen
+                                  ? new Date(chat.lastSeen).toLocaleString()
+                                  : new Date(chat.joinedAt).toLocaleString()
+                              }
+Agent: ${chat.agentName || "Unassigned"}
+Duration: ${chat.chatDuration || "N/A"}
+Messages: ${chat.messageCount || 0}
+
+DELETION INFO:
+Deleted By: ${chat.deletedBy || "Unknown"}
+Deleted At: ${
+                                chat.deletedAt
+                                  ? new Date(chat.deletedAt).toLocaleString()
+                                  : "N/A"
+                              }
+
+${chat.notes ? `Notes: ${chat.notes}\n` : ""}
+========================================
+
+${(chat.conversationHistory || [])
+  .map((msg: ChatMessage) => {
+    const timestamp = new Date(msg.timestamp).toLocaleString();
+    const sender = msg.isAdmin ? msg.userName || "Admin" : chat.userName;
+    if (msg.fileUrl) {
+      return `[${timestamp}] ${sender}: ${msg.content}\nFile: ${
+        msg.fileName || msg.fileUrl
+      }`;
+    }
+    return `[${timestamp}] ${sender}: ${msg.content}`;
+  })
+  .join("\n\n")}
+`;
+                              const blob = new Blob([transcript], {
+                                type: "text/plain",
+                              });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement("a");
+                              a.href = url;
+                              a.download = `deleted-chat-${
+                                chat.userId
+                              }-${Date.now()}.txt`;
+                              document.body.appendChild(a);
+                              a.click();
+                              document.body.removeChild(a);
+                              URL.revokeObjectURL(url);
+                            }}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2 text-sm whitespace-nowrap"
+                            title="Download transcript"
+                          >
+                            <Download className="w-4 h-4" />
+                            Download
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Load More Button */}
+                  {hasMoreDeletedChats && (
+                    <button
+                      onClick={() => loadDeletedChats(deletedChats.length)}
+                      disabled={deletedChatsLoading}
+                      className="w-full py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {deletedChatsLoading ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          Load More ({deletedChatsTotal - deletedChats.length}{" "}
+                          remaining)
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

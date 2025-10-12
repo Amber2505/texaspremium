@@ -26,6 +26,7 @@ const io = new Server(httpServer, {
 // MongoDB Connection
 let db;
 let liveChatHistoryCollection;
+let deletedChatsCollection;
 
 async function connectMongoDB() {
   try {
@@ -46,10 +47,9 @@ async function connectMongoDB() {
     await client.db().admin().ping();
     console.log('✅ MongoDB ping successful');
     
-    // ✅ FIX: Use 'myFirstDatabase' to match your connection string
-    // Or you can use any database name you want
-    db = client.db('myFirstDatabase'); // Changed from 'db' to 'myFirstDatabase'
+    db = client.db('myFirstDatabase');
     liveChatHistoryCollection = db.collection('live_chat_history');
+    deletedChatsCollection = db.collection('deleted_chats_history'); // ✅ Add this
     
     // Verify collection access
     const count = await liveChatHistoryCollection.countDocuments();
@@ -61,6 +61,7 @@ async function connectMongoDB() {
     console.error('Stack:', error.stack);
     db = null;
     liveChatHistoryCollection = null;
+    deletedChatsCollection = null; // ✅ Add this
     return false;
   }
 }
@@ -209,35 +210,45 @@ io.on('connection', (socket) => {
   try {
     console.log(`🗑️ Admin ${adminName} requesting deletion of chat ${userId}`);
     
-    // Check database availability
-    if (!db) {
-      console.error('❌ Database connection not established');
+    if (!db || !liveChatHistoryCollection) {
+      console.error('❌ Database not available');
       socket.emit('delete-error', { 
-        message: 'Database connection not available. Please check server logs and try again.' 
+        message: 'Database connection not available. Please try again.' 
       });
       return;
     }
     
-    if (!liveChatHistoryCollection) {
-      console.error('❌ Chat history collection not initialized');
+    // ✅ First, get the chat data before deleting
+    const chatToDelete = await liveChatHistoryCollection.findOne({ userId: userId });
+    
+    if (!chatToDelete) {
+      console.log(`⚠️ No chat found in database for user ${userId}`);
       socket.emit('delete-error', { 
-        message: 'Chat history collection not available. Please contact support.' 
+        message: 'Chat not found in database.' 
       });
       return;
     }
     
-    console.log(`📊 Attempting to delete from collection...`);
+    // ✅ Save to deleted chats history
+    if (deletedChatsCollection) {
+      const deletedRecord = {
+        ...chatToDelete,
+        deletedBy: adminName,
+        deletedAt: new Date().toISOString(),
+        originalChatId: chatToDelete._id,
+        messageCount: chatToDelete.conversationHistory?.length || 0,
+        chatDuration: calculateChatDuration(chatToDelete.joinedAt, chatToDelete.lastSeen),
+      };
+      
+      await deletedChatsCollection.insertOne(deletedRecord);
+      console.log(`💾 Saved deleted chat to history: ${userId}`);
+    }
     
-    // Delete from MongoDB
+    // Delete from active chats
     const result = await liveChatHistoryCollection.deleteOne({ userId: userId });
     
-    console.log(`📊 MongoDB delete result:`, {
-      deletedCount: result.deletedCount,
-      acknowledged: result.acknowledged
-    });
-    
     if (result.deletedCount > 0) {
-      console.log(`✅ Chat deleted from MongoDB for user ${userId}`);
+      console.log(`✅ Chat deleted from active chats for user ${userId}`);
       
       // Remove from active sessions
       activeSessions.delete(userId);
@@ -261,11 +272,6 @@ io.on('connection', (socket) => {
       });
       
       console.log(`✅ All deletion notifications sent for ${userId}`);
-    } else {
-      console.log(`⚠️ No chat found in database for user ${userId}`);
-      socket.emit('delete-error', { 
-        message: 'Chat not found in database. It may have already been deleted.' 
-      });
     }
   } catch (error) {
     console.error('❌ Error during chat deletion:', error);
@@ -274,7 +280,103 @@ io.on('connection', (socket) => {
       error: error.message 
     });
   }
+  });
+
+  // ✅ Add helper function to calculate chat duration
+function calculateChatDuration(joinedAt, lastSeen) {
+  try {
+    const start = new Date(joinedAt);
+    const end = new Date(lastSeen || new Date());
+    const durationMs = end.getTime() - start.getTime();
+    const minutes = Math.floor(durationMs / 60000);
+    
+    if (minutes < 1) return "< 1 min";
+    if (minutes >= 60) {
+      const hours = Math.floor(minutes / 60);
+      const remainingMins = minutes % 60;
+      return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
+    }
+    return `${minutes} min`;
+  } catch (error) {
+    return "Unknown";
+  }
+}
+
+// ✅ Add endpoint to fetch deleted chats history
+socket.on('get-deleted-chats', async ({ skip = 0, limit = 20 }) => {
+  if (!deletedChatsCollection) {
+    socket.emit('deleted-chats-response', { chats: [], hasMore: false, total: 0 });
+    return;
+  }
+  
+  try {
+    const deletedChats = await deletedChatsCollection
+      .find()
+      .sort({ deletedAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .toArray();
+    
+    const totalCount = await deletedChatsCollection.countDocuments();
+    const hasMore = (skip + limit) < totalCount;
+    
+    socket.emit('deleted-chats-response', { 
+      chats: deletedChats, 
+      hasMore, 
+      total: totalCount 
+    });
+    
+    console.log(`📜 Sent ${deletedChats.length} deleted chats to admin`);
+  } catch (error) {
+    console.error('❌ Error loading deleted chats:', error);
+    socket.emit('deleted-chats-response', { chats: [], hasMore: false, total: 0 });
+  }
 });
+
+// ✅ Add endpoint to restore a deleted chat (optional)
+socket.on('restore-deleted-chat', async ({ deletedChatId, adminName }) => {
+  if (!deletedChatsCollection || !liveChatHistoryCollection) {
+    socket.emit('restore-error', { message: 'Database not available' });
+    return;
+  }
+  
+  try {
+    const deletedChat = await deletedChatsCollection.findOne({ _id: deletedChatId });
+    
+    if (!deletedChat) {
+      socket.emit('restore-error', { message: 'Deleted chat not found' });
+      return;
+    }
+    
+    // Remove deletion metadata
+    const { deletedBy, deletedAt, originalChatId, messageCount, chatDuration, _id, ...chatToRestore } = deletedChat;
+    
+    // Restore to active chats
+    await liveChatHistoryCollection.insertOne({
+      ...chatToRestore,
+      restoredBy: adminName,
+      restoredAt: new Date().toISOString(),
+    });
+    
+    // Remove from deleted chats
+    await deletedChatsCollection.deleteOne({ _id: deletedChatId });
+    
+    socket.emit('restore-success', { 
+      message: 'Chat restored successfully',
+      userId: chatToRestore.userId 
+    });
+    
+    // Reload active sessions for all admins
+    io.to('admins').emit('chat-restored', { userId: chatToRestore.userId });
+    
+    console.log(`♻️ Chat ${chatToRestore.userId} restored by ${adminName}`);
+  } catch (error) {
+    console.error('❌ Error restoring chat:', error);
+    socket.emit('restore-error', { 
+      message: `Failed to restore chat: ${error.message}` 
+    });
+  }
+  });
 
 socket.on('delete-message', async ({ messageId, userId }) => {
   try {
