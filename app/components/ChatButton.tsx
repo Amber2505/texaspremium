@@ -1398,9 +1398,13 @@ export default function ChatButton() {
             extra: null,
           };
 
-          setMessages((prev) => [...prev, fileMessage]);
+          // ✅ DON'T add to messages here if in live chat - server will broadcast it
+          // Only add locally if NOT in live chat (AI chat mode)
+          if (!isLiveChat) {
+            setMessages((prev) => [...prev, fileMessage]);
+          }
 
-          // If in live chat, emit to socket (server will broadcast to admin)
+          // If in live chat, emit to socket (server will broadcast to both customer and admin)
           if (isLiveChat && socketRef.current) {
             const userId = localStorage.getItem("chat-user-id");
             socketRef.current.emit("customer-message", {
