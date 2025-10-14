@@ -170,24 +170,54 @@ function generateFollowUps(
 
 export async function POST(request: Request) {
   try {
+    console.log('🔵 Setup reminder API called');
+    
+    // Parse request body
+    const body = await request.json();
+    console.log('📦 Request body:', body);
+    const { policyNo, dueDate, paymentType } = body;
+
+    if (!policyNo || !dueDate || !paymentType) {
+      console.error('❌ Missing required fields');
+      return NextResponse.json(
+        { error: 'Missing required fields: policyNo, dueDate, or paymentType' },
+        { status: 400 }
+      );
+    }
+
+    // Connect to MongoDB
+    console.log('🔌 Connecting to MongoDB...');
     const client = await clientPromise;
     const db = client.db('db');
-    const { policyNo, dueDate, paymentType } = await request.json();
+    console.log('✅ Connected to MongoDB');
 
     // Find the pending customer
+    console.log('🔍 Looking for pending customer with policy:', policyNo);
     const pendingCustomer = await db
-      .collection('pending_customers_coll')
+      .collection('customer_policyandclaim_info')
       .findOne({ policy_no: policyNo });
 
     if (!pendingCustomer) {
+      console.error('❌ Pending customer not found');
       return NextResponse.json(
         { error: 'Pending customer not found' },
         { status: 404 }
       );
     }
+    console.log('✅ Found pending customer:', pendingCustomer.customer_name);
+
+    // Validate dates
+    if (!pendingCustomer.effective_date || !pendingCustomer.expiration_date) {
+      console.error('❌ Missing dates in pending customer');
+      return NextResponse.json(
+        { error: 'Pending customer missing effective_date or expiration_date' },
+        { status: 400 }
+      );
+    }
 
     const effectiveDate = new Date(pendingCustomer.effective_date);
     const expirationDate = new Date(pendingCustomer.expiration_date);
+    console.log('📅 Policy dates - Effective:', effectiveDate, 'Expiration:', expirationDate);
 
     // Calculate total payments based on policy duration
     const diffMonths = Math.ceil(
@@ -195,17 +225,22 @@ export async function POST(request: Request) {
         (1000 * 60 * 60 * 24 * 30)
     );
     const totalPayments = diffMonths >= 12 ? 12 : diffMonths;
+    console.log('💰 Total payments calculated:', totalPayments);
 
-    const parsedDueDate = new Date(dueDate);
-    parsedDueDate.setHours(12, 0, 0, 0);
+    // Parse the due date properly
+    const [year, month, day] = dueDate.split('-').map(Number);
+    const parsedDueDate = new Date(year, month - 1, day, 12, 0, 0, 0);
+    console.log('📅 Parsed due date:', parsedDueDate);
 
     // Generate follow-ups with updated rules
+    console.log('📋 Generating follow-ups...');
     const followUps = generateFollowUps(
       parsedDueDate,
       paymentType,
       expirationDate,
       totalPayments
     );
+    console.log('✅ Generated', followUps.length, 'follow-ups');
 
     // Create the customer document
     const customer = {
@@ -222,16 +257,25 @@ export async function POST(request: Request) {
     };
 
     // Insert into payment_reminder_coll
+    console.log('💾 Inserting into payment_reminder_coll...');
     await db.collection('payment_reminder_coll').insertOne(customer);
+    console.log('✅ Customer inserted successfully');
 
     // Remove from pending_customers_coll
+    console.log('🗑️ Removing from pending_customers_coll...');
     await db.collection('pending_customers_coll').deleteOne({ policy_no: policyNo });
+    console.log('✅ Pending customer removed');
 
+    console.log('🎉 Setup reminder completed successfully');
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error setting up reminder:', error);
+    console.error('❌ Error setting up reminder:', error);
     return NextResponse.json(
-      { error: 'Failed to setup reminder' },
+      { 
+        error: 'Failed to setup reminder',
+        details: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      },
       { status: 500 }
     );
   }

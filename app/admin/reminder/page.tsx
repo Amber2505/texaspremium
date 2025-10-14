@@ -368,6 +368,9 @@ export default function InsuranceReminderDashboard() {
       return;
     }
 
+    console.log("📤 Sending setup request for:", setupCustomer.policy_no);
+    console.log("📤 Full customer data:", setupCustomer);
+
     try {
       const response = await fetch("/api/setup-reminder", {
         method: "POST",
@@ -388,11 +391,19 @@ export default function InsuranceReminderDashboard() {
         fetchPendingCustomers();
         alert("Payment reminder setup successfully!");
       } else {
-        throw new Error("Failed to setup reminder");
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage =
+          errorData.error || `Server error: ${response.status}`;
+        console.error("Setup reminder failed:", errorMessage, errorData);
+        alert(`Failed to setup reminder: ${errorMessage}`);
       }
     } catch (error) {
       console.error("Error setting up reminder:", error);
-      alert("Failed to setup reminder");
+      alert(
+        `Failed to setup reminder: ${
+          error instanceof Error ? error.message : "Network error"
+        }`
+      );
     }
   };
 
