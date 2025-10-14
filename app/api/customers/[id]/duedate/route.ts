@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import clientPromise from '@/lib/mongodb';
+import { connectToDatabase } from '@/lib/mongodb';
 
-// Define the FollowUp type
 type FollowUp = {
   date: string;
   type: string;
@@ -47,10 +46,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Await the params promise
     const { id } = await params;
-    
-    const client = await clientPromise;
+    const client = await connectToDatabase();
     const db = client.db('db');
     const { dueDate } = await request.json();
 
@@ -60,9 +57,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
     }
 
-    // Parse the date properly to avoid timezone shift
     const newDueDate = new Date(dueDate);
-    newDueDate.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
+    newDueDate.setHours(12, 0, 0, 0);
 
     const followUps = generateFollowUps(newDueDate, customer.paymentType);
 

@@ -45,7 +45,6 @@ export async function GET() {
 
     if (bulkOps.length > 0) {
       await db.collection('payment_reminder_coll').bulkWrite(bulkOps);
-      // console.log(`✅ Updated ${bulkOps.length} customers to overdue status`);
     }
 
     return NextResponse.json(updatedCustomers);

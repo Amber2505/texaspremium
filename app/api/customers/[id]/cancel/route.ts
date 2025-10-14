@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import clientPromise from '@/lib/mongodb';
+import { connectToDatabase } from '@/lib/mongodb';
 
 type FollowUp = {
   date: string;
@@ -14,10 +14,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Await the params promise
     const { id } = await params;
-    
-    const client = await clientPromise;
+    const client = await connectToDatabase();
     const db = client.db('db');
     const { cancellationReason, customWinBackDate } = await request.json();
 
@@ -66,7 +64,7 @@ export async function PATCH(
     }
 
     const result = await db.collection('payment_reminder_coll').updateOne(
-      { id }, // Use the awaited id
+      { id },
       {
         $set: {
           status: 'cancelled',
