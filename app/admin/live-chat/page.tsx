@@ -223,6 +223,37 @@ export default function AdminLiveChatDashboard() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // Add this useEffect to check authentication
+  useEffect(() => {
+    const checkAuth = () => {
+      const savedSession = localStorage.getItem("admin_session");
+      if (!savedSession) {
+        // Redirect to admin login
+        window.location.href = "/admin";
+        return;
+      }
+
+      try {
+        const session = JSON.parse(savedSession);
+        const now = Date.now();
+
+        if (now >= session.expiresAt) {
+          localStorage.removeItem("admin_session");
+          window.location.href = "/admin";
+        }
+      } catch {
+        localStorage.removeItem("admin_session");
+        window.location.href = "/admin";
+      }
+    };
+
+    checkAuth();
+
+    // Check every minute
+    const interval = setInterval(checkAuth, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     scrollToBottom();
   }, [messages, customerTyping]);
@@ -320,15 +351,9 @@ export default function AdminLiveChatDashboard() {
       socketRef.current.disconnect();
       socketRef.current = null;
     }
-    localStorage.removeItem(SESSION_KEY);
-    setIsLoggedIn(false);
-    setAdminName("");
-    setAdminPassword("");
-    setIsConnected(false);
-    setSessions([]);
-    setSelectedSession(null);
-    setMessages([]);
-    console.log("👋 Admin logged out");
+    localStorage.removeItem("admin_chat_session"); // Keep this if you have it
+    localStorage.removeItem("admin_session"); // Add this line
+    window.location.href = "/admin"; // Redirect to admin login
   };
 
   const playNotificationSound = () => {

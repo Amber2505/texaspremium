@@ -360,7 +360,7 @@ socket.on('restore-deleted-chat', async ({ deletedChatId, adminName }) => {
       return;
     }
     
-    console.log(`♻️ Found deleted chat for restoration:`, deletedChat.userId);
+    // console.log(`♻️ Found deleted chat for restoration:`, deletedChat.userId);
     
     // Remove deletion metadata and _id to allow fresh insert
     const { deletedBy, deletedAt, originalChatId, messageCount, chatDuration, _id, ...chatToRestore } = deletedChat;
@@ -378,7 +378,7 @@ socket.on('restore-deleted-chat', async ({ deletedChatId, adminName }) => {
     // Remove from deleted chats
     await deletedChatsCollection.deleteOne({ _id: objectId });
     
-    console.log(`✅ Chat restored successfully: ${chatToRestore.userId}`);
+    // console.log(`✅ Chat restored successfully: ${chatToRestore.userId}`);
     
     socket.emit('restore-success', { 
       message: 'Chat restored successfully',
@@ -388,7 +388,7 @@ socket.on('restore-deleted-chat', async ({ deletedChatId, adminName }) => {
     // Reload active sessions for all admins
     io.to('admins').emit('chat-restored', { userId: chatToRestore.userId });
     
-    console.log(`♻️ Chat ${chatToRestore.userId} restored by ${adminName}`);
+    // console.log(`♻️ Chat ${chatToRestore.userId} restored by ${adminName}`);
   } catch (error) {
     console.error('❌ Error restoring chat:', error);
     socket.emit('restore-error', { 
@@ -399,7 +399,7 @@ socket.on('restore-deleted-chat', async ({ deletedChatId, adminName }) => {
 
 socket.on('delete-message', async ({ messageId, userId }) => {
   try {
-    console.log(`🗑️ Attempting to delete message ${messageId} from chat ${userId}`);
+    // console.log(`🗑️ Attempting to delete message ${messageId} from chat ${userId}`);
     
     // Check database availability
     if (!db || !liveChatHistoryCollection) {
@@ -416,10 +416,10 @@ socket.on('delete-message', async ({ messageId, userId }) => {
       { $pull: { conversationHistory: { id: messageId } } }
     );
 
-    console.log(`📊 Message delete result:`, {
-      matchedCount: result.matchedCount,
-      modifiedCount: result.modifiedCount
-    });
+    // console.log(`📊 Message delete result:`, {
+    //   matchedCount: result.matchedCount,
+    //   modifiedCount: result.modifiedCount
+    // });
 
     if (result.modifiedCount > 0) {
       // Remove from active session
@@ -434,9 +434,9 @@ socket.on('delete-message', async ({ messageId, userId }) => {
       io.to(`customer-${userId}`).emit('message-deleted', { messageId });
       io.to('admins').emit('message-deleted', { messageId });
       
-      console.log(`✅ Message ${messageId} deleted successfully`);
+      // console.log(`✅ Message ${messageId} deleted successfully`);
     } else {
-      console.log(`⚠️ Message ${messageId} not found or chat ${userId} doesn't exist`);
+      // console.log(`⚠️ Message ${messageId} not found or chat ${userId} doesn't exist`);
       socket.emit('delete-error', { 
         message: 'Message not found. It may have already been deleted.' 
       });
@@ -454,7 +454,7 @@ socket.on('delete-message', async ({ messageId, userId }) => {
     let sessionData = activeSessions.get(userId);
     
     if (sessionData) {
-      console.log('🔄 Customer reconnecting:', userId);
+      // console.log('🔄 Customer reconnecting:', userId);
       sessionData.socketId = socket.id;
       sessionData.isActive = true;
       sessionData.lastSeen = new Date().toISOString();
@@ -471,7 +471,7 @@ socket.on('delete-message', async ({ messageId, userId }) => {
           isActive: true,
           lastSeen: new Date().toISOString()
         };
-        console.log('📂 Restored session from MongoDB:', userId);
+        // console.log('📂 Restored session from MongoDB:', userId);
         socket.emit('chat-history', sessionData.conversationHistory);
       } else {
         sessionData = {
@@ -485,7 +485,7 @@ socket.on('delete-message', async ({ messageId, userId }) => {
           hasAgent: false,
           conversationHistory: conversationHistory || []
         };
-        console.log('🙋 New customer joined:', userId, userName);
+        // console.log('🙋 New customer joined:', userId, userName);
       }
       
       activeSessions.set(userId, sessionData);
@@ -529,7 +529,7 @@ socket.on('delete-message', async ({ messageId, userId }) => {
       io.to('admins').emit('session-updated', session);
       await saveChatHistory(session);
       
-      console.log(`🤝 Admin ${adminName} claimed customer ${userId}`);
+      // console.log(`🤝 Admin ${adminName} claimed customer ${userId}`);
     }
   });
 
@@ -559,7 +559,7 @@ socket.on('delete-message', async ({ messageId, userId }) => {
     io.to('admins').emit('customer-message-notification', { userId, userName, message });
     
     await saveChatHistory(session);
-    console.log(`💬 Customer message from ${userName} (${userId})`);
+    // console.log(`💬 Customer message from ${userName} (${userId})`);
   }
 });
 
@@ -587,7 +587,7 @@ socket.on('delete-message', async ({ messageId, userId }) => {
     io.to('admins').emit('admin-message-sent', { userId, message });
     
     await saveChatHistory(session);
-    console.log(`💬 Admin message from ${agentName} to ${userId}`);
+    // console.log(`💬 Admin message from ${agentName} to ${userId}`);
   }
 });
 
@@ -639,7 +639,7 @@ socket.on('delete-message', async ({ messageId, userId }) => {
       
       await saveChatHistory(session);
       setTimeout(() => activeSessions.delete(userId), 30 * 60 * 1000);
-      console.log('🔴 Session ended by admin:', userId);
+      // console.log('🔴 Session ended by admin:', userId);
     }
   });
 
@@ -668,12 +668,12 @@ socket.on('delete-message', async ({ messageId, userId }) => {
       setTimeout(() => activeSessions.delete(userId), 30 * 60 * 1000);
       
       socket.emit('session-end-confirmed');
-      console.log('🔴 Customer ended session:', userId);
+      // console.log('🔴 Customer ended session:', userId);
     }
   });
 
   socket.on('disconnect', async (reason) => {
-    console.log('❌ Client disconnected:', socket.id, 'Reason:', reason);
+    // console.log('❌ Client disconnected:', socket.id, 'Reason:', reason);
     
     if (adminSockets.has(socket.id)) {
       adminSockets.delete(socket.id);
@@ -696,7 +696,7 @@ socket.on('delete-message', async ({ messageId, userId }) => {
         session.lastSeen = new Date().toISOString();
         io.to('admins').emit('customer-disconnected', { userId, session });
         await saveChatHistory(session);
-        console.log('📱 Customer went inactive:', userId);
+        // console.log('📱 Customer went inactive:', userId);
       }
     }
   });
@@ -723,7 +723,7 @@ setInterval(async () => {
         agentWaitTimers.delete(userId);
       }
       
-      console.log('🧹 Cleaned up inactive session:', userId);
+      // console.log('🧹 Cleaned up inactive session:', userId);
     }
   }
 }, 5 * 60 * 1000);

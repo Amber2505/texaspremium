@@ -268,8 +268,8 @@ export async function POST(req: Request) {
 
     const context = analyzeContext(messages);
     
-    console.log('Context Analysis:', context);
-    console.log('User Message:', userMessage);
+    // console.log('Context Analysis:', context);
+    // console.log('User Message:', userMessage);
 
     // Build dynamic system prompt
     let systemPrompt = "You are Samantha, the chatbot for Texas Premium Insurance Services. ";
@@ -316,7 +316,7 @@ export async function POST(req: Request) {
 
     if (!apiRes.ok) {
       const errorData = await apiRes.json().catch(() => ({}));
-      console.error('OpenAI API Error:', errorData);
+      console.error('AI API Error:', errorData);
       
       return NextResponse.json({
         choices: [
@@ -351,10 +351,10 @@ export async function POST(req: Request) {
     // Determine if we should show quote buttons
     const showButton = shouldShowQuoteButton(userMessage, content, detectedTypes);
     
-    console.log('Detected Types:', detectedTypes);
-    console.log('Show Button:', showButton);
-    console.log('Document Request:', requestingDocuments);
-    console.log('Has Contact Suggestion:', hasContactSuggestion);
+    // console.log('Detected Types:', detectedTypes);
+    // console.log('Show Button:', showButton);
+    // console.log('Document Request:', requestingDocuments);
+    // console.log('Has Contact Suggestion:', hasContactSuggestion);
     
     // Return appropriate button type
     let quoteTypes = null;
