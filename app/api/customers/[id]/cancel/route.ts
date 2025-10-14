@@ -1,7 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, NextRequest } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 
-// Define the FollowUp type
 type FollowUp = {
   date: string;
   type: string;
@@ -11,7 +10,7 @@ type FollowUp = {
 };
 
 export async function PATCH(
-  request: Request,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -19,9 +18,14 @@ export async function PATCH(
     const db = client.db('db');
     const { cancellationReason, customWinBackDate } = await request.json();
 
+    const validReasons = ["non-payment", "customer-choice", "custom-date", "no-followup"] as const;
+    if (!validReasons.includes(cancellationReason)) {
+      return NextResponse.json({ error: 'Invalid cancellation reason' }, { status: 400 });
+    }
+
     const cancellationDate = new Date();
     let winBackDate: Date | undefined;
-    const followUps: FollowUp[] = []; // Use FollowUp type instead of any[]
+    const followUps: FollowUp[] = [];
 
     if (cancellationReason === "non-payment") {
       winBackDate = new Date();
@@ -46,6 +50,9 @@ export async function PATCH(
       });
     } else if (cancellationReason === "custom-date" && customWinBackDate) {
       winBackDate = new Date(customWinBackDate);
+      if (isNaN(winBackDate.getTime())) {
+        return NextResponse.json({ error: 'Invalid custom win-back date' }, { status: 400 });
+      }
       followUps.push({
         date: winBackDate.toISOString(),
         type: "win-back",
@@ -55,7 +62,7 @@ export async function PATCH(
       });
     }
 
-    await db.collection('payment_reminder_coll').updateOne(
+    const result = await db.collection('payment_reminder_coll').updateOne(
       { id: params.id },
       {
         $set: {
@@ -67,6 +74,10 @@ export async function PATCH(
         },
       }
     );
+
+    if (result.matchedCount === 0) {
+      return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
