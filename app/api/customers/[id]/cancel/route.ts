@@ -11,9 +11,12 @@ type FollowUp = {
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Await the params promise
+    const { id } = await params;
+    
     const client = await clientPromise;
     const db = client.db('db');
     const { cancellationReason, customWinBackDate } = await request.json();
@@ -63,7 +66,7 @@ export async function PATCH(
     }
 
     const result = await db.collection('payment_reminder_coll').updateOne(
-      { id: params.id },
+      { id }, // Use the awaited id
       {
         $set: {
           status: 'cancelled',

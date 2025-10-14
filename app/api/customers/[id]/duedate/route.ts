@@ -11,8 +11,8 @@ type FollowUp = {
 };
 
 function generateFollowUps(dueDate: Date, paymentType: string): FollowUp[] {
-  const followUps: FollowUp[] = []; // Use FollowUp type instead of any[]
-
+  const followUps: FollowUp[] = [];
+  
   const addDays = (date: Date, days: number) => {
     const result = new Date(date);
     result.setDate(result.getDate() + days);
@@ -44,14 +44,17 @@ function generateFollowUps(dueDate: Date, paymentType: string): FollowUp[] {
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Await the params promise
+    const { id } = await params;
+    
     const client = await clientPromise;
     const db = client.db('db');
     const { dueDate } = await request.json();
 
-    const customer = await db.collection('payment_reminder_coll').findOne({ id: params.id });
+    const customer = await db.collection('payment_reminder_coll').findOne({ id });
 
     if (!customer) {
       return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
@@ -64,7 +67,7 @@ export async function PATCH(
     const followUps = generateFollowUps(newDueDate, customer.paymentType);
 
     await db.collection('payment_reminder_coll').updateOne(
-      { id: params.id },
+      { id },
       {
         $set: {
           dueDate: newDueDate.toISOString(),

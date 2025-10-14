@@ -155,12 +155,14 @@ function generateFollowUps(
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Await the params promise
+    const { id: customerId } = await params;
+    
     const client = await clientPromise;
     const db = client.db('db');
-    const customerId = params.id;
 
     const customer = await db
       .collection('payment_reminder_coll')
