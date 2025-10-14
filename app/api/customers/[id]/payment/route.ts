@@ -33,11 +33,11 @@ function generateFollowUps(
   if (paymentType === 'regular') {
     followUps.push(
       {
-        date: addDays(dueDate, -2).toISOString(),
+        date: addDays(dueDate, -3).toISOString(),
         type: 'pre-reminder',
         description: 'Upcoming payment reminder',
         status: 'pending',
-        method: 'email',
+        method: 'sms',
       },
       {
         date: dueDate.toISOString(),
@@ -51,7 +51,7 @@ function generateFollowUps(
         type: 'overdue',
         description: 'Still unpaid - follow up',
         status: 'pending',
-        method: 'phone',
+        method: 'sms',
       },
       {
         date: addDays(dueDate, 7).toISOString(),
@@ -66,23 +66,37 @@ function generateFollowUps(
         description: 'Final reminder (last day)',
         status: 'pending',
         method: 'phone',
+      },
+      {
+        date: addDays(dueDate, 12).toISOString(),
+        type: 'post-cancellation',
+        description: 'First reinstatement opportunity',
+        status: 'pending',
+        method: 'phone',
+      },
+      {
+        date: addDays(dueDate, 14).toISOString(),
+        type: 'post-cancellation',
+        description: 'Second reinstatement opportunity',
+        status: 'pending',
+        method: 'phone',
       }
     );
   } else if (paymentType === 'autopay') {
     followUps.push(
       {
-        date: addDays(dueDate, -2).toISOString(),
+        date: addDays(dueDate, -3).toISOString(),
         type: 'pre-check',
         description: 'Check autopay schedule',
         status: 'pending',
-        method: 'email',
+        method: 'sms',
       },
       {
         date: dueDate.toISOString(),
         type: 'due-date',
         description: 'Confirm autopay succeeded',
         status: 'pending',
-        method: 'email',
+        method: 'sms',
       },
       {
         date: addDays(dueDate, 7).toISOString(),
@@ -92,6 +106,14 @@ function generateFollowUps(
         method: 'email',
       }
     );
+  } else if (paymentType === 'paid-in-full') {
+    followUps.push({
+      date: addDays(dueDate, -20).toISOString(),
+      type: 'renewal',
+      description: 'Check renewal pricing & inform',
+      status: 'pending',
+      method: 'phone',
+    });
   }
 
   // RENEWAL REMINDERS - Add for all payment types

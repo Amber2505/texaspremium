@@ -9,32 +9,100 @@ type FollowUp = {
   method: string;
 };
 
+function addDays(date: Date, days: number): Date {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
 function generateFollowUps(dueDate: Date, paymentType: string): FollowUp[] {
   const followUps: FollowUp[] = [];
-  
-  const addDays = (date: Date, days: number) => {
-    const result = new Date(date);
-    result.setDate(result.getDate() + days);
-    return result;
-  };
 
   if (paymentType === "regular") {
     followUps.push(
-      { date: addDays(dueDate, -2).toISOString(), type: "pre-reminder", description: "Upcoming payment reminder", status: "pending", method: "email" },
-      { date: dueDate.toISOString(), type: "due-date", description: "Payment due today", status: "pending", method: "phone" },
-      { date: addDays(dueDate, 5).toISOString(), type: "overdue", description: "Still unpaid - follow up", status: "pending", method: "phone" },
-      { date: addDays(dueDate, 7).toISOString(), type: "overdue", description: "Second follow-up", status: "pending", method: "sms" },
-      { date: addDays(dueDate, 9).toISOString(), type: "final", description: "Final reminder (last day)", status: "pending", method: "phone" }
+      { 
+        date: addDays(dueDate, -3).toISOString(), 
+        type: "pre-reminder", 
+        description: "Upcoming payment reminder", 
+        status: "pending", 
+        method: "sms" 
+      },
+      { 
+        date: dueDate.toISOString(), 
+        type: "due-date", 
+        description: "Payment due today", 
+        status: "pending", 
+        method: "phone" 
+      },
+      { 
+        date: addDays(dueDate, 5).toISOString(), 
+        type: "overdue", 
+        description: "Still unpaid - follow up", 
+        status: "pending", 
+        method: "sms" 
+      },
+      { 
+        date: addDays(dueDate, 7).toISOString(), 
+        type: "overdue", 
+        description: "Second follow-up", 
+        status: "pending", 
+        method: "sms" 
+      },
+      { 
+        date: addDays(dueDate, 9).toISOString(), 
+        type: "final", 
+        description: "Final reminder (last day)", 
+        status: "pending", 
+        method: "phone" 
+      },
+      { 
+        date: addDays(dueDate, 12).toISOString(), 
+        type: "post-cancellation", 
+        description: "First reinstatement opportunity", 
+        status: "pending", 
+        method: "phone" 
+      },
+      { 
+        date: addDays(dueDate, 14).toISOString(), 
+        type: "post-cancellation", 
+        description: "Second reinstatement opportunity", 
+        status: "pending", 
+        method: "phone" 
+      }
     );
   } else if (paymentType === "autopay") {
     followUps.push(
-      { date: addDays(dueDate, -2).toISOString(), type: "pre-check", description: "Check autopay schedule", status: "pending", method: "email" },
-      { date: dueDate.toISOString(), type: "due-date", description: "Confirm autopay succeeded", status: "pending", method: "email" },
-      { date: addDays(dueDate, 7).toISOString(), type: "verification", description: "Verify payment posted correctly", status: "pending", method: "email" }
+      { 
+        date: addDays(dueDate, -3).toISOString(), 
+        type: "pre-check", 
+        description: "Check autopay schedule", 
+        status: "pending", 
+        method: "sms" 
+      },
+      { 
+        date: dueDate.toISOString(), 
+        type: "due-date", 
+        description: "Confirm autopay succeeded", 
+        status: "pending", 
+        method: "sms" 
+      },
+      { 
+        date: addDays(dueDate, 7).toISOString(), 
+        type: "verification", 
+        description: "Verify payment posted correctly", 
+        status: "pending", 
+        method: "email" 
+      }
     );
   } else if (paymentType === "paid-in-full") {
     followUps.push(
-      { date: addDays(dueDate, -20).toISOString(), type: "renewal", description: "Check renewal pricing & inform", status: "pending", method: "phone" }
+      { 
+        date: addDays(dueDate, -20).toISOString(), 
+        type: "renewal", 
+        description: "Check renewal pricing & inform", 
+        status: "pending", 
+        method: "phone" 
+      }
     );
   }
 
