@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 
-// Define the FollowUp type
 type FollowUp = {
   date: string;
   type: string;
@@ -16,6 +15,12 @@ function addMonths(date: Date, months: number): Date {
   return result;
 }
 
+function addDays(date: Date, days: number): Date {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
 function generateFollowUps(
   dueDate: Date,
   paymentType: string,
@@ -24,17 +29,11 @@ function generateFollowUps(
 ): FollowUp[] {
   const followUps: FollowUp[] = [];
 
-  const addDaysInner = (date: Date, days: number) => {
-    const result = new Date(date);
-    result.setDate(result.getDate() + days);
-    return result;
-  };
-
   // Monthly payment follow-ups
   if (paymentType === 'regular') {
     followUps.push(
       {
-        date: addDaysInner(dueDate, -2).toISOString(),
+        date: addDays(dueDate, -2).toISOString(),
         type: 'pre-reminder',
         description: 'Upcoming payment reminder',
         status: 'pending',
@@ -48,21 +47,21 @@ function generateFollowUps(
         method: 'phone',
       },
       {
-        date: addDaysInner(dueDate, 5).toISOString(),
+        date: addDays(dueDate, 5).toISOString(),
         type: 'overdue',
         description: 'Still unpaid - follow up',
         status: 'pending',
         method: 'phone',
       },
       {
-        date: addDaysInner(dueDate, 7).toISOString(),
+        date: addDays(dueDate, 7).toISOString(),
         type: 'overdue',
         description: 'Second follow-up',
         status: 'pending',
         method: 'sms',
       },
       {
-        date: addDaysInner(dueDate, 9).toISOString(),
+        date: addDays(dueDate, 9).toISOString(),
         type: 'final',
         description: 'Final reminder (last day)',
         status: 'pending',
@@ -72,7 +71,7 @@ function generateFollowUps(
   } else if (paymentType === 'autopay') {
     followUps.push(
       {
-        date: addDaysInner(dueDate, -2).toISOString(),
+        date: addDays(dueDate, -2).toISOString(),
         type: 'pre-check',
         description: 'Check autopay schedule',
         status: 'pending',
@@ -86,7 +85,7 @@ function generateFollowUps(
         method: 'email',
       },
       {
-        date: addDaysInner(dueDate, 7).toISOString(),
+        date: addDays(dueDate, 7).toISOString(),
         type: 'verification',
         description: 'Verify payment posted correctly',
         status: 'pending',
@@ -96,20 +95,20 @@ function generateFollowUps(
   }
 
   // RENEWAL REMINDERS - Add for all payment types
-  const lastDay = addDaysInner(expirationDate, -1);
+  const lastDay = addDays(expirationDate, -1);
 
   if (totalPayments >= 6) {
     // 6-month or 12-month policy
     followUps.push(
       {
-        date: addDaysInner(expirationDate, -15).toISOString(),
+        date: addDays(expirationDate, -15).toISOString(),
         type: 'renewal',
         description: 'Renewal reminder - 15 days before expiration',
         status: 'pending',
         method: 'phone',
       },
       {
-        date: addDaysInner(expirationDate, -3).toISOString(),
+        date: addDays(expirationDate, -3).toISOString(),
         type: 'renewal',
         description: 'Renewal reminder - 3 days before expiration',
         status: 'pending',
@@ -127,14 +126,14 @@ function generateFollowUps(
     // Month-to-month policy
     followUps.push(
       {
-        date: addDaysInner(expirationDate, -5).toISOString(),
+        date: addDays(expirationDate, -5).toISOString(),
         type: 'renewal',
         description: 'Renewal reminder - 5 days before expiration',
         status: 'pending',
         method: 'email',
       },
       {
-        date: addDaysInner(expirationDate, -2).toISOString(),
+        date: addDays(expirationDate, -2).toISOString(),
         type: 'renewal',
         description: 'Renewal reminder - 2 days before expiration',
         status: 'pending',
@@ -155,12 +154,13 @@ function generateFollowUps(
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const client = await clientPromise;
     const db = client.db('db');
-    const customerId = params.id;
+    const { id } = await params;
+    const customerId = id;
 
     const customer = await db
       .collection('payment_reminder_coll')

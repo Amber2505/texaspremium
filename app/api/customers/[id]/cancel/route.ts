@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { connectToDatabase } from '@/lib/mongodb';
+import clientPromise from '@/lib/mongodb';
 
 type FollowUp = {
   date: string;
@@ -15,7 +15,7 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const client = await connectToDatabase();
+    const client = await clientPromise;
     const db = client.db('db');
     const { cancellationReason, customWinBackDate } = await request.json();
 

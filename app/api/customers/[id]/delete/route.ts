@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { connectToDatabase } from '@/lib/mongodb';
+import clientPromise from '@/lib/mongodb';
 
 export async function DELETE(
   request: Request,
@@ -7,7 +7,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const client = await connectToDatabase();
+    const client = await clientPromise;
     const db = client.db('db');
    
     const result = await db.collection('payment_reminder_coll').deleteOne({ id });

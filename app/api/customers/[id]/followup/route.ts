@@ -9,7 +9,7 @@ export async function PATCH(
     const client = await clientPromise;
     const db = client.db('db');
     const { followUpIndex, status } = await request.json();
-    const { id } = await params; // Await params before accessing properties
+    const { id } = await params;
     
     await db.collection('payment_reminder_coll').updateOne(
       { id },
