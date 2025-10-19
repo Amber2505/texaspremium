@@ -6,10 +6,12 @@ export async function GET() {
     const client = await clientPromise;
     const db = client.db('db');
     
-    // Get all active customers from customer_policyandclaim_info
+    // Get all customers except CANCELLED
     const allCustomers = await db
       .collection('customer_policyandclaim_info')
-      .find({ active: true, status: 'ACTIVE' })
+      .find({ 
+        status: { $ne: 'CANCELLED' } // Exclude CANCELLED status
+      })
       .sort({ created_date: -1 }) // Show newest first
       .toArray();
     
@@ -30,7 +32,7 @@ export async function GET() {
       (customer) => customer.policy_no && !existingPolicyNumbers.has(customer.policy_no)
     );
     
-    console.log(`Found ${pendingCustomers.length} pending customers out of ${allCustomers.length} total active customers`);
+    console.log(`Found ${pendingCustomers.length} pending customers out of ${allCustomers.length} total non-cancelled customers`);
     
     return NextResponse.json(pendingCustomers);
   } catch (error) {
