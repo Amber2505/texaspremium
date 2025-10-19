@@ -1,6 +1,6 @@
 // Chatbutton.tsx
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   MessageCircle,
   Phone,
@@ -56,6 +56,13 @@ interface CustomerData {
   coverage_type: string;
   status: string;
   requestedService?: "claim" | "payment";
+  allPolicies?: Array<{
+    name: string;
+    company_name: string;
+    policy_number: string;
+    coverage_type: string;
+    status: string;
+  }>;
 }
 
 interface CompanyDatabase {
@@ -171,6 +178,7 @@ export default function ChatButton() {
   const [showConfirmClose, setShowConfirmClose] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [keepKeyboardOpen, setKeepKeyboardOpen] = useState(false);
+  const [currentPolicyIndex, setCurrentPolicyIndex] = useState(0);
 
   const [phoneInput, setPhoneInput] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
@@ -528,7 +536,7 @@ export default function ChatButton() {
     phone: string
   ): Promise<{
     found: boolean;
-    customer?: CustomerData;
+    customers?: CustomerData[]; // ✅ Changed from customer to customers
   }> => {
     const cleanPhone = cleanPhoneNumber(phone);
 
@@ -546,16 +554,39 @@ export default function ChatButton() {
 
       const data = await response.json();
 
-      if (data.Data) {
+      // ✅ API now returns array of customers
+      if (data.Data && Array.isArray(data.Data)) {
         return {
           found: true,
-          customer: {
-            name: data.Data.customer_name,
-            company_name: data.Data.company_name,
-            policy_number: data.Data.policy_no,
-            coverage_type: data.Data.coverage_type,
-            status: data.Data.status,
-          },
+          customers: data.Data.map(
+            (customer: {
+              customer_name: string;
+              company_name: string;
+              policy_no: string;
+              coverage_type: string;
+              status: string;
+            }) => ({
+              name: customer.customer_name,
+              company_name: customer.company_name,
+              policy_number: customer.policy_no,
+              coverage_type: customer.coverage_type,
+              status: customer.status,
+            })
+          ),
+        };
+      } else if (data.Data) {
+        // Fallback: if API still returns single object (shouldn't happen now)
+        return {
+          found: true,
+          customers: [
+            {
+              name: data.Data.customer_name,
+              company_name: data.Data.company_name,
+              policy_number: data.Data.policy_no,
+              coverage_type: data.Data.coverage_type,
+              status: data.Data.status,
+            },
+          ],
         };
       } else if (data.detail === "Customer not found") {
         return { found: false };
@@ -584,7 +615,12 @@ export default function ChatButton() {
 
       const customerCheck = await checkCustomerExists(phone);
 
-      if (!customerCheck.found || !customerCheck.customer) {
+      // ✅ Updated to handle customers array
+      if (
+        !customerCheck.found ||
+        !customerCheck.customers ||
+        customerCheck.customers.length === 0
+      ) {
         setMessages((prev) => [
           ...prev,
           {
@@ -598,14 +634,16 @@ export default function ChatButton() {
         return;
       }
 
-      const customer = customerCheck.customer;
+      // ✅ Store first customer for basic info, but keep all policies
+      const firstCustomer = customerCheck.customers[0];
       setCustomerData({
-        name: customer.name || "Unknown",
-        company_name: customer.company_name || "Unknown",
-        policy_number: customer.policy_number || "Unknown",
-        coverage_type: customer.coverage_type || "Unknown",
-        status: customer.status || "Unknown",
+        name: firstCustomer.name || "Unknown",
+        company_name: firstCustomer.company_name || "Unknown",
+        policy_number: firstCustomer.policy_number || "Unknown",
+        coverage_type: firstCustomer.coverage_type || "Unknown",
+        status: firstCustomer.status || "Unknown",
         requestedService: serviceType || "payment",
+        allPolicies: customerCheck.customers, // ✅ Store ALL policies
       });
 
       const phoneDigits = cleanPhoneNumber(phone);
@@ -671,58 +709,65 @@ export default function ChatButton() {
         throw new Error("Invalid verification code. Please try again.");
       }
 
-      if (customerData) {
-        let bestMatch = null;
-        let highestSimilarity = 0;
-        const SIMILARITY_THRESHOLD = 0.3;
-
-        for (const companyName of Object.keys(companyDatabase)) {
-          const similarity = getStringSimilarity(
-            customerData.company_name,
-            companyName
-          );
-
-          if (
-            similarity > highestSimilarity &&
-            similarity >= SIMILARITY_THRESHOLD
-          ) {
-            highestSimilarity = similarity;
-            bestMatch = companyName;
-          }
-        }
-
-        const companyInfo = bestMatch
-          ? companyDatabase[bestMatch]
-          : {
-              name: customerData.company_name,
-              claimPhone: "Contact your agent",
-              claimLink: "Contact your agent",
-              paymentLink: "Contact your agent",
-            };
-
-        const customerWithCompanyInfo = {
-          name: customerData.company_name,
-          policyNo: customerData.policy_number,
-          claimPhone: companyInfo.claimPhone,
-          claimLink: companyInfo.claimLink,
-          paymentLink: companyInfo.paymentLink,
-        };
+      if (customerData && customerData.allPolicies) {
+        // Reset to first policy when showing service buttons
+        setCurrentPolicyIndex(0);
 
         const serviceType = customerData.requestedService || "payment";
 
-        const matchStatus = bestMatch
-          ? `(Match found: ${(highestSimilarity * 100).toFixed(0)}% similarity)`
-          : "(No exact match found in database - please contact your agent)";
+        // Map all policies to company info
+        const allCompaniesWithInfo = customerData.allPolicies.map((policy) => {
+          let bestMatch = null;
+          let highestSimilarity = 0;
+          const SIMILARITY_THRESHOLD = 0.3;
+
+          for (const companyName of Object.keys(companyDatabase)) {
+            const similarity = getStringSimilarity(
+              policy.company_name,
+              companyName
+            );
+
+            if (
+              similarity > highestSimilarity &&
+              similarity >= SIMILARITY_THRESHOLD
+            ) {
+              highestSimilarity = similarity;
+              bestMatch = companyName;
+            }
+          }
+
+          const companyInfo = bestMatch
+            ? companyDatabase[bestMatch]
+            : {
+                name: policy.company_name,
+                claimPhone: "Contact your agent",
+                claimLink: "Contact your agent",
+                paymentLink: "Contact your agent",
+              };
+
+          return {
+            name: policy.company_name,
+            policyNo: policy.policy_number,
+            claimPhone: companyInfo.claimPhone,
+            claimLink: companyInfo.claimLink,
+            paymentLink: companyInfo.paymentLink,
+          };
+        });
+
+        const messageContent =
+          customerData.allPolicies.length > 1
+            ? `✅ Identity verified! Hi ${customerData.name}!\n\nYou have ${customerData.allPolicies.length} active policies. Use the Previous/Next buttons to navigate between them.`
+            : `✅ Identity verified! Hi ${customerData.name}!\n\nHere are your ${serviceType} options:`;
 
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
-            content: `✅ Identity verified! Hi ${customerData.name}!\n\nHere are your ${serviceType} options for ${customerData.company_name} ${matchStatus}:`,
+            content: messageContent,
             extra: {
               showServiceButtons: {
                 type: serviceType,
-                companies: [customerWithCompanyInfo],
+                companies: allCompaniesWithInfo,
               },
             },
           },
@@ -754,7 +799,7 @@ export default function ChatButton() {
     }
   };
 
-  const connectToLiveChat = (name: string, phone: string) => {
+  const connectToLiveChat = useCallback((name: string, phone: string) => {
     // ✅ CLEAR OLD SESSION AND CREATE FRESH ONE
     // Remove old user ID to force new session creation
     localStorage.removeItem("chat-user-id");
@@ -1027,7 +1072,7 @@ export default function ChatButton() {
         setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
       }
     );
-  };
+  }, []);
 
   const handleCustomerTyping = (value: string) => {
     setInput(value);
@@ -1074,15 +1119,30 @@ export default function ChatButton() {
   } => {
     const lowerMessage = userMessage.toLowerCase().trim();
 
+    // Check for filing claims - MORE COMPREHENSIVE
     const isActuallyFiling =
       lowerMessage.includes("file a claim") ||
       lowerMessage.includes("file claim") ||
       lowerMessage.includes("open a claim") ||
       lowerMessage.includes("start a claim") ||
       lowerMessage.includes("report a claim") ||
+      lowerMessage.includes("submit a claim") ||
+      lowerMessage.includes("submit claim") ||
+      lowerMessage.includes("need to file") ||
+      lowerMessage.includes("want to file") ||
+      lowerMessage.includes("how do i file") ||
+      lowerMessage.includes("how to file") ||
+      lowerMessage.includes("filing a claim") ||
       lowerMessage === "file" ||
-      lowerMessage === "claim";
+      lowerMessage === "claim" ||
+      (lowerMessage.includes("claim") &&
+        (lowerMessage.includes("start") ||
+          lowerMessage.includes("open") ||
+          lowerMessage.includes("submit") ||
+          lowerMessage.includes("report") ||
+          lowerMessage.includes("file")));
 
+    // Check for making payments - MORE COMPREHENSIVE
     const isActuallyPaying =
       lowerMessage.includes("make a payment") ||
       lowerMessage.includes("make payment") ||
@@ -1091,13 +1151,19 @@ export default function ChatButton() {
       lowerMessage.includes("pay my bill") ||
       lowerMessage.includes("pay bill") ||
       lowerMessage.includes("pay the bill") ||
+      lowerMessage.includes("how do i pay") ||
+      lowerMessage.includes("how to pay") ||
+      lowerMessage.includes("where do i pay") ||
+      lowerMessage.includes("making a payment") ||
       (lowerMessage.includes("pay") && lowerMessage.includes("bill")) ||
+      (lowerMessage.includes("pay") && lowerMessage.includes("policy")) ||
       lowerMessage === "pay" ||
       lowerMessage === "payment" ||
       (lowerMessage.includes("can i") && lowerMessage.includes("pay")) ||
       (lowerMessage.includes("i want to") && lowerMessage.includes("pay")) ||
       (lowerMessage.includes("need to") && lowerMessage.includes("pay"));
 
+    // INTERCEPT BEFORE API - Trigger verification immediately
     if (isActuallyFiling && !isVerified) {
       return {
         content:
@@ -1120,6 +1186,104 @@ export default function ChatButton() {
       };
     }
 
+    // If already verified and asking about claims/payments again, show service buttons
+    if (isVerified && isActuallyFiling && customerData?.allPolicies) {
+      return {
+        content: "Here are your claim options:",
+        extra: {
+          showServiceButtons: {
+            type: "claim",
+            companies: customerData.allPolicies.map((policy) => {
+              let bestMatch = null;
+              let highestSimilarity = 0;
+              const SIMILARITY_THRESHOLD = 0.3;
+
+              for (const companyName of Object.keys(companyDatabase)) {
+                const similarity = getStringSimilarity(
+                  policy.company_name,
+                  companyName
+                );
+
+                if (
+                  similarity > highestSimilarity &&
+                  similarity >= SIMILARITY_THRESHOLD
+                ) {
+                  highestSimilarity = similarity;
+                  bestMatch = companyName;
+                }
+              }
+
+              const companyInfo = bestMatch
+                ? companyDatabase[bestMatch]
+                : {
+                    name: policy.company_name,
+                    claimPhone: "Contact your agent",
+                    claimLink: "Contact your agent",
+                    paymentLink: "Contact your agent",
+                  };
+
+              return {
+                name: policy.company_name,
+                policyNo: policy.policy_number,
+                claimPhone: companyInfo.claimPhone,
+                claimLink: companyInfo.claimLink,
+                paymentLink: companyInfo.paymentLink,
+              };
+            }),
+          },
+        },
+      };
+    }
+
+    if (isVerified && isActuallyPaying && customerData?.allPolicies) {
+      return {
+        content: "Here are your payment options:",
+        extra: {
+          showServiceButtons: {
+            type: "payment",
+            companies: customerData.allPolicies.map((policy) => {
+              let bestMatch = null;
+              let highestSimilarity = 0;
+              const SIMILARITY_THRESHOLD = 0.3;
+
+              for (const companyName of Object.keys(companyDatabase)) {
+                const similarity = getStringSimilarity(
+                  policy.company_name,
+                  companyName
+                );
+
+                if (
+                  similarity > highestSimilarity &&
+                  similarity >= SIMILARITY_THRESHOLD
+                ) {
+                  highestSimilarity = similarity;
+                  bestMatch = companyName;
+                }
+              }
+
+              const companyInfo = bestMatch
+                ? companyDatabase[bestMatch]
+                : {
+                    name: policy.company_name,
+                    claimPhone: "Contact your agent",
+                    claimLink: "Contact your agent",
+                    paymentLink: "Contact your agent",
+                  };
+
+              return {
+                name: policy.company_name,
+                policyNo: policy.policy_number,
+                claimPhone: companyInfo.claimPhone,
+                claimLink: companyInfo.claimLink,
+                paymentLink: companyInfo.paymentLink,
+              };
+            }),
+          },
+        },
+      };
+    }
+
+    // Otherwise, let API handle it
     return {
       content: "",
       extra: null,
@@ -1167,9 +1331,11 @@ export default function ChatButton() {
     try {
       const aiResponse = getAIResponse(currentInput);
 
-      if (aiResponse.extra?.showPhoneVerification) {
+      // ✅ ADD THIS CHECK - If aiResponse has content, use it immediately
+      if (aiResponse.content && !aiResponse.shouldDeferToAPI) {
         setMessages((prev) => [
           ...prev,
+          newMessage, // Add user message
           {
             role: "assistant",
             content: aiResponse.content,
@@ -1876,67 +2042,216 @@ export default function ChatButton() {
                       {msg.role === "assistant" &&
                         msg.extra?.showServiceButtons && (
                           <div className="mt-3 space-y-3">
-                            {msg.extra.showServiceButtons.companies.map(
-                              (company, companyIdx) => (
-                                <div
-                                  key={companyIdx}
-                                  className="p-3 bg-white rounded-lg border border-gray-200 shadow-sm"
-                                >
-                                  <div className="font-medium text-gray-800 mb-2 text-sm">
-                                    {company.name} - Policy #{company.policyNo}
+                            {/* Policy Card */}
+                            <div className="p-4 bg-gradient-to-br from-white to-gray-50 rounded-xl border-2 border-gray-200 shadow-sm">
+                              {/* Policy counter at top */}
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex-1">
+                                  <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">
+                                    Insurance Company
                                   </div>
+                                  <div className="font-bold text-gray-900 text-base">
+                                    {
+                                      msg.extra.showServiceButtons.companies[
+                                        currentPolicyIndex
+                                      ].name
+                                    }
+                                  </div>
+                                </div>
+                                {msg.extra.showServiceButtons.companies.length >
+                                  1 && (
+                                  <div className="bg-gradient-to-r from-blue-500 to-purple-500 text-white text-sm font-bold px-3 py-1.5 rounded-full shadow-sm">
+                                    {currentPolicyIndex + 1}/
+                                    {
+                                      msg.extra.showServiceButtons.companies
+                                        .length
+                                    }
+                                  </div>
+                                )}
+                              </div>
 
-                                  <div className="flex flex-col sm:flex-row gap-2">
-                                    {msg.extra!.showServiceButtons!.type ===
-                                    "claim" ? (
+                              <div className="bg-blue-50 px-3 py-2 rounded-lg mb-3">
+                                <div className="text-xs text-blue-600 font-medium">
+                                  Policy Number
+                                </div>
+                                <div className="text-sm font-mono font-semibold text-blue-900">
+                                  {
+                                    msg.extra.showServiceButtons.companies[
+                                      currentPolicyIndex
+                                    ].policyNo
+                                  }
+                                </div>
+                              </div>
+
+                              <div className="flex flex-col gap-2">
+                                {msg.extra.showServiceButtons.type ===
+                                "claim" ? (
+                                  <>
+                                    {msg.extra.showServiceButtons.companies[
+                                      currentPolicyIndex
+                                    ].claimPhone === "Contact your agent" ||
+                                    !msg.extra.showServiceButtons.companies[
+                                      currentPolicyIndex
+                                    ].claimPhone ? (
+                                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                        <p className="text-sm font-medium text-amber-900 mb-2">
+                                          📞 Please contact your agent for
+                                          claims assistance
+                                        </p>
+                                        <div className="flex flex-col gap-2">
+                                          <a
+                                            href="tel:4697295185"
+                                            className="flex items-center justify-center gap-2 px-4 py-2.5 
+              bg-green-600 text-white rounded-lg text-sm font-medium 
+              hover:bg-green-700 transition active:scale-95"
+                                          >
+                                            <Phone className="w-4 h-4" />
+                                            Call (469) 729-5185
+                                          </a>
+                                          <a
+                                            href="mailto:support@TexasPremiumIns.com"
+                                            className="flex items-center justify-center gap-2 px-4 py-2.5 
+              bg-blue-600 text-white rounded-lg text-sm font-medium 
+              hover:bg-blue-700 transition active:scale-95"
+                                          >
+                                            ✉️ Email Support
+                                          </a>
+                                        </div>
+                                      </div>
+                                    ) : (
                                       <>
                                         <a
                                           href={`tel:${
-                                            company.claimPhone?.replace(
-                                              /\D/g,
-                                              ""
-                                            ) || ""
+                                            msg.extra.showServiceButtons.companies[
+                                              currentPolicyIndex
+                                            ].claimPhone?.replace(/\D/g, "") ||
+                                            ""
                                           }`}
-                                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 
-                                             bg-green-600 text-white rounded-lg text-sm font-medium 
-                                             hover:bg-green-700 transition active:scale-95"
+                                          className="flex items-center justify-center gap-2 px-4 py-3 
+            bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg text-sm font-medium 
+            hover:from-green-700 hover:to-green-800 transition active:scale-95 shadow-md"
                                         >
                                           <Phone className="w-4 h-4" />
-                                          Call Claims
+                                          Call Claims Department
                                         </a>
 
-                                        <a
-                                          href={company.claimLink}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 
-                                             bg-blue-600 text-white rounded-lg text-sm font-medium 
-                                             hover:bg-blue-700 transition active:scale-95"
-                                        >
-                                          <Globe className="w-4 h-4" />
-                                          Website
-                                        </a>
+                                        {msg.extra.showServiceButtons.companies[
+                                          currentPolicyIndex
+                                        ].claimLink !==
+                                          "Contact your agent" && (
+                                          <a
+                                            href={
+                                              msg.extra.showServiceButtons
+                                                .companies[currentPolicyIndex]
+                                                .claimLink
+                                            }
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center justify-center gap-2 px-4 py-3 
+              bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg text-sm font-medium 
+              hover:from-blue-700 hover:to-blue-800 transition active:scale-95 shadow-md"
+                                          >
+                                            <Globe className="w-4 h-4" />
+                                            Visit Claims Website
+                                          </a>
+                                        )}
                                       </>
+                                    )}
+                                  </>
+                                ) : (
+                                  <>
+                                    {msg.extra.showServiceButtons.companies[
+                                      currentPolicyIndex
+                                    ].paymentLink === "Contact your agent" ||
+                                    !msg.extra.showServiceButtons.companies[
+                                      currentPolicyIndex
+                                    ].paymentLink ? (
+                                      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                                        <p className="text-sm font-medium text-amber-900 mb-2">
+                                          📞 Please contact your agent for
+                                          payment assistance
+                                        </p>
+                                        <div className="flex flex-col gap-2">
+                                          <a
+                                            href="tel:4697295185"
+                                            className="flex items-center justify-center gap-2 px-4 py-2.5 
+                        bg-green-600 text-white rounded-lg text-sm font-medium 
+                        hover:bg-green-700 transition active:scale-95"
+                                          >
+                                            <Phone className="w-4 h-4" />
+                                            Call (469) 729-5185
+                                          </a>
+                                          <a
+                                            href="mailto:support@TexasPremiumIns.com"
+                                            className="flex items-center justify-center gap-2 px-4 py-2.5 
+                        bg-blue-600 text-white rounded-lg text-sm font-medium 
+                        hover:bg-blue-700 transition active:scale-95"
+                                          >
+                                            ✉️ Email Support
+                                          </a>
+                                        </div>
+                                      </div>
                                     ) : (
                                       <a
-                                        href={company.paymentLink}
+                                        href={
+                                          msg.extra.showServiceButtons
+                                            .companies[currentPolicyIndex]
+                                            .paymentLink
+                                        }
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="w-full flex items-center justify-center gap-2 px-3 py-2.5 
-                                           bg-purple-600 text-white rounded-lg text-sm font-medium 
-                                           hover:bg-purple-700 transition active:scale-95"
+                                        className="flex items-center justify-center gap-2 px-4 py-3 
+                    bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg text-sm font-medium 
+                    hover:from-purple-700 hover:to-purple-800 transition active:scale-95 shadow-md"
                                       >
                                         <Globe className="w-4 h-4" />
-                                        Make Payment
+                                        Make Payment Online
                                       </a>
                                     )}
-                                  </div>
+                                  </>
+                                )}
+                              </div>
+
+                              {/* Navigation buttons at bottom - only show if multiple policies */}
+                              {msg.extra.showServiceButtons.companies.length >
+                                1 && (
+                                <div className="flex items-center gap-3 mt-4 pt-3 border-t border-gray-200">
+                                  <button
+                                    onClick={() => {
+                                      setCurrentPolicyIndex((prev) =>
+                                        prev > 0
+                                          ? prev - 1
+                                          : msg.extra!.showServiceButtons!
+                                              .companies.length - 1
+                                      );
+                                    }}
+                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition active:scale-95 shadow-sm"
+                                  >
+                                    <span className="text-lg">←</span>
+                                    <span>Previous</span>
+                                  </button>
+
+                                  <button
+                                    onClick={() => {
+                                      setCurrentPolicyIndex((prev) =>
+                                        prev <
+                                        msg.extra!.showServiceButtons!.companies
+                                          .length -
+                                          1
+                                          ? prev + 1
+                                          : 0
+                                      );
+                                    }}
+                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition active:scale-95 shadow-sm"
+                                  >
+                                    <span>Next</span>
+                                    <span className="text-lg">→</span>
+                                  </button>
                                 </div>
-                              )
-                            )}
+                              )}
+                            </div>
                           </div>
                         )}
-
                       {msg.role === "assistant" &&
                         msg.extra?.requestLiveAgent &&
                         !isLiveChat && (
