@@ -738,6 +738,18 @@ export default function InsuranceReminderDashboard() {
     );
   });
 
+  // Apply search filters for pending customers
+  const filteredPendingBySearch = pendingCustomers.filter((c) => {
+    if (!searchQueries.pending.trim()) return true;
+    const query = searchQueries.pending.toLowerCase();
+    return (
+      c.customer_name?.toLowerCase().includes(query) ||
+      c.policy_no?.toLowerCase().includes(query) ||
+      c.company_name?.toLowerCase().includes(query) ||
+      c.coverage_type?.toLowerCase().includes(query)
+    );
+  });
+
   // Pagination for Today's Follow-ups
   const todayTotalPages = Math.ceil(
     filteredTodayFollowUps.length / customersPerPage
@@ -796,8 +808,10 @@ export default function InsuranceReminderDashboard() {
 
   const filteredPendingCustomers =
     selectedCompany === "all"
-      ? pendingCustomers
-      : pendingCustomers.filter((c) => c.company_name === selectedCompany);
+      ? filteredPendingBySearch
+      : filteredPendingBySearch.filter(
+          (c) => c.company_name === selectedCompany
+        );
 
   const totalPages = Math.ceil(
     filteredPendingCustomers.length / customersPerPage
@@ -831,6 +845,11 @@ export default function InsuranceReminderDashboard() {
   const handleSearchChange = (section: string, value: string) => {
     setSearchQueries((prev) => ({ ...prev, [section]: value }));
     setPaginationPages((prev) => ({ ...prev, [section]: 1 }));
+
+    // Reset company filter when searching in pending section
+    if (section === "pending" && value.trim()) {
+      setSelectedCompany("all");
+    }
   };
 
   const handlePageChange = (section: string, newPage: number) => {
@@ -945,95 +964,122 @@ export default function InsuranceReminderDashboard() {
                     </select>
                   </div>
                 </div>
-                <div className="space-y-3">
-                  {currentPendingCustomers.map((customer) => {
-                    const effectiveDate = new Date(customer.effective_date);
-                    const expirationDate = new Date(customer.expiration_date);
-                    const diffMonths = Math.ceil(
-                      (expirationDate.getTime() - effectiveDate.getTime()) /
-                        (1000 * 60 * 60 * 24 * 30)
-                    );
-                    const policyDuration =
-                      diffMonths >= 12 ? "12 months" : `${diffMonths} months`;
 
-                    return (
-                      <div
-                        key={customer._id}
-                        className="border border-yellow-200 rounded-lg p-4 bg-white hover:shadow-md transition"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
-                                NEW
-                              </span>
-                              <span className="text-xs text-gray-500">
-                                Policy Duration: {policyDuration}
-                              </span>
-                            </div>
-                            <h3 className="font-semibold text-gray-900 text-lg">
-                              {customer.customer_name}
-                            </h3>
-                            <p className="text-sm text-gray-600">
-                              Policy #: {customer.policy_no}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              Company: {customer.company_name}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              Coverage: {customer.coverage_type}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-1">
-                              Effective:{" "}
-                              {formatDate(effectiveDate, "MMM dd, yyyy")} -
-                              Expiration:{" "}
-                              {formatDate(expirationDate, "MMM dd, yyyy")}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => handleSetupReminder(customer)}
-                            className="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm font-medium hover:bg-yellow-700 transition flex items-center gap-2"
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    placeholder="Search by name, policy number, company, or coverage type..."
+                    value={searchQueries.pending}
+                    onChange={(e) =>
+                      handleSearchChange("pending", e.target.value)
+                    }
+                    className="w-full border border-yellow-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 bg-white"
+                  />
+                </div>
+
+                {filteredPendingCustomers.length === 0 ? (
+                  <p className="text-gray-500 text-center py-8">
+                    {searchQueries.pending || selectedCompany !== "all"
+                      ? "No matching customers found"
+                      : "No pending customers"}
+                  </p>
+                ) : (
+                  <>
+                    <div className="space-y-3">
+                      {currentPendingCustomers.map((customer) => {
+                        const effectiveDate = new Date(customer.effective_date);
+                        const expirationDate = new Date(
+                          customer.expiration_date
+                        );
+                        const diffMonths = Math.ceil(
+                          (expirationDate.getTime() - effectiveDate.getTime()) /
+                            (1000 * 60 * 60 * 24 * 30)
+                        );
+                        const policyDuration =
+                          diffMonths >= 12
+                            ? "12 months"
+                            : `${diffMonths} months`;
+
+                        return (
+                          <div
+                            key={customer._id}
+                            className="border border-yellow-200 rounded-lg p-4 bg-white hover:shadow-md transition"
                           >
-                            <Calendar className="w-4 h-4" />
-                            Setup Reminder
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-3 mb-2">
+                                  <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                    NEW
+                                  </span>
+                                  <span className="text-xs text-gray-500">
+                                    Policy Duration: {policyDuration}
+                                  </span>
+                                </div>
+                                <h3 className="font-semibold text-gray-900 text-lg">
+                                  {customer.customer_name}
+                                </h3>
+                                <p className="text-sm text-gray-600">
+                                  Policy #: {customer.policy_no}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  Company: {customer.company_name}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  Coverage: {customer.coverage_type}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  Effective:{" "}
+                                  {formatDate(effectiveDate, "MMM dd, yyyy")} -
+                                  Expiration:{" "}
+                                  {formatDate(expirationDate, "MMM dd, yyyy")}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => handleSetupReminder(customer)}
+                                className="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm font-medium hover:bg-yellow-700 transition flex items-center gap-2"
+                              >
+                                <Calendar className="w-4 h-4" />
+                                Setup Reminder
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {totalPages > 1 && (
+                      <div className="mt-6 flex items-center justify-between border-t border-yellow-200 pt-4">
+                        <div className="text-sm text-gray-600">
+                          Showing {startIndex + 1} to{" "}
+                          {Math.min(endIndex, filteredPendingCustomers.length)}{" "}
+                          of {filteredPendingCustomers.length} customers
+                          {selectedCompany !== "all" &&
+                            ` (filtered by ${selectedCompany})`}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={handlePreviousPage}
+                            disabled={currentPage === 1}
+                            className="px-4 py-2 bg-white border border-yellow-300 text-yellow-700 rounded-lg text-sm font-medium hover:bg-yellow-50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                            Previous
+                          </button>
+                          <span className="text-sm text-gray-700 px-3">
+                            Page {currentPage} of {totalPages}
+                          </span>
+                          <button
+                            onClick={handleNextPage}
+                            disabled={currentPage === totalPages}
+                            className="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm font-medium hover:bg-yellow-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                          >
+                            Next
+                            <ChevronRight className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-
-                {totalPages > 1 && (
-                  <div className="mt-6 flex items-center justify-between border-t border-yellow-200 pt-4">
-                    <div className="text-sm text-gray-600">
-                      Showing {startIndex + 1} to{" "}
-                      {Math.min(endIndex, filteredPendingCustomers.length)} of{" "}
-                      {filteredPendingCustomers.length} customers
-                      {selectedCompany !== "all" &&
-                        ` (filtered by ${selectedCompany})`}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={handlePreviousPage}
-                        disabled={currentPage === 1}
-                        className="px-4 py-2 bg-white border border-yellow-300 text-yellow-700 rounded-lg text-sm font-medium hover:bg-yellow-50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                        Previous
-                      </button>
-                      <span className="text-sm text-gray-700 px-3">
-                        Page {currentPage} of {totalPages}
-                      </span>
-                      <button
-                        onClick={handleNextPage}
-                        disabled={currentPage === totalPages}
-                        className="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm font-medium hover:bg-yellow-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                      >
-                        Next
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -1116,7 +1162,7 @@ export default function InsuranceReminderDashboard() {
               )}
             </div>
 
-            {filteredOverdueFollowUps.length > 0 && (
+            {overdueFollowUps.length > 0 && (
               <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-xl shadow-sm p-6 mb-6 border-2 border-red-200">
                 <h2 className="text-xl font-semibold mb-4 text-gray-800 flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-red-600" />
