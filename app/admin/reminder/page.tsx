@@ -36,7 +36,10 @@ type Customer = {
   paymentDayOfMonth: number;
   remainingPayments: number;
   totalPayments: number;
-  renewalDate?: Date;
+  effectiveDate?: Date;
+  expirationDate?: Date;
+  companyName?: string;
+  coverageType?: string;
   status: "active" | "overdue" | "cancelled" | "paid";
   paymentType: PaymentType;
   followUps: FollowUp[];
@@ -257,6 +260,17 @@ export default function InsuranceReminderDashboard() {
     all: 1,
   });
 
+  const [editEffectiveDate, setEditEffectiveDate] = useState("");
+  const [editExpirationDate, setEditExpirationDate] = useState("");
+  const [editingCustomerDates, setEditingCustomerDates] = useState<
+    string | null
+  >(null);
+  const [editingPendingDates, setEditingPendingDates] = useState<string | null>(
+    null
+  );
+  const [editCustomerEffective, setEditCustomerEffective] = useState("");
+  const [editCustomerExpiration, setEditCustomerExpiration] = useState("");
+
   useEffect(() => {
     const checkAuth = () => {
       const savedSession = localStorage.getItem("admin_session");
@@ -290,7 +304,11 @@ export default function InsuranceReminderDashboard() {
 
   const fetchPendingCustomers = async () => {
     try {
-      const response = await fetch("/api/pending-customers");
+      // Add cache-busting timestamp to force fresh data
+      const timestamp = new Date().getTime();
+      const response = await fetch(`/api/pending-customers?t=${timestamp}`, {
+        cache: "no-store", // Prevent caching
+      });
       const data = await response.json();
       setPendingCustomers(data);
       setCurrentPage(1);
@@ -320,10 +338,16 @@ export default function InsuranceReminderDashboard() {
           };
 
           return {
-            ...(c as Omit<Customer, "dueDate" | "followUps">),
+            ...(c as Omit<
+              Customer,
+              "dueDate" | "followUps" | "effectiveDate" | "expirationDate"
+            >),
             dueDate: parseDate(c.dueDate as string | undefined)!,
-            renewalDate: c.renewalDate
-              ? parseDate(c.renewalDate as string | undefined)
+            effectiveDate: c.effectiveDate // ✅ ADD THIS
+              ? parseDate(c.effectiveDate as string | undefined)
+              : undefined,
+            expirationDate: c.expirationDate // ✅ ADD THIS
+              ? parseDate(c.expirationDate as string | undefined)
               : undefined,
             cancellationDate: c.cancellationDate
               ? parseDate(c.cancellationDate as string | undefined)
@@ -349,6 +373,259 @@ export default function InsuranceReminderDashboard() {
       console.error("Error fetching customers:", error);
       setLoading(false);
     }
+  };
+
+  const calculateExpirationDate = (
+    effectiveDate: string,
+    durationMonths: number
+  ): string => {
+    if (!effectiveDate) return "";
+
+    const [year, month, day] = effectiveDate.split("-").map(Number);
+
+    // Calculate target year and month
+    let targetYear = year;
+    let targetMonth = month + durationMonths;
+
+    // Handle year overflow
+    while (targetMonth > 12) {
+      targetMonth -= 12;
+      targetYear += 1;
+    }
+
+    // Get the last day of the target month
+    const lastDayOfTargetMonth = new Date(targetYear, targetMonth, 0).getDate();
+
+    // Use the original day, or the last day of the month if original day doesn't exist
+    const targetDay = Math.min(day, lastDayOfTargetMonth);
+
+    // Format as YYYY-MM-DD
+    const resultYear = String(targetYear);
+    const resultMonth = String(targetMonth).padStart(2, "0");
+    const resultDay = String(targetDay).padStart(2, "0");
+
+    return `${resultYear}-${resultMonth}-${resultDay}`;
+  };
+
+  const handleEditPendingDates = (customer: PendingCustomer) => {
+    setEditingPendingDates(customer._id);
+
+    const effectiveDateStr = customer.effective_date.split("T")[0];
+    const expirationDateStr = customer.expiration_date.split("T")[0];
+
+    setEditEffectiveDate(effectiveDateStr);
+    setEditExpirationDate(expirationDateStr);
+  };
+
+  const handleEffectiveDateChange = (
+    newEffectiveDate: string,
+    customer: PendingCustomer
+  ) => {
+    setEditEffectiveDate(newEffectiveDate);
+
+    if (newEffectiveDate) {
+      // Calculate the original policy duration in months
+      const originalEffective = new Date(customer.effective_date);
+      const originalExpiration = new Date(customer.expiration_date);
+
+      const yearDiff =
+        originalExpiration.getFullYear() - originalEffective.getFullYear();
+      const monthDiff =
+        originalExpiration.getMonth() - originalEffective.getMonth();
+      const dayDiff =
+        originalExpiration.getDate() - originalEffective.getDate();
+
+      let durationMonths = yearDiff * 12 + monthDiff;
+
+      // If day difference is negative, subtract one month
+      if (dayDiff < 0) {
+        durationMonths -= 1;
+      }
+
+      // Calculate new expiration date based on policy duration
+      const suggestedExpiration = calculateExpirationDate(
+        newEffectiveDate,
+        durationMonths
+      );
+      setEditExpirationDate(suggestedExpiration);
+    }
+  };
+
+  const handleSavePendingDates = async (customerId: string) => {
+    if (!editEffectiveDate || !editExpirationDate) {
+      alert("Please fill in both dates");
+      return;
+    }
+
+    if (new Date(editExpirationDate) <= new Date(editEffectiveDate)) {
+      alert("Expiration date must be after effective date");
+      return;
+    }
+
+    try {
+      console.log("Saving dates for customer:", customerId);
+
+      const response = await fetch(
+        `/api/pending-customers/${customerId}/dates`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            effective_date: editEffectiveDate,
+            expiration_date: editExpirationDate,
+          }),
+        }
+      );
+
+      console.log("Response status:", response.status);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Update successful:", data);
+
+        // Clear editing state
+        setEditingPendingDates(null);
+        setEditEffectiveDate("");
+        setEditExpirationDate("");
+
+        // Refresh the list
+        await fetchPendingCustomers();
+
+        alert("Dates updated successfully!");
+      } else {
+        // Handle error response
+        let errorMessage = "Failed to update dates";
+        try {
+          const error = await response.json();
+          errorMessage = error.error || errorMessage;
+        } catch {
+          errorMessage = `Server error: ${response.status}`;
+        }
+        alert(errorMessage);
+      }
+    } catch (error) {
+      console.error("Error updating dates:", error);
+      alert("Failed to update dates. Please try again.");
+    }
+  };
+
+  const handleCancelPendingEdit = () => {
+    setEditingPendingDates(null);
+    setEditEffectiveDate("");
+    setEditExpirationDate("");
+  };
+
+  const handleEditCustomerDates = (customer: Customer) => {
+    setEditingCustomerDates(customer.id);
+
+    if (customer.effectiveDate) {
+      const effDate = new Date(customer.effectiveDate);
+      const effYear = effDate.getFullYear();
+      const effMonth = String(effDate.getMonth() + 1).padStart(2, "0");
+      const effDay = String(effDate.getDate()).padStart(2, "0");
+      setEditCustomerEffective(`${effYear}-${effMonth}-${effDay}`);
+    }
+
+    if (customer.expirationDate) {
+      const expDate = new Date(customer.expirationDate);
+      const expYear = expDate.getFullYear();
+      const expMonth = String(expDate.getMonth() + 1).padStart(2, "0");
+      const expDay = String(expDate.getDate()).padStart(2, "0");
+      setEditCustomerExpiration(`${expYear}-${expMonth}-${expDay}`);
+    }
+  };
+
+  const handleCustomerEffectiveDateChange = (
+    newEffectiveDate: string,
+    customer: Customer
+  ) => {
+    setEditCustomerEffective(newEffectiveDate);
+
+    if (newEffectiveDate && customer.effectiveDate && customer.expirationDate) {
+      // Calculate the original policy duration in months
+      const originalEffective = new Date(customer.effectiveDate);
+      const originalExpiration = new Date(customer.expirationDate);
+
+      const yearDiff =
+        originalExpiration.getFullYear() - originalEffective.getFullYear();
+      const monthDiff =
+        originalExpiration.getMonth() - originalEffective.getMonth();
+      const dayDiff =
+        originalExpiration.getDate() - originalEffective.getDate();
+
+      let durationMonths = yearDiff * 12 + monthDiff;
+
+      if (dayDiff < 0) {
+        durationMonths -= 1;
+      }
+
+      // Calculate new expiration date based on policy duration
+      const suggestedExpiration = calculateExpirationDate(
+        newEffectiveDate,
+        durationMonths
+      );
+      setEditCustomerExpiration(suggestedExpiration);
+    }
+  };
+
+  const handleSaveCustomerDates = async (customerId: string) => {
+    if (!editCustomerEffective || !editCustomerExpiration) {
+      alert("Please fill in both dates");
+      return;
+    }
+
+    if (new Date(editCustomerExpiration) <= new Date(editCustomerEffective)) {
+      alert("Expiration date must be after effective date");
+      return;
+    }
+
+    try {
+      console.log("Saving dates for customer:", customerId);
+
+      const response = await fetch(`/api/customers/${customerId}/dates`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          effective_date: editCustomerEffective,
+          expiration_date: editCustomerExpiration,
+        }),
+      });
+
+      console.log("Response status:", response.status);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Update successful:", data);
+
+        // Clear editing state
+        setEditingCustomerDates(null);
+        setEditCustomerEffective("");
+        setEditCustomerExpiration("");
+
+        // Refresh the list
+        await fetchCustomers();
+
+        alert("Dates updated successfully!");
+      } else {
+        let errorMessage = "Failed to update dates";
+        try {
+          const error = await response.json();
+          errorMessage = error.error || errorMessage;
+        } catch {
+          errorMessage = `Server error: ${response.status}`;
+        }
+        alert(errorMessage);
+      }
+    } catch (error) {
+      console.error("Error updating dates:", error);
+      alert("Failed to update dates. Please try again.");
+    }
+  };
+
+  const handleCancelCustomerEdit = () => {
+    setEditingCustomerDates(null);
+    setEditCustomerEffective("");
+    setEditCustomerExpiration("");
   };
 
   const handleSetupReminder = (customer: PendingCustomer) => {
@@ -987,18 +1264,52 @@ export default function InsuranceReminderDashboard() {
                   <>
                     <div className="space-y-3">
                       {currentPendingCustomers.map((customer) => {
-                        const effectiveDate = new Date(customer.effective_date);
+                        // Parse dates correctly - treat as UTC dates
+                        const effectiveDateStr =
+                          customer.effective_date.split("T")[0]; // Get YYYY-MM-DD
+                        const expirationDateStr =
+                          customer.expiration_date.split("T")[0]; // Get YYYY-MM-DD
+
+                        const [effYear, effMonth, effDay] = effectiveDateStr
+                          .split("-")
+                          .map(Number);
+                        const [expYear, expMonth, expDay] = expirationDateStr
+                          .split("-")
+                          .map(Number);
+
+                        const effectiveDate = new Date(
+                          effYear,
+                          effMonth - 1,
+                          effDay
+                        ); // Month is 0-indexed
                         const expirationDate = new Date(
-                          customer.expiration_date
+                          expYear,
+                          expMonth - 1,
+                          expDay
                         );
-                        const diffMonths = Math.ceil(
-                          (expirationDate.getTime() - effectiveDate.getTime()) /
-                            (1000 * 60 * 60 * 24 * 30)
-                        );
+
+                        // Calculate exact month difference
+                        const yearDiff =
+                          expirationDate.getFullYear() -
+                          effectiveDate.getFullYear();
+                        const monthDiff =
+                          expirationDate.getMonth() - effectiveDate.getMonth();
+                        const dayDiff =
+                          expirationDate.getDate() - effectiveDate.getDate();
+
+                        let diffMonths = yearDiff * 12 + monthDiff;
+
+                        if (dayDiff < 0) {
+                          diffMonths -= 1;
+                        }
+
                         const policyDuration =
                           diffMonths >= 12
                             ? "12 months"
                             : `${diffMonths} months`;
+
+                        const isEditingDates =
+                          editingPendingDates === customer._id;
 
                         return (
                           <div
@@ -1027,12 +1338,84 @@ export default function InsuranceReminderDashboard() {
                                 <p className="text-sm text-gray-600">
                                   Coverage: {customer.coverage_type}
                                 </p>
-                                <p className="text-xs text-gray-500 mt-1">
-                                  Effective:{" "}
-                                  {formatDate(effectiveDate, "MMM dd, yyyy")} -
-                                  Expiration:{" "}
-                                  {formatDate(expirationDate, "MMM dd, yyyy")}
-                                </p>
+
+                                {isEditingDates ? (
+                                  <div className="mt-2 space-y-2">
+                                    <div className="flex items-center gap-2">
+                                      <label className="text-xs text-gray-600 w-20">
+                                        Effective:
+                                      </label>
+                                      <input
+                                        type="date"
+                                        value={editEffectiveDate}
+                                        onChange={(e) =>
+                                          handleEffectiveDateChange(
+                                            e.target.value,
+                                            customer
+                                          )
+                                        }
+                                        className="border border-yellow-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                                      />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <label className="text-xs text-gray-600 w-20">
+                                        Expiration:
+                                      </label>
+                                      <input
+                                        type="date"
+                                        value={editExpirationDate}
+                                        onChange={(e) =>
+                                          setEditExpirationDate(e.target.value)
+                                        }
+                                        className="border border-yellow-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                                      />
+                                      <span className="text-xs text-gray-500 italic">
+                                        (Auto-filled based on {policyDuration}{" "}
+                                        policy)
+                                      </span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={() =>
+                                          handleSavePendingDates(customer._id)
+                                        }
+                                        className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition"
+                                      >
+                                        Save
+                                      </button>
+                                      <button
+                                        onClick={handleCancelPendingEdit}
+                                        className="px-3 py-1 bg-gray-300 text-gray-700 rounded text-xs hover:bg-gray-400 transition"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <p className="text-xs text-gray-500">
+                                      Effective:{" "}
+                                      {formatDate(
+                                        effectiveDate,
+                                        "MMM dd, yyyy"
+                                      )}{" "}
+                                      - Expiration:{" "}
+                                      {formatDate(
+                                        expirationDate,
+                                        "MMM dd, yyyy"
+                                      )}
+                                    </p>
+                                    <button
+                                      onClick={() =>
+                                        handleEditPendingDates(customer)
+                                      }
+                                      className="p-1 hover:bg-yellow-100 rounded"
+                                      title="Edit Dates"
+                                    >
+                                      <Edit className="w-3 h-3 text-yellow-600" />
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                               <button
                                 onClick={() => handleSetupReminder(customer)}
@@ -1504,6 +1887,17 @@ export default function InsuranceReminderDashboard() {
                         setEditDueDate={setEditDueDate}
                         onSaveDueDate={handleSaveDueDate}
                         onCancelEdit={() => setEditingCustomer(null)}
+                        // ✅ ADD THESE NEW PROPS
+                        isEditingDates={editingCustomerDates === customer.id}
+                        editCustomerEffective={editCustomerEffective}
+                        editCustomerExpiration={editCustomerExpiration}
+                        onEditCustomerDates={handleEditCustomerDates}
+                        onCustomerEffectiveDateChange={
+                          handleCustomerEffectiveDateChange
+                        }
+                        onSaveCustomerDates={handleSaveCustomerDates}
+                        onCancelCustomerEdit={handleCancelCustomerEdit}
+                        setEditCustomerExpiration={setEditCustomerExpiration}
                       />
                     ))}
                   </div>
@@ -2046,6 +2440,15 @@ interface CustomerCardProps {
   setEditDueDate: (date: string) => void;
   onSaveDueDate: () => void;
   onCancelEdit: () => void;
+  // ✅ ADD THESE NEW PROPS
+  isEditingDates: boolean;
+  editCustomerEffective: string;
+  editCustomerExpiration: string;
+  onEditCustomerDates: (customer: Customer) => void;
+  onCustomerEffectiveDateChange: (date: string, customer: Customer) => void;
+  onSaveCustomerDates: (id: string) => void;
+  onCancelCustomerEdit: () => void;
+  setEditCustomerExpiration: (date: string) => void;
 }
 
 function CustomerCard({
@@ -2058,11 +2461,41 @@ function CustomerCard({
   setEditDueDate,
   onSaveDueDate,
   onCancelEdit,
+  // ✅ ADD THESE NEW PROPS
+  isEditingDates,
+  editCustomerEffective,
+  editCustomerExpiration,
+  onEditCustomerDates,
+  onCustomerEffectiveDateChange,
+  onSaveCustomerDates,
+  onCancelCustomerEdit,
+  setEditCustomerExpiration,
 }: CustomerCardProps) {
   const completedFollowUps = customer.followUps.filter(
     (f) => f.status === "completed"
   ).length;
   const totalFollowUps = customer.followUps.length;
+
+  // Remove this line - it's now a prop
+  // const isEditingDates = editingCustomerDates === customer.id;
+
+  // Calculate policy duration for auto-fill
+  let policyDuration = "";
+  if (customer.effectiveDate && customer.expirationDate) {
+    const effectiveDate = new Date(customer.effectiveDate);
+    const expirationDate = new Date(customer.expirationDate);
+
+    const yearDiff = expirationDate.getFullYear() - effectiveDate.getFullYear();
+    const monthDiff = expirationDate.getMonth() - effectiveDate.getMonth();
+    const dayDiff = expirationDate.getDate() - effectiveDate.getDate();
+
+    let diffMonths = yearDiff * 12 + monthDiff;
+    if (dayDiff < 0) {
+      diffMonths -= 1;
+    }
+
+    policyDuration = diffMonths >= 12 ? "12 months" : `${diffMonths} months`;
+  }
 
   const getStatusBadge = (): JSX.Element => {
     switch (customer.status) {
@@ -2100,6 +2533,17 @@ function CustomerCard({
           <h3 className="font-semibold text-gray-900">{customer.name}</h3>
           <p className="text-sm text-gray-600">Policy: {customer.id}</p>
 
+          {customer.companyName && (
+            <p className="text-xs text-gray-600">
+              Company: {customer.companyName}
+            </p>
+          )}
+          {customer.coverageType && (
+            <p className="text-xs text-gray-600">
+              Coverage: {customer.coverageType}
+            </p>
+          )}
+
           {isEditing ? (
             <div className="flex items-center gap-2 mt-2">
               <input
@@ -2126,6 +2570,79 @@ function CustomerCard({
               <p className="text-sm text-gray-600">
                 Due: {formatDate(customer.dueDate, "MMM dd, yyyy")}
               </p>
+
+              {/* Policy Dates with Edit Functionality */}
+              {customer.effectiveDate && customer.expirationDate && (
+                <>
+                  {isEditingDates ? (
+                    <div className="mt-2 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-gray-600 w-20">
+                          Effective:
+                        </label>
+                        <input
+                          type="date"
+                          value={editCustomerEffective}
+                          onChange={
+                            (e) =>
+                              onCustomerEffectiveDateChange(
+                                e.target.value,
+                                customer
+                              ) // ✅ Changed
+                          }
+                          className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-gray-600 w-20">
+                          Expiration:
+                        </label>
+                        <input
+                          type="date"
+                          value={editCustomerExpiration}
+                          onChange={(e) =>
+                            setEditCustomerExpiration(e.target.value)
+                          }
+                          className="border border-gray-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <span className="text-xs text-gray-500 italic">
+                          (Auto-filled based on {policyDuration} policy)
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => onSaveCustomerDates(customer.id)} // ✅ Changed
+                          className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={onCancelCustomerEdit} // ✅ Changed
+                          className="px-3 py-1 bg-gray-300 text-gray-700 rounded text-xs hover:bg-gray-400 transition"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-xs text-gray-500">
+                        Policy:{" "}
+                        {formatDate(customer.effectiveDate, "MMM dd, yyyy")} -{" "}
+                        {formatDate(customer.expirationDate, "MMM dd, yyyy")}
+                      </p>
+                      <button
+                        onClick={() => onEditCustomerDates(customer)} // ✅ Changed
+                        className="p-1 hover:bg-blue-100 rounded"
+                        title="Edit Policy Dates"
+                      >
+                        <Edit className="w-3 h-3 text-blue-600" />
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+
               {customer.status !== "cancelled" && (
                 <p className="text-xs text-gray-500 mt-1">
                   Payment{" "}
@@ -2161,7 +2678,7 @@ function CustomerCard({
           <p className="text-xs text-gray-500 capitalize">
             {customer.paymentType}
           </p>
-          {customer.status !== "cancelled" && !isEditing && (
+          {customer.status !== "cancelled" && !isEditing && !isEditingDates && (
             <div className="flex gap-1">
               <button
                 onClick={() => onEditDueDate(customer.id)}

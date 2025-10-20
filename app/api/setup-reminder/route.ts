@@ -217,13 +217,23 @@ export async function POST(request: Request) {
 
     const effectiveDate = new Date(pendingCustomer.effective_date);
     const expirationDate = new Date(pendingCustomer.expiration_date);
+    
+    // Set dates to noon to avoid timezone issues
+    effectiveDate.setHours(12, 0, 0, 0);
+    expirationDate.setHours(12, 0, 0, 0);
+    
     console.log('📅 Policy dates - Effective:', effectiveDate, 'Expiration:', expirationDate);
 
     // Calculate total payments based on policy duration
-    const diffMonths = Math.ceil(
-      (expirationDate.getTime() - effectiveDate.getTime()) /
-        (1000 * 60 * 60 * 24 * 30)
-    );
+    const yearDiff = expirationDate.getFullYear() - effectiveDate.getFullYear();
+    const monthDiff = expirationDate.getMonth() - effectiveDate.getMonth();
+    const dayDiff = expirationDate.getDate() - effectiveDate.getDate();
+    
+    let diffMonths = yearDiff * 12 + monthDiff;
+    if (dayDiff < 0) {
+      diffMonths -= 1;
+    }
+    
     const totalPayments = diffMonths >= 12 ? 12 : diffMonths;
     console.log('💰 Total payments calculated:', totalPayments);
 
@@ -242,7 +252,7 @@ export async function POST(request: Request) {
     );
     console.log('✅ Generated', followUps.length, 'follow-ups');
 
-    // Create the customer document
+    // Create the customer document with effective and expiration dates
     const customer = {
       id: policyNo,
       name: pendingCustomer.customer_name,
@@ -250,10 +260,14 @@ export async function POST(request: Request) {
       paymentDayOfMonth: parsedDueDate.getDate(),
       remainingPayments: totalPayments,
       totalPayments: totalPayments,
-      expirationDate: expirationDate.toISOString(),
+      effectiveDate: effectiveDate.toISOString(),  // ✅ ADD THIS
+      expirationDate: expirationDate.toISOString(), // ✅ ADD THIS
+      companyName: pendingCustomer.company_name,    // ✅ ADD THIS
+      coverageType: pendingCustomer.coverage_type,  // ✅ ADD THIS
       status: 'active',
       paymentType: paymentType,
       followUps: followUps,
+      createdAt: new Date(),
     };
 
     // Insert into payment_reminder_coll
