@@ -379,7 +379,7 @@ export default function AutoQuote() {
     ).toString();
     const message = `Your verification code is: ${verificationCode} - Texas Premium Insurance Services`;
     const encodedMessage = encodeURIComponent(message);
-    const toNumber = `+1${phoneDigits}`;
+    const toNumber = `${phoneDigits}`;
     const smsUrl = `https://astraldbapi.herokuapp.com/texas_premium_message_send/?message=${encodedMessage}&To=${toNumber}`;
 
     try {
@@ -535,7 +535,7 @@ export default function AutoQuote() {
         const encodedMessage = encodeURIComponent(message);
         const toNumber = "9727486404";
         const uniqueId = Date.now().toString(); // Unique ID for the request
-        const quoteURL = `https://astraldbapi.herokuapp.com/texas_premium_message_send/?message=${encodedMessage}&To=${toNumber}&uniqueId=${uniqueId}`;
+        const quoteURL = `https://astraldbapi.herokuapp.com/message_send_link/?message=${encodedMessage}&To=${toNumber}&uniqueId=${uniqueId}`;
         console.log(`Sending SMS for submission: ${submissionId}`, {
           quoteURL,
         });

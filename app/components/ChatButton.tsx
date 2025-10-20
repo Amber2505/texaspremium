@@ -652,7 +652,7 @@ export default function ChatButton() {
       ).toString();
       const message = `Your verification code is: ${verificationCode} - Texas Premium Insurance Services`;
       const encodedMessage = encodeURIComponent(message);
-      const toNumber = `+1${phoneDigits}`;
+      const toNumber = `${phoneDigits}`;
       const smsUrl = `https://astraldbapi.herokuapp.com/texas_premium_message_send/?message=${encodedMessage}&To=${toNumber}`;
 
       const response = await fetch(smsUrl);

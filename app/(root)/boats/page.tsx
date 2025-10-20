@@ -28,7 +28,7 @@ export default function BoatsAndWatercraftInsurancePage() {
     }`;
     const encodedMessage = encodeURIComponent(message);
     const toNumber = "9727486404";
-    const url = `https://astraldbapi.herokuapp.com/texas_premium_message_send/?message=${encodedMessage}&To=${toNumber}`;
+    const url = `https://astraldbapi.herokuapp.com/message_send_link/?message=${encodedMessage}&To=${toNumber}`;
 
     try {
       const response = await fetch(url, {
