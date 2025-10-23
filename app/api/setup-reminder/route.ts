@@ -16,15 +16,15 @@ function addDays(date: Date, days: number): Date {
 }
 
 function generateFollowUps(
-  dueDate: Date,
+  dueDate: Date | null,
   paymentType: string,
   expirationDate: Date,
   totalPayments: number
 ): FollowUp[] {
   const followUps: FollowUp[] = [];
 
-  // Monthly payment follow-ups
-  if (paymentType === 'regular') {
+  // Monthly payment follow-ups - only if dueDate is provided
+  if (paymentType === 'regular' && dueDate) {
     followUps.push(
       {
         date: addDays(dueDate, -3).toISOString(),
@@ -76,7 +76,7 @@ function generateFollowUps(
         method: 'phone',
       }
     );
-  } else if (paymentType === 'autopay') {
+  } else if (paymentType === 'autopay' && dueDate) {
     followUps.push(
       {
         date: addDays(dueDate, -3).toISOString(),
@@ -101,8 +101,9 @@ function generateFollowUps(
       }
     );
   } else if (paymentType === 'paid-in-full') {
+    // For paid-in-full, use expiration date - 20 days for renewal reminder
     followUps.push({
-      date: addDays(dueDate, -20).toISOString(),
+      date: addDays(expirationDate, -20).toISOString(),
       type: 'renewal',
       description: 'Check renewal pricing & inform',
       status: 'pending',
@@ -177,10 +178,20 @@ export async function POST(request: Request) {
     console.log('📦 Request body:', body);
     const { policyNo, dueDate, paymentType } = body;
 
-    if (!policyNo || !dueDate || !paymentType) {
+    // Validate required fields based on payment type
+    if (!policyNo || !paymentType) {
       console.error('❌ Missing required fields');
       return NextResponse.json(
-        { error: 'Missing required fields: policyNo, dueDate, or paymentType' },
+        { error: 'Missing required fields: policyNo or paymentType' },
+        { status: 400 }
+      );
+    }
+
+    // For regular and autopay, dueDate is required. For paid-in-full, it's optional
+    if ((paymentType === 'regular' || paymentType === 'autopay') && !dueDate) {
+      console.error('❌ Due date required for regular/autopay payment types');
+      return NextResponse.json(
+        { error: 'Due date is required for regular and autopay payment types' },
         { status: 400 }
       );
     }
@@ -237,10 +248,15 @@ export async function POST(request: Request) {
     const totalPayments = diffMonths >= 12 ? 12 : diffMonths;
     console.log('💰 Total payments calculated:', totalPayments);
 
-    // Parse the due date properly
-    const [year, month, day] = dueDate.split('-').map(Number);
-    const parsedDueDate = new Date(year, month - 1, day, 12, 0, 0, 0);
-    console.log('📅 Parsed due date:', parsedDueDate);
+    // Parse the due date if provided, otherwise use null for paid-in-full
+    let parsedDueDate: Date | null = null;
+    if (dueDate) {
+      const [year, month, day] = dueDate.split('-').map(Number);
+      parsedDueDate = new Date(year, month - 1, day, 12, 0, 0, 0);
+      console.log('📅 Parsed due date:', parsedDueDate);
+    } else {
+      console.log('📅 No due date provided (paid-in-full customer)');
+    }
 
     // Generate follow-ups with updated rules
     console.log('📋 Generating follow-ups...');
@@ -253,22 +269,26 @@ export async function POST(request: Request) {
     console.log('✅ Generated', followUps.length, 'follow-ups');
 
     // Create the customer document with effective and expiration dates
-    const customer = {
+    const customer: any = {
       id: policyNo,
       name: pendingCustomer.customer_name,
-      dueDate: parsedDueDate.toISOString(),
-      paymentDayOfMonth: parsedDueDate.getDate(),
-      remainingPayments: totalPayments,
+      paymentDayOfMonth: parsedDueDate ? parsedDueDate.getDate() : null,
+      remainingPayments: paymentType === 'paid-in-full' ? 0 : totalPayments,
       totalPayments: totalPayments,
-      effectiveDate: effectiveDate.toISOString(),  // ✅ ADD THIS
-      expirationDate: expirationDate.toISOString(), // ✅ ADD THIS
-      companyName: pendingCustomer.company_name,    // ✅ ADD THIS
-      coverageType: pendingCustomer.coverage_type,  // ✅ ADD THIS
+      effectiveDate: effectiveDate.toISOString(),
+      expirationDate: expirationDate.toISOString(),
+      companyName: pendingCustomer.company_name,
+      coverageType: pendingCustomer.coverage_type,
       status: 'active',
       paymentType: paymentType,
       followUps: followUps,
       createdAt: new Date(),
     };
+
+    // Only add dueDate if it exists (for regular/autopay)
+    if (parsedDueDate) {
+      customer.dueDate = parsedDueDate.toISOString();
+    }
 
     // Insert into payment_reminder_coll
     console.log('💾 Inserting into payment_reminder_coll...');

@@ -2244,20 +2244,22 @@ export default function InsuranceReminderDashboard() {
               </div>
 
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    First Payment Due Date *
-                  </label>
-                  <input
-                    type="date"
-                    value={setupDueDate}
-                    onChange={(e) => setSetupDueDate(e.target.value)}
-                    className="w-full border rounded-lg px-3 py-2"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Typically the effective date or first day of coverage
-                  </p>
-                </div>
+                {setupPaymentType !== "paid-in-full" && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      First Payment Due Date *
+                    </label>
+                    <input
+                      type="date"
+                      value={setupDueDate}
+                      onChange={(e) => setSetupDueDate(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Typically the effective date or first day of coverage
+                    </p>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -2276,6 +2278,12 @@ export default function InsuranceReminderDashboard() {
                   </select>
                 </div>
               </div>
+              {setupPaymentType === "paid-in-full" && (
+                <p className="text-sm text-blue-600 bg-blue-50 p-3 rounded-lg">
+                  ℹ️ No due date needed - renewal reminder will be set 20 days
+                  before policy expiration
+                </p>
+              )}
 
               <div className="flex gap-3 mt-6">
                 <button
@@ -2291,7 +2299,9 @@ export default function InsuranceReminderDashboard() {
                 </button>
                 <button
                   onClick={handleConfirmSetup}
-                  disabled={!setupDueDate}
+                  disabled={
+                    setupPaymentType !== "paid-in-full" && !setupDueDate
+                  }
                   className="flex-1 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                   Setup Reminder
