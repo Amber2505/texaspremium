@@ -269,7 +269,22 @@ export async function POST(request: Request) {
     console.log('✅ Generated', followUps.length, 'follow-ups');
 
     // Create the customer document with effective and expiration dates
-    const customer: any = {
+    const customer: {
+      id: string;
+      name: string;
+      dueDate?: string;
+      paymentDayOfMonth: number | null;
+      remainingPayments: number;
+      totalPayments: number;
+      effectiveDate: string;
+      expirationDate: string;
+      companyName: string;
+      coverageType: string;
+      status: string;
+      paymentType: string;
+      followUps: FollowUp[];
+      createdAt: Date;
+    } = {
       id: policyNo,
       name: pendingCustomer.customer_name,
       paymentDayOfMonth: parsedDueDate ? parsedDueDate.getDate() : null,
