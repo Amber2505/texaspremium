@@ -405,12 +405,12 @@ export default function AutoQuote() {
   };
 
   const handleVerifyCode = () => {
-    console.log(
-      "Verification Check - Code:",
-      formData.verificationCode,
-      "Input:",
-      formData.inputCode
-    );
+    // console.log(
+    //   "Verification Check - Code:",
+    //   formData.verificationCode,
+    //   "Input:",
+    //   formData.inputCode
+    // );
     if (
       formData.inputCode === formData.verificationCode &&
       formData.inputCode
@@ -426,12 +426,12 @@ export default function AutoQuote() {
 
   const handleSubmitStep1 = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    console.log(
-      "Submit Step 1 - isPhoneVerified:",
-      isPhoneVerified,
-      "Address Error:",
-      addressError
-    );
+    // console.log(
+    //   "Submit Step 1 - isPhoneVerified:",
+    //   isPhoneVerified,
+    //   "Address Error:",
+    //   addressError
+    // );
 
     const phoneDigits = formData.phone.replace(/\D/g, "");
     if (phoneDigits.length !== 10) {
@@ -528,7 +528,7 @@ export default function AutoQuote() {
       setIsSubmitting(true);
 
       const submissionId = Math.random().toString(36).substring(2, 15); // Unique ID for debugging
-      console.log(`Submission started: ${submissionId}`);
+      // console.log(`Submission started: ${submissionId}`);
 
       try {
         const message = formatQuoteMessage(formData);
@@ -536,9 +536,9 @@ export default function AutoQuote() {
         const toNumber = "9727486404";
         const uniqueId = Date.now().toString(); // Unique ID for the request
         const quoteURL = `https://astraldbapi.herokuapp.com/message_send_link/?message=${encodedMessage}&To=${toNumber}&uniqueId=${uniqueId}`;
-        console.log(`Sending SMS for submission: ${submissionId}`, {
-          quoteURL,
-        });
+        // console.log(`Sending SMS for submission: ${submissionId}`, {
+        //   quoteURL,
+        // });
 
         const campaign = sessionStorage.getItem("campaignName");
         if (campaign?.toLowerCase() === "raviraj") {
@@ -583,7 +583,7 @@ export default function AutoQuote() {
           method: "GET",
           cache: "no-store", // Prevent caching
         });
-        console.log(`Fetch response for submission: ${submissionId}`, response);
+        // console.log(`Fetch response for submission: ${submissionId}`, response);
 
         if (!response.ok) {
           throw new Error("Failed to send message");
@@ -1627,7 +1627,6 @@ export default function AutoQuote() {
                             className="border p-2 w-full rounded text-xs sm:text-sm"
                             placeholder="Enter Drivers License Number"
                             required
-                            inputMode="numeric"
                           />
                         </div>
                         <div>
