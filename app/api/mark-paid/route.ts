@@ -49,7 +49,6 @@ export async function POST(request: Request) {
     const currentDueDate = new Date(customer.dueDate);
     const expirationDate = new Date(customer.expirationDate);
     const paymentType = customer.paymentType || 'regular';
-    const totalPayments = customer.totalPayments || 6;
     
     // Calculate next due date (same day next month)
     const nextDueDate = addMonths(currentDueDate, 1);
