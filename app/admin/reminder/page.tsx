@@ -15,6 +15,7 @@ import {
   MessageSquare,
   ChevronLeft,
   ChevronRight,
+  Ban,
 } from "lucide-react";
 
 type PaymentType = "regular" | "autopay" | "paid-in-full";
@@ -640,7 +641,10 @@ export default function InsuranceReminderDashboard() {
   };
 
   const handleConfirmSetup = async () => {
-    if (!setupCustomer || !setupDueDate) {
+    if (
+      !setupCustomer ||
+      (setupPaymentType !== "paid-in-full" && !setupDueDate)
+    ) {
       alert("Please select a due date");
       return;
     }
@@ -681,6 +685,58 @@ export default function InsuranceReminderDashboard() {
           error instanceof Error ? error.message : "Network error"
         }`
       );
+    }
+  };
+
+  const handleChangeToDirectBill = async (customerId: string) => {
+    if (
+      !confirm(
+        "Change this customer from Autopay to Direct Bill? This will regenerate follow-up reminders."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/change-to-direct-bill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId }),
+      });
+
+      if (!response.ok) throw new Error("Failed to change payment type");
+
+      fetchCustomers();
+      alert("Successfully changed to Direct Bill");
+    } catch (error) {
+      console.error("Error changing to direct bill:", error);
+      alert("Failed to change payment type");
+    }
+  };
+
+  const handleChangeToAutopay = async (customerId: string) => {
+    if (
+      !confirm(
+        "Change this customer back to Autopay? This will regenerate follow-up reminders."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/change-to-autopay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId }),
+      });
+
+      if (!response.ok) throw new Error("Failed to change payment type");
+
+      fetchCustomers();
+      alert("Successfully changed to Autopay");
+    } catch (error) {
+      console.error("Error changing to autopay:", error);
+      alert("Failed to change payment type");
     }
   };
 
@@ -756,13 +812,32 @@ export default function InsuranceReminderDashboard() {
   };
 
   const handleMarkPaid = async (customerId: string) => {
+    if (
+      !confirm(
+        "Mark this payment as paid? This will generate next month's reminders."
+      )
+    ) {
+      return;
+    }
+
     try {
-      await fetch(`/api/customers/${customerId}/payment`, {
-        method: "PATCH",
+      const response = await fetch("/api/mark-paid", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId }),
       });
+
+      if (!response.ok) {
+        throw new Error("Failed to mark payment as paid");
+      }
+
+      const data = await response.json();
+
       fetchCustomers();
+      alert(data.message || "Payment marked as paid successfully!");
     } catch (error) {
       console.error("Error marking payment:", error);
+      alert("Failed to mark payment as paid");
     }
   };
 
@@ -1502,6 +1577,7 @@ export default function InsuranceReminderDashboard() {
                             handleCompleteFollowUp(customer.id, index)
                           }
                           onMarkPaid={() => handleMarkPaid(customer.id)}
+                          onChangeToDirectBill={handleChangeToDirectBill}
                         />
                       )
                     )}
@@ -1728,6 +1804,7 @@ export default function InsuranceReminderDashboard() {
                             handleCompleteFollowUp(customer.id, index)
                           }
                           onMarkPaid={() => handleMarkPaid(customer.id)}
+                          onChangeToDirectBill={handleChangeToDirectBill}
                           isUpcoming
                         />
                       )
@@ -1882,6 +1959,8 @@ export default function InsuranceReminderDashboard() {
                         onEditDueDate={handleEditDueDate}
                         onCancelCustomer={handleCancelCustomer}
                         onDeleteCustomer={handleDeleteCustomer}
+                        onChangeToAutopay={handleChangeToAutopay}
+                        onChangeToDirectBill={handleChangeToDirectBill}
                         isEditing={editingCustomer === customer.id}
                         editDueDate={editDueDate}
                         setEditDueDate={setEditDueDate}
@@ -2241,22 +2320,48 @@ export default function InsuranceReminderDashboard() {
                 <p className="text-sm text-gray-600">
                   Company: {setupCustomer.company_name}
                 </p>
+                <p className="text-sm text-gray-600">
+                  Coverage:{" "}
+                  {new Date(setupCustomer.effective_date).toLocaleDateString()}{" "}
+                  -{" "}
+                  {new Date(setupCustomer.expiration_date).toLocaleDateString()}
+                </p>
+                {setupPaymentType !== "paid-in-full" &&
+                  setupDueDate &&
+                  (() => {
+                    const dueDate = new Date(setupDueDate);
+                    const expDate = new Date(setupCustomer.expiration_date);
+                    const monthsDiff = Math.max(
+                      0,
+                      (expDate.getFullYear() - dueDate.getFullYear()) * 12 +
+                        (expDate.getMonth() - dueDate.getMonth())
+                    );
+                    return (
+                      <p className="text-sm font-medium text-blue-600 mt-2">
+                        📅 {monthsDiff} payment{monthsDiff !== 1 ? "s" : ""}{" "}
+                        remaining until expiration
+                      </p>
+                    );
+                  })()}
               </div>
 
               <div className="space-y-4">
                 {setupPaymentType !== "paid-in-full" && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      First Payment Due Date *
+                      Next Payment Due Date *
                     </label>
                     <input
                       type="date"
                       value={setupDueDate}
                       onChange={(e) => setSetupDueDate(e.target.value)}
                       className="w-full border rounded-lg px-3 py-2"
+                      min={setupCustomer.effective_date}
+                      max={setupCustomer.expiration_date}
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Typically the effective date or first day of coverage
+                      When is the next payment due? (Usually today or the
+                      payment day of the month)
                     </p>
                   </div>
                 )}
@@ -2351,6 +2456,7 @@ interface FollowUpCardProps {
   followUp: FollowUp;
   onComplete: () => void;
   onMarkPaid: () => void;
+  onChangeToDirectBill?: (customerId: string) => void;
   isUpcoming?: boolean;
 }
 
@@ -2359,6 +2465,7 @@ function FollowUpCard({
   followUp,
   onComplete,
   onMarkPaid,
+  onChangeToDirectBill,
   isUpcoming = false,
 }: FollowUpCardProps) {
   const getMethodIcon = (method: string | undefined): JSX.Element => {
@@ -2419,22 +2526,35 @@ function FollowUpCard({
             {customer.totalPayments}
           </p>
         </div>
-        {!isUpcoming && (
-          <div className="flex gap-2">
-            <button
-              onClick={onMarkPaid}
-              className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition"
-            >
-              Mark Paid
-            </button>
-            <button
-              onClick={onComplete}
-              className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition"
-            >
-              Complete
-            </button>
-          </div>
-        )}
+        <div className="flex flex-col gap-2 mt-2">
+          {customer.paymentType === "autopay" &&
+            (followUp.type === "due-date" || followUp.type === "overdue") &&
+            onChangeToDirectBill && (
+              <button
+                onClick={() => onChangeToDirectBill(customer.id)}
+                className="w-full px-3 py-1.5 bg-orange-600 text-white rounded text-sm hover:bg-orange-700 transition font-medium"
+                title="Autopay declined - switch to direct bill"
+              >
+                Change to Direct Bill
+              </button>
+            )}
+          {!isUpcoming && (
+            <div className="flex gap-2">
+              <button
+                onClick={onMarkPaid}
+                className="flex-1 px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition font-medium"
+              >
+                Mark Paid
+              </button>
+              <button
+                onClick={onComplete}
+                className="flex-1 px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition font-medium"
+              >
+                Complete
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -2445,6 +2565,8 @@ interface CustomerCardProps {
   onEditDueDate: (id: string) => void;
   onCancelCustomer: (customer: Customer) => void;
   onDeleteCustomer: (customer: Customer) => void;
+  onChangeToAutopay: (customerId: string) => void;
+  onChangeToDirectBill: (customerId: string) => void;
   isEditing: boolean;
   editDueDate: string;
   setEditDueDate: (date: string) => void;
@@ -2466,6 +2588,8 @@ function CustomerCard({
   onEditDueDate,
   onCancelCustomer,
   onDeleteCustomer,
+  onChangeToAutopay,
+  onChangeToDirectBill,
   isEditing,
   editDueDate,
   setEditDueDate,
@@ -2697,6 +2821,27 @@ function CustomerCard({
               >
                 <Edit className="w-4 h-4 text-blue-600" />
               </button>
+
+              {customer.paymentType === "regular" && (
+                <button
+                  onClick={() => onChangeToAutopay(customer.id)}
+                  className="p-1 hover:bg-green-100 rounded"
+                  title="Set Autopay"
+                >
+                  <CheckCircle className="w-4 h-4 text-green-600" />
+                </button>
+              )}
+
+              {customer.paymentType === "autopay" && (
+                <button
+                  onClick={() => onChangeToDirectBill(customer.id)}
+                  className="p-1 hover:bg-orange-100 rounded"
+                  title="Remove Autopay (Change to Direct Bill)"
+                >
+                  <Ban className="w-4 h-4 text-orange-600" />
+                </button>
+              )}
+
               <button
                 onClick={() => onCancelCustomer(customer)}
                 className="p-1 hover:bg-red-100 rounded"
@@ -2763,6 +2908,29 @@ function WeekCalendarView({
 
   const daysInWeek = getWeekDays(currentWeek);
 
+  const getWeekLabel = (): string => {
+    const firstDay = daysInWeek[0];
+    const lastDay = daysInWeek[6];
+
+    const firstMonth = firstDay.toLocaleString("default", { month: "long" });
+    const lastMonth = lastDay.toLocaleString("default", { month: "long" });
+    const firstYear = firstDay.getFullYear();
+    const lastYear = lastDay.getFullYear();
+
+    // Same month and year
+    if (firstMonth === lastMonth && firstYear === lastYear) {
+      return `${firstMonth} ${firstYear}`;
+    }
+    // Same year, different months
+    else if (firstYear === lastYear) {
+      return `${firstMonth} - ${lastMonth} ${firstYear}`;
+    }
+    // Different years
+    else {
+      return `${firstMonth} ${firstYear} - ${lastMonth} ${lastYear}`;
+    }
+  };
+
   const getFollowUpsForDay = (
     day: Date
   ): Array<{
@@ -2788,7 +2956,12 @@ function WeekCalendarView({
   return (
     <div className="bg-white rounded-xl shadow-sm p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-semibold text-gray-800">Weekly Calendar</h2>
+        <div>
+          <h2 className="text-xl font-semibold text-gray-800">
+            Weekly Calendar
+          </h2>
+          <p className="text-sm text-gray-600 mt-1">{getWeekLabel()}</p>
+        </div>
         <div className="flex gap-2">
           <button
             onClick={() => setCurrentWeek(addDays(currentWeek, -7))}
