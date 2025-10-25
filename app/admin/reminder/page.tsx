@@ -29,6 +29,32 @@ type FollowUp = {
   method?: "phone" | "email" | "sms";
 };
 
+type AISuggestion = {
+  suggestedDueDate: string;
+  suggestedPaymentType: PaymentType;
+  confidence: "high" | "medium" | "low";
+  reasoning: string;
+  alternativeDueDate?: string;
+  companyPattern?: string;
+  pricingAdvantage?: string;
+  isMonthToMonth?: boolean;
+  policyDuration?: number;
+  dataPoints?: {
+    sameCompany: number;
+    otherCompanies: number;
+  };
+  companyData?: Array<{
+    company: string;
+    paymentType: string;
+    effectiveDate: string;
+    dueDate: string;
+    daysBetween: number;
+    totalPayments: number;
+    remainingPayments: number;
+    isMonthToMonth?: boolean;
+  }> | null;
+};
+
 type Customer = {
   _id?: string;
   id: string;
@@ -210,6 +236,12 @@ const generateFollowUps = (
 };
 
 export default function InsuranceReminderDashboard() {
+  // Helper function to parse YYYY-MM-DD as local date, not UTC
+  const parseLocalDate = (dateStr: string): Date => {
+    const [year, month, day] = dateStr.split("-").map(Number);
+    return new Date(year, month - 1, day);
+  };
+
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState("dashboard");
@@ -242,6 +274,11 @@ export default function InsuranceReminderDashboard() {
   const [setupDueDate, setSetupDueDate] = useState("");
   const [setupPaymentType, setSetupPaymentType] =
     useState<PaymentType>("regular");
+  const [aiSuggestion, setAiSuggestion] = useState<AISuggestion | null>(null);
+  const [loadingAiSuggestion, setLoadingAiSuggestion] = useState(false);
+  const [showAiSuggestion, setShowAiSuggestion] = useState(true);
+  const [setupEffectiveDate, setSetupEffectiveDate] = useState("");
+  const [setupExpirationDate, setSetupExpirationDate] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const customersPerPage = 10;
   const [selectedCompany, setSelectedCompany] = useState<string>("all");
@@ -302,6 +339,57 @@ export default function InsuranceReminderDashboard() {
   useEffect(() => {
     fetchPendingCustomers();
   }, []);
+  // Re-fetch AI suggestion when effective or expiration dates change in setup modal
+  useEffect(() => {
+    if (
+      !showSetupModal ||
+      !setupCustomer ||
+      !setupEffectiveDate ||
+      !setupExpirationDate
+    ) {
+      return;
+    }
+
+    const fetchAiSuggestion = async () => {
+      try {
+        setLoadingAiSuggestion(true);
+        setShowAiSuggestion(true); // Show the AI panel
+        const aiResponse = await fetch("/api/ai-suggest-due-date", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            companyName: setupCustomer.company_name,
+            effectiveDate: setupEffectiveDate,
+            expirationDate: setupExpirationDate,
+          }),
+        });
+
+        if (aiResponse.ok) {
+          const suggestion = await aiResponse.json();
+          console.log("AI Suggestion received:", suggestion);
+          setAiSuggestion(suggestion);
+
+          // Always auto-apply high confidence suggestions
+          if (suggestion.confidence === "high") {
+            console.log(
+              "Auto-applying high confidence suggestion:",
+              suggestion.suggestedDueDate
+            );
+            setSetupDueDate(suggestion.suggestedDueDate);
+            setSetupPaymentType(suggestion.suggestedPaymentType);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching AI suggestion:", error);
+      } finally {
+        setLoadingAiSuggestion(false);
+      }
+    };
+
+    // Debounce the fetch to avoid too many API calls
+    const timeoutId = setTimeout(fetchAiSuggestion, 500);
+    return () => clearTimeout(timeoutId);
+  }, [setupEffectiveDate, setupExpirationDate, showSetupModal, setupCustomer]);
 
   const fetchPendingCustomers = async () => {
     try {
@@ -603,8 +691,9 @@ export default function InsuranceReminderDashboard() {
         setEditCustomerEffective("");
         setEditCustomerExpiration("");
 
-        // Refresh the list
+        // Refresh BOTH lists
         await fetchCustomers();
+        await fetchPendingCustomers(); // ← ADD THIS to refresh pending customers!
 
         alert("Dates updated successfully!");
       } else {
@@ -629,15 +718,40 @@ export default function InsuranceReminderDashboard() {
     setEditCustomerExpiration("");
   };
 
-  const handleSetupReminder = (customer: PendingCustomer) => {
-    setSetupCustomer(customer);
-    setShowSetupModal(true);
+  const handleSetupReminder = async (customerId: string) => {
+    try {
+      // Fetch FRESH customer data from MongoDB
+      const response = await fetch(`/api/pending-customers/${customerId}`);
+      const freshCustomer: PendingCustomer = await response.json();
 
-    const effectiveDate = new Date(customer.effective_date);
-    const year = effectiveDate.getFullYear();
-    const month = String(effectiveDate.getMonth() + 1).padStart(2, "0");
-    const day = String(effectiveDate.getDate()).padStart(2, "0");
-    setSetupDueDate(`${year}-${month}-${day}`);
+      console.log("Fresh from MongoDB:", freshCustomer.effective_date);
+
+      setSetupCustomer(freshCustomer);
+      setShowSetupModal(true);
+      setShowAiSuggestion(true);
+      setAiSuggestion(null);
+
+      // Parse and set effective date
+      const effectiveDate = new Date(freshCustomer.effective_date);
+      const effYear = effectiveDate.getFullYear();
+      const effMonth = String(effectiveDate.getMonth() + 1).padStart(2, "0");
+      const effDay = String(effectiveDate.getDate()).padStart(2, "0");
+      const effDateStr = `${effYear}-${effMonth}-${effDay}`;
+      setSetupEffectiveDate(effDateStr);
+
+      // Parse and set expiration date
+      const expirationDate = new Date(freshCustomer.expiration_date);
+      const expYear = expirationDate.getFullYear();
+      const expMonth = String(expirationDate.getMonth() + 1).padStart(2, "0");
+      const expDay = String(expirationDate.getDate()).padStart(2, "0");
+      const expDateStr = `${expYear}-${expMonth}-${expDay}`;
+      setSetupExpirationDate(expDateStr);
+
+      // Note: AI suggestion will be fetched automatically by the useEffect
+      // when setupEffectiveDate and setupExpirationDate are set
+    } catch {
+      alert("Failed to load customer data");
+    }
   };
 
   const handleConfirmSetup = async () => {
@@ -1493,7 +1607,9 @@ export default function InsuranceReminderDashboard() {
                                 )}
                               </div>
                               <button
-                                onClick={() => handleSetupReminder(customer)}
+                                onClick={() =>
+                                  handleSetupReminder(customer._id)
+                                }
                                 className="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm font-medium hover:bg-yellow-700 transition flex items-center gap-2"
                               >
                                 <Calendar className="w-4 h-4" />
@@ -2305,32 +2421,79 @@ export default function InsuranceReminderDashboard() {
         )}
 
         {showSetupModal && setupCustomer && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl p-6 w-full max-w-7xl max-h-[95vh] overflow-y-auto">
               <h3 className="text-xl font-semibold mb-4 text-gray-900">
                 Setup Payment Reminder
               </h3>
-              <div className="mb-4">
-                <p className="text-gray-700 font-medium">
+
+              {/* Customer Info Header */}
+              <div className="mb-6 pb-4 border-b">
+                <p className="text-gray-700 font-medium text-lg">
                   {setupCustomer.customer_name}
                 </p>
-                <p className="text-sm text-gray-600">
-                  Policy: {setupCustomer.policy_no}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                  <div>
+                    <p className="text-xs text-gray-500">Policy</p>
+                    <p className="text-sm text-gray-700">
+                      {setupCustomer.policy_no}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Company</p>
+                    <p className="text-sm text-gray-700">
+                      {setupCustomer.company_name}
+                    </p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-xs text-gray-500">Coverage Period</p>
+                    <p className="text-sm text-gray-700">
+                      {new Date(
+                        setupCustomer.effective_date
+                      ).toLocaleDateString()}{" "}
+                      -{" "}
+                      {new Date(
+                        setupCustomer.expiration_date
+                      ).toLocaleDateString()}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Editable Coverage Period */}
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Effective Date
+                    </label>
+                    <input
+                      type="date"
+                      value={setupEffectiveDate}
+                      onChange={(e) => setSetupEffectiveDate(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Expiration Date
+                    </label>
+                    <input
+                      type="date"
+                      value={setupExpirationDate}
+                      onChange={(e) => setSetupExpirationDate(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  💡 Adjust dates to recalculate AI suggestions
                 </p>
-                <p className="text-sm text-gray-600">
-                  Company: {setupCustomer.company_name}
-                </p>
-                <p className="text-sm text-gray-600">
-                  Coverage:{" "}
-                  {new Date(setupCustomer.effective_date).toLocaleDateString()}{" "}
-                  -{" "}
-                  {new Date(setupCustomer.expiration_date).toLocaleDateString()}
-                </p>
+
                 {setupPaymentType !== "paid-in-full" &&
                   setupDueDate &&
+                  setupExpirationDate &&
                   (() => {
                     const dueDate = new Date(setupDueDate);
-                    const expDate = new Date(setupCustomer.expiration_date);
+                    const expDate = new Date(setupExpirationDate);
                     const monthsDiff = Math.max(
                       0,
                       (expDate.getFullYear() - dueDate.getFullYear()) * 12 +
@@ -2345,72 +2508,229 @@ export default function InsuranceReminderDashboard() {
                   })()}
               </div>
 
-              <div className="space-y-4">
-                {setupPaymentType !== "paid-in-full" && (
+              {/* Two Column Layout - Side by Side 50/50 */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* LEFT COLUMN: AI Suggestions */}
+                <div className="space-y-4 lg:border-r lg:pr-6 max-h-[60vh] overflow-y-auto">
+                  <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <span className="text-xl">🤖</span>
+                    AI Assistant
+                  </h4>
+
+                  {loadingAiSuggestion && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                        <p className="text-sm text-blue-700">
+                          Analyzing your past entries for{" "}
+                          {setupCustomer?.company_name}...
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {aiSuggestion && showAiSuggestion && !loadingAiSuggestion && (
+                    <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <h4 className="font-semibold text-gray-900">
+                            Suggestions
+                            <span
+                              className={`ml-2 text-xs px-2 py-0.5 rounded ${
+                                aiSuggestion.confidence === "high"
+                                  ? "bg-green-100 text-green-700"
+                                  : aiSuggestion.confidence === "medium"
+                                  ? "bg-yellow-100 text-yellow-700"
+                                  : "bg-gray-100 text-gray-700"
+                              }`}
+                            >
+                              {aiSuggestion.confidence} confidence
+                            </span>
+                          </h4>
+                          <p className="text-xs text-gray-600 mt-0.5">
+                            Based on {aiSuggestion.dataPoints?.sameCompany ?? 0}{" "}
+                            past entries
+                            {(aiSuggestion.dataPoints?.sameCompany ?? 0) > 0 &&
+                              ` for ${setupCustomer?.company_name}`}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setShowAiSuggestion(false)}
+                          className="text-gray-400 hover:text-gray-600 transition"
+                          title="Dismiss"
+                        >
+                          ✕
+                        </button>
+                      </div>
+
+                      <div className="space-y-2 mb-3">
+                        <div className="flex items-center justify-between bg-white rounded-lg p-3">
+                          <div>
+                            <p className="text-xs text-gray-600">
+                              Suggested Due Date
+                            </p>
+                            <p className="font-medium text-gray-900">
+                              {parseLocalDate(
+                                aiSuggestion.suggestedDueDate
+                              ).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              })}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() =>
+                              setSetupDueDate(aiSuggestion.suggestedDueDate)
+                            }
+                            className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition"
+                          >
+                            Apply
+                          </button>
+                        </div>
+
+                        <div className="flex items-center justify-between bg-white rounded-lg p-3">
+                          <div>
+                            <p className="text-xs text-gray-600">
+                              Suggested Payment
+                            </p>
+                            <p className="font-medium text-gray-900 capitalize">
+                              {aiSuggestion.suggestedPaymentType}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() =>
+                              setSetupPaymentType(
+                                aiSuggestion.suggestedPaymentType
+                              )
+                            }
+                            className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition"
+                          >
+                            Apply
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="bg-white rounded-lg p-3">
+                          <p className="text-xs font-medium text-gray-700 mb-1">
+                            💡 Reasoning
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            {aiSuggestion.reasoning}
+                          </p>
+                        </div>
+
+                        {aiSuggestion.companyPattern && (
+                          <div className="bg-white rounded-lg p-3">
+                            <p className="text-xs font-medium text-gray-700 mb-1">
+                              📊 Pattern
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              {aiSuggestion.companyPattern}
+                            </p>
+                          </div>
+                        )}
+
+                        {aiSuggestion.pricingAdvantage && (
+                          <div className="bg-white rounded-lg p-3">
+                            <p className="text-xs font-medium text-gray-700 mb-1">
+                              💰 Pricing Tip
+                            </p>
+                            <p className="text-xs text-gray-600">
+                              {aiSuggestion.pricingAdvantage}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {!loadingAiSuggestion && !aiSuggestion && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
+                      <p className="text-sm text-gray-600">
+                        AI suggestions will appear here after analyzing your
+                        past entries
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* RIGHT COLUMN: Form Fields */}
+                <div className="space-y-4">
+                  <h4 className="font-semibold text-gray-900">Setup Details</h4>
+
+                  {setupPaymentType !== "paid-in-full" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Next Payment Due Date *
+                      </label>
+                      <input
+                        type="date"
+                        value={setupDueDate}
+                        onChange={(e) => setSetupDueDate(e.target.value)}
+                        className="w-full border rounded-lg px-3 py-2"
+                        min={setupEffectiveDate}
+                        max={setupExpirationDate}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        When is the next payment due?
+                      </p>
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Next Payment Due Date *
+                      Payment Type
                     </label>
-                    <input
-                      type="date"
-                      value={setupDueDate}
-                      onChange={(e) => setSetupDueDate(e.target.value)}
+                    <select
+                      value={setupPaymentType}
+                      onChange={(e) =>
+                        setSetupPaymentType(e.target.value as PaymentType)
+                      }
                       className="w-full border rounded-lg px-3 py-2"
-                      min={setupCustomer.effective_date}
-                      max={setupCustomer.expiration_date}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      When is the next payment due? (Usually today or the
-                      payment day of the month)
-                    </p>
+                    >
+                      <option value="regular">Regular Payments</option>
+                      <option value="autopay">Autopay</option>
+                      <option value="paid-in-full">Paid in Full</option>
+                    </select>
                   </div>
-                )}
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Payment Type
-                  </label>
-                  <select
-                    value={setupPaymentType}
-                    onChange={(e) =>
-                      setSetupPaymentType(e.target.value as PaymentType)
-                    }
-                    className="w-full border rounded-lg px-3 py-2"
-                  >
-                    <option value="regular">Regular Payments</option>
-                    <option value="autopay">Autopay</option>
-                    <option value="paid-in-full">Paid in Full</option>
-                  </select>
+                  {setupPaymentType === "paid-in-full" && (
+                    <p className="text-sm text-blue-600 bg-blue-50 p-3 rounded-lg">
+                      ℹ️ No due date needed - renewal reminder will be set 20
+                      days before expiration
+                    </p>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-3 pt-4">
+                    <button
+                      onClick={() => {
+                        setShowSetupModal(false);
+                        setSetupCustomer(null);
+                        setSetupDueDate("");
+                        setSetupPaymentType("regular");
+                        setAiSuggestion(null);
+                        setShowAiSuggestion(true);
+                        setSetupEffectiveDate("");
+                        setSetupExpirationDate("");
+                      }}
+                      className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleConfirmSetup}
+                      disabled={
+                        setupPaymentType !== "paid-in-full" && !setupDueDate
+                      }
+                      className="flex-1 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    >
+                      Setup Reminder
+                    </button>
+                  </div>
                 </div>
-              </div>
-              {setupPaymentType === "paid-in-full" && (
-                <p className="text-sm text-blue-600 bg-blue-50 p-3 rounded-lg">
-                  ℹ️ No due date needed - renewal reminder will be set 20 days
-                  before policy expiration
-                </p>
-              )}
-
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={() => {
-                    setShowSetupModal(false);
-                    setSetupCustomer(null);
-                    setSetupDueDate("");
-                    setSetupPaymentType("regular");
-                  }}
-                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmSetup}
-                  disabled={
-                    setupPaymentType !== "paid-in-full" && !setupDueDate
-                  }
-                  className="flex-1 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
-                >
-                  Setup Reminder
-                </button>
               </div>
             </div>
           </div>
