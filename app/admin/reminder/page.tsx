@@ -255,6 +255,7 @@ export default function InsuranceReminderDashboard() {
     "non-payment" | "customer-choice" | "custom-date" | "no-followup"
   >("non-payment");
   const [customWinBackDate, setCustomWinBackDate] = useState("");
+  const [cancellationDate, setCancellationDate] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCustomer, setNewCustomer] = useState({
     name: "",
@@ -989,6 +990,10 @@ export default function InsuranceReminderDashboard() {
 
   const handleCancelCustomer = (customer: Customer) => {
     setCancellingCustomer(customer);
+    // Set default cancellation date to today
+    const today = new Date();
+    const dateStr = today.toISOString().split("T")[0];
+    setCancellationDate(dateStr);
     setShowCancelModal(true);
   };
 
@@ -1015,8 +1020,15 @@ export default function InsuranceReminderDashboard() {
   const handleConfirmCancellation = async () => {
     if (!cancellingCustomer) return;
 
+    // Validate cancellation date
+    if (!cancellationDate) {
+      alert("Please select a cancellation date");
+      return;
+    }
+
     const cancellationData: Record<string, unknown> = {
       cancellationReason,
+      cancellationDate,
     };
 
     if (cancellationReason === "custom-date" && customWinBackDate) {
@@ -1026,19 +1038,31 @@ export default function InsuranceReminderDashboard() {
     }
 
     try {
-      await fetch(`/api/customers/${cancellingCustomer.id}/cancel`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(cancellationData),
-      });
+      const response = await fetch(
+        `/api/customers/${cancellingCustomer.id}/cancel`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(cancellationData),
+        }
+      );
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to cancel customer");
+      }
 
       setShowCancelModal(false);
       setCancellingCustomer(null);
       setCancellationReason("non-payment");
       setCustomWinBackDate("");
+      setCancellationDate("");
       fetchCustomers();
     } catch (error) {
       console.error("Error cancelling customer:", error);
+      alert(
+        error instanceof Error ? error.message : "Failed to cancel customer"
+      );
     }
   };
 
@@ -2279,9 +2303,26 @@ export default function InsuranceReminderDashboard() {
                 {cancellingCustomer.id})?
               </p>
 
+              {/* Cancellation Date Field */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Cancellation Date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={cancellationDate}
+                  onChange={(e) => setCancellationDate(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  The actual date when the policy was/will be cancelled
+                </p>
+              </div>
+
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Cancellation Reason
+                  Cancellation Reason & Follow-up
                 </label>
                 <div className="space-y-3">
                   <label className="flex items-start">
@@ -2304,7 +2345,7 @@ export default function InsuranceReminderDashboard() {
                     <span className="text-sm text-gray-700">
                       Non-Payment{" "}
                       <span className="text-gray-500">
-                        (Check back in 3 months)
+                        (Follow up at 3 & 6 months from cancellation date)
                       </span>
                     </span>
                   </label>
@@ -2328,7 +2369,7 @@ export default function InsuranceReminderDashboard() {
                     <span className="text-sm text-gray-700">
                       Customer Choice{" "}
                       <span className="text-gray-500">
-                        (Check back 15 days before 6 months)
+                        (Follow up 15 days before 6 months, then at 6 months)
                       </span>
                     </span>
                   </label>
@@ -2351,7 +2392,7 @@ export default function InsuranceReminderDashboard() {
                     />
                     <div className="flex-1">
                       <span className="text-sm text-gray-700">
-                        Custom Date{" "}
+                        Custom Win-Back Date{" "}
                         <span className="text-gray-500">
                           (Follow up on specific date)
                         </span>
@@ -2361,8 +2402,9 @@ export default function InsuranceReminderDashboard() {
                           type="date"
                           value={customWinBackDate}
                           onChange={(e) => setCustomWinBackDate(e.target.value)}
-                          className="mt-2 border rounded px-3 py-1 text-sm w-full"
+                          className="mt-2 border rounded px-3 py-1 text-sm w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           placeholder="Select follow-up date"
+                          min={cancellationDate}
                         />
                       )}
                     </div>
@@ -2401,6 +2443,7 @@ export default function InsuranceReminderDashboard() {
                     setCancellingCustomer(null);
                     setCancellationReason("non-payment");
                     setCustomWinBackDate("");
+                    setCancellationDate("");
                   }}
                   className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
                 >
@@ -2409,7 +2452,8 @@ export default function InsuranceReminderDashboard() {
                 <button
                   onClick={handleConfirmCancellation}
                   disabled={
-                    cancellationReason === "custom-date" && !customWinBackDate
+                    !cancellationDate ||
+                    (cancellationReason === "custom-date" && !customWinBackDate)
                   }
                   className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >

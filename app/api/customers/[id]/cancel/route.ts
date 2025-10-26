@@ -1,4 +1,4 @@
-import { NextResponse, NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 
 type FollowUp = {
@@ -9,80 +9,168 @@ type FollowUp = {
   method: string;
 };
 
+function addMonths(date: Date, months: number): Date {
+  const result = new Date(date);
+  result.setMonth(result.getMonth() + months);
+  return result;
+}
+
+function addDays(date: Date, days: number): Date {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
 export async function PATCH(
-  request: NextRequest,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    const body = await request.json();
+    const { 
+      cancellationReason, 
+      cancellationDate,
+      customWinBackDate 
+    } = body;
+
+    if (!cancellationDate) {
+      return NextResponse.json(
+        { error: 'Cancellation date is required' },
+        { status: 400 }
+      );
+    }
+
     const client = await clientPromise;
     const db = client.db('db');
-    const { cancellationReason, customWinBackDate } = await request.json();
 
-    const validReasons = ["non-payment", "customer-choice", "custom-date", "no-followup"] as const;
-    if (!validReasons.includes(cancellationReason)) {
-      return NextResponse.json({ error: 'Invalid cancellation reason' }, { status: 400 });
+    const customer = await db
+      .collection('payment_reminder_coll')
+      .findOne({ id });
+
+    if (!customer) {
+      return NextResponse.json(
+        { error: 'Customer not found' },
+        { status: 404 }
+      );
     }
 
-    const cancellationDate = new Date();
-    let winBackDate: Date | undefined;
+    // Parse the cancellation date
+    const cancelDate = new Date(cancellationDate);
+    cancelDate.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
+
+    // Generate win-back follow-ups based on cancellation reason
     const followUps: FollowUp[] = [];
+    let winBackDate: Date | null = null;
 
-    if (cancellationReason === "non-payment") {
-      winBackDate = new Date();
-      winBackDate.setMonth(winBackDate.getMonth() + 3);
-      followUps.push({
-        date: winBackDate.toISOString(),
-        type: "win-back",
-        description: "Win-back attempt (cancelled due to non-payment)",
-        status: "pending",
-        method: "phone",
-      });
-    } else if (cancellationReason === "customer-choice") {
-      winBackDate = new Date();
-      winBackDate.setMonth(winBackDate.getMonth() + 6);
-      winBackDate.setDate(winBackDate.getDate() - 15);
-      followUps.push({
-        date: winBackDate.toISOString(),
-        type: "win-back",
-        description: "Win-back attempt (customer cancelled - offer better pricing)",
-        status: "pending",
-        method: "phone",
-      });
-    } else if (cancellationReason === "custom-date" && customWinBackDate) {
-      winBackDate = new Date(customWinBackDate);
-      if (isNaN(winBackDate.getTime())) {
-        return NextResponse.json({ error: 'Invalid custom win-back date' }, { status: 400 });
-      }
-      followUps.push({
-        date: winBackDate.toISOString(),
-        type: "win-back",
-        description: "Win-back attempt (custom follow-up date)",
-        status: "pending",
-        method: "phone",
-      });
+    switch (cancellationReason) {
+      case 'non-payment':
+        // Follow up 3 months after cancellation date
+        winBackDate = addMonths(cancelDate, 3);
+        followUps.push({
+          date: winBackDate.toISOString(),
+          type: 'win-back',
+          description: 'Win-back opportunity - 3 months after cancellation',
+          status: 'pending',
+          method: 'phone',
+        });
+        
+        // Also add 6 month follow-up
+        const sixMonthDate = addMonths(cancelDate, 6);
+        followUps.push({
+          date: sixMonthDate.toISOString(),
+          type: 'win-back',
+          description: 'Win-back opportunity - 6 months after cancellation',
+          status: 'pending',
+          method: 'phone',
+        });
+        break;
+
+      case 'customer-choice':
+        // Follow up 15 days before 6 months (at 5.5 months)
+        winBackDate = addDays(addMonths(cancelDate, 6), -15);
+        followUps.push({
+          date: winBackDate.toISOString(),
+          type: 'win-back',
+          description: 'Win-back opportunity - 15 days before 6 months',
+          status: 'pending',
+          method: 'phone',
+        });
+        
+        // Also add the 6 month mark
+        const sixMonthMark = addMonths(cancelDate, 6);
+        followUps.push({
+          date: sixMonthMark.toISOString(),
+          type: 'win-back',
+          description: 'Win-back opportunity - 6 months after cancellation',
+          status: 'pending',
+          method: 'phone',
+        });
+        break;
+
+      case 'custom-date':
+        if (!customWinBackDate) {
+          return NextResponse.json(
+            { error: 'Custom win-back date is required' },
+            { status: 400 }
+          );
+        }
+        winBackDate = new Date(customWinBackDate);
+        winBackDate.setHours(12, 0, 0, 0);
+        followUps.push({
+          date: winBackDate.toISOString(),
+          type: 'win-back',
+          description: 'Win-back opportunity - custom date',
+          status: 'pending',
+          method: 'phone',
+        });
+        break;
+
+      case 'no-followup':
+        // No follow-ups needed
+        winBackDate = null;
+        break;
+
+      default:
+        return NextResponse.json(
+          { error: 'Invalid cancellation reason' },
+          { status: 400 }
+        );
     }
 
-    const result = await db.collection('payment_reminder_coll').updateOne(
+    // Update the customer
+    const updateData: Record<string, unknown> = {
+      status: 'cancelled',
+      cancellationDate: cancelDate,
+      cancellationReason,
+      followUps,
+      updatedAt: new Date(),
+    };
+
+    if (winBackDate) {
+      updateData.winBackDate = winBackDate;
+    }
+
+    await db.collection('payment_reminder_coll').updateOne(
       { id },
-      {
-        $set: {
-          status: 'cancelled',
-          cancellationDate: cancellationDate.toISOString(),
-          cancellationReason,
-          winBackDate: winBackDate?.toISOString(),
-          followUps,
-        },
-      }
+      { $set: updateData }
     );
 
-    if (result.matchedCount === 0) {
-      return NextResponse.json({ error: 'Customer not found' }, { status: 404 });
-    }
-
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ 
+      success: true,
+      message: 'Customer cancelled successfully',
+      cancellationDate: cancelDate.toISOString(),
+      winBackDate: winBackDate?.toISOString() || null,
+      followUpsCreated: followUps.length
+    });
   } catch (error) {
     console.error('Error cancelling customer:', error);
-    return NextResponse.json({ error: 'Failed to cancel customer' }, { status: 500 });
+    return NextResponse.json(
+      { 
+        error: 'Failed to cancel customer',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
   }
 }
