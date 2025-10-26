@@ -16,6 +16,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Ban,
+  RotateCcw, // NEW: Icon for reinstate
 } from "lucide-react";
 
 type PaymentType = "regular" | "autopay" | "paid-in-full";
@@ -256,6 +257,15 @@ export default function InsuranceReminderDashboard() {
   >("non-payment");
   const [customWinBackDate, setCustomWinBackDate] = useState("");
   const [cancellationDate, setCancellationDate] = useState("");
+
+  // NEW: Reinstate Modal States
+  const [showReinstateModal, setShowReinstateModal] = useState(false);
+  const [reinstatingCustomer, setReinstatingCustomer] =
+    useState<Customer | null>(null);
+  const [reinstatePaymentType, setReinstatePaymentType] =
+    useState<PaymentType>("regular");
+  const [reinstateDueDate, setReinstateDueDate] = useState("");
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCustomer, setNewCustomer] = useState({
     name: "",
@@ -1063,6 +1073,61 @@ export default function InsuranceReminderDashboard() {
       alert(
         error instanceof Error ? error.message : "Failed to cancel customer"
       );
+    }
+  };
+
+  // NEW: Handle Reinstate Click
+  const handleReinstateClick = (customer: Customer) => {
+    setReinstatingCustomer(customer);
+    setReinstatePaymentType("regular");
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    setReinstateDueDate(`${year}-${month}-${day}`);
+    setShowReinstateModal(true);
+  };
+
+  // NEW: Handle Reinstate Submit
+  const handleReinstateSubmit = async () => {
+    if (!reinstatingCustomer || !reinstateDueDate) {
+      alert("Please fill in all required fields");
+      return;
+    }
+
+    // ADD THIS LINE TO DEBUG:
+    console.log("Reinstating customer:", reinstatingCustomer);
+    console.log("Customer _id:", reinstatingCustomer._id);
+
+    try {
+      const response = await fetch(
+        `/api/customers/${reinstatingCustomer._id}/reinstate`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            dueDate: reinstateDueDate,
+            paymentType: reinstatePaymentType,
+          }),
+        }
+      );
+
+      if (response.ok) {
+        await fetchCustomers();
+
+        setShowReinstateModal(false);
+        setReinstatingCustomer(null);
+        setReinstatePaymentType("regular");
+        setReinstateDueDate("");
+
+        alert("Policy reinstated successfully!");
+      } else {
+        const error = await response.json();
+        alert(`Error: ${error.error}`);
+      }
+    } catch (error) {
+      console.error("Error reinstating customer:", error);
+      alert("Failed to reinstate policy");
     }
   };
 
@@ -2101,6 +2166,7 @@ export default function InsuranceReminderDashboard() {
                         onDeleteCustomer={handleDeleteCustomer}
                         onChangeToAutopay={handleChangeToAutopay}
                         onChangeToDirectBill={handleChangeToDirectBill}
+                        onReinstate={handleReinstateClick}
                         isEditing={editingCustomer === customer.id}
                         editDueDate={editDueDate}
                         setEditDueDate={setEditDueDate}
@@ -2458,6 +2524,77 @@ export default function InsuranceReminderDashboard() {
                   className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
                 >
                   Confirm Cancellation
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* NEW: Reinstate Modal */}
+        {showReinstateModal && reinstatingCustomer && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+              <h3 className="text-xl font-semibold mb-4 text-gray-900">
+                Reinstate Customer Policy
+              </h3>
+              <p className="text-gray-700 mb-4">
+                Reinstate policy for <strong>{reinstatingCustomer.name}</strong>{" "}
+                ({reinstatingCustomer.id})?
+              </p>
+
+              {/* Due Date Field */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  New Due Date <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  value={reinstateDueDate}
+                  onChange={(e) => setReinstateDueDate(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Select the new payment due date for this policy
+                </p>
+              </div>
+
+              {/* Payment Type Field */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Payment Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={reinstatePaymentType}
+                  onChange={(e) =>
+                    setReinstatePaymentType(e.target.value as PaymentType)
+                  }
+                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                >
+                  <option value="regular">Regular Payment</option>
+                  <option value="autopay">Autopay</option>
+                  <option value="paid-in-full">Paid in Full</option>
+                </select>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowReinstateModal(false);
+                    setReinstatingCustomer(null);
+                    setReinstatePaymentType("regular");
+                    setReinstateDueDate("");
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReinstateSubmit}
+                  disabled={!reinstateDueDate}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                >
+                  Reinstate Policy
                 </button>
               </div>
             </div>
@@ -2931,6 +3068,7 @@ interface CustomerCardProps {
   onDeleteCustomer: (customer: Customer) => void;
   onChangeToAutopay: (customerId: string) => void;
   onChangeToDirectBill: (customerId: string) => void;
+  onReinstate?: (customer: Customer) => void; // NEW: Optional reinstate prop
   isEditing: boolean;
   editDueDate: string;
   setEditDueDate: (date: string) => void;
@@ -2954,6 +3092,7 @@ function CustomerCard({
   onDeleteCustomer,
   onChangeToAutopay,
   onChangeToDirectBill,
+  onReinstate, // NEW
   isEditing,
   editDueDate,
   setEditDueDate,
@@ -3176,6 +3315,27 @@ function CustomerCard({
           <p className="text-xs text-gray-500 capitalize">
             {customer.paymentType}
           </p>
+          {/* NEW: Show reinstate button ONLY for cancelled policies */}
+          {customer.status === "cancelled" && onReinstate && (
+            <div className="flex gap-1">
+              <button
+                onClick={() => onReinstate(customer)}
+                className="p-1 hover:bg-green-100 rounded"
+                title="Reinstate Policy"
+              >
+                <RotateCcw className="w-4 h-4 text-green-600" />
+              </button>
+              <button
+                onClick={() => onDeleteCustomer(customer)}
+                className="p-1 hover:bg-red-100 rounded"
+                title="Delete Customer"
+              >
+                <Trash2 className="w-4 h-4 text-red-600" />
+              </button>
+            </div>
+          )}
+
+          {/* Existing action buttons for active customers */}
           {customer.status !== "cancelled" && !isEditing && !isEditingDates && (
             <div className="flex gap-1">
               <button
