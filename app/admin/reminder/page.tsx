@@ -1381,14 +1381,44 @@ export default function InsuranceReminderDashboard() {
   const handleNextPage = () => {
     if (currentPage < totalPages) {
       setCurrentPage(currentPage + 1);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+
+      // Scroll to pending section after DOM updates
+      setTimeout(() => {
+        const element = document.getElementById("pending-section");
+        if (element) {
+          const headerOffset = 20;
+          const elementPosition = element.getBoundingClientRect().top;
+          const offsetPosition =
+            elementPosition + window.pageYOffset - headerOffset;
+
+          window.scrollTo({
+            top: offsetPosition,
+            behavior: "smooth",
+          });
+        }
+      }, 0);
     }
   };
 
   const handlePreviousPage = () => {
     if (currentPage > 1) {
       setCurrentPage(currentPage - 1);
-      window.scrollTo({ top: 0, behavior: "smooth" });
+
+      // Scroll to pending section after DOM updates
+      setTimeout(() => {
+        const element = document.getElementById("pending-section");
+        if (element) {
+          const headerOffset = 20;
+          const elementPosition = element.getBoundingClientRect().top;
+          const offsetPosition =
+            elementPosition + window.pageYOffset - headerOffset;
+
+          window.scrollTo({
+            top: offsetPosition,
+            behavior: "smooth",
+          });
+        }
+      }, 0);
     }
   };
 
@@ -1409,7 +1439,24 @@ export default function InsuranceReminderDashboard() {
 
   const handlePageChange = (section: string, newPage: number) => {
     setPaginationPages((prev) => ({ ...prev, [section]: newPage }));
-    window.scrollTo({ top: 0, behavior: "smooth" });
+
+    // Use setTimeout to ensure DOM has updated after state change
+    setTimeout(() => {
+      // Scroll to the appropriate section
+      const sectionId = `${section}-section`;
+      const element = document.getElementById(sectionId);
+      if (element) {
+        const headerOffset = 20; // Offset from top
+        const elementPosition = element.getBoundingClientRect().top;
+        const offsetPosition =
+          elementPosition + window.pageYOffset - headerOffset;
+
+        window.scrollTo({
+          top: offsetPosition,
+          behavior: "smooth",
+        });
+      }
+    }, 0);
   };
 
   if (loading) {
@@ -1484,7 +1531,10 @@ export default function InsuranceReminderDashboard() {
             </div>
 
             {pendingCustomers.length > 0 && (
-              <div className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl shadow-sm p-6 mb-6 border-2 border-yellow-200">
+              <div
+                id="pending-section"
+                className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl shadow-sm p-6 mb-6 border-2 border-yellow-200"
+              >
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
                     <Bell className="w-5 h-5 text-yellow-600" />
@@ -1747,7 +1797,10 @@ export default function InsuranceReminderDashboard() {
               </div>
             )}
 
-            <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+            <div
+              id="today-section"
+              className="bg-white rounded-xl shadow-sm p-6 mb-6"
+            >
               <h2 className="text-xl font-semibold mb-4 text-gray-800 flex items-center gap-2">
                 <Bell className="w-5 h-5 text-blue-600" />
                 Today&apos;s Follow-ups ({filteredTodayFollowUps.length})
@@ -1827,7 +1880,10 @@ export default function InsuranceReminderDashboard() {
             </div>
 
             {overdueFollowUps.length > 0 && (
-              <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-xl shadow-sm p-6 mb-6 border-2 border-red-200">
+              <div
+                id="overdue-section"
+                className="bg-gradient-to-r from-red-50 to-orange-50 rounded-xl shadow-sm p-6 mb-6 border-2 border-red-200"
+              >
                 <h2 className="text-xl font-semibold mb-4 text-gray-800 flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-red-600" />
                   Overdue Follow-ups ({filteredOverdueFollowUps.length})
@@ -1972,7 +2028,10 @@ export default function InsuranceReminderDashboard() {
               </div>
             )}
 
-            <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+            <div
+              id="upcoming-section"
+              className="bg-white rounded-xl shadow-sm p-6 mb-6"
+            >
               <h2 className="text-xl font-semibold mb-4 text-gray-800">
                 Upcoming Follow-ups (Next 7 Days) (
                 {filteredUpcomingFollowUps.length})
@@ -2135,7 +2194,7 @@ export default function InsuranceReminderDashboard() {
               </div>
             )}
 
-            <div className="bg-white rounded-xl shadow-sm p-6">
+            <div id="all-section" className="bg-white rounded-xl shadow-sm p-6">
               <h2 className="text-xl font-semibold mb-4 text-gray-800">
                 All Customers ({filteredAllCustomers.length})
               </h2>
