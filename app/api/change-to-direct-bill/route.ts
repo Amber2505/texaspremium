@@ -29,7 +29,6 @@ export async function POST(request: Request) {
     const client = await clientPromise;
     const db = client.db('db');
 
-    // Find the customer
     const customer = await db
       .collection('payment_reminder_coll')
       .findOne({ id: customerId });
@@ -48,163 +47,105 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get current due date
-    const currentDueDate = customer.dueDate 
+    // CRITICAL: Use the due date as the reference point
+    // This is when autopay was declined, not when the user clicked "remove autopay"
+    const dueDate = customer.dueDate 
       ? new Date(customer.dueDate)
       : new Date();
     
     const now = new Date();
     const expirationDate = new Date(customer.expirationDate);
     
-    // Generate follow-ups starting from TODAY (no pre-reminder since card already declined)
+    // Generate regular payment follow-ups based on the due date (decline date)
     const followUps: FollowUp[] = [];
     
-    // THIS MONTH - Start from today, no pre-reminder
-    followUps.push(
-      {
-        date: now.toISOString(),
+    // Calculate all the reminder dates based on the original due date
+    const preReminderDate = addDays(dueDate, -3);  // 3 days before due date
+    const dueDateReminder = dueDate;                // Due date itself
+    const overdueDay5 = addDays(dueDate, 5);       // 5 days after due date
+    const overdueDay7 = addDays(dueDate, 7);       // 7 days after due date
+    const finalDay9 = addDays(dueDate, 9);         // 9 days after due date (final reminder)
+    const postCancellation12 = addDays(dueDate, 12); // 12 days after (first reinstatement)
+    const postCancellation14 = addDays(dueDate, 14); // 14 days after (second reinstatement)
+    
+    // Only add follow-ups that are still in the future or recent past
+    // Skip any reminders more than 1 day in the past (they're irrelevant now)
+    
+    // Pre-reminder (if not too far in the past)
+    if (preReminderDate >= addDays(now, -1)) {
+      followUps.push({
+        date: preReminderDate.toISOString(),
+        type: 'pre-reminder',
+        description: 'Upcoming payment reminder',
+        status: preReminderDate < now ? 'skipped' : 'pending',
+        method: 'sms',
+      });
+    }
+    
+    // Due date reminder
+    if (dueDateReminder >= addDays(now, -1)) {
+      followUps.push({
+        date: dueDateReminder.toISOString(),
         type: 'due-date',
-        description: 'Payment due - autopay declined, call for payment',
-        status: 'pending',
+        description: 'Payment due today (autopay declined)',
+        status: dueDateReminder < now ? 'skipped' : 'pending',
         method: 'phone',
-      },
-      {
-        date: addDays(now, 5).toISOString(),
+      });
+    }
+    
+    // Overdue reminders - these are typically still relevant
+    if (overdueDay5 < expirationDate) {
+      followUps.push({
+        date: overdueDay5.toISOString(),
         type: 'overdue',
         description: 'Still unpaid - follow up',
-        status: 'pending',
+        status: overdueDay5 < now ? 'pending' : 'pending', // Even if in past, might still need to follow up
         method: 'sms',
-      },
-      {
-        date: addDays(now, 7).toISOString(),
+      });
+    }
+    
+    if (overdueDay7 < expirationDate) {
+      followUps.push({
+        date: overdueDay7.toISOString(),
         type: 'overdue',
         description: 'Second follow-up',
         status: 'pending',
         method: 'sms',
-      },
-      {
-        date: addDays(now, 9).toISOString(),
+      });
+    }
+    
+    if (finalDay9 < expirationDate) {
+      followUps.push({
+        date: finalDay9.toISOString(),
         type: 'final',
         description: 'Final reminder (last day)',
         status: 'pending',
         method: 'phone',
-      },
-      {
-        date: addDays(now, 12).toISOString(),
+      });
+    }
+    
+    // Post-cancellation reminders (reinstatement opportunities)
+    if (postCancellation12 < expirationDate) {
+      followUps.push({
+        date: postCancellation12.toISOString(),
         type: 'post-cancellation',
         description: 'First reinstatement opportunity',
         status: 'pending',
         method: 'phone',
-      },
-      {
-        date: addDays(now, 14).toISOString(),
+      });
+    }
+    
+    if (postCancellation14 < expirationDate) {
+      followUps.push({
+        date: postCancellation14.toISOString(),
         type: 'post-cancellation',
         description: 'Second reinstatement opportunity',
         status: 'pending',
         method: 'phone',
-      }
-    );
-
-    // NEXT MONTH - Calculate next due date and add full cycle
-    const nextDueDate = new Date(currentDueDate);
-    nextDueDate.setMonth(nextDueDate.getMonth() + 1);
-    
-    // Only add next month reminders if policy hasn't expired
-    if (nextDueDate < expirationDate) {
-      followUps.push(
-        {
-          date: addDays(nextDueDate, -3).toISOString(),
-          type: 'pre-reminder',
-          description: 'Upcoming payment reminder',
-          status: 'pending',
-          method: 'sms',
-        },
-        {
-          date: nextDueDate.toISOString(),
-          type: 'due-date',
-          description: 'Payment due today',
-          status: 'pending',
-          method: 'phone',
-        },
-        {
-          date: addDays(nextDueDate, 5).toISOString(),
-          type: 'overdue',
-          description: 'Still unpaid - follow up',
-          status: 'pending',
-          method: 'sms',
-        },
-        {
-          date: addDays(nextDueDate, 7).toISOString(),
-          type: 'overdue',
-          description: 'Second follow-up',
-          status: 'pending',
-          method: 'sms',
-        },
-        {
-          date: addDays(nextDueDate, 9).toISOString(),
-          type: 'final',
-          description: 'Final reminder (last day)',
-          status: 'pending',
-          method: 'phone',
-        }
-      );
+      });
     }
 
-    // Add renewal reminders
-    const lastDay = addDays(expirationDate, -1);
-    const totalPayments = customer.totalPayments || 6;
-
-    if (totalPayments >= 6) {
-      followUps.push(
-        {
-          date: addDays(expirationDate, -15).toISOString(),
-          type: 'renewal',
-          description: 'Renewal reminder - 15 days before expiration',
-          status: 'pending',
-          method: 'phone',
-        },
-        {
-          date: addDays(expirationDate, -3).toISOString(),
-          type: 'renewal',
-          description: 'Renewal reminder - 3 days before expiration',
-          status: 'pending',
-          method: 'email',
-        },
-        {
-          date: lastDay.toISOString(),
-          type: 'renewal',
-          description: 'URGENT: Policy expires tomorrow - Last day to renew',
-          status: 'pending',
-          method: 'phone',
-        }
-      );
-    } else {
-      followUps.push(
-        {
-          date: addDays(expirationDate, -5).toISOString(),
-          type: 'renewal',
-          description: 'Renewal reminder - 5 days before expiration',
-          status: 'pending',
-          method: 'email',
-        },
-        {
-          date: addDays(expirationDate, -2).toISOString(),
-          type: 'renewal',
-          description: 'Renewal reminder - 2 days before expiration',
-          status: 'pending',
-          method: 'phone',
-        },
-        {
-          date: lastDay.toISOString(),
-          type: 'renewal',
-          description: 'URGENT: Policy expires tomorrow - Last day to renew',
-          status: 'pending',
-          method: 'phone',
-        }
-      );
-    }
-
-    // Update customer to regular payment type with new follow-ups
+    // Update the customer to regular payment type with new follow-ups
     await db.collection('payment_reminder_coll').updateOne(
       { id: customerId },
       {
@@ -212,11 +153,17 @@ export async function POST(request: Request) {
           paymentType: 'regular',
           followUps: followUps,
           updatedAt: new Date(),
+          autopayDeclinedDate: dueDate, // Track when autopay was declined
         },
       }
     );
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ 
+      success: true,
+      message: 'Successfully changed to direct bill',
+      dueDateReference: dueDate.toISOString(),
+      followUpsCreated: followUps.length
+    });
   } catch (error) {
     console.error('Error changing to direct bill:', error);
     return NextResponse.json(

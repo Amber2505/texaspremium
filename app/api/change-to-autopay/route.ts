@@ -15,6 +15,12 @@ function addDays(date: Date, days: number): Date {
   return result;
 }
 
+function addMonths(date: Date, months: number): Date {
+  const result = new Date(date);
+  result.setMonth(result.getMonth() + months);
+  return result;
+}
+
 export async function POST(request: Request) {
   try {
     const { customerId } = await request.json();
@@ -47,20 +53,30 @@ export async function POST(request: Request) {
       );
     }
 
-    const currentDueDate = customer.dueDate 
+    const now = new Date();
+    const originalDueDate = customer.dueDate 
       ? new Date(customer.dueDate)
       : new Date();
     
     const expirationDate = new Date(customer.expirationDate);
     const totalPayments = customer.totalPayments || 6;
+    const paymentDayOfMonth = customer.paymentDayOfMonth || originalDueDate.getDate();
     
     // Generate autopay follow-ups
     const followUps: FollowUp[] = [];
     
-    // Next payment cycle with autopay schedule
-    const nextDueDate = new Date(currentDueDate);
-    nextDueDate.setMonth(nextDueDate.getMonth() + 1);
+    // Calculate the NEXT due date for autopay
+    // This should be the next occurrence of the payment day that's in the future
+    let nextDueDate = new Date(now);
+    nextDueDate.setDate(paymentDayOfMonth);
+    nextDueDate.setHours(0, 0, 0, 0);
     
+    // If the payment day this month has already passed, move to next month
+    if (nextDueDate <= now) {
+      nextDueDate = addMonths(nextDueDate, 1);
+    }
+    
+    // Generate autopay follow-ups for the next payment cycle
     if (nextDueDate < expirationDate) {
       followUps.push(
         {
@@ -86,8 +102,38 @@ export async function POST(request: Request) {
         }
       );
     }
+    
+    // Continue adding autopay reminders for subsequent months until expiration
+    let currentPaymentDate = addMonths(nextDueDate, 1);
+    while (currentPaymentDate < expirationDate) {
+      followUps.push(
+        {
+          date: addDays(currentPaymentDate, -3).toISOString(),
+          type: 'pre-check',
+          description: 'Check autopay schedule',
+          status: 'pending',
+          method: 'sms',
+        },
+        {
+          date: currentPaymentDate.toISOString(),
+          type: 'due-date',
+          description: 'Confirm autopay succeeded',
+          status: 'pending',
+          method: 'sms',
+        },
+        {
+          date: addDays(currentPaymentDate, 7).toISOString(),
+          type: 'verification',
+          description: 'Verify payment posted correctly',
+          status: 'pending',
+          method: 'email',
+        }
+      );
+      
+      currentPaymentDate = addMonths(currentPaymentDate, 1);
+    }
 
-    // Add renewal reminders
+    // Add renewal reminders based on policy length
     const lastDay = addDays(expirationDate, -1);
 
     if (totalPayments >= 6) {
@@ -140,18 +186,28 @@ export async function POST(request: Request) {
       );
     }
 
+    // Update customer to autopay with new follow-ups
     await db.collection('payment_reminder_coll').updateOne(
       { id: customerId },
       {
         $set: {
           paymentType: 'autopay',
           followUps: followUps,
+          dueDate: nextDueDate, // Update to the new upcoming due date
           updatedAt: new Date(),
         },
+        $unset: {
+          autopayDeclinedDate: "", // Remove the decline date since we're back on autopay
+        }
       }
     );
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ 
+      success: true,
+      message: 'Successfully changed to autopay',
+      nextDueDate: nextDueDate.toISOString(),
+      followUpsCreated: followUps.length
+    });
   } catch (error) {
     console.error('Error changing to autopay:', error);
     return NextResponse.json(
