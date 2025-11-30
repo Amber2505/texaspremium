@@ -1,3 +1,4 @@
+// /admin/live-chat
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { History, RotateCcw } from "lucide-react";
@@ -82,7 +83,7 @@ interface QuickResponse {
 }
 
 const ADMIN_PASSWORD = "Insurance2024";
-const SESSION_KEY = "admin_chat_session";
+const SESSION_KEY = "admin_session";
 
 const DEFAULT_QUICK_RESPONSES: QuickResponse[] = [
   {
@@ -272,6 +273,29 @@ export default function AdminLiveChatDashboard() {
   useEffect(() => {
     const initSession = () => {
       if (typeof window !== "undefined") {
+        // First check for main admin session
+        const mainAdminSession = localStorage.getItem("admin_session");
+
+        if (mainAdminSession) {
+          try {
+            const session = JSON.parse(mainAdminSession);
+            const now = Date.now();
+
+            if (now < session.expiresAt) {
+              // Main admin session is valid - auto-login to chat
+              console.log(
+                "✅ Auto-logging in with main admin session:",
+                session.username
+              );
+              loginAsAdmin(session.username);
+              return;
+            }
+          } catch (error) {
+            console.error("Error parsing main admin session:", error);
+          }
+        }
+
+        // Fallback: check for old chat-specific session
         const savedSession = localStorage.getItem(SESSION_KEY);
         if (savedSession) {
           try {
@@ -279,21 +303,21 @@ export default function AdminLiveChatDashboard() {
             const now = Date.now();
 
             if (now < session.expiresAt) {
-              console.log("✅ Restoring admin session for:", session.name);
+              console.log("✅ Restoring chat session for:", session.name);
               loginAsAdmin(session.name);
+              return;
             } else {
               console.log("⏰ Session expired, clearing...");
               localStorage.removeItem(SESSION_KEY);
-              setIsCheckingSession(false);
             }
           } catch (error) {
-            console.error("Error parsing saved session:", error);
+            console.error("Error parsing saved chat session:", error);
             localStorage.removeItem(SESSION_KEY);
-            setIsCheckingSession(false);
           }
-        } else {
-          setIsCheckingSession(false);
         }
+
+        // No valid sessions found
+        setIsCheckingSession(false);
       }
     };
     initSession();

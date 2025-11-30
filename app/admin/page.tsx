@@ -1,3 +1,5 @@
+// /admin/page
+
 "use client";
 import { useState, useEffect } from "react";
 import { Eye, EyeOff, Users, Calendar, Shield } from "lucide-react";

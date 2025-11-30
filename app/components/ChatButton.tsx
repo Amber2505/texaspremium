@@ -218,6 +218,49 @@ export default function ChatButton() {
   // Notification sound
   const notificationSoundRef = useRef<HTMLAudioElement | null>(null);
 
+  // Refs to access current state values in socket callbacks without adding dependencies
+  const messagesRef = useRef(messages);
+  const liveAgentNameRef = useRef(liveAgentName);
+  const liveAgentPhoneRef = useRef(liveAgentPhone);
+  const isConnectedToAgentRef = useRef(isConnectedToAgent);
+  const agentNameRef = useRef(agentName);
+  const isVerifiedRef = useRef(isVerified);
+  const customerDataRef = useRef(customerData);
+  const isLiveChatRef = useRef(isLiveChat);
+
+  // Keep refs updated
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    liveAgentNameRef.current = liveAgentName;
+  }, [liveAgentName]);
+
+  useEffect(() => {
+    liveAgentPhoneRef.current = liveAgentPhone;
+  }, [liveAgentPhone]);
+
+  useEffect(() => {
+    isConnectedToAgentRef.current = isConnectedToAgent;
+  }, [isConnectedToAgent]);
+
+  useEffect(() => {
+    agentNameRef.current = agentName;
+  }, [agentName]);
+
+  useEffect(() => {
+    isVerifiedRef.current = isVerified;
+  }, [isVerified]);
+
+  useEffect(() => {
+    customerDataRef.current = customerData;
+  }, [customerData]);
+
+  useEffect(() => {
+    isLiveChatRef.current = isLiveChat;
+  }, [isLiveChat]);
+
   const router = useRouter();
 
   // Initialize notification sound
@@ -227,33 +270,6 @@ export default function ChatButton() {
       notificationSoundRef.current.volume = 1.0;
     }
   }, []);
-
-  // Play notification sound
-  const playNotificationSound = () => {
-    if (notificationSoundRef.current) {
-      notificationSoundRef.current.currentTime = 0;
-      notificationSoundRef.current
-        .play()
-        .catch((e) => console.log("Sound play failed:", e));
-    }
-  };
-
-  // Show browser notification with sound
-  const showNotification = (title: string, body: string, playSound = true) => {
-    if (playSound) {
-      playNotificationSound();
-    }
-
-    if (Notification.permission === "granted" && document.hidden) {
-      new Notification(title, {
-        body,
-        icon: "/logo.png",
-        badge: "/logo.png",
-        tag: "chat-notification",
-        requireInteraction: false,
-      });
-    }
-  };
 
   useEffect(() => {
     if (!open) return;
@@ -467,6 +483,349 @@ export default function ChatButton() {
     }
   }, [messages, loading, open, showConfirmClose]);
 
+  const connectToLiveChat = useCallback((name: string, phone: string) => {
+    // ✅ CLEAR OLD SESSION AND CREATE FRESH ONE
+    // Remove old user ID to force new session creation
+    localStorage.removeItem("chat-user-id");
+
+    // Clear any existing socket connection
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+
+    // Clear old chat storage to prevent restoration of ended session
+    clearChatFromStorage();
+
+    setLiveAgentName(name);
+    setLiveAgentPhone(phone);
+    setIsLiveChat(true);
+
+    // ✅ CREATE NEW USER ID FOR FRESH SESSION
+    const userId = `user-${Math.random()
+      .toString(36)
+      .substr(2, 9)}-${Date.now()}`;
+    localStorage.setItem("chat-user-id", userId);
+
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
+
+    socketRef.current = io(SOCKET_URL, {
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 10,
+      transports: ["websocket", "polling"],
+    });
+
+    socketRef.current.on("connect", () => {
+      console.log("Connected to live chat server");
+
+      socketRef.current?.emit("customer-join", {
+        userId,
+        userName: name,
+        userPhone: phone,
+        conversationHistory: [], // ✅ Start fresh - no old history
+      });
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Connecting you to a live agent... Please wait.",
+          extra: { liveAgentFormSubmitted: true },
+        },
+      ]);
+
+      if (heartbeatInterval.current) {
+        clearInterval(heartbeatInterval.current);
+      }
+      heartbeatInterval.current = setInterval(() => {
+        if (socketRef.current?.connected) {
+          socketRef.current.emit("heartbeat", {
+            userId,
+            userType: "customer",
+          });
+        }
+      }, 30000);
+    });
+
+    socketRef.current.on("reconnect_attempt", (attempt: number) => {
+      console.log(`Reconnection attempt ${attempt}...`);
+    });
+
+    socketRef.current.on("reconnect", () => {
+      console.log("Reconnected successfully");
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Reconnected to chat.",
+          extra: null,
+        },
+      ]);
+    });
+
+    socketRef.current.on(
+      "chat-history",
+      (
+        history: Array<{
+          content: string;
+          isAdmin: boolean;
+          userName?: string;
+          fileUrl?: string;
+          fileName?: string;
+          timestamp: string;
+        }>
+      ) => {
+        if (history && history.length > 0) {
+          const restoredMessages: Message[] = history.map((msg) => ({
+            role: msg.isAdmin ? "assistant" : "user",
+            content: msg.content,
+            userName: msg.userName,
+            fileUrl: msg.fileUrl,
+            fileName: msg.fileName,
+            extra: null,
+          }));
+          setMessages(restoredMessages);
+        }
+      }
+    );
+
+    socketRef.current.on(
+      "agent-joined",
+      ({
+        agentName: joinedAgentName,
+        message,
+      }: {
+        agentName: string;
+        message: string;
+      }) => {
+        setIsConnectedToAgent(true);
+        setAgentName(joinedAgentName);
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: message,
+            extra: null,
+          },
+        ]);
+
+        // Use the notification sound ref directly
+        if (notificationSoundRef.current) {
+          notificationSoundRef.current.currentTime = 0;
+          notificationSoundRef.current
+            .play()
+            .catch((e) => console.log("Sound play failed:", e));
+        }
+
+        if (Notification.permission === "granted" && document.hidden) {
+          new Notification("Agent Joined", {
+            body: message,
+            icon: "/logo.png",
+            badge: "/logo.png",
+            tag: "chat-notification",
+            requireInteraction: false,
+          });
+        }
+      }
+    );
+
+    socketRef.current.on(
+      "new-message",
+      (message: {
+        isAdmin: boolean;
+        content: string;
+        userName?: string;
+        fileUrl?: string;
+        fileName?: string;
+        id?: string;
+      }) => {
+        // Only add admin messages from socket - user messages are already added optimistically
+        if (!message.isAdmin) {
+          return; // Skip user's own messages to prevent duplicates
+        }
+
+        setMessages((prev) => {
+          // Check if message already exists
+          const exists = prev.some((m) => m.id === message.id);
+          if (exists) return prev;
+
+          return [
+            ...prev,
+            {
+              role: "assistant",
+              content: message.content,
+              userName: message.userName,
+              fileUrl: message.fileUrl,
+              fileName: message.fileName,
+              id: message.id,
+              extra: null,
+            },
+          ];
+        });
+
+        // Reset agent typing indicator and play notification
+        setAgentTyping(false);
+
+        // Play notification sound directly
+        if (notificationSoundRef.current) {
+          notificationSoundRef.current.currentTime = 0;
+          notificationSoundRef.current
+            .play()
+            .catch((e) => console.log("Sound play failed:", e));
+        }
+
+        if (Notification.permission === "granted" && document.hidden) {
+          new Notification(message.userName || "Agent", {
+            body: message.content,
+            icon: "/logo.png",
+            badge: "/logo.png",
+            tag: "chat-notification",
+            requireInteraction: false,
+          });
+        }
+      }
+    );
+
+    socketRef.current.on(
+      "message-deleted",
+      ({ messageId }: { messageId: string }) => {
+        console.log(`🗑️ Message ${messageId} was deleted`);
+        setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+      }
+    );
+
+    socketRef.current.on(
+      "agent-typing-indicator",
+      ({ isTyping }: { isTyping: boolean }) => {
+        setAgentTyping(isTyping);
+      }
+    );
+
+    socketRef.current.on("agent-left", ({ message }: { message: string }) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: message,
+          extra: null,
+        },
+      ]);
+      setIsConnectedToAgent(false);
+
+      // Play notification sound directly
+      if (notificationSoundRef.current) {
+        notificationSoundRef.current.currentTime = 0;
+        notificationSoundRef.current
+          .play()
+          .catch((e) => console.log("Sound play failed:", e));
+      }
+
+      if (Notification.permission === "granted" && document.hidden) {
+        new Notification("Agent Left", {
+          body: message,
+          icon: "/logo.png",
+          badge: "/logo.png",
+          tag: "chat-notification",
+          requireInteraction: false,
+        });
+      }
+    });
+
+    socketRef.current.on(
+      "session-ended",
+      ({ message }: { message: string }) => {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content:
+              message ||
+              "The agent has ended the chat session. Thank you for contacting us!",
+            extra: null,
+          },
+        ]);
+        setIsLiveChat(false);
+        setIsConnectedToAgent(false);
+
+        if (heartbeatInterval.current) {
+          clearInterval(heartbeatInterval.current);
+        }
+
+        // ✅ MARK AS ENDED BEFORE CLEARING - use refs for current values
+        const currentUserId = localStorage.getItem("chat-user-id") || "";
+        const sessionData: StoredChatSession = {
+          messages: messagesRef.current,
+          isLiveChat: false,
+          liveAgentName: liveAgentNameRef.current,
+          liveAgentPhone: liveAgentPhoneRef.current,
+          isConnectedToAgent: false,
+          agentName: agentNameRef.current,
+          userId: currentUserId,
+          timestamp: Date.now(),
+          isVerified: isVerifiedRef.current,
+          customerData: customerDataRef.current,
+          sessionEnded: true, // ✅ Mark as ended
+        };
+        saveChatToStorage(sessionData);
+
+        socketRef.current?.disconnect();
+
+        // Clear after a short delay
+        setTimeout(() => {
+          clearChatFromStorage();
+        }, 1000);
+
+        // Play notification sound directly
+        if (notificationSoundRef.current) {
+          notificationSoundRef.current.currentTime = 0;
+          notificationSoundRef.current
+            .play()
+            .catch((e) => console.log("Sound play failed:", e));
+        }
+
+        if (Notification.permission === "granted" && document.hidden) {
+          new Notification("Chat Ended", {
+            body: message || "Chat session ended",
+            icon: "/logo.png",
+            badge: "/logo.png",
+            tag: "chat-notification",
+            requireInteraction: false,
+          });
+        }
+      }
+    );
+
+    socketRef.current.on("disconnect", (reason: string) => {
+      console.log("Disconnected from live chat server:", reason);
+
+      if (heartbeatInterval.current) {
+        clearInterval(heartbeatInterval.current);
+      }
+
+      if (reason === "io server disconnect" || reason === "transport close") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "Connection lost. Attempting to reconnect...",
+            extra: null,
+          },
+        ]);
+      }
+    });
+
+    socketRef.current.on("connect_error", (error: Error) => {
+      console.error("Connection error:", error);
+    });
+  }, []);
+
   // Restore chat session on mount
   useEffect(() => {
     const restoredSession = loadChatFromStorage();
@@ -490,7 +849,7 @@ export default function ChatButton() {
         );
       }
     }
-  }, []);
+  }, [connectToLiveChat]);
 
   // Save chat session to storage whenever critical state changes
   // Save chat session to storage whenever critical state changes
@@ -647,10 +1006,10 @@ export default function ChatButton() {
       });
 
       const phoneDigits = cleanPhoneNumber(phone);
-      const verificationCode = Math.floor(
+      const newVerificationCode = Math.floor(
         100000 + Math.random() * 900000
       ).toString();
-      const message = `Your verification code is: ${verificationCode} - Texas Premium Insurance Services`;
+      const message = `Your verification code is: ${newVerificationCode} - Texas Premium Insurance Services`;
       const encodedMessage = encodeURIComponent(message);
       const toNumber = `${phoneDigits}`;
       const smsUrl = `https://astraldbapi.herokuapp.com/texas_premium_message_send/?message=${encodedMessage}&To=${toNumber}`;
@@ -658,7 +1017,7 @@ export default function ChatButton() {
       const response = await fetch(smsUrl);
 
       if (response.ok) {
-        setStoredVerificationCode(verificationCode);
+        setStoredVerificationCode(newVerificationCode);
         setCodeExpiration(new Date(Date.now() + 5 * 60 * 1000));
 
         setMessages((prev) => [
@@ -798,281 +1157,6 @@ export default function ChatButton() {
       setLiveAgentPhone(digitsOnly);
     }
   };
-
-  const connectToLiveChat = useCallback((name: string, phone: string) => {
-    // ✅ CLEAR OLD SESSION AND CREATE FRESH ONE
-    // Remove old user ID to force new session creation
-    localStorage.removeItem("chat-user-id");
-
-    // Clear any existing socket connection
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-      socketRef.current = null;
-    }
-
-    // Clear old chat storage to prevent restoration of ended session
-    clearChatFromStorage();
-
-    setLiveAgentName(name);
-    setLiveAgentPhone(phone);
-    setIsLiveChat(true);
-
-    // ✅ CREATE NEW USER ID FOR FRESH SESSION
-    const userId = `user-${Math.random()
-      .toString(36)
-      .substr(2, 9)}-${Date.now()}`;
-    localStorage.setItem("chat-user-id", userId);
-
-    if (typeof window !== "undefined" && "Notification" in window) {
-      if (Notification.permission === "default") {
-        Notification.requestPermission();
-      }
-    }
-
-    socketRef.current = io(SOCKET_URL, {
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 10,
-      transports: ["websocket", "polling"],
-    });
-
-    socketRef.current.on("connect", () => {
-      console.log("Connected to live chat server");
-
-      socketRef.current?.emit("customer-join", {
-        userId,
-        userName: name,
-        userPhone: phone,
-        conversationHistory: [], // ✅ Start fresh - no old history
-      });
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Connecting you to a live agent... Please wait.",
-          extra: { liveAgentFormSubmitted: true },
-        },
-      ]);
-
-      if (heartbeatInterval.current) {
-        clearInterval(heartbeatInterval.current);
-      }
-      heartbeatInterval.current = setInterval(() => {
-        if (socketRef.current?.connected) {
-          socketRef.current.emit("heartbeat", {
-            userId,
-            userType: "customer",
-          });
-        }
-      }, 30000);
-    });
-
-    socketRef.current.on("reconnect_attempt", (attempt: number) => {
-      console.log(`Reconnection attempt ${attempt}...`);
-    });
-
-    socketRef.current.on("reconnect", () => {
-      console.log("Reconnected successfully");
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Reconnected to chat.",
-          extra: null,
-        },
-      ]);
-    });
-
-    socketRef.current.on(
-      "chat-history",
-      (
-        history: Array<{
-          content: string;
-          isAdmin: boolean;
-          userName?: string;
-          fileUrl?: string;
-          fileName?: string;
-          timestamp: string;
-        }>
-      ) => {
-        if (history && history.length > 0) {
-          const restoredMessages: Message[] = history.map((msg) => ({
-            role: msg.isAdmin ? "assistant" : "user",
-            content: msg.content,
-            userName: msg.userName,
-            fileUrl: msg.fileUrl,
-            fileName: msg.fileName,
-            extra: null,
-          }));
-          setMessages(restoredMessages);
-        }
-      }
-    );
-
-    socketRef.current.on(
-      "agent-joined",
-      ({ agentName, message }: { agentName: string; message: string }) => {
-        setIsConnectedToAgent(true);
-        setAgentName(agentName);
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: message,
-            extra: null,
-          },
-        ]);
-
-        showNotification("Agent Joined", message);
-      }
-    );
-
-    socketRef.current.on(
-      "new-message",
-      (message: {
-        isAdmin: boolean;
-        content: string;
-        userName?: string;
-        fileUrl?: string;
-        fileName?: string;
-        id?: string;
-      }) => {
-        // Show ALL messages (both customer and admin)
-        setMessages((prev) => {
-          // Check if message already exists
-          const exists = prev.some((m) => m.id === message.id);
-          if (exists) return prev;
-
-          return [
-            ...prev,
-            {
-              role: message.isAdmin ? "assistant" : "user",
-              content: message.content,
-              userName: message.userName,
-              fileUrl: message.fileUrl,
-              fileName: message.fileName,
-              id: message.id,
-              extra: null,
-            },
-          ];
-        });
-
-        if (message.isAdmin) {
-          setAgentTyping(false);
-          showNotification(message.userName || "Agent", message.content);
-        }
-      }
-    );
-
-    socketRef.current.on(
-      "message-deleted",
-      ({ messageId }: { messageId: string }) => {
-        console.log(`🗑️ Message ${messageId} was deleted`);
-        setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
-      }
-    );
-
-    socketRef.current.on(
-      "agent-typing-indicator",
-      ({ isTyping }: { isTyping: boolean }) => {
-        setAgentTyping(isTyping);
-      }
-    );
-
-    socketRef.current.on("agent-left", ({ message }: { message: string }) => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: message,
-          extra: null,
-        },
-      ]);
-      setIsConnectedToAgent(false);
-      showNotification("Agent Left", message);
-    });
-
-    socketRef.current.on(
-      "session-ended",
-      ({ message }: { message: string }) => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content:
-              message ||
-              "The agent has ended the chat session. Thank you for contacting us!",
-            extra: null,
-          },
-        ]);
-        setIsLiveChat(false);
-        setIsConnectedToAgent(false);
-
-        if (heartbeatInterval.current) {
-          clearInterval(heartbeatInterval.current);
-        }
-
-        // ✅ MARK AS ENDED BEFORE CLEARING
-        const userId = localStorage.getItem("chat-user-id") || "";
-        const sessionData: StoredChatSession = {
-          messages,
-          isLiveChat: false,
-          liveAgentName,
-          liveAgentPhone,
-          isConnectedToAgent: false,
-          agentName,
-          userId,
-          timestamp: Date.now(),
-          isVerified,
-          customerData,
-          sessionEnded: true, // ✅ Mark as ended
-        };
-        saveChatToStorage(sessionData);
-
-        socketRef.current?.disconnect();
-
-        // Clear after a short delay
-        setTimeout(() => {
-          clearChatFromStorage();
-        }, 1000);
-
-        showNotification("Chat Ended", message || "Chat session ended");
-      }
-    );
-
-    socketRef.current.on("disconnect", (reason: string) => {
-      console.log("Disconnected from live chat server:", reason);
-
-      if (heartbeatInterval.current) {
-        clearInterval(heartbeatInterval.current);
-      }
-
-      if (reason === "io server disconnect" || reason === "transport close") {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: "Connection lost. Attempting to reconnect...",
-            extra: null,
-          },
-        ]);
-      }
-    });
-
-    socketRef.current.on("connect_error", (error: Error) => {
-      console.error("Connection error:", error);
-    });
-
-    socketRef.current.on(
-      "message-deleted",
-      ({ messageId }: { messageId: string }) => {
-        setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
-      }
-    );
-  }, []);
 
   const handleCustomerTyping = (value: string) => {
     setInput(value);
@@ -1314,7 +1398,7 @@ export default function ChatButton() {
     }
 
     // // ✅ FIX: Always add user message to local state first
-    // setMessages((prev) => [...prev, newMessage]);
+    setMessages((prev) => [...prev, newMessage]);
 
     if (isLiveChat && socketRef.current) {
       const userId = localStorage.getItem("chat-user-id");
@@ -1335,7 +1419,6 @@ export default function ChatButton() {
       if (aiResponse.content && !aiResponse.shouldDeferToAPI) {
         setMessages((prev) => [
           ...prev,
-          newMessage, // Add user message
           {
             role: "assistant",
             content: aiResponse.content,
@@ -1564,13 +1647,10 @@ export default function ChatButton() {
             extra: null,
           };
 
-          // ✅ DON'T add to messages here if in live chat - server will broadcast it
-          // Only add locally if NOT in live chat (AI chat mode)
-          if (!isLiveChat) {
-            setMessages((prev) => [...prev, fileMessage]);
-          }
+          // ✅ Always add file message locally (optimistically)
+          setMessages((prev) => [...prev, fileMessage]);
 
-          // If in live chat, emit to socket (server will broadcast to both customer and admin)
+          // If in live chat, emit to socket (admin will receive it)
           if (isLiveChat && socketRef.current) {
             const userId = localStorage.getItem("chat-user-id");
             socketRef.current.emit("customer-message", {

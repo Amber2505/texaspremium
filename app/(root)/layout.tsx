@@ -11,6 +11,9 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
   const getInsuranceRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  //getting current year
+  const currentYear = new Date().getFullYear();
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -312,15 +315,16 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                 Mon - Sat | 9 a.m. - 7 p.m. CT
               </p>
             </div>
-            <div className="flex space-x-4 mb-4 md:mb-0">
+            <div className="flex justify-center space-x-6 mb-4 md:mb-0">
               <a
-                href="https://facebook.com"
+                href="https://www.facebook.com/TexasPremiumIns"
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Facebook"
+                className="transform hover:scale-110 transition-transform duration-200"
               >
                 <svg
-                  className="w-6 h-6 text-white hover:text-blue-400"
+                  className="w-6 h-6 text-white hover:text-blue-400 transition-colors"
                   fill="currentColor"
                   viewBox="0 0 24 24"
                   xmlns="http://www.w3.org/2000/svg"
@@ -328,14 +332,16 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                   <path d="M22.675 0H1.325C.593 0 0 .593 0 1.325v21.351C0 23.407.593 24 1.325 24h11.494v-9.294H9.694v-3.622h3.125V8.413c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.795.143v3.24l-1.918.001c-1.504 0-1.795.715-1.795 1.763v2.313h3.587l-.467 3.622h-3.12V24h6.116c.732 0 1.325-.593 1.325-1.324V1.325C24 .593 23.407 0 22.675 0z" />
                 </svg>
               </a>
+
               <a
-                href="https://instagram.com"
+                href="https://www.instagram.com/texaspremiumins/"
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Instagram"
+                className="transform hover:scale-110 transition-transform duration-200"
               >
                 <svg
-                  className="w-6 h-6 text-white hover:text-blue-400"
+                  className="w-6 h-6 text-white hover:text-blue-400 transition-colors"
                   fill="currentColor"
                   viewBox="0 0 24 24"
                   xmlns="http://www.w3.org/2000/svg"
@@ -343,29 +349,33 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                   <path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.173.281 2.686.505.576.235 1.01.52 1.462.927.452.407.692.885.927 1.462.224.513.443 1.32.505 2.686.058 1.266.07 1.646.07 4.85s-.012 3.584-.07 4.85c-.062 1.366-.281 2.173-.505 2.686-.235.576-.52 1.01-.927 1.462-.407.452-.885.692-1.462.927-.513.224-1.32.443-2.686.505-1.266.058-1.646.07-4.85.07s-3.584-.012-4.85-.07c-1.366-.062-2.173-.281-2.686-.505-.576-.235-1.01-.52-1.462-.927-.452-.407-.692-.885-.927-1.462-.224-.513-.443-1.32-.505-2.686-.058-1.266-.07-1.646-.07-4.85s.012-3.584.07-4.85c.062-1.366.281-2.173.505-2.686.235-.576.52-1.01.927-1.462.407-.452.885-.692 1.462-.927.513-.224 1.32-.443 2.686-.505 1.266-.058 1.646-.07 4.85-.07m0-2.163C8.736 0 8.332.012 7.052.07c-1.338.064-2.127.287-2.784.611-.69.346-1.31.804-1.895 1.388-.585.584-1.042 1.205-1.388 1.895-.324.657-.547 1.446-.611 2.784C.012 8.332 0 8.736 0 12s.012 3.668.07 4.948c.064 1.338.287 2.127.611 2.784.346.69.804 1.31 1.388 1.895.584.585 1.205 1.042 1.895 1.388.657.324 1.446.547 2.784.611 1.28.058 1.684.07 4.948.07s3.668-.012 4.948-.07c1.338-.064 2.127-.287 2.784-.611.69-.346 1.31-.804 1.895-1.388.585-.584 1.042-1.205 1.388-1.895.324-.657.547-1.446.611-2.784.058-1.28.07-1.684.07-4.948s-.012-3.668-.07-4.948c-.064-1.338-.287-2.127-.611-2.784-.346-.69-.804-1.31-1.388-1.895-.584-.585-1.205-1.042-1.895-1.388-.657-.324-1.446-.547-2.784-.611-1.28-.058-1.684-.07-4.948-.07zM12 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.162 6.162 6.162 6.162-2.759 6.162-6.162-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.791-4-4s1.791-4 4-4 4 1.791 4 4-1.791 4-4 4zm6.406-11.845c0 .796-.646 1.442-1.442 1.442-.796 0-1.442-.646-1.442-1.442 0-.796.646-1.442 1.442-1.442.796 0 1.442.646 1.442 1.442z" />
                 </svg>
               </a>
+
               <a
-                href="https://twitter.com"
+                href="https://x.com/TexasPremiumIns"
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label="Twitter"
+                aria-label="X (formerly Twitter)"
+                className="transform hover:scale-110 transition-transform duration-200"
               >
                 <svg
-                  className="w-6 h-6 text-white hover:text-blue-400"
+                  className="w-6 h-6 text-white hover:text-gray-400 transition-colors"
                   fill="currentColor"
                   viewBox="0 0 24 24"
                   xmlns="http://www.w3.org/2000/svg"
                 >
-                  <path d="M23.954 4.569c-.885.39-1.83.654-2.825.775 1.014-.611 1.794-1.574 2.163-2.723-.951.555-2.005.959-3.127 1.184-.896-.959-2.173-1.559-3.591-1.559-2.717 0-4.92 2.203-4.92 4.917 0 .39.045.765.127 1.124C7.691 8.094 4.066 6.13 1.64 3.161c-.427.722-.666 1.561-.666 2.475 0 1.71.87 3.213 2.188 4.096-.807-.026-1.566-.248-2.228-.616v.061c0 2.385 1.693 4.374 3.946 4.827-.413.111-.849.171-1.296.171-.314 0-.615-.03-.916-.086.631 1.953 2.445 3.377 4.604 3.417-1.68 1.319-3.809 2.105-6.102 2.105-.39 0-.779-.023-1.17-.067 2.189 1.394 4.768 2.209 7.557 2.209 9.054 0 14.008-7.496 14.008-13.985 0-.21 0-.42-.015-.63.961-.695 1.8-1.562 2.457-2.549l-.047-.02z" />
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                 </svg>
               </a>
+
               <a
-                href="https://youtube.com"
+                href="https://www.youtube.com/@TexasPremiumIns"
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="YouTube"
+                className="transform hover:scale-110 transition-transform duration-200"
               >
                 <svg
-                  className="w-6 h-6 text-white hover:text-blue-400"
+                  className="w-6 h-6 text-white hover:text-red-500 transition-colors"
                   fill="currentColor"
                   viewBox="0 0 24 24"
                   xmlns="http://www.w3.org/2000/svg"
@@ -376,7 +386,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
             </div>
             <div className="text-sm text-white">
               <p className="text-white">
-                © 2025 Texas Premium Insurance Services, LLC
+                © {currentYear} Texas Premium Insurance Services, LLC
               </p>
               <p className="mt-2">
                 <a

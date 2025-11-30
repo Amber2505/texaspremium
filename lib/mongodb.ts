@@ -1,4 +1,6 @@
-import { MongoClient } from 'mongodb';
+// lib/mongodb.ts
+
+import { Db, MongoClient } from 'mongodb';
 
 if (!process.env.MONGODB_URI) {
   throw new Error('Please add your Mongo URI to .env.local');
@@ -23,6 +25,12 @@ if (process.env.NODE_ENV === 'development') {
 } else {
   client = new MongoClient(uri, options);
   clientPromise = client.connect();
+}
+
+// Fixed: Changed default database name to 'db'
+export async function getDatabase(dbName: string = 'db'): Promise<Db> {
+  const client = await clientPromise;
+  return client.db(dbName);
 }
 
 export default clientPromise;

@@ -1,10 +1,12 @@
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const { MongoClient } = require('mongodb');
-
-// ✅ Node 22 has global fetch — no need for node-fetch
+const express = require('express'); // ← Added for HTTP routes
 
 const httpServer = createServer();
+const app = express();
+app.use(express.json()); // Parse JSON bodies
+
 const io = new Server(httpServer, {
   cors: {
     origin: [
@@ -23,6 +25,38 @@ const io = new Server(httpServer, {
   allowEIO3: true
 });
 
+// ================================================
+// REAL-TIME RINGCENTRAL NOTIFICATION ENDPOINT
+// ================================================
+app.post('/notify/ringcentral', (req, res) => {
+  try {
+    const { phoneNumber, messageId, timestamp, subject } = req.body;
+
+    if (!phoneNumber) {
+      console.warn('Missing phoneNumber in /notify/ringcentral');
+      return res.status(400).json({ error: "Missing phoneNumber" });
+    }
+
+    console.log(`New RingCentral message → broadcasting to conversation:${phoneNumber}`);
+
+    io.to(`conversation:${phoneNumber}`).emit('newRingCentralMessage', {
+      phoneNumber,
+      messageId,
+      timestamp,
+      subject: subject || "New message",
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error in /notify/ringcentral:', error);
+    res.status(500).json({ error: "Internal error" });
+  }
+});
+
+// Attach Express app to the same HTTP server
+httpServer.on('request', app);
+// ================================================
+
 // MongoDB Connection
 let db;
 let liveChatHistoryCollection;
@@ -31,10 +65,10 @@ let deletedChatsCollection;
 async function connectMongoDB() {
   try {
     if (!process.env.MONGODB_URI) {
-      throw new Error("❌ Missing MONGODB_URI environment variable");
+      throw new Error("Missing MONGODB_URI environment variable");
     }
 
-    console.log('🔄 Attempting to connect to MongoDB...');
+    console.log('Attempting to connect to MongoDB...');
     
     const client = new MongoClient(process.env.MONGODB_URI, {
       serverSelectionTimeoutMS: 5000,
@@ -42,53 +76,41 @@ async function connectMongoDB() {
     });
     
     await client.connect();
-    
-    // Test the connection
     await client.db().admin().ping();
-    console.log('✅ MongoDB ping successful');
+    console.log('MongoDB ping successful');
     
     db = client.db('myFirstDatabase');
     liveChatHistoryCollection = db.collection('live_chat_history');
-    deletedChatsCollection = db.collection('deleted_chats_history'); // ✅ Add this
+    deletedChatsCollection = db.collection('deleted_chats_history');
     
-    // Verify collection access
     const count = await liveChatHistoryCollection.countDocuments();
-    console.log(`✅ MongoDB connected successfully. Found ${count} existing chat records.`);
+    console.log(`MongoDB connected successfully. Found ${count} existing chat records.`);
     
     return true;
   } catch (error) {
-    console.error('❌ MongoDB connection error:', error.message);
+    console.error('MongoDB connection error:', error.message);
     console.error('Stack:', error.stack);
     db = null;
     liveChatHistoryCollection = null;
-    deletedChatsCollection = null; // ✅ Add this
+    deletedChatsCollection = null;
     return false;
   }
 }
 
-// Wait for MongoDB connection before starting server
 async function startServer() {
   const dbConnected = await connectMongoDB();
   
   if (!dbConnected) {
-    console.error('⚠️ Server starting WITHOUT database connection');
-    console.error('⚠️ Chat history and delete features will not work');
+    console.error('Server starting WITHOUT database connection');
+    console.error('Chat history and delete features will not work');
   }
-
-//   const PORT = process.env.PORT || 3001;
-//   httpServer.listen(PORT, '0.0.0.0', () => {
-//     console.log(`🚀 WebSocket server running on port ${PORT}`);
-//     console.log(`📡 Server ready at ${new Date().toISOString()}`);
-//     console.log(`💾 Database status: ${dbConnected ? 'CONNECTED ✅' : 'DISCONNECTED ❌'}`);
-//   });
 }
 
-// Start the server
 startServer();
 
 const activeSessions = new Map();
 const adminSockets = new Set();
-const agentWaitTimers = new Map(); // Track 5-minute timers
+const agentWaitTimers = new Map();
 
 // Send SMS notification when no agent connects
 async function sendNoAgentNotification(session) {
@@ -98,10 +120,10 @@ async function sendNoAgentNotification(session) {
     const toNumber = '+19727486404';
     const smsUrl = `https://astraldbapi.herokuapp.com/message_send_link/?message=${encodedMessage}&To=${toNumber}`;
     
-    await fetch(smsUrl); // ✅ Using built-in fetch
-    console.log('📱 Sent no-agent notification SMS for:', session.userName);
+    await fetch(smsUrl);
+    console.log('Sent no-agent notification SMS for:', session.userName);
   } catch (error) {
-    console.error('❌ Failed to send SMS notification:', error);
+    console.error('Failed to send SMS notification:', error);
   }
 }
 
@@ -132,7 +154,7 @@ async function saveChatHistory(session) {
       { upsert: true }
     );
   } catch (error) {
-    console.error('❌ Error saving to MongoDB:', error);
+    console.error('Error saving to MongoDB:', error);
   }
 }
 
@@ -143,22 +165,21 @@ async function loadChatHistory(userId) {
   try {
     return await liveChatHistoryCollection.findOne({ userId });
   } catch (error) {
-    console.error('❌ Error loading from MongoDB:', error);
+    console.error('Error loading from MongoDB:', error);
     return null;
   }
 }
 
 io.on('connection', (socket) => {
-  console.log('✅ Client connected:', socket.id, 'at', new Date().toISOString());
+  console.log('Client connected:', socket.id, 'at', new Date().toISOString());
 
   socket.on('admin-join', async () => {
     adminSockets.add(socket.id);
     socket.join('admins');
-    console.log('👤 Admin joined:', socket.id);
+    console.log('Admin joined:', socket.id);
     
     const activeSessionsArray = Array.from(activeSessions.values());
     
-    // Load recent chat history from MongoDB (top 20)
     let recentChats = [];
     if (liveChatHistoryCollection) {
       try {
@@ -168,7 +189,7 @@ io.on('connection', (socket) => {
           .limit(20)
           .toArray();
       } catch (error) {
-        console.error('❌ Error loading recent chats:', error);
+        console.error('Error loading recent chats:', error);
       }
     }
     
@@ -199,262 +220,228 @@ io.on('connection', (socket) => {
       const hasMore = (skip + limit) < totalCount;
       
       socket.emit('more-chats', { chats, hasMore, total: totalCount });
-      console.log(`📄 Loaded ${chats.length} more chats (skip: ${skip})`);
+      console.log(`Loaded ${chats.length} more chats (skip: ${skip})`);
     } catch (error) {
-      console.error('❌ Error loading more chats:', error);
+      console.error('Error loading more chats:', error);
       socket.emit('more-chats', { chats: [], hasMore: false });
     }
   });
 
   socket.on('admin-delete-chat', async ({ userId, adminName }) => {
-  try {
-    console.log(`🗑️ Admin ${adminName} requesting deletion of chat ${userId}`);
-    
-    if (!db || !liveChatHistoryCollection) {
-      console.error('❌ Database not available');
-      socket.emit('delete-error', { 
-        message: 'Database connection not available. Please try again.' 
-      });
-      return;
-    }
-    
-    // ✅ First, get the chat data before deleting
-    const chatToDelete = await liveChatHistoryCollection.findOne({ userId: userId });
-    
-    if (!chatToDelete) {
-      console.log(`⚠️ No chat found in database for user ${userId}`);
-      socket.emit('delete-error', { 
-        message: 'Chat not found in database.' 
-      });
-      return;
-    }
-    
-    // ✅ Save to deleted chats history
-    if (deletedChatsCollection) {
-      const deletedRecord = {
-        ...chatToDelete,
-        deletedBy: adminName,
-        deletedAt: new Date().toISOString(),
-        originalChatId: chatToDelete._id,
-        messageCount: chatToDelete.conversationHistory?.length || 0,
-        chatDuration: calculateChatDuration(chatToDelete.joinedAt, chatToDelete.lastSeen),
-      };
-      
-      await deletedChatsCollection.insertOne(deletedRecord);
-      console.log(`💾 Saved deleted chat to history: ${userId}`);
-    }
-    
-    // Delete from active chats
-    const result = await liveChatHistoryCollection.deleteOne({ userId: userId });
-    
-    if (result.deletedCount > 0) {
-      console.log(`✅ Chat deleted from active chats for user ${userId}`);
-      
-      // Remove from active sessions
-      activeSessions.delete(userId);
-      
-      // Clear any timers
-      const timer = agentWaitTimers.get(userId);
-      if (timer) {
-        clearTimeout(timer);
-        agentWaitTimers.delete(userId);
-      }
-      
-      // Notify ALL admins
-      io.to('admins').emit('chat-deleted', { 
-        userId, 
-        deletedBy: adminName 
-      });
-      
-      // Notify customer if connected
-      io.to(`customer-${userId}`).emit('session-ended', {
-        message: 'This chat session has been closed by an administrator.'
-      });
-      
-      console.log(`✅ All deletion notifications sent for ${userId}`);
-    }
-  } catch (error) {
-    console.error('❌ Error during chat deletion:', error);
-    socket.emit('delete-error', { 
-      message: `Failed to delete chat: ${error.message}`,
-      error: error.message 
-    });
-  }
-  });
-
-  // ✅ Add helper function to calculate chat duration
-function calculateChatDuration(joinedAt, lastSeen) {
-  try {
-    const start = new Date(joinedAt);
-    const end = new Date(lastSeen || new Date());
-    const durationMs = end.getTime() - start.getTime();
-    const minutes = Math.floor(durationMs / 60000);
-    
-    if (minutes < 1) return "< 1 min";
-    if (minutes >= 60) {
-      const hours = Math.floor(minutes / 60);
-      const remainingMins = minutes % 60;
-      return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
-    }
-    return `${minutes} min`;
-  } catch (error) {
-    return "Unknown";
-  }
-}
-
-// ✅ Add endpoint to fetch deleted chats history
-socket.on('get-deleted-chats', async ({ skip = 0, limit = 20 }) => {
-  if (!deletedChatsCollection) {
-    socket.emit('deleted-chats-response', { chats: [], hasMore: false, total: 0 });
-    return;
-  }
-  
-  try {
-    const deletedChats = await deletedChatsCollection
-      .find()
-      .sort({ deletedAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .toArray();
-    
-    const totalCount = await deletedChatsCollection.countDocuments();
-    const hasMore = (skip + limit) < totalCount;
-    
-    socket.emit('deleted-chats-response', { 
-      chats: deletedChats, 
-      hasMore, 
-      total: totalCount 
-    });
-    
-    console.log(`📜 Sent ${deletedChats.length} deleted chats to admin`);
-  } catch (error) {
-    console.error('❌ Error loading deleted chats:', error);
-    socket.emit('deleted-chats-response', { chats: [], hasMore: false, total: 0 });
-  }
-});
-
-// ✅ Add endpoint to restore a deleted chat (optional)
-socket.on('restore-deleted-chat', async ({ deletedChatId, adminName }) => {
-  if (!deletedChatsCollection || !liveChatHistoryCollection) {
-    socket.emit('restore-error', { message: 'Database not available' });
-    return;
-  }
-  
-  try {
-    const { ObjectId } = require('mongodb');
-    
-    // Convert string ID to MongoDB ObjectId
-    let objectId;
     try {
-      objectId = new ObjectId(deletedChatId);
-    } catch (err) {
-      socket.emit('restore-error', { message: 'Invalid chat ID format' });
-      return;
+      console.log(`Admin ${adminName} requesting deletion of chat ${userId}`);
+      
+      if (!db || !liveChatHistoryCollection) {
+        console.error('Database not available');
+        socket.emit('delete-error', { 
+          message: 'Database connection not available. Please try again.' 
+        });
+        return;
+      }
+      
+      const chatToDelete = await liveChatHistoryCollection.findOne({ userId: userId });
+      
+      if (!chatToDelete) {
+        console.log(`No chat found in database for user ${userId}`);
+        socket.emit('delete-error', { 
+          message: 'Chat not found in database.' 
+        });
+        return;
+      }
+      
+      if (deletedChatsCollection) {
+        const deletedRecord = {
+          ...chatToDelete,
+          deletedBy: adminName,
+          deletedAt: new Date().toISOString(),
+          originalChatId: chatToDelete._id,
+          messageCount: chatToDelete.conversationHistory?.length || 0,
+          chatDuration: calculateChatDuration(chatToDelete.joinedAt, chatToDelete.lastSeen),
+        };
+        
+        await deletedChatsCollection.insertOne(deletedRecord);
+        console.log(`Saved deleted chat to history: ${userId}`);
+      }
+      
+      const result = await liveChatHistoryCollection.deleteOne({ userId: userId });
+      
+      if (result.deletedCount > 0) {
+        console.log(`Chat deleted from active chats for user ${userId}`);
+        
+        activeSessions.delete(userId);
+        
+        const timer = agentWaitTimers.get(userId);
+        if (timer) {
+          clearTimeout(timer);
+          agentWaitTimers.delete(userId);
+        }
+        
+        io.to('admins').emit('chat-deleted', { 
+          userId, 
+          deletedBy: adminName 
+        });
+        
+        io.to(`customer-${userId}`).emit('session-ended', {
+          message: 'This chat session has been closed by an administrator.'
+        });
+        
+        console.log(`All deletion notifications sent for ${userId}`);
+      }
+    } catch (error) {
+      console.error('Error during chat deletion:', error);
+      socket.emit('delete-error', { 
+        message: `Failed to delete chat: ${error.message}`,
+        error: error.message 
+      });
     }
-    
-    const deletedChat = await deletedChatsCollection.findOne({ _id: objectId });
-    
-    if (!deletedChat) {
-      console.log(`⚠️ Deleted chat not found with ID: ${deletedChatId}`);
-      socket.emit('restore-error', { message: 'Deleted chat not found' });
-      return;
-    }
-    
-    // console.log(`♻️ Found deleted chat for restoration:`, deletedChat.userId);
-    
-    // Remove deletion metadata and _id to allow fresh insert
-    const { deletedBy, deletedAt, originalChatId, messageCount, chatDuration, _id, ...chatToRestore } = deletedChat;
-    
-    // Restore to active chats
-    await liveChatHistoryCollection.insertOne({
-      ...chatToRestore,
-      restoredBy: adminName,
-      restoredAt: new Date().toISOString(),
-      isActive: false, // Set as inactive restored session
-      customerEnded: false,
-      adminEnded: false,
-    });
-    
-    // Remove from deleted chats
-    await deletedChatsCollection.deleteOne({ _id: objectId });
-    
-    // console.log(`✅ Chat restored successfully: ${chatToRestore.userId}`);
-    
-    socket.emit('restore-success', { 
-      message: 'Chat restored successfully',
-      userId: chatToRestore.userId 
-    });
-    
-    // Reload active sessions for all admins
-    io.to('admins').emit('chat-restored', { userId: chatToRestore.userId });
-    
-    // console.log(`♻️ Chat ${chatToRestore.userId} restored by ${adminName}`);
-  } catch (error) {
-    console.error('❌ Error restoring chat:', error);
-    socket.emit('restore-error', { 
-      message: `Failed to restore chat: ${error.message}` 
-    });
-  }
   });
 
-socket.on('delete-message', async ({ messageId, userId }) => {
-  try {
-    // console.log(`🗑️ Attempting to delete message ${messageId} from chat ${userId}`);
-    
-    // Check database availability
-    if (!db || !liveChatHistoryCollection) {
-      console.error('❌ Database not available');
-      socket.emit('delete-error', { 
-        message: 'Database connection not available. Please try again.' 
-      });
+  function calculateChatDuration(joinedAt, lastSeen) {
+    try {
+      const start = new Date(joinedAt);
+      const end = new Date(lastSeen || new Date());
+      const durationMs = end.getTime() - start.getTime();
+      const minutes = Math.floor(durationMs / 60000);
+      
+      if (minutes < 1) return "< 1 min";
+      if (minutes >= 60) {
+        const hours = Math.floor(minutes / 60);
+        const remainingMins = minutes % 60;
+        return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
+      }
+      return `${minutes} min`;
+    } catch (error) {
+      return "Unknown";
+    }
+  }
+
+  socket.on('get-deleted-chats', async ({ skip = 0, limit = 20 }) => {
+    if (!deletedChatsCollection) {
+      socket.emit('deleted-chats-response', { chats: [], hasMore: false, total: 0 });
       return;
     }
-
-    // Delete from MongoDB conversation history
-    const result = await liveChatHistoryCollection.updateOne(
-      { userId: userId },
-      { $pull: { conversationHistory: { id: messageId } } }
-    );
-
-    // console.log(`📊 Message delete result:`, {
-    //   matchedCount: result.matchedCount,
-    //   modifiedCount: result.modifiedCount
-    // });
-
-    if (result.modifiedCount > 0) {
-      // Remove from active session
-      const session = activeSessions.get(userId);
-      if (session) {
-        session.conversationHistory = session.conversationHistory.filter(
-          msg => msg.id !== messageId
-        );
-      }
-
-      // Notify all clients
-      io.to(`customer-${userId}`).emit('message-deleted', { messageId });
-      io.to('admins').emit('message-deleted', { messageId });
+    
+    try {
+      const deletedChats = await deletedChatsCollection
+        .find()
+        .sort({ deletedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .toArray();
       
-      // console.log(`✅ Message ${messageId} deleted successfully`);
-    } else {
-      // console.log(`⚠️ Message ${messageId} not found or chat ${userId} doesn't exist`);
-      socket.emit('delete-error', { 
-        message: 'Message not found. It may have already been deleted.' 
+      const totalCount = await deletedChatsCollection.countDocuments();
+      const hasMore = (skip + limit) < totalCount;
+      
+      socket.emit('deleted-chats-response', { 
+        chats: deletedChats, 
+        hasMore, 
+        total: totalCount 
+      });
+      
+      console.log(`Sent ${deletedChats.length} deleted chats to admin`);
+    } catch (error) {
+      console.error('Error loading deleted chats:', error);
+      socket.emit('deleted-chats-response', { chats: [], hasMore: false, total: 0 });
+    }
+  });
+
+  socket.on('restore-deleted-chat', async ({ deletedChatId, adminName }) => {
+    if (!deletedChatsCollection || !liveChatHistoryCollection) {
+      socket.emit('restore-error', { message: 'Database not available' });
+      return;
+    }
+    
+    try {
+      const { ObjectId } = require('mongodb');
+      
+      let objectId;
+      try {
+        objectId = new ObjectId(deletedChatId);
+      } catch (err) {
+        socket.emit('restore-error', { message: 'Invalid chat ID format' });
+        return;
+      }
+      
+      const deletedChat = await deletedChatsCollection.findOne({ _id: objectId });
+      
+      if (!deletedChat) {
+        console.log(`Deleted chat not found with ID: ${deletedChatId}`);
+        socket.emit('restore-error', { message: 'Deleted chat not found' });
+        return;
+      }
+      
+      const { deletedBy, deletedAt, originalChatId, messageCount, chatDuration, _id, ...chatToRestore } = deletedChat;
+      
+      await liveChatHistoryCollection.insertOne({
+        ...chatToRestore,
+        restoredBy: adminName,
+        restoredAt: new Date().toISOString(),
+        isActive: false,
+        customerEnded: false,
+        adminEnded: false,
+      });
+      
+      await deletedChatsCollection.deleteOne({ _id: objectId });
+      
+      socket.emit('restore-success', { 
+        message: 'Chat restored successfully',
+        userId: chatToRestore.userId 
+      });
+      
+      io.to('admins').emit('chat-restored', { userId: chatToRestore.userId });
+      
+    } catch (error) {
+      console.error('Error restoring chat:', error);
+      socket.emit('restore-error', { 
+        message: `Failed to restore chat: ${error.message}` 
       });
     }
-  } catch (err) {
-    console.error('❌ Error deleting message:', err);
-    socket.emit('delete-error', { 
-      message: `Failed to delete message: ${err.message}`,
-      error: err.message 
-    });
-  }
-});
+  });
+
+  socket.on('delete-message', async ({ messageId, userId }) => {
+    try {
+      if (!db || !liveChatHistoryCollection) {
+        console.error('Database not available');
+        socket.emit('delete-error', { 
+          message: 'Database connection not available. Please try again.' 
+        });
+        return;
+      }
+
+      const result = await liveChatHistoryCollection.updateOne(
+        { userId: userId },
+        { $pull: { conversationHistory: { id: messageId } } }
+      );
+
+      if (result.modifiedCount > 0) {
+        const session = activeSessions.get(userId);
+        if (session) {
+          session.conversationHistory = session.conversationHistory.filter(
+            msg => msg.id !== messageId
+          );
+        }
+
+        io.to(`customer-${userId}`).emit('message-deleted', { messageId });
+        io.to('admins').emit('message-deleted', { messageId });
+        
+      } else {
+        socket.emit('delete-error', { 
+          message: 'Message not found. It may have already been deleted.' 
+        });
+      }
+    } catch (err) {
+      console.error('Error deleting message:', err);
+      socket.emit('delete-error', { 
+        message: `Failed to delete message: ${err.message}`,
+        error: err.message 
+      });
+    }
+  });
 
   socket.on('customer-join', async ({ userId, userName, userPhone, conversationHistory }) => {
     let sessionData = activeSessions.get(userId);
     
     if (sessionData) {
-      // console.log('🔄 Customer reconnecting:', userId);
       sessionData.socketId = socket.id;
       sessionData.isActive = true;
       sessionData.lastSeen = new Date().toISOString();
@@ -471,7 +458,6 @@ socket.on('delete-message', async ({ messageId, userId }) => {
           isActive: true,
           lastSeen: new Date().toISOString()
         };
-        // console.log('📂 Restored session from MongoDB:', userId);
         socket.emit('chat-history', sessionData.conversationHistory);
       } else {
         sessionData = {
@@ -485,7 +471,6 @@ socket.on('delete-message', async ({ messageId, userId }) => {
           hasAgent: false,
           conversationHistory: conversationHistory || []
         };
-        // console.log('🙋 New customer joined:', userId, userName);
       }
       
       activeSessions.set(userId, sessionData);
@@ -528,87 +513,57 @@ socket.on('delete-message', async ({ messageId, userId }) => {
       
       io.to('admins').emit('session-updated', session);
       await saveChatHistory(session);
-      
-      // console.log(`🤝 Admin ${adminName} claimed customer ${userId}`);
     }
   });
-
 
   socket.on('customer-message', async ({ userId, userName, content, fileUrl, fileName }) => {
-  const session = activeSessions.get(userId);
-  if (session) {
-    session.lastSeen = new Date().toISOString();
-    
-    const message = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      userId,
-      userName,
-      content,
-      fileUrl: fileUrl || null,
-      fileName: fileName || null,
-      isAdmin: false,
-      timestamp: new Date().toISOString()
-    };
-    
-    session.conversationHistory.push(message);
-    
-    // ✅ Emit to customer room (so customer sees it)
-    io.to(`customer-${userId}`).emit('new-message', message);
-    
-    // ✅ Notify all admins
-    io.to('admins').emit('customer-message-notification', { userId, userName, message });
-    
-    await saveChatHistory(session);
-    // console.log(`💬 Customer message from ${userName} (${userId})`);
-  }
-});
-
-  socket.on('admin-message', async ({ userId, agentName, content, fileUrl, fileName }) => {
-  const session = activeSessions.get(userId);
-  if (session) {
-    const message = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      userId,
-      userName: agentName,
-      content,
-      fileUrl: fileUrl || null,
-      fileName: fileName || null,
-      isAdmin: true,
-      timestamp: new Date().toISOString(),
-      read: false
-    };
-    
-    session.conversationHistory.push(message);
-    
-    // ✅ Send to customer
-    io.to(`customer-${userId}`).emit('new-message', message);
-    
-    // ✅ FIX: Send to ALL admins (including sender) so everyone sees it
-    io.to('admins').emit('admin-message-sent', { userId, message });
-    
-    await saveChatHistory(session);
-    // console.log(`💬 Admin message from ${agentName} to ${userId}`);
-  }
-});
-
-  // 🗑️ Admin deletes a message
-  socket.on("delete-message", async ({ messageId, userId }) => {
-    try {
-      // Only allow admins to delete
-      if (!socket.isAdmin) return;
-
-      // Delete from MongoDB
-      await messagesCollection.deleteOne({ id: messageId });
-
-      // Notify everyone to remove that message
-      io.to(`customer-${userId}`).emit("message-deleted", { messageId });
-      io.to("admins").emit("message-deleted", { messageId });
-    } catch (err) {
-      console.error("❌ Error deleting message:", err);
+    const session = activeSessions.get(userId);
+    if (session) {
+      session.lastSeen = new Date().toISOString();
+      
+      const message = {
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        userId,
+        userName,
+        content,
+        fileUrl: fileUrl || null,
+        fileName: fileName || null,
+        isAdmin: false,
+        timestamp: new Date().toISOString()
+      };
+      
+      session.conversationHistory.push(message);
+      
+      io.to(`customer-${userId}`).emit('new-message', message);
+      io.to('admins').emit('customer-message-notification', { userId, userName, message });
+      
+      await saveChatHistory(session);
     }
   });
 
-
+  socket.on('admin-message', async ({ userId, agentName, content, fileUrl, fileName }) => {
+    const session = activeSessions.get(userId);
+    if (session) {
+      const message = {
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        userId,
+        userName: agentName,
+        content,
+        fileUrl: fileUrl || null,
+        fileName: fileName || null,
+        isAdmin: true,
+        timestamp: new Date().toISOString(),
+        read: false
+      };
+      
+      session.conversationHistory.push(message);
+      
+      io.to(`customer-${userId}`).emit('new-message', message);
+      io.to('admins').emit('admin-message-sent', { userId, message });
+      
+      await saveChatHistory(session);
+    }
+  });
 
   socket.on('admin-typing', ({ userId, isTyping, agentName }) => {
     io.to(`customer-${userId}`).emit('admin-typing-indicator', { isTyping, agentName });
@@ -639,7 +594,6 @@ socket.on('delete-message', async ({ messageId, userId }) => {
       
       await saveChatHistory(session);
       setTimeout(() => activeSessions.delete(userId), 30 * 60 * 1000);
-      // console.log('🔴 Session ended by admin:', userId);
     }
   });
 
@@ -668,12 +622,11 @@ socket.on('delete-message', async ({ messageId, userId }) => {
       setTimeout(() => activeSessions.delete(userId), 30 * 60 * 1000);
       
       socket.emit('session-end-confirmed');
-      // console.log('🔴 Customer ended session:', userId);
     }
   });
 
   socket.on('disconnect', async (reason) => {
-    // console.log('❌ Client disconnected:', socket.id, 'Reason:', reason);
+    console.log('Client disconnected:', socket.id, 'Reason:', reason);
     
     if (adminSockets.has(socket.id)) {
       adminSockets.delete(socket.id);
@@ -696,17 +649,15 @@ socket.on('delete-message', async ({ messageId, userId }) => {
         session.lastSeen = new Date().toISOString();
         io.to('admins').emit('customer-disconnected', { userId, session });
         await saveChatHistory(session);
-        // console.log('📱 Customer went inactive:', userId);
       }
     }
   });
 
   socket.on('error', (error) => {
-    console.error('❌ Socket error:', error);
+    console.error('Socket error:', error);
   });
 });
 
-// Clean up inactive sessions every 5 minutes
 setInterval(async () => {
   const now = new Date();
   for (const [userId, session] of activeSessions.entries()) {
@@ -722,18 +673,17 @@ setInterval(async () => {
         clearTimeout(timer);
         agentWaitTimers.delete(userId);
       }
-      
-      // console.log('🧹 Cleaned up inactive session:', userId);
     }
   }
 }, 5 * 60 * 1000);
 
 io.engine.on('connection_error', (err) => {
-  console.error('❌ Connection error:', err);
+  console.error('Connection error:', err);
 });
 
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 WebSocket server running on port ${PORT}`);
-  console.log(`📡 Server ready to accept connections at ${new Date().toISOString()}`);
+  console.log(`WebSocket server running on port ${PORT}`);
+  console.log(`RingCentral real-time endpoint: POST /notify/ringcentral`);
+  console.log(`Server ready at ${new Date().toISOString()}`);
 });

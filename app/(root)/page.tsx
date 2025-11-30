@@ -452,61 +452,112 @@ export default function HomePage() {
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
               Compare and Save in 3 Easy Steps
             </h2>
+            <p className="text-lg text-gray-600">
+              Getting the right coverage has never been easier
+            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {/* Step 1 */}
+            <div className="relative bg-white rounded-2xl shadow-lg p-8 text-center hover:shadow-xl transition-shadow duration-300">
+              {/* Number Badge */}
+              <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 w-12 h-12 rounded-full bg-[#102a56] text-white flex items-center justify-center text-xl font-bold shadow-lg">
+                1
+              </div>
 
-            <div className="bg-white rounded-lg shadow-md p-6 text-center">
-              <div className="flex justify-center mb-4">
-                <div className="w-12 h-12 rounded-full bg-[#102a56] text-white flex items-center justify-center text-xl font-bold">
-                  1
+              {/* Icon */}
+              <div className="mt-8 mb-6 flex justify-center">
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-50 to-blue-100 flex items-center justify-center">
+                  <svg
+                    className="w-10 h-10 text-[#102a56]"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                    />
+                  </svg>
                 </div>
               </div>
 
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
                 Tell Us About Yourself
               </h3>
-
-              <p className="text-gray-600">
+              <p className="text-gray-600 leading-relaxed">
                 Share a few details about your insurance needs so we can find
                 the best options for you.
               </p>
             </div>
 
             {/* Step 2 */}
+            <div className="relative bg-white rounded-2xl shadow-lg p-8 text-center hover:shadow-xl transition-shadow duration-300">
+              {/* Number Badge */}
+              <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 w-12 h-12 rounded-full bg-[#102a56] text-white flex items-center justify-center text-xl font-bold shadow-lg">
+                2
+              </div>
 
-            <div className="bg-white rounded-lg shadow-md p-6 text-center">
-              <div className="flex justify-center mb-4">
-                <div className="w-12 h-12 rounded-full bg-[#102a56] text-white flex items-center justify-center text-xl font-bold">
-                  2
+              {/* Icon */}
+              <div className="mt-8 mb-6 flex justify-center">
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-50 to-purple-100 flex items-center justify-center">
+                  <svg
+                    className="w-10 h-10 text-[#102a56]"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                    />
+                  </svg>
                 </div>
               </div>
 
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
                 Compare Top Insurers
               </h3>
-
-              <p className="text-gray-600">
-                We’ll search 30+ leading companies to bring you the most
+              <p className="text-gray-600 leading-relaxed">
+                We&apos;ll search 30+ leading companies to bring you the most
                 competitive rates.
               </p>
             </div>
 
             {/* Step 3 */}
+            <div className="relative bg-white rounded-2xl shadow-lg p-8 text-center hover:shadow-xl transition-shadow duration-300">
+              {/* Number Badge */}
+              <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 w-12 h-12 rounded-full bg-[#102a56] text-white flex items-center justify-center text-xl font-bold shadow-lg">
+                3
+              </div>
 
-            <div className="bg-white rounded-lg shadow-md p-6 text-center">
-              <div className="flex justify-center mb-4">
-                <div className="w-12 h-12 rounded-full bg-[#102a56] text-white flex items-center justify-center text-xl font-bold">
-                  3
+              {/* Icon */}
+              <div className="mt-8 mb-6 flex justify-center">
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center">
+                  <svg
+                    className="w-10 h-10 text-[#102a56]"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                    />
+                  </svg>
                 </div>
               </div>
 
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">
                 Get Covered & Save
               </h3>
-
-              <p className="text-gray-600">
+              <p className="text-gray-600 leading-relaxed">
                 Choose your plan and start saving with coverage that fits your
                 needs.
               </p>
