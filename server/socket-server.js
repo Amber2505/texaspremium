@@ -1,11 +1,12 @@
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const { MongoClient } = require('mongodb');
-const express = require('express'); // ← Added for HTTP routes
+const express = require('express');
+const cron = require('node-cron');
 
 const httpServer = createServer();
 const app = express();
-app.use(express.json()); // Parse JSON bodies
+app.use(express.json());
 
 const io = new Server(httpServer, {
   cors: {
@@ -53,14 +54,41 @@ app.post('/notify/ringcentral', (req, res) => {
   }
 });
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    lastSync: lastSyncTime,
+    nextSync: nextSyncTime
+  });
+});
+
+// Manual sync trigger endpoint
+app.post('/trigger-sync', async (req, res) => {
+  try {
+    console.log('📱 Manual sync triggered via HTTP');
+    const result = await syncRingCentralMessages();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Attach Express app to the same HTTP server
 httpServer.on('request', app);
-// ================================================
 
-// MongoDB Connection
+// ================================================
+// MONGODB CONNECTION
+// ================================================
 let db;
 let liveChatHistoryCollection;
 let deletedChatsCollection;
+let mongoClient = null;
+
+// For RingCentral sync
+let messagesDb;
+let conversationsCollection;
 
 async function connectMongoDB() {
   try {
@@ -70,18 +98,23 @@ async function connectMongoDB() {
 
     console.log('Attempting to connect to MongoDB...');
     
-    const client = new MongoClient(process.env.MONGODB_URI, {
+    mongoClient = new MongoClient(process.env.MONGODB_URI, {
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
     });
     
-    await client.connect();
-    await client.db().admin().ping();
+    await mongoClient.connect();
+    await mongoClient.db().admin().ping();
     console.log('MongoDB ping successful');
     
-    db = client.db('myFirstDatabase');
+    // Live chat database
+    db = mongoClient.db('myFirstDatabase');
     liveChatHistoryCollection = db.collection('live_chat_history');
     deletedChatsCollection = db.collection('deleted_chats_history');
+    
+    // RingCentral messages database
+    messagesDb = mongoClient.db('db');
+    conversationsCollection = messagesDb.collection('texas_premium_messages');
     
     const count = await liveChatHistoryCollection.countDocuments();
     console.log(`MongoDB connected successfully. Found ${count} existing chat records.`);
@@ -93,21 +126,288 @@ async function connectMongoDB() {
     db = null;
     liveChatHistoryCollection = null;
     deletedChatsCollection = null;
+    messagesDb = null;
+    conversationsCollection = null;
     return false;
   }
 }
 
+// ================================================
+// RINGCENTRAL SYNC FUNCTION
+// ================================================
+const MY_PHONE_NUMBER = process.env.MY_PHONE_NUMBER || '+14697295185';
+let lastSyncTime = null;
+let nextSyncTime = null;
+
+async function getRingCentralPlatform() {
+  const SDK = require('@ringcentral/sdk').SDK;
+  
+  const rcsdk = new SDK({
+    server: process.env.RINGCENTRAL_SERVER || 'https://platform.ringcentral.com',
+    clientId: process.env.RINGCENTRAL_CLIENT_ID,
+    clientSecret: process.env.RINGCENTRAL_CLIENT_SECRET,
+  });
+
+  const platform = rcsdk.platform();
+  await platform.login({ jwt: process.env.RINGCENTRAL_JWT });
+  return platform;
+}
+
+async function syncRingCentralMessages() {
+  const startTime = Date.now();
+  const timestamp = new Date().toISOString();
+  console.log(`\n🔄 [${timestamp}] Starting RingCentral sync...`);
+
+  if (!conversationsCollection) {
+    console.error('❌ MongoDB not connected, skipping sync');
+    return { success: false, error: 'Database not connected' };
+  }
+
+  // Check required env vars
+  const requiredVars = ['RINGCENTRAL_CLIENT_ID', 'RINGCENTRAL_CLIENT_SECRET', 'RINGCENTRAL_JWT'];
+  const missingVars = requiredVars.filter(v => !process.env[v]);
+  
+  if (missingVars.length > 0) {
+    console.error(`❌ Missing RingCentral env vars: ${missingVars.join(', ')}`);
+    return { success: false, error: `Missing env vars: ${missingVars.join(', ')}` };
+  }
+
+  try {
+    const platform = await getRingCentralPlatform();
+
+    // Fetch messages from last 60 minutes
+    const dateFrom = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    
+    const response = await platform.get('/restapi/v1.0/account/~/extension/~/message-store', {
+      messageType: ['SMS', 'MMS'],
+      dateFrom: dateFrom,
+      perPage: 100,
+    });
+
+    const data = await response.json();
+    const messages = data.records || [];
+
+    console.log(`📥 Found ${messages.length} messages from RingCentral`);
+
+    let synced = 0;
+    let skipped = 0;
+
+    for (const msg of messages) {
+      // Determine the other party's phone number
+      const isOutbound = msg.direction === 'Outbound';
+      const otherPhone = isOutbound 
+        ? msg.to?.[0]?.phoneNumber 
+        : msg.from?.phoneNumber;
+
+      if (!otherPhone) {
+        skipped++;
+        continue;
+      }
+
+      // Check if message already exists
+      const existingConv = await conversationsCollection.findOne({
+        phoneNumber: otherPhone,
+        'messages.id': msg.id.toString(),
+      });
+
+      if (existingConv) {
+        skipped++;
+        continue;
+      }
+
+      // Prepare message object
+      const messageObj = {
+        id: msg.id.toString(),
+        direction: msg.direction,
+        type: msg.type,
+        subject: msg.subject || '',
+        creationTime: msg.creationTime,
+        lastModifiedTime: msg.lastModifiedTime,
+        readStatus: msg.direction === 'Inbound' ? 'Unread' : 'Read',
+        messageStatus: msg.messageStatus,
+        from: msg.from,
+        to: msg.to,
+        attachments: [], // Skip attachments for Railway sync (handled by Vercel)
+      };
+
+      // Build update operation
+      const updateOperation = {
+        $push: {
+          messages: {
+            $each: [messageObj],
+            $sort: { creationTime: 1 },
+          },
+        },
+        $set: {
+          lastMessageTime: msg.creationTime,
+          lastMessageId: msg.id.toString(),
+        },
+      };
+
+      // Add unread increment for inbound messages
+      if (msg.direction === 'Inbound') {
+        updateOperation.$inc = { unreadCount: 1 };
+      }
+
+      await conversationsCollection.updateOne(
+        { phoneNumber: otherPhone },
+        updateOperation,
+        { upsert: true }
+      );
+
+      synced++;
+      
+      // Broadcast new message to any connected admins viewing this conversation
+      io.to(`conversation:${otherPhone}`).emit('newRingCentralMessage', {
+        phoneNumber: otherPhone,
+        messageId: msg.id.toString(),
+        timestamp: msg.creationTime,
+        subject: msg.subject || '',
+        direction: msg.direction,
+      });
+    }
+
+    // Two-way read status sync
+    let readStatusSynced = 0;
+    
+    try {
+      const allConversations = await conversationsCollection.find({}).toArray();
+      const unreadMessageMap = new Map();
+
+      for (const conversation of allConversations) {
+        const phoneNumber = conversation.phoneNumber;
+        const conversationMessages = conversation.messages || [];
+
+        const unreadInbound = conversationMessages.filter(
+          (m) => m.direction === 'Inbound' && m.readStatus === 'Unread' && m.id
+        );
+
+        unreadInbound.forEach((m) => {
+          unreadMessageMap.set(m.id, { phoneNumber, messageId: m.id });
+        });
+      }
+
+      if (unreadMessageMap.size > 0) {
+        const readResponse = await platform.get(
+          '/restapi/v1.0/account/~/extension/~/message-store',
+          {
+            messageType: ['SMS', 'MMS'],
+            readStatus: 'Read',
+            perPage: 1000,
+          }
+        );
+
+        const rcReadMessages = (await readResponse.json()).records || [];
+        const conversationsToUpdate = new Set();
+
+        for (const rcMessage of rcReadMessages) {
+          const messageId = rcMessage.id.toString();
+
+          if (unreadMessageMap.has(messageId)) {
+            const { phoneNumber } = unreadMessageMap.get(messageId);
+
+            await conversationsCollection.updateOne(
+              { phoneNumber, 'messages.id': messageId },
+              { $set: { 'messages.$.readStatus': 'Read' } }
+            );
+
+            conversationsToUpdate.add(phoneNumber);
+            readStatusSynced++;
+          }
+        }
+
+        // Recalculate unread counts
+        for (const phoneNumber of conversationsToUpdate) {
+          const conversation = await conversationsCollection.findOne({ phoneNumber });
+          
+          if (conversation) {
+            const newUnreadCount = (conversation.messages || []).filter(
+              (m) => m.direction === 'Inbound' && m.readStatus === 'Unread'
+            ).length;
+
+            await conversationsCollection.updateOne(
+              { phoneNumber },
+              { $set: { unreadCount: newUnreadCount } }
+            );
+          }
+        }
+      }
+    } catch (readSyncError) {
+      console.error('❌ Read status sync error:', readSyncError.message);
+    }
+
+    const duration = Date.now() - startTime;
+    lastSyncTime = new Date().toISOString();
+    
+    console.log(`✅ Sync completed in ${duration}ms:`);
+    console.log(`   - Synced: ${synced} messages`);
+    console.log(`   - Skipped: ${skipped} messages`);
+    console.log(`   - Read status synced: ${readStatusSynced}`);
+
+    return { success: true, synced, skipped, readStatusSynced, durationMs: duration };
+
+  } catch (error) {
+    console.error(`❌ Sync error:`, error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+// ================================================
+// START SERVER & CRON
+// ================================================
 async function startServer() {
   const dbConnected = await connectMongoDB();
   
   if (!dbConnected) {
     console.error('Server starting WITHOUT database connection');
-    console.error('Chat history and delete features will not work');
+    console.error('Chat history and sync features will not work');
+  }
+
+  // Setup cron job for RingCentral sync
+  const syncSchedule = process.env.SYNC_SCHEDULE || '*/1 * * * *'; // Default: every 1 minute
+  
+  // Check if RingCentral is configured
+  const rcConfigured = process.env.RINGCENTRAL_CLIENT_ID && 
+                       process.env.RINGCENTRAL_CLIENT_SECRET && 
+                       process.env.RINGCENTRAL_JWT;
+
+  if (rcConfigured) {
+    console.log(`\n📅 RingCentral Sync Schedule: ${syncSchedule}`);
+    
+    // Run initial sync after 10 seconds (let server stabilize)
+    setTimeout(() => {
+      console.log('🚀 Running initial RingCentral sync...');
+      syncRingCentralMessages();
+    }, 10000);
+
+    // Schedule recurring syncs
+    cron.schedule(syncSchedule, () => {
+      syncRingCentralMessages();
+    });
+
+    // Calculate next sync time for health check
+    const updateNextSyncTime = () => {
+      const now = new Date();
+      now.setSeconds(0);
+      now.setMilliseconds(0);
+      now.setMinutes(now.getMinutes() + 1);
+      nextSyncTime = now.toISOString();
+    };
+    updateNextSyncTime();
+    setInterval(updateNextSyncTime, 60000);
+
+    console.log('✅ RingCentral sync cron scheduled\n');
+  } else {
+    console.log('\n⚠️  RingCentral not configured - sync disabled');
+    console.log('   Set RINGCENTRAL_CLIENT_ID, RINGCENTRAL_CLIENT_SECRET, RINGCENTRAL_JWT to enable\n');
   }
 }
 
 startServer();
 
+// ================================================
+// SOCKET.IO HANDLERS (unchanged from original)
+// ================================================
 const activeSessions = new Map();
 const adminSockets = new Set();
 const agentWaitTimers = new Map();
@@ -172,6 +472,21 @@ async function loadChatHistory(userId) {
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id, 'at', new Date().toISOString());
+
+  // Allow clients to join RingCentral conversation rooms
+  socket.on('join-conversation', ({ phoneNumber }) => {
+    if (phoneNumber) {
+      socket.join(`conversation:${phoneNumber}`);
+      console.log(`Socket ${socket.id} joined conversation:${phoneNumber}`);
+    }
+  });
+
+  socket.on('leave-conversation', ({ phoneNumber }) => {
+    if (phoneNumber) {
+      socket.leave(`conversation:${phoneNumber}`);
+      console.log(`Socket ${socket.id} left conversation:${phoneNumber}`);
+    }
+  });
 
   socket.on('admin-join', async () => {
     adminSockets.add(socket.id);
@@ -658,6 +973,7 @@ io.on('connection', (socket) => {
   });
 });
 
+// Cleanup inactive sessions every 5 minutes
 setInterval(async () => {
   const now = new Date();
   for (const [userId, session] of activeSessions.entries()) {
@@ -685,5 +1001,7 @@ const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`WebSocket server running on port ${PORT}`);
   console.log(`RingCentral real-time endpoint: POST /notify/ringcentral`);
+  console.log(`Health check: GET /health`);
+  console.log(`Manual sync trigger: POST /trigger-sync`);
   console.log(`Server ready at ${new Date().toISOString()}`);
 });
