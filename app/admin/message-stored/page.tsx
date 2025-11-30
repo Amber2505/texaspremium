@@ -120,7 +120,7 @@ export default function MessageStoredPage() {
           )
             setConversations(data.conversations || []);
         });
-    }, 10000);
+    }, 5000);
     return () => clearInterval(interval);
   }, [mounted, conversations]);
 

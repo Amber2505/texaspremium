@@ -2,7 +2,7 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 const { MongoClient } = require('mongodb');
 const express = require('express');
-const cron = require('node-cron');
+// Using setInterval instead of node-cron for sub-minute sync intervals
 
 const httpServer = createServer();
 const app = express();
@@ -155,11 +155,8 @@ async function getRingCentralPlatform() {
 
 async function syncRingCentralMessages() {
   const startTime = Date.now();
-  const timestamp = new Date().toISOString();
-  console.log(`\n🔄 [${timestamp}] Starting RingCentral sync...`);
 
   if (!conversationsCollection) {
-    console.error('❌ MongoDB not connected, skipping sync');
     return { success: false, error: 'Database not connected' };
   }
 
@@ -186,8 +183,6 @@ async function syncRingCentralMessages() {
 
     const data = await response.json();
     const messages = data.records || [];
-
-    console.log(`📥 Found ${messages.length} messages from RingCentral`);
 
     let synced = 0;
     let skipped = 0;
@@ -269,15 +264,18 @@ async function syncRingCentralMessages() {
 
     // Two-way read status sync
     let readStatusSynced = 0;
+    let unreadStatusSynced = 0;
     
     try {
       const allConversations = await conversationsCollection.find({}).toArray();
       const unreadMessageMap = new Map();
+      const readMessageMap = new Map(); // Track messages that are Read in MongoDB
 
       for (const conversation of allConversations) {
         const phoneNumber = conversation.phoneNumber;
         const conversationMessages = conversation.messages || [];
 
+        // Find messages that are Unread in MongoDB
         const unreadInbound = conversationMessages.filter(
           (m) => m.direction === 'Inbound' && m.readStatus === 'Unread' && m.id
         );
@@ -285,8 +283,18 @@ async function syncRingCentralMessages() {
         unreadInbound.forEach((m) => {
           unreadMessageMap.set(m.id, { phoneNumber, messageId: m.id });
         });
+
+        // Find messages that are Read in MongoDB (to check if marked unread in RC)
+        const readInbound = conversationMessages.filter(
+          (m) => m.direction === 'Inbound' && m.readStatus === 'Read' && m.id
+        );
+
+        readInbound.forEach((m) => {
+          readMessageMap.set(m.id, { phoneNumber, messageId: m.id });
+        });
       }
 
+      // Sync Read status: RC Read → MongoDB Read
       if (unreadMessageMap.size > 0) {
         const readResponse = await platform.get(
           '/restapi/v1.0/account/~/extension/~/message-store',
@@ -316,7 +324,55 @@ async function syncRingCentralMessages() {
           }
         }
 
-        // Recalculate unread counts
+        // Recalculate unread counts for updated conversations
+        for (const phoneNumber of conversationsToUpdate) {
+          const conversation = await conversationsCollection.findOne({ phoneNumber });
+          
+          if (conversation) {
+            const newUnreadCount = (conversation.messages || []).filter(
+              (m) => m.direction === 'Inbound' && m.readStatus === 'Unread'
+            ).length;
+
+            await conversationsCollection.updateOne(
+              { phoneNumber },
+              { $set: { unreadCount: newUnreadCount } }
+            );
+          }
+        }
+      }
+
+      // Sync Unread status: RC Unread → MongoDB Unread
+      if (readMessageMap.size > 0) {
+        const unreadResponse = await platform.get(
+          '/restapi/v1.0/account/~/extension/~/message-store',
+          {
+            messageType: 'SMS',
+            readStatus: 'Unread',
+            perPage: 1000,
+          }
+        );
+
+        const rcUnreadMessages = (await unreadResponse.json()).records || [];
+        const conversationsToUpdate = new Set();
+
+        for (const rcMessage of rcUnreadMessages) {
+          const messageId = rcMessage.id.toString();
+
+          // If MongoDB has it as Read but RC has it as Unread → mark as Unread in MongoDB
+          if (readMessageMap.has(messageId)) {
+            const { phoneNumber } = readMessageMap.get(messageId);
+
+            await conversationsCollection.updateOne(
+              { phoneNumber, 'messages.id': messageId },
+              { $set: { 'messages.$.readStatus': 'Unread' } }
+            );
+
+            conversationsToUpdate.add(phoneNumber);
+            unreadStatusSynced++;
+          }
+        }
+
+        // Recalculate unread counts for updated conversations
         for (const phoneNumber of conversationsToUpdate) {
           const conversation = await conversationsCollection.findOne({ phoneNumber });
           
@@ -339,12 +395,17 @@ async function syncRingCentralMessages() {
     const duration = Date.now() - startTime;
     lastSyncTime = new Date().toISOString();
     
-    console.log(`✅ Sync completed in ${duration}ms:`);
-    console.log(`   - Synced: ${synced} messages`);
-    console.log(`   - Skipped: ${skipped} messages`);
-    console.log(`   - Read status synced: ${readStatusSynced}`);
+    // Only log if something happened or every 60 seconds
+    const shouldLog = synced > 0 || readStatusSynced > 0 || unreadStatusSynced > 0 || Date.now() % 60000 < 5000;
+    
+    if (shouldLog) {
+      console.log(`✅ Sync completed in ${duration}ms:`);
+      console.log(`   - New messages: ${synced} (skipped: ${skipped})`);
+      console.log(`   - Read status synced: ${readStatusSynced}`);
+      console.log(`   - Unread status synced: ${unreadStatusSynced}`);
+    }
 
-    return { success: true, synced, skipped, readStatusSynced, durationMs: duration };
+    return { success: true, synced, skipped, readStatusSynced, unreadStatusSynced, durationMs: duration };
 
   } catch (error) {
     console.error(`❌ Sync error:`, error.message);
@@ -363,40 +424,47 @@ async function startServer() {
     console.error('Chat history and sync features will not work');
   }
 
-  // Setup cron job for RingCentral sync
-  const syncSchedule = process.env.SYNC_SCHEDULE || '*/1 * * * *'; // Default: every 1 minute
-  
   // Check if RingCentral is configured
   const rcConfigured = process.env.RINGCENTRAL_CLIENT_ID && 
                        process.env.RINGCENTRAL_CLIENT_SECRET && 
                        process.env.RINGCENTRAL_JWT;
 
   if (rcConfigured) {
-    console.log(`\n📅 RingCentral Sync Schedule: ${syncSchedule}`);
+    // Sync interval in milliseconds (default: 5 seconds)
+    const syncIntervalMs = parseInt(process.env.SYNC_INTERVAL_MS || '5000', 10);
     
-    // Run initial sync after 10 seconds (let server stabilize)
+    console.log(`\n📅 RingCentral Sync Interval: ${syncIntervalMs}ms (${syncIntervalMs/1000}s)`);
+    
+    // Run initial sync after 5 seconds (let server stabilize)
     setTimeout(() => {
       console.log('🚀 Running initial RingCentral sync...');
       syncRingCentralMessages();
-    }, 10000);
+    }, 5000);
 
-    // Schedule recurring syncs
-    cron.schedule(syncSchedule, () => {
-      syncRingCentralMessages();
-    });
+    // Use setInterval for sub-minute sync (cron only supports minimum 1 minute)
+    let isSyncing = false;
+    setInterval(async () => {
+      // Prevent overlapping syncs
+      if (isSyncing) {
+        console.log('⏳ Sync already in progress, skipping...');
+        return;
+      }
+      isSyncing = true;
+      try {
+        await syncRingCentralMessages();
+      } finally {
+        isSyncing = false;
+      }
+    }, syncIntervalMs);
 
-    // Calculate next sync time for health check
+    // Update next sync time for health check
     const updateNextSyncTime = () => {
-      const now = new Date();
-      now.setSeconds(0);
-      now.setMilliseconds(0);
-      now.setMinutes(now.getMinutes() + 1);
-      nextSyncTime = now.toISOString();
+      nextSyncTime = new Date(Date.now() + syncIntervalMs).toISOString();
     };
     updateNextSyncTime();
-    setInterval(updateNextSyncTime, 60000);
+    setInterval(updateNextSyncTime, syncIntervalMs);
 
-    console.log('✅ RingCentral sync cron scheduled\n');
+    console.log('✅ RingCentral sync scheduled\n');
   } else {
     console.log('\n⚠️  RingCentral not configured - sync disabled');
     console.log('   Set RINGCENTRAL_CLIENT_ID, RINGCENTRAL_CLIENT_SECRET, RINGCENTRAL_JWT to enable\n');
