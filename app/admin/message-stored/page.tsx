@@ -103,6 +103,13 @@ export default function MessageStoredPage() {
     });
   }, []);
 
+  // Back to conversations (for mobile)
+  const handleBack = useCallback(() => {
+    setSelectedPhone(null);
+    setSelectMode(false);
+    setSelectedMessageIds(new Set());
+  }, []);
+
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
@@ -565,13 +572,19 @@ export default function MessageStoredPage() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-100">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      {/* Header - Only show on conversation list view on mobile */}
+      <div
+        className={`bg-white border-b border-gray-200 px-4 sm:px-6 py-4 ${
+          selectedPhone ? "hidden md:block" : ""
+        }`}
+      >
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">Messages</h1>
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+            Messages
+          </h1>
           <button
             onClick={() => setShowNewMessageModal(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+            className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
           >
             <svg
               className="w-5 h-5"
@@ -586,14 +599,18 @@ export default function MessageStoredPage() {
                 d="M12 4v16m8-8H4"
               />
             </svg>
-            New Message
+            <span className="hidden sm:inline">New Message</span>
           </button>
         </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar */}
-        <div className="w-full md:w-96 bg-white border-r border-gray-200 flex flex-col">
+        {/* Sidebar - Hide on mobile when conversation is selected */}
+        <div
+          className={`w-full md:w-96 bg-white border-r border-gray-200 flex flex-col ${
+            selectedPhone ? "hidden md:flex" : "flex"
+          }`}
+        >
           <div className="p-4 border-b border-gray-200">
             <div className="relative">
               <input
@@ -661,7 +678,7 @@ export default function MessageStoredPage() {
                     className={`p-4 border-b border-gray-100 transition-colors relative ${
                       isSelected
                         ? "bg-blue-50 border-l-4 border-l-blue-600"
-                        : "hover:bg-gray-50"
+                        : "hover:bg-gray-50 active:bg-gray-100"
                     }`}
                   >
                     <div className="flex items-start gap-3">
@@ -686,7 +703,7 @@ export default function MessageStoredPage() {
                           <h3
                             className={`${
                               isUnread ? "font-bold" : "font-semibold"
-                            } text-gray-900`}
+                            } text-gray-900 text-sm sm:text-base`}
                           >
                             {formatPhoneNumber(conv.phoneNumber)}
                           </h3>
@@ -707,7 +724,7 @@ export default function MessageStoredPage() {
                         <p className="text-sm text-gray-600 truncate flex items-center gap-1">
                           {lastMsg.direction === "Outbound" && (
                             <svg
-                              className="w-4 h-4 text-gray-400"
+                              className="w-4 h-4 text-gray-400 flex-shrink-0"
                               fill="none"
                               stroke="currentColor"
                               viewBox="0 0 24 24"
@@ -734,7 +751,7 @@ export default function MessageStoredPage() {
                                 : conv.phoneNumber
                             );
                           }}
-                          className="p-1 hover:bg-gray-200 rounded-full transition-colors"
+                          className="p-2 hover:bg-gray-200 rounded-full transition-colors"
                         >
                           <svg
                             className="w-5 h-5 text-gray-500"
@@ -752,7 +769,7 @@ export default function MessageStoredPage() {
                                 e.stopPropagation();
                                 markAsUnread(conv.phoneNumber);
                               }}
-                              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 border-b border-gray-100"
+                              className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 border-b border-gray-100"
                             >
                               <svg
                                 className="w-4 h-4"
@@ -774,7 +791,7 @@ export default function MessageStoredPage() {
                                 e.stopPropagation();
                                 deleteConversation(conv.phoneNumber);
                               }}
-                              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 rounded-b-lg"
+                              className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 rounded-b-lg"
                             >
                               <svg
                                 className="w-4 h-4"
@@ -811,8 +828,12 @@ export default function MessageStoredPage() {
           </div>
         </div>
 
-        {/* Chat Area */}
-        <div className="flex-1 flex flex-col bg-gray-50 hidden md:flex">
+        {/* Chat Area - Show full screen on mobile when conversation is selected */}
+        <div
+          className={`flex-1 flex flex-col bg-gray-50 ${
+            selectedPhone ? "flex" : "hidden md:flex"
+          }`}
+        >
           {!selectedPhone ? (
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
               <svg
@@ -832,17 +853,14 @@ export default function MessageStoredPage() {
             </div>
           ) : (
             <>
-              {/* Header */}
-              <div className="bg-white border-b border-gray-200 px-6 py-4">
+              {/* Chat Header with Back Button */}
+              <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    {/* Back Button - More prominent on mobile */}
                     <button
-                      onClick={() => {
-                        setSelectedPhone(null);
-                        setSelectMode(false);
-                        setSelectedMessageIds(new Set());
-                      }}
-                      className="text-gray-400 hover:text-gray-600"
+                      onClick={handleBack}
+                      className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors flex items-center gap-1 text-gray-600"
                     >
                       <svg
                         className="w-6 h-6"
@@ -854,34 +872,38 @@ export default function MessageStoredPage() {
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
+                          d="M15 19l-7-7 7-7"
                         />
                       </svg>
+                      <span className="text-sm font-medium md:hidden">
+                        Back
+                      </span>
                     </button>
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
+
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0">
                       <svg
-                        className="w-8 h-8 text-white"
+                        className="w-6 h-6 sm:w-8 sm:h-8 text-white"
                         fill="currentColor"
                         viewBox="0 0 24 24"
                       >
                         <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
                       </svg>
                     </div>
-                    <h2 className="font-semibold text-gray-900">
+                    <h2 className="font-semibold text-gray-900 text-sm sm:text-base truncate max-w-[150px] sm:max-w-none">
                       {formatPhoneNumber(selectedPhone)}
                     </h2>
                   </div>
 
                   {selectMode ? (
-                    <div className="flex items-center gap-4">
-                      <span className="text-sm text-gray-600">
-                        {selectedMessageIds.size} selected
+                    <div className="flex items-center gap-2 sm:gap-4">
+                      <span className="text-xs sm:text-sm text-gray-600">
+                        {selectedMessageIds.size}
                       </span>
                       <button
                         onClick={() =>
                           deleteMessages(Array.from(selectedMessageIds))
                         }
-                        className="text-red-600 font-medium"
+                        className="text-red-600 font-medium text-sm sm:text-base"
                       >
                         Delete
                       </button>
@@ -890,7 +912,7 @@ export default function MessageStoredPage() {
                           setSelectMode(false);
                           setSelectedMessageIds(new Set());
                         }}
-                        className="text-gray-500"
+                        className="text-gray-500 text-sm sm:text-base"
                       >
                         Cancel
                       </button>
@@ -898,7 +920,7 @@ export default function MessageStoredPage() {
                   ) : (
                     <button
                       onClick={() => setSelectMode(true)}
-                      className="text-gray-500 hover:text-gray-700"
+                      className="text-gray-500 hover:text-gray-700 text-sm sm:text-base p-2"
                     >
                       Select
                     </button>
@@ -909,7 +931,7 @@ export default function MessageStoredPage() {
               {/* Messages */}
               <div
                 ref={messagesContainerRef}
-                className="flex-1 overflow-y-auto p-6 space-y-4"
+                className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3 sm:space-y-4"
               >
                 {conversation.map((msg, index) => {
                   const isOutbound = msg.direction === "Outbound";
@@ -922,16 +944,16 @@ export default function MessageStoredPage() {
                   const isSelected = selectedMessageIds.has(msg.id || "");
 
                   return (
-                    <div key={msg.id || index}>
+                    <div key={`${msg.id}-${index}`}>
                       {showDate && (
                         <div className="flex items-center justify-center my-4">
                           <div className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
                             {new Date(msg.creationTime).toLocaleDateString(
                               "en-US",
                               {
-                                weekday: "long",
+                                weekday: "short",
                                 year: "numeric",
-                                month: "long",
+                                month: "short",
                                 day: "numeric",
                               }
                             )}
@@ -944,7 +966,7 @@ export default function MessageStoredPage() {
                           isOutbound ? "justify-end" : "justify-start"
                         }`}
                       >
-                        <div className="flex items-start gap-3 max-w-[75%]">
+                        <div className="flex items-start gap-2 sm:gap-3 max-w-[85%] sm:max-w-[75%]">
                           {selectMode && (
                             <input
                               type="checkbox"
@@ -956,7 +978,7 @@ export default function MessageStoredPage() {
                           )}
 
                           <div
-                            className={`relative rounded-2xl px-4 py-2 transition-all ${
+                            className={`relative rounded-2xl px-3 sm:px-4 py-2 transition-all ${
                               selectMode
                                 ? isSelected
                                   ? "bg-blue-600 text-white ring-2 ring-blue-400"
@@ -982,7 +1004,7 @@ export default function MessageStoredPage() {
                             )}
 
                             {msg.subject && (
-                              <p className="break-words whitespace-pre-wrap mb-2">
+                              <p className="break-words whitespace-pre-wrap mb-2 text-sm sm:text-base">
                                 {msg.subject}
                               </p>
                             )}
@@ -1020,7 +1042,7 @@ export default function MessageStoredPage() {
                                             src={url}
                                             alt={att.filename || "Image"}
                                             className="max-w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                                            style={{ maxHeight: "300px" }}
+                                            style={{ maxHeight: "250px" }}
                                             onClick={(e) => {
                                               e.stopPropagation();
                                               openLightbox(
@@ -1287,9 +1309,9 @@ export default function MessageStoredPage() {
 
               {/* Input */}
               {!selectMode && (
-                <div className="bg-white border-t border-gray-200 p-4">
+                <div className="bg-white border-t border-gray-200 p-2 sm:p-4 safe-area-bottom">
                   {selectedFiles.length > 0 && (
-                    <div className="mb-3 flex flex-wrap gap-2">
+                    <div className="mb-2 sm:mb-3 flex flex-wrap gap-2">
                       {selectedFiles.map((file, i) => {
                         const sizeMB = (file.size / 1024 / 1024).toFixed(2);
                         const isLarge = file.size > 1.5 * 1024 * 1024;
@@ -1298,7 +1320,7 @@ export default function MessageStoredPage() {
                         return (
                           <div
                             key={i}
-                            className={`flex items-center gap-2 px-3 py-2 rounded-lg ${
+                            className={`flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg text-sm ${
                               isLarge
                                 ? "bg-red-100 border border-red-300"
                                 : isWarning
@@ -1307,7 +1329,7 @@ export default function MessageStoredPage() {
                             }`}
                           >
                             <div className="flex flex-col">
-                              <span className="text-sm font-medium">
+                              <span className="text-xs sm:text-sm font-medium truncate max-w-[100px] sm:max-w-none">
                                 {file.name}
                               </span>
                               <span
@@ -1319,7 +1341,7 @@ export default function MessageStoredPage() {
                                     : "text-gray-500"
                                 }`}
                               >
-                                {sizeMB}MB {isLarge && "⚠️ Too large!"}
+                                {sizeMB}MB {isLarge && "⚠️"}
                               </span>
                             </div>
                             <button
@@ -1328,7 +1350,7 @@ export default function MessageStoredPage() {
                                   prev.filter((_, j) => j !== i)
                                 )
                               }
-                              className="text-red-600 hover:text-red-800"
+                              className="text-red-600 hover:text-red-800 p-1"
                             >
                               <svg
                                 className="w-4 h-4"
@@ -1350,10 +1372,10 @@ export default function MessageStoredPage() {
                     </div>
                   )}
 
-                  <div className="flex gap-3">
+                  <div className="flex gap-2 sm:gap-3 items-end">
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      className="px-3 py-3 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl"
+                      className="p-2 sm:px-3 sm:py-3 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl flex-shrink-0"
                     >
                       <svg
                         className="w-6 h-6"
@@ -1419,13 +1441,13 @@ export default function MessageStoredPage() {
                         }
                       }}
                       placeholder="Type a message..."
-                      className="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="flex-1 px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm sm:text-base"
                       disabled={sending}
                     />
 
                     <button
                       onClick={sendMessage}
-                      className={`px-6 py-3 rounded-xl font-medium transition-all flex items-center gap-2 ${
+                      className={`p-2 sm:px-6 sm:py-3 rounded-xl font-medium transition-all flex items-center justify-center flex-shrink-0 ${
                         (messageInput.trim() || selectedFiles.length > 0) &&
                         !sending
                           ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
@@ -1436,7 +1458,26 @@ export default function MessageStoredPage() {
                         sending
                       }
                     >
-                      {sending ? "Sending..." : "Send"}
+                      {sending ? (
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <>
+                          <svg
+                            className="w-5 h-5 sm:hidden"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                            />
+                          </svg>
+                          <span className="hidden sm:inline">Send</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1448,9 +1489,9 @@ export default function MessageStoredPage() {
 
       {/* New Message Modal */}
       {showNewMessageModal && (
-        <div className="fixed inset-0 backdrop-blur-sm bg-white/30 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl border border-gray-200">
-            <h3 className="text-xl font-bold text-gray-900 mb-4">
+        <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 shadow-2xl border border-gray-200">
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">
               New Message
             </h3>
             <input
@@ -1459,7 +1500,7 @@ export default function MessageStoredPage() {
               onChange={(e) => setNewPhoneNumber(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && startNewConversation()}
               placeholder="+19727486404"
-              className="w-full px-4 py-3 border rounded-lg mb-4"
+              className="w-full px-4 py-3 border rounded-lg mb-4 text-base"
               autoFocus
             />
             <div className="flex gap-3">
@@ -1468,13 +1509,13 @@ export default function MessageStoredPage() {
                   setShowNewMessageModal(false);
                   setNewPhoneNumber("");
                 }}
-                className="flex-1 py-3 border rounded-lg"
+                className="flex-1 py-3 border rounded-lg text-gray-700 hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 onClick={startNewConversation}
-                className="flex-1 bg-blue-600 text-white py-3 rounded-lg"
+                className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700"
               >
                 Start Chat
               </button>
@@ -1490,12 +1531,12 @@ export default function MessageStoredPage() {
           onClick={closeLightbox}
         >
           <div
-            className="relative max-w-7xl max-h-screen p-4 w-full"
+            className="relative max-w-7xl max-h-screen p-2 sm:p-4 w-full"
             onClick={(e) => e.stopPropagation()}
           >
             <button
               onClick={closeLightbox}
-              className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 z-10"
+              className="absolute top-2 sm:top-4 right-2 sm:right-4 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 z-10"
               title="Close (Esc)"
             >
               <svg
@@ -1517,7 +1558,7 @@ export default function MessageStoredPage() {
               onClick={() =>
                 downloadFile(lightboxImage.url, lightboxImage.filename)
               }
-              className="absolute top-4 right-20 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 z-10"
+              className="absolute top-2 sm:top-4 right-14 sm:right-20 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 z-10"
               title="Download"
             >
               <svg
@@ -1538,11 +1579,11 @@ export default function MessageStoredPage() {
             {lightboxImage.currentIndex > 0 && (
               <button
                 onClick={() => navigateLightbox("prev")}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-white bg-black/50 hover:bg-black/70 rounded-full p-3 z-10"
+                className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 sm:p-3 z-10"
                 title="Previous (←)"
               >
                 <svg
-                  className="w-8 h-8"
+                  className="w-6 h-6 sm:w-8 sm:h-8"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -1561,11 +1602,11 @@ export default function MessageStoredPage() {
               lightboxImage.allImages.length - 1 && (
               <button
                 onClick={() => navigateLightbox("next")}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-white bg-black/50 hover:bg-black/70 rounded-full p-3 z-10"
+                className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 sm:p-3 z-10"
                 title="Next (→)"
               >
                 <svg
-                  className="w-8 h-8"
+                  className="w-6 h-6 sm:w-8 sm:h-8"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -1585,18 +1626,18 @@ export default function MessageStoredPage() {
               <img
                 src={lightboxImage.url}
                 alt={lightboxImage.filename}
-                className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                className="max-w-full max-h-[85vh] sm:max-h-[90vh] object-contain rounded-lg shadow-2xl"
               />
             </div>
 
             {lightboxImage.allImages.length > 1 && (
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white bg-black/50 px-4 py-2 rounded-full text-sm">
+              <div className="absolute bottom-16 sm:bottom-4 left-1/2 -translate-x-1/2 text-white bg-black/50 px-4 py-2 rounded-full text-sm">
                 {lightboxImage.currentIndex + 1} /{" "}
                 {lightboxImage.allImages.length}
               </div>
             )}
 
-            <div className="absolute bottom-20 left-1/2 -translate-x-1/2 text-white bg-black/50 px-4 py-2 rounded-full text-sm max-w-md truncate">
+            <div className="absolute bottom-4 sm:bottom-20 left-1/2 -translate-x-1/2 text-white bg-black/50 px-4 py-2 rounded-full text-xs sm:text-sm max-w-[80%] sm:max-w-md truncate">
               {lightboxImage.filename}
             </div>
           </div>
