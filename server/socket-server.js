@@ -179,7 +179,7 @@ async function syncRingCentralMessages() {
     const dateFrom = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
     const response = await platform.get('/restapi/v1.0/account/~/extension/~/message-store', {
-      messageType: ['SMS', 'MMS'],
+      messageType: 'SMS',
       dateFrom: dateFrom,
       perPage: 100,
     });
@@ -291,7 +291,7 @@ async function syncRingCentralMessages() {
         const readResponse = await platform.get(
           '/restapi/v1.0/account/~/extension/~/message-store',
           {
-            messageType: ['SMS', 'MMS'],
+            messageType: 'SMS',
             readStatus: 'Read',
             perPage: 1000,
           }
