@@ -3,12 +3,19 @@
 
 import { BlobServiceClient, ContainerClient } from '@azure/storage-blob';
 
-if (!process.env.AZURE_STORAGE_CONNECTION_STRING) {
-  throw new Error('AZURE_STORAGE_CONNECTION_STRING is not set');
-}
+// Lazy initialization - don't check at module load time
+let blobServiceClient: BlobServiceClient | null = null;
 
-const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
-const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
+function getBlobServiceClient(): BlobServiceClient {
+  if (!blobServiceClient) {
+    const connectionString = process.env.AZURE_STORAGE_CONNECTION_STRING;
+    if (!connectionString) {
+      throw new Error('AZURE_STORAGE_CONNECTION_STRING is not set');
+    }
+    blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
+  }
+  return blobServiceClient;
+}
 
 /**
  * Sleep utility for delays
@@ -110,7 +117,7 @@ export class AzureStorageService {
   private smsFolder = 'sms-uploads';
 
   private async getContainerClient(): Promise<ContainerClient> {
-    const containerClient = blobServiceClient.getContainerClient(this.containerName);
+    const containerClient = getBlobServiceClient().getContainerClient(this.containerName);
     
     await containerClient.createIfNotExists({
       access: 'blob'
