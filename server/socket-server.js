@@ -4,9 +4,11 @@ const { MongoClient } = require('mongodb');
 const express = require('express');
 // Using setInterval instead of node-cron for sub-minute sync intervals
 
-const httpServer = createServer();
 const app = express();
 app.use(express.json());
+
+// Create HTTP server FROM Express app (proper way)
+const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
@@ -75,8 +77,7 @@ app.post('/trigger-sync', async (req, res) => {
   }
 });
 
-// Attach Express app to the same HTTP server
-httpServer.on('request', app);
+// Express app is already attached via createServer(app)
 
 // ================================================
 // MONGODB CONNECTION
