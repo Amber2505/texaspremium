@@ -1,95 +1,64 @@
-import { NextRequest, NextResponse } from 'next/server';
-import connectToDatabase from "@/lib/mongodb";
+// /api/messages/route.ts
+// Updated to support server-side pagination and search
 
-// Type for MongoDB filter
-interface ConversationFilter {
-  phoneNumber?: { $regex: string; $options: string };
-}
+import { NextRequest, NextResponse } from "next/server";
+import clientPromise from "@/lib/mongodb";
 
 export async function GET(request: NextRequest) {
   try {
-    const searchParams = request.nextUrl.searchParams;
-    const page = parseInt(searchParams.get('page') || '1');
-    const phoneNumber = searchParams.get('phoneNumber');
-    
-    // KEY FIX: If limit is not provided, default to 0 (meaning fetch ALL)
-    const limitParam = searchParams.get('limit');
-    const limit = limitParam ? parseInt(limitParam) : 0;
-    
-    const client = await connectToDatabase;
+    const { searchParams } = new URL(request.url);
+    const skip = parseInt(searchParams.get("skip") || "0", 10);
+    const limit = parseInt(searchParams.get("limit") || "25", 10);
+    const search = searchParams.get("search") || "";
+
+    const client = await clientPromise;
     const db = client.db("db");
-    const conversationsCollection = db.collection("texas_premium_messages");
-    
-    console.log("📊 Fetching conversations from db.texas_premium_messages...");
-    
-    // Build filter
-    const filter: ConversationFilter = {};
-    if (phoneNumber) {
-      filter.phoneNumber = { $regex: phoneNumber, $options: 'i' };
+    const collection = db.collection("texas_premium_messages");
+
+    // Build query - search by phone number if provided
+    const query: Record<string, unknown> = {};
+    if (search.trim()) {
+      // Search for phone numbers containing the search string
+      query.phoneNumber = { $regex: search.trim(), $options: "i" };
     }
-    
-    // Get total count
-    const total = await conversationsCollection.countDocuments(filter);
-    console.log(`📈 Total conversations in DB: ${total}`);
-    
-    let conversations;
-    
-    // KEY FIX: If limit is 0, fetch ALL conversations (no pagination)
-    if (limit === 0) {
-      conversations = await conversationsCollection
-        .find(filter)
-        .sort({ lastMessageTime: -1 })
-        .toArray();
-      console.log(`📦 Fetching ALL ${total} conversations (no limit)`);
-    } else {
-      // Use pagination with specified limit
-      const skip = (page - 1) * limit;
-      conversations = await conversationsCollection
-        .find(filter)
-        .sort({ lastMessageTime: -1 })
-        .skip(skip)
-        .limit(limit)
-        .toArray();
-      console.log(`📦 Fetching page ${page} with limit ${limit}`);
-    }
-    
-    // Format for frontend
-    const formattedConversations = conversations.map(conv => {
-      const messages = conv.messages || [];
-      const lastMessage = messages[messages.length - 1] || {};
-      
-      return {
-        phoneNumber: conv.phoneNumber,
-        messageCount: messages.length,
-        lastMessage: {
-          id: lastMessage.id || '',
-          direction: lastMessage.direction || 'Inbound',
-          subject: lastMessage.subject || '',
-          creationTime: lastMessage.creationTime || conv.lastMessageTime,
-          readStatus: lastMessage.readStatus || 'Read',
-          attachments: lastMessage.attachments || [],
-        },
-        lastMessageTime: conv.lastMessageTime,
-        unreadCount: conv.unreadCount || 0,
-      };
-    });
-    
-    console.log(`✅ Returning ${formattedConversations.length} conversations`);
-    
+
+    // Get total count for pagination info
+    const total = await collection.countDocuments(query);
+
+    // Fetch paginated conversations sorted by lastMessageTime descending
+    const conversations = await collection
+      .find(query)
+      .sort({ lastMessageTime: -1 })
+      .skip(skip)
+      .limit(limit)
+      .project({
+        phoneNumber: 1,
+        lastMessageTime: 1,
+        unreadCount: 1,
+        messages: { $slice: -1 }, // Only get the last message for preview
+      })
+      .toArray();
+
+    // Transform to match expected format
+    const formattedConversations = conversations.map((conv) => ({
+      phoneNumber: conv.phoneNumber,
+      messageCount: conv.messages?.length || 0,
+      lastMessage: conv.messages?.[0] || null,
+      lastMessageTime: conv.lastMessageTime,
+      unreadCount: conv.unreadCount || 0,
+    }));
+
     return NextResponse.json({
       conversations: formattedConversations,
-      pagination: {
-        page,
-        limit: limit || total,
-        total,
-        pages: limit ? Math.ceil(total / limit) : 1,
-      },
+      total,
+      skip,
+      limit,
+      hasMore: skip + formattedConversations.length < total,
     });
-  } catch (error: unknown) {
-    console.error('❌ Get messages error:', error);
-    const err = error as { message?: string };
+  } catch (error) {
+    console.error("Error fetching messages:", error);
     return NextResponse.json(
-      { error: err.message },
+      { error: "Failed to fetch messages" },
       { status: 500 }
     );
   }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { RingCentralMessage } from "@/lib/models/message";
+import Image from "next/image";
 
 interface ConversationSummary {
   phoneNumber: string;
@@ -63,16 +64,12 @@ export default function MessageStoredPage() {
     currentIndex: number;
   } | null>(null);
 
-  // Infinite scroll state - START WITH 25
-  const [displayedCount, setDisplayedCount] = useState(25);
+  // Server-side pagination state
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [totalCount, setTotalCount] = useState(0);
   const conversationsListRef = useRef<HTMLDivElement>(null);
-
-  // MOVED: filtered calculation BEFORE the useEffect that uses it
-  const filtered = useMemo(() => {
-    return conversations.filter(
-      (c) => !searchInput.trim() || c.phoneNumber.includes(searchInput)
-    );
-  }, [conversations, searchInput]);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Memoize scrollToBottom to use in useEffect dependencies
   const scrollToBottom = useCallback(() => {
@@ -112,24 +109,77 @@ export default function MessageStoredPage() {
 
   useEffect(() => setMounted(true), []);
 
+  // Authentication check - redirect to /admin if not logged in
   useEffect(() => {
-    if (mounted) fetchMessages();
+    const checkAuth = () => {
+      const savedSession = localStorage.getItem("admin_session");
+      if (!savedSession) {
+        window.location.href = "/admin";
+        return;
+      }
+
+      try {
+        const session = JSON.parse(savedSession);
+        const now = Date.now();
+
+        if (now >= session.expiresAt) {
+          localStorage.removeItem("admin_session");
+          window.location.href = "/admin";
+        }
+      } catch {
+        localStorage.removeItem("admin_session");
+        window.location.href = "/admin";
+      }
+    };
+
+    checkAuth();
+
+    // Check every minute
+    const interval = setInterval(checkAuth, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (mounted) fetchMessages(0, "", false);
   }, [mounted]);
 
+  // Polling for new messages (only refresh if not searching and on first page)
   useEffect(() => {
     if (!mounted) return;
     const interval = setInterval(() => {
-      fetch("/api/messages")
-        .then((r) => r.json())
-        .then((data) => {
-          if (
-            JSON.stringify(data.conversations) !== JSON.stringify(conversations)
-          )
-            setConversations(data.conversations || []);
-        });
+      // Only auto-refresh if not searching
+      if (!searchInput.trim()) {
+        fetch("/api/messages?skip=0&limit=25")
+          .then((r) => r.json())
+          .then((data) => {
+            const newConversations = data.conversations || [];
+            // Only update if there are changes
+            if (newConversations.length > 0) {
+              setConversations((prev) => {
+                // Create a map of existing conversations by phone number
+                const existingMap = new Map(
+                  prev.map((c) => [c.phoneNumber, c])
+                );
+
+                // Update/add new conversations
+                newConversations.forEach((conv: ConversationSummary) => {
+                  existingMap.set(conv.phoneNumber, conv);
+                });
+
+                // Convert back to array and sort by lastMessageTime
+                return Array.from(existingMap.values()).sort(
+                  (a, b) =>
+                    new Date(b.lastMessageTime).getTime() -
+                    new Date(a.lastMessageTime).getTime()
+                );
+              });
+              setTotalCount(data.total || newConversations.length);
+            }
+          });
+      }
     }, 5000);
     return () => clearInterval(interval);
-  }, [mounted, conversations]);
+  }, [mounted, searchInput]);
 
   useEffect(() => {
     scrollToBottom();
@@ -185,30 +235,25 @@ export default function MessageStoredPage() {
     return () => ws.close();
   }, [selectedPhone, scrollToBottom]);
 
-  // Infinite scroll effect - now uses the memoized filtered
+  // Server-side infinite scroll
   useEffect(() => {
+    const element = conversationsListRef.current;
+    if (!element) return;
+
     const handleScroll = () => {
-      if (!conversationsListRef.current) return;
-      const { scrollTop, scrollHeight, clientHeight } =
-        conversationsListRef.current;
+      if (isLoadingMore || !hasMore) return;
+      const { scrollTop, scrollHeight, clientHeight } = element;
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
 
-      if (isNearBottom && displayedCount < filtered.length) {
-        setDisplayedCount((prev) => Math.min(prev + 25, filtered.length));
+      if (isNearBottom) {
+        fetchMessages(conversations.length, searchInput, true);
       }
     };
 
-    const element = conversationsListRef.current;
-    if (element) {
-      element.addEventListener("scroll", handleScroll);
-      return () => element.removeEventListener("scroll", handleScroll);
-    }
-  }, [displayedCount, filtered.length]);
-
-  // Reset to 25 on search
-  useEffect(() => {
-    setDisplayedCount(25);
-  }, [searchInput]);
+    element.addEventListener("scroll", handleScroll);
+    return () => element.removeEventListener("scroll", handleScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoadingMore, hasMore, conversations.length, searchInput]);
 
   // Keyboard navigation for lightbox
   useEffect(() => {
@@ -222,17 +267,70 @@ export default function MessageStoredPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [lightboxImage, closeLightbox, navigateLightbox]);
 
-  const fetchMessages = async () => {
-    setLoading(true);
+  // Cleanup search timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const fetchMessages = async (skip = 0, search = "", append = false) => {
+    if (skip === 0 && !append) setLoading(true);
+    else setIsLoadingMore(true);
+
     try {
-      const res = await fetch("/api/messages");
+      const params = new URLSearchParams({
+        skip: skip.toString(),
+        limit: "25",
+      });
+      if (search.trim()) {
+        params.append("search", search.trim());
+      }
+
+      const res = await fetch(`/api/messages?${params}`);
       const data = await res.json();
-      setConversations(data.conversations || []);
+
+      const newConversations = data.conversations || [];
+      const total = data.total || newConversations.length;
+
+      if (append) {
+        setConversations((prev) => {
+          // Deduplicate: only add conversations that don't already exist
+          const existingPhones = new Set(prev.map((c) => c.phoneNumber));
+          const uniqueNew = newConversations.filter(
+            (c: ConversationSummary) => !existingPhones.has(c.phoneNumber)
+          );
+          return [...prev, ...uniqueNew];
+        });
+      } else {
+        setConversations(newConversations);
+      }
+
+      setTotalCount(total);
+      setHasMore(skip + newConversations.length < total);
     } catch {
       // Error handled silently
     } finally {
       setLoading(false);
+      setIsLoadingMore(false);
     }
+  };
+
+  // Debounced search
+  const handleSearchChange = (value: string) => {
+    setSearchInput(value);
+
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      setConversations([]);
+      setHasMore(true);
+      fetchMessages(0, value, false);
+    }, 300);
   };
 
   const viewConversation = async (phoneNumber: string) => {
@@ -582,6 +680,13 @@ export default function MessageStoredPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
             Messages
           </h1>
+          <Image
+            src="/logo1.png"
+            alt="Texas Premium Insurance Services"
+            width={160}
+            height={50}
+            className="h-20 w-auto object-contain hidden sm:block"
+          />
           <button
             onClick={() => setShowNewMessageModal(true)}
             className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
@@ -617,7 +722,7 @@ export default function MessageStoredPage() {
                 type="text"
                 placeholder="Search by phone number..."
                 value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               />
               <svg
@@ -635,7 +740,12 @@ export default function MessageStoredPage() {
               </svg>
               {searchInput && (
                 <button
-                  onClick={() => setSearchInput("")}
+                  onClick={() => {
+                    setSearchInput("");
+                    setConversations([]);
+                    setHasMore(true);
+                    fetchMessages(0, "", false);
+                  }}
                   className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
                 >
                   <svg
@@ -663,18 +773,18 @@ export default function MessageStoredPage() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               </div>
             ) : (
-              /* Show only displayedCount conversations (starts at 25) */
-              filtered.slice(0, displayedCount).map((conv) => {
+              /* Server-side paginated conversations */
+              conversations.map((conv, index) => {
                 const isSelected = selectedPhone === conv.phoneNumber;
                 const lastMsg = conv.lastMessage;
                 const isUnread =
                   (conv.unreadCount ?? 0) > 0 ||
-                  (lastMsg.direction === "Inbound" &&
-                    lastMsg.readStatus === "Unread");
+                  (lastMsg?.direction === "Inbound" &&
+                    lastMsg?.readStatus === "Unread");
 
                 return (
                   <div
-                    key={conv.phoneNumber}
+                    key={`${conv.phoneNumber}-${index}`}
                     className={`p-4 border-b border-gray-100 transition-colors relative ${
                       isSelected
                         ? "bg-blue-50 border-l-4 border-l-blue-600"
@@ -722,7 +832,7 @@ export default function MessageStoredPage() {
                           </div>
                         </div>
                         <p className="text-sm text-gray-600 truncate flex items-center gap-1">
-                          {lastMsg.direction === "Outbound" && (
+                          {lastMsg?.direction === "Outbound" && (
                             <svg
                               className="w-4 h-4 text-gray-400 flex-shrink-0"
                               fill="none"
@@ -737,7 +847,7 @@ export default function MessageStoredPage() {
                               />
                             </svg>
                           )}
-                          {lastMsg.subject || "No message"}
+                          {lastMsg?.subject || "No message"}
                         </p>
                       </div>
 
@@ -817,11 +927,19 @@ export default function MessageStoredPage() {
               })
             )}
             {/* Loading indicator for infinite scroll */}
-            {displayedCount < filtered.length && (
+            {(isLoadingMore || hasMore) && conversations.length > 0 && (
               <div className="flex items-center justify-center p-4 text-gray-500">
                 <div className="flex items-center gap-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                  <span className="text-sm">Loading more...</span>
+                  {isLoadingMore ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                      <span className="text-sm">Loading more...</span>
+                    </>
+                  ) : hasMore ? (
+                    <span className="text-sm text-gray-400">
+                      {conversations.length} of {totalCount} conversations
+                    </span>
+                  ) : null}
                 </div>
               </div>
             )}

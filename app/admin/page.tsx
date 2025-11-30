@@ -2,7 +2,15 @@
 
 "use client";
 import { useState, useEffect } from "react";
-import { Eye, EyeOff, Users, Calendar, Shield } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  Users,
+  Calendar,
+  Shield,
+  MessageSquare,
+} from "lucide-react";
+import Image from "next/image";
 
 const ADMIN_PASSWORD = "Insurance2024";
 const SESSION_KEY = "admin_session";
@@ -110,13 +118,17 @@ export default function AdminLoginPage() {
       <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50 p-4">
         <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
           <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-gradient-to-r from-red-700 to-blue-800 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Shield className="w-8 h-8 text-white" />
+            {/* Company Logo */}
+            <div className="flex justify-center mb-4">
+              <Image
+                src="/logo1.png"
+                alt="Texas Premium Insurance Services"
+                width={200}
+                height={80}
+                className="w-auto h-16 object-contain"
+              />
             </div>
             <h1 className="text-2xl font-bold text-gray-800">Admin Portal</h1>
-            <p className="text-gray-600 mt-2">
-              Texas Premium Insurance Services
-            </p>
           </div>
 
           <div className="space-y-4">
@@ -196,15 +208,26 @@ export default function AdminLoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-6">
       <div className="max-w-6xl mx-auto">
+        {/* Header with Logo */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                Admin Dashboard
-              </h1>
-              <p className="text-gray-600 mt-1">
-                Welcome back, <span className="font-semibold">{username}</span>
-              </p>
+            <div className="flex items-center gap-4">
+              <Image
+                src="/logo1.png"
+                alt="Texas Premium Insurance Services"
+                width={100}
+                height={100}
+                className="w-14 h-14 object-contain"
+              />
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+                  Admin Dashboard
+                </h1>
+                <p className="text-gray-600 mt-1">
+                  Welcome back,{" "}
+                  <span className="font-semibold">{username}</span>
+                </p>
+              </div>
             </div>
             <button
               onClick={handleLogout}
@@ -215,7 +238,9 @@ export default function AdminLoginPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Dashboard Cards - 3 columns on desktop */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Live Chat Card */}
           <button
             onClick={() => navigateTo("/admin/live-chat")}
             className="group bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 p-8 text-left border-2 border-transparent hover:border-blue-500"
@@ -240,6 +265,30 @@ export default function AdminLoginPage() {
             </div>
           </button>
 
+          {/* Messages Card */}
+          <button
+            onClick={() => navigateTo("/admin/message-stored")}
+            className="group bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 p-8 text-left border-2 border-transparent hover:border-purple-500"
+          >
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-16 h-16 bg-gradient-to-r from-purple-600 to-purple-800 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                <MessageSquare className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Messages</h2>
+                <p className="text-gray-600 text-sm">SMS & MMS messaging</p>
+              </div>
+            </div>
+            <p className="text-gray-600">
+              Send and receive SMS/MMS messages via RingCentral. View
+              conversation history and manage customer communications.
+            </p>
+            <div className="mt-4 flex items-center text-purple-600 font-medium group-hover:translate-x-2 transition-transform">
+              Open Messages →
+            </div>
+          </button>
+
+          {/* Reminders Card */}
           <button
             onClick={() => navigateTo("/admin/reminder")}
             className="group bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 p-8 text-left border-2 border-transparent hover:border-green-500"
