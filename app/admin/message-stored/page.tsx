@@ -853,8 +853,8 @@ export default function MessageStoredPage() {
             </div>
           ) : (
             <>
-              {/* Chat Header with Back Button */}
-              <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4">
+              {/* Chat Header with Back Button - STICKY */}
+              <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-10">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 sm:gap-3">
                     {/* Back Button - More prominent on mobile */}
