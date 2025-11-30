@@ -71,6 +71,14 @@ export default function MessageStoredPage() {
   const conversationsListRef = useRef<HTMLDivElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Message pagination state
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
+  const [totalMessages, setTotalMessages] = useState(0);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [messagesSkip, setMessagesSkip] = useState(0);
+  const [isLoadingConversation, setIsLoadingConversation] = useState(false);
+
   // Memoize scrollToBottom to use in useEffect dependencies
   const scrollToBottom = useCallback(() => {
     if (shouldScrollToBottom)
@@ -202,6 +210,24 @@ export default function MessageStoredPage() {
     return () => container.removeEventListener("scroll", onScroll);
   }, [selectedPhone]);
 
+  // Load older messages when scrolling to top
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container || !selectedPhone) return;
+
+    const handleScroll = () => {
+      if (isLoadingMoreMessages || !hasMoreMessages) return;
+      // Trigger when scrolled near the top (within 100px)
+      if (container.scrollTop < 100) {
+        loadMoreMessages();
+      }
+    };
+
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPhone, isLoadingMoreMessages, hasMoreMessages, messagesSkip]);
+
   useEffect(() => {
     if (!selectedPhone) return;
 
@@ -219,14 +245,25 @@ export default function MessageStoredPage() {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === "newRingCentralMessage") {
+        // Fetch latest messages and merge with existing
         fetch(
           `/api/messages/conversation?phoneNumber=${encodeURIComponent(
             selectedPhone
-          )}`
+          )}&skip=0&limit=10`
         )
           .then((r) => r.json())
           .then((d) => {
-            setConversation(d.messages || []);
+            const newMessages = d.messages || [];
+            // Merge: keep older messages that aren't in the new batch
+            setConversation((prev) => {
+              const newMessageIds = new Set(
+                newMessages.map((m: StoredMessage) => m.id)
+              );
+              const olderMessages = prev.filter(
+                (m) => !newMessageIds.has(m.id)
+              );
+              return [...olderMessages, ...newMessages];
+            });
             scrollToBottom();
           });
       }
@@ -315,6 +352,7 @@ export default function MessageStoredPage() {
     } finally {
       setLoading(false);
       setIsLoadingMore(false);
+      setIsInitialLoad(false);
     }
   };
 
@@ -339,15 +377,22 @@ export default function MessageStoredPage() {
     setShouldScrollToBottom(true);
     setSelectMode(false);
     setSelectedMessageIds(new Set());
+    setIsLoadingConversation(true);
+    setConversation([]);
+    setMessagesSkip(0);
+    setHasMoreMessages(true);
 
     try {
       const res = await fetch(
         `/api/messages/conversation?phoneNumber=${encodeURIComponent(
           phoneNumber
-        )}`
+        )}&skip=0&limit=10`
       );
       const data = await res.json();
       setConversation(data.messages || []);
+      setTotalMessages(data.total || 0);
+      setHasMoreMessages(data.hasMore || false);
+      setMessagesSkip(data.messages?.length || 0);
 
       await markAsRead(phoneNumber);
 
@@ -375,6 +420,50 @@ export default function MessageStoredPage() {
       setTimeout(scrollToBottom, 100);
     } catch {
       alert("Failed to load conversation");
+    } finally {
+      setIsLoadingConversation(false);
+    }
+  };
+
+  // Load older messages when scrolling up
+  const loadMoreMessages = async () => {
+    if (!selectedPhone || isLoadingMoreMessages || !hasMoreMessages) return;
+
+    setIsLoadingMoreMessages(true);
+
+    // Save scroll position before loading
+    const container = messagesContainerRef.current;
+    const previousScrollHeight = container?.scrollHeight || 0;
+
+    try {
+      const res = await fetch(
+        `/api/messages/conversation?phoneNumber=${encodeURIComponent(
+          selectedPhone
+        )}&skip=${messagesSkip}&limit=10`
+      );
+      const data = await res.json();
+      const olderMessages = data.messages || [];
+
+      if (olderMessages.length > 0) {
+        // Prepend older messages to the conversation
+        setConversation((prev) => [...olderMessages, ...prev]);
+        setMessagesSkip((prev) => prev + olderMessages.length);
+        setHasMoreMessages(data.hasMore || false);
+
+        // Restore scroll position after DOM updates
+        requestAnimationFrame(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = newScrollHeight - previousScrollHeight;
+          }
+        });
+      } else {
+        setHasMoreMessages(false);
+      }
+    } catch {
+      console.error("Failed to load more messages");
+    } finally {
+      setIsLoadingMoreMessages(false);
     }
   };
 
@@ -395,7 +484,7 @@ export default function MessageStoredPage() {
       const response = await fetch(
         `/api/messages/conversation?phoneNumber=${encodeURIComponent(
           phoneNumber
-        )}`
+        )}&all=true`
       );
       const data = await response.json();
 
@@ -661,10 +750,28 @@ export default function MessageStoredPage() {
     }
   };
 
-  if (!mounted)
+  if (!mounted || isInitialLoad)
     return (
-      <div className="h-screen bg-gray-100 flex items-center justify-center">
-        <div>Loading...</div>
+      <div className="h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gradient-to-r from-purple-600 to-blue-700 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg
+              className="w-8 h-8 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+              />
+            </svg>
+          </div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mx-auto"></div>
+          <p className="text-gray-600 mt-4">Loading messages...</p>
+        </div>
       </div>
     );
 
@@ -685,7 +792,7 @@ export default function MessageStoredPage() {
             alt="Texas Premium Insurance Services"
             width={160}
             height={50}
-            className="h-20 w-auto object-contain hidden sm:block"
+            className="h-10 w-auto object-contain hidden sm:block"
           />
           <button
             onClick={() => setShowNewMessageModal(true)}
@@ -1051,6 +1158,77 @@ export default function MessageStoredPage() {
                 ref={messagesContainerRef}
                 className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3 sm:space-y-4"
               >
+                {/* Loading indicator for older messages */}
+                {(isLoadingMoreMessages || hasMoreMessages) &&
+                  conversation.length > 0 && (
+                    <div className="flex items-center justify-center py-4">
+                      {isLoadingMoreMessages ? (
+                        <div className="flex items-center gap-2">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
+                          <span className="text-sm text-gray-500">
+                            Loading older messages...
+                          </span>
+                        </div>
+                      ) : hasMoreMessages ? (
+                        <span className="text-sm text-gray-400">
+                          Scroll up for older messages
+                        </span>
+                      ) : null}
+                    </div>
+                  )}
+
+                {/* Loading state when first viewing conversation */}
+                {isLoadingConversation && (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center">
+                      <div className="w-12 h-12 bg-gradient-to-r from-purple-600 to-blue-700 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <svg
+                          className="w-6 h-6 text-white"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                          />
+                        </svg>
+                      </div>
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600 mx-auto"></div>
+                      <p className="text-gray-500 mt-3 text-sm">
+                        Loading messages...
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Empty state when no messages */}
+                {!isLoadingConversation && conversation.length === 0 && (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center text-gray-500">
+                      <svg
+                        className="w-12 h-12 mx-auto mb-3 text-gray-300"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                        />
+                      </svg>
+                      <p className="text-sm">No messages yet</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Start a conversation!
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 {conversation.map((msg, index) => {
                   const isOutbound = msg.direction === "Outbound";
                   const showDate =
