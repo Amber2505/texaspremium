@@ -74,7 +74,6 @@ export default function MessageStoredPage() {
   // Message pagination state
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
-  const [totalMessages, setTotalMessages] = useState(0);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [messagesSkip, setMessagesSkip] = useState(0);
   const [isLoadingConversation, setIsLoadingConversation] = useState(false);
@@ -225,7 +224,6 @@ export default function MessageStoredPage() {
 
     container.addEventListener("scroll", handleScroll);
     return () => container.removeEventListener("scroll", handleScroll);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPhone, isLoadingMoreMessages, hasMoreMessages, messagesSkip]);
 
   useEffect(() => {
@@ -390,7 +388,6 @@ export default function MessageStoredPage() {
       );
       const data = await res.json();
       setConversation(data.messages || []);
-      setTotalMessages(data.total || 0);
       setHasMoreMessages(data.hasMore || false);
       setMessagesSkip(data.messages?.length || 0);
 
