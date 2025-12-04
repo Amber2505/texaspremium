@@ -76,14 +76,21 @@ export async function GET() {
       
       if (!otherPhone) continue;
 
-      // Check if message already exists in conversation
+      // FIRST CHECK: Check if message already exists in conversation
       const existingConv = await conversationsCollection.findOne({ 
-        phoneNumber: otherPhone,
-        "messages.id": msg.id.toString()
+        phoneNumber: otherPhone
       });
-      
+
       if (existingConv) {
-        continue; // Message already exists, skip
+        // Check if this message ID already exists in the messages array
+        const messageExists = existingConv.messages?.some(
+          (m: StoredMessage) => m.id === msg.id.toString()
+        );
+        
+        if (messageExists) {
+          console.log(`⏭️  Message ${msg.id} already exists for ${otherPhone}, skipping`);
+          continue;
+        }
       }
 
       // Process attachments - download from RingCentral and upload to Azure
@@ -122,9 +129,14 @@ export async function GET() {
             
             console.log(`📥 Processing ${attachment.contentType} attachment: ${attachment.uri}`);
             
+            // CRITICAL: Convert relative URI to full URL
+            const fullUrl = attachment.uri.startsWith('http') 
+              ? attachment.uri 
+              : `https://platform.ringcentral.com${attachment.uri}`;
+            
             // Use existing downloadAndUpload method with auth token
             const azureUrl = await azureStorage.downloadAndUpload(
-              attachment.uri,
+              fullUrl,
               filename,
               attachment.contentType,
               authToken
@@ -163,7 +175,18 @@ export async function GET() {
         attachments: processedAttachments,
       };
 
-      // Upsert conversation: add message to array
+      // SECOND CHECK: Double-check right before insert to prevent race conditions
+      const finalCheck = await conversationsCollection.findOne({
+        phoneNumber: otherPhone,
+        "messages.id": msg.id.toString()
+      });
+
+      if (finalCheck) {
+        console.log(`⏭️  Message ${msg.id} already exists (final check), skipping`);
+        continue;
+      }
+
+      // Upsert conversation: add message to array ONLY if it doesn't exist
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const updateOperation: any = {
         $push: { 
@@ -183,19 +206,28 @@ export async function GET() {
         updateOperation.$inc = { unreadCount: 1 };
       }
 
+      // Use $ne (not equal) to ensure we only insert if message doesn't exist
       const result = await conversationsCollection.updateOne(
-        { phoneNumber: otherPhone },
+        { 
+          phoneNumber: otherPhone,
+          "messages.id": { $ne: msg.id.toString() } // Critical: Only update if message ID doesn't exist
+        },
         updateOperation,
         { upsert: true }
       );
 
-      if (result.upsertedCount > 0) {
-        console.log(`✨ Created new conversation for ${otherPhone}`);
+      // Only count as new if we actually modified or inserted
+      if (result.modifiedCount > 0 || result.upsertedCount > 0) {
+        if (result.upsertedCount > 0) {
+          console.log(`✨ Created new conversation for ${otherPhone}`);
+        }
+        
+        console.log(`💾 Added message ${msg.id} to conversation ${otherPhone}`);
+        newCount++;
+        updatedConversations++;
+      } else {
+        console.log(`⏭️  Message ${msg.id} was not added (likely already exists)`);
       }
-      
-      console.log(`💾 Added message ${msg.id} to conversation ${otherPhone}`);
-      newCount++;
-      updatedConversations++;
     }
 
     console.log(`✅ Synced ${newCount} new messages across ${updatedConversations} conversations, ${attachmentsDownloaded} attachments`);
@@ -243,7 +275,7 @@ export async function GET() {
         const readStatusResponse = await platform.get(
           "/restapi/v1.0/account/~/extension/~/message-store",
           {
-            messageType: ["SMS", "MMS"],
+            messageType: "SMS",
             readStatus: "Read",
             perPage: 1000,
           }

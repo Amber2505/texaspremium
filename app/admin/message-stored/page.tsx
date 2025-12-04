@@ -10,6 +10,7 @@ interface ConversationSummary {
   lastMessage: RingCentralMessage;
   lastMessageTime: string;
   unreadCount?: number;
+  matchingMessages?: string[]; // For content search results
 }
 
 // Type for stored message filtering
@@ -40,6 +41,7 @@ export default function MessageStoredPage() {
   const [sending, setSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const [showNewMessageModal, setShowNewMessageModal] = useState(false);
   const [newPhoneNumber, setNewPhoneNumber] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -51,9 +53,6 @@ export default function MessageStoredPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(
     new Set()
-  );
-  const [longPressTimer, setLongPressTimer] = useState<NodeJS.Timeout | null>(
-    null
   );
 
   // Image lightbox state
@@ -77,6 +76,10 @@ export default function MessageStoredPage() {
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [messagesSkip, setMessagesSkip] = useState(0);
   const [isLoadingConversation, setIsLoadingConversation] = useState(false);
+  const [activeSearchText, setActiveSearchText] = useState(""); // Track search when viewing conversation
+  const [matchingMessageIndices, setMatchingMessageIndices] = useState<
+    number[]
+  >([]);
 
   // Memoize scrollToBottom to use in useEffect dependencies
   const scrollToBottom = useCallback(() => {
@@ -112,6 +115,8 @@ export default function MessageStoredPage() {
     setSelectedPhone(null);
     setSelectMode(false);
     setSelectedMessageIds(new Set());
+    setActiveSearchText("");
+    setMatchingMessageIndices([]);
   }, []);
 
   useEffect(() => setMounted(true), []);
@@ -209,6 +214,56 @@ export default function MessageStoredPage() {
     return () => container.removeEventListener("scroll", onScroll);
   }, [selectedPhone]);
 
+  // Load older messages when scrolling up - useCallback version
+  const loadMoreMessages = useCallback(async () => {
+    if (!selectedPhone || isLoadingMoreMessages || !hasMoreMessages) return;
+
+    setIsLoadingMoreMessages(true);
+
+    const container = messagesContainerRef.current;
+    const previousScrollHeight = container?.scrollHeight || 0;
+
+    try {
+      const res = await fetch(
+        `/api/messages/conversation?phoneNumber=${encodeURIComponent(
+          selectedPhone
+        )}&skip=${messagesSkip}&limit=10`
+      );
+      const data = await res.json();
+      const olderMessages = data.messages || [];
+
+      if (olderMessages.length > 0) {
+        // DEDUPLICATION: Filter out messages that already exist
+        setConversation((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const newUniqueMessages = olderMessages.filter(
+            (msg: { id?: string }) => msg.id && !existingIds.has(msg.id)
+          );
+
+          if (newUniqueMessages.length > 0) {
+            // Restore scroll position after render
+            requestAnimationFrame(() => {
+              if (container) {
+                const newScrollHeight = container.scrollHeight;
+                container.scrollTop = newScrollHeight - previousScrollHeight;
+              }
+            });
+            return [...newUniqueMessages, ...prev];
+          }
+          return prev;
+        });
+        setMessagesSkip((prev) => prev + olderMessages.length);
+        setHasMoreMessages(data.hasMore || false);
+      } else {
+        setHasMoreMessages(false);
+      }
+    } catch {
+      console.error("Failed to load more messages");
+    } finally {
+      setIsLoadingMoreMessages(false);
+    }
+  }, [selectedPhone, isLoadingMoreMessages, hasMoreMessages, messagesSkip]);
+
   // Load older messages when scrolling to top
   useEffect(() => {
     const container = messagesContainerRef.current;
@@ -224,7 +279,7 @@ export default function MessageStoredPage() {
 
     container.addEventListener("scroll", handleScroll);
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [selectedPhone, isLoadingMoreMessages, hasMoreMessages, messagesSkip]);
+  }, [selectedPhone, isLoadingMoreMessages, hasMoreMessages, loadMoreMessages]);
 
   useEffect(() => {
     if (!selectedPhone) return;
@@ -287,7 +342,6 @@ export default function MessageStoredPage() {
 
     element.addEventListener("scroll", handleScroll);
     return () => element.removeEventListener("scroll", handleScroll);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoadingMore, hasMore, conversations.length, searchInput]);
 
   // Keyboard navigation for lightbox
@@ -310,6 +364,26 @@ export default function MessageStoredPage() {
       }
     };
   }, []);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const textarea = messageInputRef.current;
+    if (!textarea) return;
+
+    const adjustHeight = () => {
+      textarea.style.height = "auto";
+      const newHeight = Math.min(textarea.scrollHeight, 160); // Increased from 128px to 160px
+      textarea.style.height = newHeight + "px";
+    };
+
+    // Adjust on input
+    textarea.addEventListener("input", adjustHeight);
+
+    // Also adjust when messageInput changes (for programmatic updates)
+    adjustHeight();
+
+    return () => textarea.removeEventListener("input", adjustHeight);
+  }, [messageInput]); // Add messageInput as dependency
 
   const fetchMessages = async (skip = 0, search = "", append = false) => {
     if (skip === 0 && !append) setLoading(true);
@@ -369,27 +443,44 @@ export default function MessageStoredPage() {
     }, 300);
   };
 
-  const viewConversation = async (phoneNumber: string) => {
+  const viewConversation = async (phoneNumber: string, searchText?: string) => {
     setSelectedPhone(phoneNumber);
     setMessageInput("");
-    setShouldScrollToBottom(true);
     setSelectMode(false);
     setSelectedMessageIds(new Set());
     setIsLoadingConversation(true);
     setConversation([]);
     setMessagesSkip(0);
     setHasMoreMessages(true);
+    setActiveSearchText(searchText || "");
+    setMatchingMessageIndices([]);
+
+    // Only scroll to bottom if NOT searching
+    setShouldScrollToBottom(!searchText);
 
     try {
-      const res = await fetch(
-        `/api/messages/conversation?phoneNumber=${encodeURIComponent(
-          phoneNumber
-        )}&skip=0&limit=10`
-      );
+      let url = `/api/messages/conversation?phoneNumber=${encodeURIComponent(
+        phoneNumber
+      )}`;
+
+      if (searchText && searchText.trim()) {
+        // If searching, pass searchText to get messages around the match
+        url += `&searchText=${encodeURIComponent(searchText.trim())}`;
+      } else {
+        // Normal load - get last 10 messages
+        url += `&skip=0&limit=10`;
+      }
+
+      const res = await fetch(url);
       const data = await res.json();
       setConversation(data.messages || []);
       setHasMoreMessages(data.hasMore || false);
       setMessagesSkip(data.messages?.length || 0);
+
+      // Store matching indices for highlighting
+      if (data.matchingIndices && data.matchingIndices.length > 0) {
+        setMatchingMessageIndices(data.matchingIndices);
+      }
 
       await markAsRead(phoneNumber);
 
@@ -414,53 +505,30 @@ export default function MessageStoredPage() {
         )
       );
 
-      setTimeout(scrollToBottom, 100);
+      // Scroll to first matching message if searching, otherwise scroll to bottom
+      if (
+        searchText &&
+        data.firstMatchIndex !== undefined &&
+        data.firstMatchIndex >= 0
+      ) {
+        setTimeout(() => {
+          const matchElement = document.getElementById(
+            `message-${data.firstMatchIndex}`
+          );
+          if (matchElement) {
+            matchElement.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
+          }
+        }, 150);
+      } else {
+        setTimeout(scrollToBottom, 100);
+      }
     } catch {
       alert("Failed to load conversation");
     } finally {
       setIsLoadingConversation(false);
-    }
-  };
-
-  // Load older messages when scrolling up
-  const loadMoreMessages = async () => {
-    if (!selectedPhone || isLoadingMoreMessages || !hasMoreMessages) return;
-
-    setIsLoadingMoreMessages(true);
-
-    // Save scroll position before loading
-    const container = messagesContainerRef.current;
-    const previousScrollHeight = container?.scrollHeight || 0;
-
-    try {
-      const res = await fetch(
-        `/api/messages/conversation?phoneNumber=${encodeURIComponent(
-          selectedPhone
-        )}&skip=${messagesSkip}&limit=10`
-      );
-      const data = await res.json();
-      const olderMessages = data.messages || [];
-
-      if (olderMessages.length > 0) {
-        // Prepend older messages to the conversation
-        setConversation((prev) => [...olderMessages, ...prev]);
-        setMessagesSkip((prev) => prev + olderMessages.length);
-        setHasMoreMessages(data.hasMore || false);
-
-        // Restore scroll position after DOM updates
-        requestAnimationFrame(() => {
-          if (container) {
-            const newScrollHeight = container.scrollHeight;
-            container.scrollTop = newScrollHeight - previousScrollHeight;
-          }
-        });
-      } else {
-        setHasMoreMessages(false);
-      }
-    } catch {
-      console.error("Failed to load more messages");
-    } finally {
-      setIsLoadingMoreMessages(false);
     }
   };
 
@@ -661,6 +729,9 @@ export default function MessageStoredPage() {
         if (a.azureUrl?.startsWith("blob:")) URL.revokeObjectURL(a.azureUrl);
         if (a.uri?.startsWith("blob:")) URL.revokeObjectURL(a.uri);
       });
+
+      // Focus input for next message
+      setTimeout(() => messageInputRef.current?.focus(), 100);
     } catch {
       alert("Failed to send");
       setMessageInput(text);
@@ -700,22 +771,108 @@ export default function MessageStoredPage() {
     setSelectedMessageIds(set);
   };
 
-  const startLongPress = (id: string) => {
-    if (longPressTimer) clearTimeout(longPressTimer);
-    const timer = setTimeout(() => {
-      setSelectMode(true);
-      setSelectedMessageIds(new Set([id]));
-    }, 600);
-    setLongPressTimer(timer);
-  };
-
-  const clearLongPress = () => longPressTimer && clearTimeout(longPressTimer);
-
   const formatPhoneNumber = (p: string) => {
     const c = p.replace(/\D/g, "");
-    return c.length === 11 && c.startsWith("1")
-      ? `+1 (${c.slice(1, 4)}) ${c.slice(4, 7)}-${c.slice(7)}`
-      : p;
+    // Remove +1 and format as (XXX) XXX-XXXX
+    if (c.length === 11 && c.startsWith("1")) {
+      return `(${c.slice(1, 4)}) ${c.slice(4, 7)}-${c.slice(7)}`;
+    }
+    if (c.length === 10) {
+      return `(${c.slice(0, 3)}) ${c.slice(3, 6)}-${c.slice(6)}`;
+    }
+    return p;
+  };
+
+  // Render text with clickable links, emails, and phone numbers
+  const renderTextWithLinks = (
+    text: string,
+    isOutbound: boolean
+  ): React.ReactNode => {
+    if (!text) return null;
+
+    // Combined regex for URLs, emails, and phone numbers
+    const combinedRegex =
+      /(https?:\/\/[^\s]+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|\+?1?[-.\s]?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4})/g;
+
+    const matches = text.match(combinedRegex);
+
+    if (!matches || matches.length === 0) return text;
+
+    const result: React.ReactNode[] = [];
+    let lastIndex = 0;
+
+    matches.forEach((matchedText, i) => {
+      const matchPosition = text.indexOf(matchedText, lastIndex);
+
+      // Add text before the match
+      if (matchPosition > lastIndex) {
+        result.push(
+          <span key={`text-${i}`}>
+            {text.substring(lastIndex, matchPosition)}
+          </span>
+        );
+      }
+
+      const linkClass = `underline ${
+        isOutbound
+          ? "text-blue-200 hover:text-white"
+          : "text-blue-600 hover:text-blue-800"
+      }`;
+
+      // Determine type by checking patterns and make it clickable
+      if (
+        matchedText.startsWith("http://") ||
+        matchedText.startsWith("https://")
+      ) {
+        // URL
+        result.push(
+          <a
+            key={`link-${i}`}
+            href={matchedText}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={linkClass}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {matchedText}
+          </a>
+        );
+      } else if (matchedText.includes("@") && matchedText.includes(".")) {
+        // Email
+        result.push(
+          <a
+            key={`email-${i}`}
+            href={`mailto:${matchedText}`}
+            className={linkClass}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {matchedText}
+          </a>
+        );
+      } else {
+        // Phone number
+        const cleanPhone = matchedText.replace(/\D/g, "");
+        result.push(
+          <a
+            key={`phone-${i}`}
+            href={`tel:${cleanPhone}`}
+            className={linkClass}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {matchedText}
+          </a>
+        );
+      }
+
+      lastIndex = matchPosition + matchedText.length;
+    });
+
+    // Add any remaining text after the last match
+    if (lastIndex < text.length) {
+      result.push(<span key="text-end">{text.substring(lastIndex)}</span>);
+    }
+
+    return <>{result}</>;
   };
 
   // Lightbox open function
@@ -725,25 +882,92 @@ export default function MessageStoredPage() {
     allImages: Array<{ url: string; filename: string }>
   ) => {
     const currentIndex = allImages.findIndex((img) => img.url === url);
-    setLightboxImage({ url, filename, allImages, currentIndex });
+    // Ensure filename has extension
+    let finalFilename = filename;
+    if (!filename.includes(".")) {
+      // Try to get extension from URL
+      const urlPath = url.split("?")[0]; // Remove query params
+      const urlExt = urlPath.split(".").pop()?.toLowerCase();
+      if (
+        urlExt &&
+        [
+          "jpg",
+          "jpeg",
+          "png",
+          "gif",
+          "webp",
+          "mp4",
+          "mp3",
+          "wav",
+          "pdf",
+        ].includes(urlExt)
+      ) {
+        finalFilename = `${filename}.${urlExt}`;
+      } else {
+        finalFilename = `${filename}.jpg`; // Default to jpg for images
+      }
+    }
+    setLightboxImage({ url, filename: finalFilename, allImages, currentIndex });
   };
 
-  // Proper download function
+  // Proper download function using proxy to avoid CORS issues
   const downloadFile = async (url: string, filename: string) => {
+    // Ensure filename has extension
+    let finalFilename = filename;
+    if (!filename.includes(".")) {
+      const urlPath = url.split("?")[0];
+      const urlExt = urlPath.split(".").pop()?.toLowerCase();
+      if (
+        urlExt &&
+        [
+          "jpg",
+          "jpeg",
+          "png",
+          "gif",
+          "webp",
+          "mp4",
+          "mp3",
+          "wav",
+          "pdf",
+        ].includes(urlExt)
+      ) {
+        finalFilename = `${filename}.${urlExt}`;
+      } else {
+        finalFilename = `${filename}.jpg`;
+      }
+    }
+
     try {
-      const response = await fetch(url);
+      // Use our proxy API to download the file
+      const proxyUrl = `/api/download?url=${encodeURIComponent(
+        url
+      )}&filename=${encodeURIComponent(finalFilename)}`;
+
+      const response = await fetch(proxyUrl);
+
+      if (!response.ok) {
+        throw new Error("Download failed");
+      }
+
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = blobUrl;
-      link.download = filename || "download";
+      link.download = finalFilename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(blobUrl);
     } catch (err) {
       console.error("Download failed:", err);
-      window.open(url, "_blank");
+      // Fallback: try direct download
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = finalFilename;
+      link.target = "_blank";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     }
   };
 
@@ -785,11 +1009,11 @@ export default function MessageStoredPage() {
             Messages
           </h1>
           <Image
-            src="/logo1.png"
+            src="/logo.png"
             alt="Texas Premium Insurance Services"
             width={160}
             height={50}
-            className="h-10 w-auto object-contain hidden sm:block"
+            className="h-15 w-auto object-contain hidden sm:block"
           />
           <button
             onClick={() => setShowNewMessageModal(true)}
@@ -824,7 +1048,7 @@ export default function MessageStoredPage() {
             <div className="relative">
               <input
                 type="text"
-                placeholder="Search by phone number..."
+                placeholder="Search phone or messages..."
                 value={searchInput}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
@@ -897,7 +1121,16 @@ export default function MessageStoredPage() {
                   >
                     <div className="flex items-start gap-3">
                       <div
-                        onClick={() => viewConversation(conv.phoneNumber)}
+                        onClick={() => {
+                          // Pass search text only for content searches (has matching messages)
+                          const isContentSearch =
+                            conv.matchingMessages &&
+                            conv.matchingMessages.length > 0;
+                          viewConversation(
+                            conv.phoneNumber,
+                            isContentSearch ? searchInput : undefined
+                          );
+                        }}
                         className="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center cursor-pointer"
                       >
                         <svg
@@ -910,7 +1143,15 @@ export default function MessageStoredPage() {
                       </div>
 
                       <div
-                        onClick={() => viewConversation(conv.phoneNumber)}
+                        onClick={() => {
+                          const isContentSearch =
+                            conv.matchingMessages &&
+                            conv.matchingMessages.length > 0;
+                          viewConversation(
+                            conv.phoneNumber,
+                            isContentSearch ? searchInput : undefined
+                          );
+                        }}
                         className="flex-1 min-w-0 cursor-pointer"
                       >
                         <div className="flex items-center justify-between mb-1">
@@ -953,6 +1194,30 @@ export default function MessageStoredPage() {
                           )}
                           {lastMsg?.subject || "No message"}
                         </p>
+                        {/* Show matching message snippets during content search */}
+                        {conv.matchingMessages &&
+                          conv.matchingMessages.length > 0 &&
+                          searchInput && (
+                            <div className="mt-1 space-y-1">
+                              {conv.matchingMessages
+                                .slice(0, 2)
+                                .map((msg, idx) => (
+                                  <p
+                                    key={idx}
+                                    className="text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded truncate"
+                                  >
+                                    <span className="font-medium">Match:</span>{" "}
+                                    {msg}
+                                  </p>
+                                ))}
+                              {conv.matchingMessages.length > 2 && (
+                                <p className="text-xs text-purple-500">
+                                  +{conv.matchingMessages.length - 2} more
+                                  matches
+                                </p>
+                              )}
+                            </div>
+                          )}
                       </div>
 
                       <div className="relative flex-shrink-0">
@@ -1111,9 +1376,29 @@ export default function MessageStoredPage() {
                         <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
                       </svg>
                     </div>
-                    <h2 className="font-semibold text-gray-900 text-sm sm:text-base truncate max-w-[150px] sm:max-w-none">
-                      {formatPhoneNumber(selectedPhone)}
-                    </h2>
+                    <div className="flex flex-col min-w-0">
+                      <h2 className="font-semibold text-gray-900 text-sm sm:text-base truncate max-w-[150px] sm:max-w-none">
+                        {formatPhoneNumber(selectedPhone)}
+                      </h2>
+                      {activeSearchText &&
+                        matchingMessageIndices.length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
+                              Search: &quot;{activeSearchText}&quot;
+                            </span>
+                            <button
+                              onClick={() => {
+                                setActiveSearchText("");
+                                setMatchingMessageIndices([]);
+                                viewConversation(selectedPhone);
+                              }}
+                              className="text-xs text-gray-500 hover:text-gray-700 underline"
+                            >
+                              View all
+                            </button>
+                          </div>
+                        )}
+                    </div>
                   </div>
 
                   {selectMode ? (
@@ -1235,9 +1520,11 @@ export default function MessageStoredPage() {
                         conversation[index - 1]?.creationTime || ""
                       ).toDateString();
                   const isSelected = selectedMessageIds.has(msg.id || "");
+                  const isMatchingMessage =
+                    matchingMessageIndices.includes(index);
 
                   return (
-                    <div key={`${msg.id}-${index}`}>
+                    <div key={`${msg.id}-${index}`} id={`message-${index}`}>
                       {showDate && (
                         <div className="flex items-center justify-center my-4">
                           <div className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
@@ -1279,26 +1566,81 @@ export default function MessageStoredPage() {
                                 : isOutbound
                                 ? "bg-blue-600 text-white"
                                 : "bg-white text-gray-900 border border-gray-200"
-                            } ${selectMode ? "cursor-pointer" : ""}`}
+                            } ${selectMode ? "cursor-pointer" : ""} ${
+                              isMatchingMessage
+                                ? "ring-2 ring-purple-500 ring-offset-2"
+                                : ""
+                            }`}
                             onClick={() =>
                               selectMode && toggleSelect(msg.id || "")
                             }
-                            onMouseDown={() =>
-                              !selectMode && startLongPress(msg.id || "")
-                            }
-                            onMouseUp={clearLongPress}
-                            onTouchStart={() =>
-                              !selectMode && startLongPress(msg.id || "")
-                            }
-                            onTouchEnd={clearLongPress}
                           >
                             {selectMode && isSelected && (
                               <div className="absolute inset-0 rounded-2xl ring-4 ring-blue-400 pointer-events-none opacity-30" />
                             )}
 
+                            {/* Search match indicator */}
+                            {isMatchingMessage && activeSearchText && (
+                              <div className="flex items-center gap-1 mb-1">
+                                <span className="text-[10px] font-medium bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
+                                  Match
+                                </span>
+                              </div>
+                            )}
+
                             {msg.subject && (
                               <p className="break-words whitespace-pre-wrap mb-2 text-sm sm:text-base">
-                                {msg.subject}
+                                {isMatchingMessage && activeSearchText
+                                  ? // Highlight matching text
+                                    (() => {
+                                      const text = msg.subject;
+                                      const searchLower =
+                                        activeSearchText.toLowerCase();
+                                      const textLower = text.toLowerCase();
+                                      const matchIndex =
+                                        textLower.indexOf(searchLower);
+
+                                      if (matchIndex === -1)
+                                        return renderTextWithLinks(
+                                          text,
+                                          isOutbound
+                                        );
+
+                                      const before = text.slice(0, matchIndex);
+                                      const match = text.slice(
+                                        matchIndex,
+                                        matchIndex + activeSearchText.length
+                                      );
+                                      const after = text.slice(
+                                        matchIndex + activeSearchText.length
+                                      );
+
+                                      return (
+                                        <>
+                                          {renderTextWithLinks(
+                                            before,
+                                            isOutbound
+                                          )}
+                                          <mark
+                                            className={`${
+                                              isOutbound
+                                                ? "bg-yellow-200 text-gray-900"
+                                                : "bg-yellow-200"
+                                            } px-0.5 rounded`}
+                                          >
+                                            {match}
+                                          </mark>
+                                          {renderTextWithLinks(
+                                            after,
+                                            isOutbound
+                                          )}
+                                        </>
+                                      );
+                                    })()
+                                  : renderTextWithLinks(
+                                      msg.subject,
+                                      isOutbound
+                                    )}
                               </p>
                             )}
 
@@ -1723,8 +2065,8 @@ export default function MessageStoredPage() {
                       className="hidden"
                     />
 
-                    <input
-                      type="text"
+                    <textarea
+                      ref={messageInputRef}
                       value={messageInput}
                       onChange={(e) => setMessageInput(e.target.value)}
                       onKeyDown={(e) => {
@@ -1733,8 +2075,50 @@ export default function MessageStoredPage() {
                           sendMessage();
                         }
                       }}
+                      rows={1}
+                      onPaste={(e) => {
+                        const items = e.clipboardData?.items;
+                        if (!items) return;
+
+                        const imageFiles: File[] = [];
+                        for (let i = 0; i < items.length; i++) {
+                          const item = items[i];
+                          if (item.type.startsWith("image/")) {
+                            const file = item.getAsFile();
+                            if (file) {
+                              // Check file size (1.5MB limit for MMS)
+                              if (file.size > 1.5 * 1024 * 1024) {
+                                alert(
+                                  `Image is too large (${(
+                                    file.size /
+                                    1024 /
+                                    1024
+                                  ).toFixed(2)}MB). Max size is 1.5MB.`
+                                );
+                                continue;
+                              }
+                              // Rename with timestamp
+                              const newFile = new File(
+                                [file],
+                                `pasted-image-${Date.now()}.${
+                                  file.type.split("/")[1]
+                                }`,
+                                {
+                                  type: file.type,
+                                }
+                              );
+                              imageFiles.push(newFile);
+                            }
+                          }
+                        }
+
+                        if (imageFiles.length > 0) {
+                          e.preventDefault(); // Prevent pasting image data as text
+                          setSelectedFiles((prev) => [...prev, ...imageFiles]);
+                        }
+                      }}
                       placeholder="Type a message..."
-                      className="flex-1 px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm sm:text-base"
+                      className="flex-1 px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm sm:text-base resize-none max-h-40 overflow-y-auto"
                       disabled={sending}
                     />
 

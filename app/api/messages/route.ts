@@ -1,5 +1,5 @@
 // /api/messages/route.ts
-// Updated to support server-side pagination and search
+// Updated to support server-side pagination and search (phone + message content)
 
 import { NextRequest, NextResponse } from "next/server";
 import clientPromise from "@/lib/mongodb";
@@ -15,11 +15,45 @@ export async function GET(request: NextRequest) {
     const db = client.db("db");
     const collection = db.collection("texas_premium_messages");
 
-    // Build query - search by phone number if provided
-    const query: Record<string, unknown> = {};
+    // Build query - search by phone number OR message content if provided
+    let query: Record<string, unknown> = {};
+    const matchingMessageIds: Map<string, string[]> = new Map(); // phoneNumber -> matching message snippets
+
     if (search.trim()) {
-      // Search for phone numbers containing the search string
-      query.phoneNumber = { $regex: search.trim(), $options: "i" };
+      const searchTerm = search.trim();
+      const isPhoneSearch = /^\d+$/.test(searchTerm.replace(/[\s\-\(\)\+]/g, ""));
+
+      if (isPhoneSearch) {
+        // Pure phone number search
+        query.phoneNumber = { $regex: searchTerm.replace(/[\s\-\(\)\+]/g, ""), $options: "i" };
+      } else {
+        // Search both phone numbers AND message content
+        query = {
+          $or: [
+            { phoneNumber: { $regex: searchTerm, $options: "i" } },
+            { "messages.subject": { $regex: searchTerm, $options: "i" } },
+          ],
+        };
+
+        // Find conversations with matching messages to highlight them
+        const matchingConvs = await collection
+          .find({ "messages.subject": { $regex: searchTerm, $options: "i" } })
+          .project({ phoneNumber: 1, messages: 1 })
+          .toArray();
+
+        for (const conv of matchingConvs) {
+          const matchingMsgs = (conv.messages || [])
+            .filter((m: { subject?: string }) => 
+              m.subject && m.subject.toLowerCase().includes(searchTerm.toLowerCase())
+            )
+            .slice(-3) // Get last 3 matching messages
+            .map((m: { subject?: string }) => m.subject || "");
+          
+          if (matchingMsgs.length > 0) {
+            matchingMessageIds.set(conv.phoneNumber, matchingMsgs);
+          }
+        }
+      }
     }
 
     // Get total count for pagination info
@@ -46,6 +80,8 @@ export async function GET(request: NextRequest) {
       lastMessage: conv.messages?.[0] || null,
       lastMessageTime: conv.lastMessageTime,
       unreadCount: conv.unreadCount || 0,
+      // Include matching message snippets if this was a content search
+      matchingMessages: matchingMessageIds.get(conv.phoneNumber) || [],
     }));
 
     return NextResponse.json({
@@ -54,6 +90,7 @@ export async function GET(request: NextRequest) {
       skip,
       limit,
       hasMore: skip + formattedConversations.length < total,
+      searchType: search.trim() ? (/^\d+$/.test(search.trim().replace(/[\s\-\(\)\+]/g, "")) ? "phone" : "content") : "none",
     });
   } catch (error) {
     console.error("Error fetching messages:", error);
