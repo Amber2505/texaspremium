@@ -3,369 +3,276 @@ import { SDK } from "@ringcentral/sdk";
 
 const RINGCENTRAL_SERVER = "https://platform.ringcentral.com";
 
-async function getRingCentralClient() {
-  const rcsdk = new SDK({
-    server: RINGCENTRAL_SERVER,
-    clientId: process.env.RINGCENTRAL_CLIENT_ID,
-    clientSecret: process.env.RINGCENTRAL_CLIENT_SECRET,
-  });
-
-  const platform = rcsdk.platform();
-  await platform.login({ jwt: process.env.RINGCENTRAL_JWT });
-  return platform;
-}
-
-// Type for stored message
 interface StoredMessage {
   id?: string;
   direction?: string;
   readStatus?: string;
-  subject?: string;
-  creationTime?: string;
+  attachments?: Array<{ azureUrl?: string }>;
 }
 
 export async function GET() {
   try {
-    console.log("🔄 Auto-syncing messages...");
+    console.log("\n\n");
+    console.log("═══════════════════════════════════════════════════════════");
+    console.log("🔄 [AUTO-SYNC] Starting at:", new Date().toISOString());
+    console.log("═══════════════════════════════════════════════════════════");
     
-    const platform = await getRingCentralClient();
+    // STEP 1: Login and get token
+    console.log("\n🔐 [AUTH] Logging in...");
+    const rcsdk = new SDK({
+      server: RINGCENTRAL_SERVER,
+      clientId: process.env.RINGCENTRAL_CLIENT_ID,
+      clientSecret: process.env.RINGCENTRAL_CLIENT_SECRET,
+    });
+
+    const platform = rcsdk.platform();
+    await platform.login({ jwt: process.env.RINGCENTRAL_JWT });
     
-    // Fetch messages from last 60 minutes (increased for testing)
-    const dateFrom = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const authData = await platform.auth().data();
+    const authToken = authData.access_token;
     
-    console.log(`📅 Fetching messages from: ${dateFrom}`);
+    if (!authToken) {
+      console.error('❌ [AUTH] No token!');
+      return NextResponse.json({ error: "No auth token" }, { status: 500 });
+    }
+    console.log(`🔐 [AUTH] ✅ Token: ${authToken.substring(0, 30)}...`);
+    
+    // STEP 2: Import dependencies
+    const { azureStorage } = await import("@/lib/services/azureStorage");
+    const connectToDatabase = (await import("@/lib/mongodb")).default;
+    const client = await connectToDatabase;
+    const db = client.db("db");
+    const conversationsCollection = db.collection("texas_premium_messages");
+    
+    // STEP 3: Fetch messages
+    const dateFrom = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    console.log(`\n📅 Fetching messages from: ${dateFrom}`);
     
     const response = await platform.get("/restapi/v1.0/account/~/extension/~/message-store", {
       messageType: "SMS",
       dateFrom: dateFrom,
-      perPage: 100,
+      perPage: 50,
     });
 
     const data = await response.json();
     const messages = data.records || [];
+    console.log(`📥 Found ${messages.length} messages`);
 
-    console.log(`📥 Found ${messages.length} messages from RingCentral`);
+    const stats = { 
+      processed: 0, 
+      skipped: 0, 
+      newSaved: 0, 
+      fixed: 0, 
+      attachmentsDownloaded: 0,
+      errors: 0
+    };
     
-    if (messages.length > 0) {
-      console.log("First message sample:", {
-        id: messages[0].id,
-        direction: messages[0].direction,
-        subject: messages[0].subject?.substring(0, 50),
-        from: messages[0].from?.phoneNumber,
-        to: messages[0].to?.[0]?.phoneNumber,
-      });
-    }
-
-    // Import MongoDB and save
-    const connectToDatabase = (await import("@/lib/mongodb")).default;
-    
-    const client = await connectToDatabase;
-    const db = client.db("db");
-    const conversationsCollection = db.collection("texas_premium_messages");
-
-    let newCount = 0;
-    let updatedConversations = 0;
-    let attachmentsDownloaded = 0;
-    
+    // STEP 4: Process each message
     for (const msg of messages) {
-      // Determine the other party's phone number
+      const messageId = msg.id.toString();
       const isOutbound = msg.direction === "Outbound";
-      const otherPhone = isOutbound 
-        ? msg.to?.[0]?.phoneNumber 
-        : msg.from?.phoneNumber;
+      const otherPhone = isOutbound ? msg.to?.[0]?.phoneNumber : msg.from?.phoneNumber;
       
       if (!otherPhone) continue;
-
-      // FIRST CHECK: Check if message already exists in conversation
-      const existingConv = await conversationsCollection.findOne({ 
-        phoneNumber: otherPhone
-      });
-
-      if (existingConv) {
-        // Check if this message ID already exists in the messages array
-        const messageExists = existingConv.messages?.some(
-          (m: StoredMessage) => m.id === msg.id.toString()
-        );
-        
-        if (messageExists) {
-          console.log(`⏭️  Message ${msg.id} already exists for ${otherPhone}, skipping`);
-          continue;
-        }
-      }
-
-      // Process attachments - download from RingCentral and upload to Azure
-      const processedAttachments = [];
-      if (msg.attachments && msg.attachments.length > 0) {
-        const { azureStorage } = await import("@/lib/services/azureStorage");
-        
-        // Get auth token from platform
-        const authData = await platform.auth().data();
-        const authToken = authData.access_token;
-        
-        if (!authToken) {
-          console.error('❌ No auth token available');
-          continue;
-        }
-        
-        for (const attachment of msg.attachments) {
-          try {
-            // Skip text/plain attachments (these are just message bodies, not actual files)
-            if (attachment.contentType === 'text/plain' || attachment.contentType?.startsWith('text/')) {
-              console.log(`⏭️  Skipping text attachment: ${attachment.contentType}`);
-              continue;
-            }
-            
-            // Only process MMS-supported types: images, audio, video
-            const isImage = attachment.contentType?.startsWith('image/');
-            const isAudio = attachment.contentType?.startsWith('audio/');
-            const isVideo = attachment.contentType?.startsWith('video/');
-            
-            if (!isImage && !isAudio && !isVideo) {
-              console.log(`⏭️  Skipping unsupported attachment type: ${attachment.contentType}`);
-              continue;
-            }
-            
-            const filename = `${msg.id}_${attachment.id}.${attachment.contentType.split('/')[1]}`;
-            
-            console.log(`📥 Processing ${attachment.contentType} attachment: ${attachment.uri}`);
-            
-            // CRITICAL: Convert relative URI to full URL
-            const fullUrl = attachment.uri.startsWith('http') 
-              ? attachment.uri 
-              : `https://platform.ringcentral.com${attachment.uri}`;
-            
-            // Use existing downloadAndUpload method with auth token
-            const azureUrl = await azureStorage.downloadAndUpload(
-              fullUrl,
-              filename,
-              attachment.contentType,
-              authToken
-            );
-            
-            processedAttachments.push({
-              id: attachment.id.toString(),
-              uri: attachment.uri,
-              type: attachment.type,
-              contentType: attachment.contentType,
-              azureUrl: azureUrl,
-              filename: filename,
-            });
-            
-            attachmentsDownloaded++;
-            console.log(`✅ Saved attachment to Azure: ${azureUrl}`);
-          } catch (error) {
-            console.error(`❌ Failed to process attachment:`, error);
-            // Don't save failed attachments
-          }
-        }
-      }
-
-      // Prepare message object
-      const messageObj = {
-        id: msg.id.toString(),
-        direction: msg.direction,
-        type: msg.type,
-        subject: msg.subject || "",
-        creationTime: msg.creationTime,
-        lastModifiedTime: msg.lastModifiedTime,
-        readStatus: msg.direction === "Inbound" ? "Unread" : "Read",
-        messageStatus: msg.messageStatus,
-        from: msg.from,
-        to: msg.to,
-        attachments: processedAttachments,
-      };
-
-      // SECOND CHECK: Double-check right before insert to prevent race conditions
-      const finalCheck = await conversationsCollection.findOne({
-        phoneNumber: otherPhone,
-        "messages.id": msg.id.toString()
-      });
-
-      if (finalCheck) {
-        console.log(`⏭️  Message ${msg.id} already exists (final check), skipping`);
+      
+      // Only process inbound messages with potential attachments
+      if (msg.direction !== "Inbound") {
         continue;
       }
 
-      // Upsert conversation: add message to array ONLY if it doesn't exist
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const updateOperation: any = {
-        $push: { 
-          messages: {
-            $each: [messageObj],
-            $sort: { creationTime: 1 }
-          }
-        },
-        $set: {
-          lastMessageTime: msg.creationTime,
-          lastMessageId: msg.id.toString(),
-        },
-      };
+      console.log(`\n────────────────────────────────────────`);
+      console.log(`📨 Message ${messageId} from ${otherPhone}`);
+      console.log(`   List API attachments: ${msg.attachments?.length || 0}`);
 
-      // Add unread increment only for inbound messages
-      if (msg.direction === "Inbound") {
-        updateOperation.$inc = { unreadCount: 1 };
+      // Check MongoDB
+      const existingConv = await conversationsCollection.findOne({ phoneNumber: otherPhone });
+      const existingMsg = existingConv?.messages?.find((m: StoredMessage) => m.id === messageId);
+
+      if (existingMsg) {
+        // Message exists - check if needs fixing
+        const hasAzureUrls = existingMsg.attachments?.some((a: { azureUrl?: string }) => a.azureUrl);
+        console.log(`   MongoDB: EXISTS, has azureUrls: ${hasAzureUrls}`);
+        
+        if (hasAzureUrls) {
+          console.log(`   ⏭️ Skipping - already has attachments`);
+          stats.skipped++;
+          continue;
+        }
+        console.log(`   🔧 Needs attachment fix`);
+      } else {
+        console.log(`   MongoDB: NEW message`);
       }
 
-      // Use $ne (not equal) to ensure we only insert if message doesn't exist
-      const result = await conversationsCollection.updateOne(
-        { 
-          phoneNumber: otherPhone,
-          "messages.id": { $ne: msg.id.toString() } // Critical: Only update if message ID doesn't exist
-        },
-        updateOperation,
-        { upsert: true }
-      );
-
-      // Only count as new if we actually modified or inserted
-      if (result.modifiedCount > 0 || result.upsertedCount > 0) {
-        if (result.upsertedCount > 0) {
-          console.log(`✨ Created new conversation for ${otherPhone}`);
+      // ALWAYS fetch full message for inbound
+      console.log(`   🔍 Fetching full message...`);
+      
+      let fullMessage;
+      try {
+        const fullMsgResponse = await fetch(
+          `${RINGCENTRAL_SERVER}/restapi/v1.0/account/~/extension/~/message-store/${messageId}`,
+          { headers: { 'Authorization': `Bearer ${authToken}` } }
+        );
+        
+        if (!fullMsgResponse.ok) {
+          console.log(`   ❌ Fetch failed: ${fullMsgResponse.status}`);
+          stats.errors++;
+          continue;
         }
         
-        console.log(`💾 Added message ${msg.id} to conversation ${otherPhone}`);
-        newCount++;
-        updatedConversations++;
-      } else {
-        console.log(`⏭️  Message ${msg.id} was not added (likely already exists)`);
-      }
-    }
-
-    console.log(`✅ Synced ${newCount} new messages across ${updatedConversations} conversations, ${attachmentsDownloaded} attachments`);
-
-    // ============================================
-    // TWO-WAY READ STATUS SYNC
-    // Sync read status FROM RingCentral TO MongoDB
-    // ============================================
-    console.log("🔄 Starting two-way read status sync...");
-    
-    let readStatusSynced = 0;
-    
-    try {
-      // Get all conversations from MongoDB
-      const allConversations = await conversationsCollection.find({}).toArray();
-      
-      // Collect all unread message IDs across all conversations
-      const unreadMessageMap = new Map<string, { phoneNumber: string; messageId: string }>();
-      
-      for (const conversation of allConversations) {
-        const phoneNumber = conversation.phoneNumber;
-        const conversationMessages: StoredMessage[] = conversation.messages || [];
-
-        const unreadInboundMessages = conversationMessages.filter(
-          (msg: StoredMessage) =>
-            msg.direction === "Inbound" &&
-            msg.readStatus === "Unread" &&
-            msg.id
-        );
-
-        unreadInboundMessages.forEach((msg: StoredMessage) => {
-          if (msg.id) {
-            unreadMessageMap.set(msg.id, {
-              phoneNumber: phoneNumber,
-              messageId: msg.id,
-            });
-          }
-        });
+        fullMessage = await fullMsgResponse.json();
+        console.log(`   ✅ Full message has ${fullMessage.attachments?.length || 0} attachments`);
+      } catch (e) {
+        console.log(`   ❌ Fetch error:`, e);
+        stats.errors++;
+        continue;
       }
 
-      console.log(`📬 Checking ${unreadMessageMap.size} unread messages in RingCentral`);
-
-      if (unreadMessageMap.size > 0) {
-        // Fetch messages that are marked as Read in RingCentral
-        const readStatusResponse = await platform.get(
-          "/restapi/v1.0/account/~/extension/~/message-store",
-          {
-            messageType: "SMS",
-            readStatus: "Read",
-            perPage: 1000,
+      // Process attachments
+      const processedAttachments = [];
+      
+      if (fullMessage.attachments && fullMessage.attachments.length > 0) {
+        for (const att of fullMessage.attachments) {
+          console.log(`   📎 Attachment: ${att.contentType} (${att.type})`);
+          
+          // Skip text
+          if (!att.contentType || att.contentType.startsWith('text/')) {
+            console.log(`      ⏭️ Skipping text`);
+            continue;
           }
-        );
+          
+          // Only media
+          if (!att.contentType.startsWith('image/') && 
+              !att.contentType.startsWith('audio/') && 
+              !att.contentType.startsWith('video/')) {
+            console.log(`      ⏭️ Skipping non-media`);
+            continue;
+          }
 
-        const rcReadMessages = (await readStatusResponse.json()).records || [];
-        console.log(`📥 Retrieved ${rcReadMessages.length} Read messages from RingCentral`);
+          if (!att.uri) {
+            console.log(`      ⚠️ No URI!`);
+            continue;
+          }
 
-        const conversationsToUpdate = new Set<string>();
-
-        // Check which of our unread messages are now read in RingCentral
-        for (const rcMessage of rcReadMessages) {
-          const messageId = rcMessage.id.toString();
-
-          if (unreadMessageMap.has(messageId)) {
-            const messageInfo = unreadMessageMap.get(messageId);
-            if (!messageInfo) continue;
+          console.log(`      URI: ${att.uri}`);
+          
+          try {
+            const extension = att.contentType.split('/')[1] || 'bin';
+            const filename = `${messageId}_${att.id}.${extension}`;
             
-            const { phoneNumber } = messageInfo;
-
-            console.log(`✅ Message ${messageId} is Read in RingCentral - syncing to MongoDB`);
-
-            // Update the message's read status in MongoDB
-            await conversationsCollection.updateOne(
-              {
-                phoneNumber: phoneNumber,
-                "messages.id": messageId,
-              },
-              {
-                $set: {
-                  "messages.$.readStatus": "Read",
-                },
-              }
+            console.log(`      📥 Downloading ${filename}...`);
+            
+            const azureUrl = await azureStorage.downloadAndUpload(
+              att.uri,  // URI is already complete
+              filename,
+              att.contentType,
+              authToken
             );
-
-            conversationsToUpdate.add(phoneNumber);
-            readStatusSynced++;
+            
+            if (azureUrl) {
+              console.log(`      ✅ Saved: ${azureUrl.substring(0, 60)}...`);
+              processedAttachments.push({
+                id: att.id?.toString(),
+                uri: att.uri,
+                type: att.type,
+                contentType: att.contentType,
+                azureUrl: azureUrl,
+                filename: filename,
+              });
+              stats.attachmentsDownloaded++;
+            } else {
+              console.log(`      ❌ Azure returned null`);
+              stats.errors++;
+            }
+          } catch (e) {
+            console.log(`      ❌ Error:`, e);
+            stats.errors++;
           }
         }
-
-        // Recalculate unread counts for affected conversations
-        for (const phoneNumber of conversationsToUpdate) {
-          const conversation = await conversationsCollection.findOne({
-            phoneNumber: phoneNumber,
-          });
-
-          if (conversation) {
-            const conversationMsgs: StoredMessage[] = conversation.messages || [];
-            const newUnreadCount = conversationMsgs.filter(
-              (m: StoredMessage) => m.direction === "Inbound" && m.readStatus === "Unread"
-            ).length;
-
-            await conversationsCollection.updateOne(
-              { phoneNumber: phoneNumber },
-              {
-                $set: {
-                  unreadCount: newUnreadCount,
-                },
-              }
-            );
-
-            console.log(`📊 Updated unread count for ${phoneNumber}: ${newUnreadCount}`);
-          }
-        }
-
-        console.log(`✅ Two-way read sync: Updated ${readStatusSynced} messages to Read`);
-      } else {
-        console.log(`ℹ️  No unread messages to sync`);
       }
-    } catch (readSyncError) {
-      console.error("❌ Two-way read sync failed:", readSyncError);
-      // Don't throw - let the rest of auto-sync complete successfully
-    }
-    // ============================================
-    // END: Two-Way Read Status Sync
-    // ============================================
 
-    return NextResponse.json({
-      success: true,
-      checked: messages.length,
-      synced: newCount,
-      conversationsUpdated: updatedConversations,
-      attachmentsDownloaded: attachmentsDownloaded,
-      readStatusSynced: readStatusSynced,
-    });
+      console.log(`   📊 Processed ${processedAttachments.length} attachments`);
+
+      // Save to MongoDB
+      if (existingMsg) {
+        // Update existing
+        const result = await conversationsCollection.updateOne(
+          { phoneNumber: otherPhone, "messages.id": messageId },
+          { 
+            $set: { 
+              "messages.$.attachments": processedAttachments,
+              "messages.$.type": processedAttachments.length > 0 ? "MMS" : "SMS"
+            } 
+          }
+        );
+        console.log(`   💾 Updated: modified=${result.modifiedCount}`);
+        if (result.modifiedCount > 0) stats.fixed++;
+      } else {
+        // Add new message
+        const messageObj = {
+          id: messageId,
+          direction: fullMessage.direction,
+          type: processedAttachments.length > 0 ? "MMS" : "SMS",
+          subject: fullMessage.subject || "",
+          creationTime: fullMessage.creationTime,
+          lastModifiedTime: fullMessage.lastModifiedTime,
+          readStatus: "Unread",
+          messageStatus: fullMessage.messageStatus,
+          from: fullMessage.from,
+          to: fullMessage.to,
+          attachments: processedAttachments,
+        };
+
+        const result = await conversationsCollection.updateOne(
+          { phoneNumber: otherPhone, "messages.id": { $ne: messageId } },
+          {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            $push: { messages: { $each: [messageObj], $sort: { creationTime: 1 } } } as any,
+            $set: { lastMessageTime: fullMessage.creationTime, lastMessageId: messageId },
+            $inc: { unreadCount: 1 },
+          },
+          { upsert: true }
+        );
+        
+        console.log(`   💾 Added: modified=${result.modifiedCount}, upserted=${result.upsertedCount}`);
+        if (result.modifiedCount > 0 || result.upsertedCount > 0) stats.newSaved++;
+      }
+      
+      stats.processed++;
+    }
+
+    console.log(`\n═══════════════════════════════════════════════════════════`);
+    console.log(`✅ [AUTO-SYNC] Complete!`);
+    console.log(`   Processed: ${stats.processed}`);
+    console.log(`   New saved: ${stats.newSaved}`);
+    console.log(`   Fixed: ${stats.fixed}`);
+    console.log(`   Skipped: ${stats.skipped}`);
+    console.log(`   Attachments: ${stats.attachmentsDownloaded}`);
+    console.log(`   Errors: ${stats.errors}`);
+    console.log(`═══════════════════════════════════════════════════════════\n`);
+
+    // Quick read status sync
+    try {
+      const allConvs = await conversationsCollection.find({}).toArray();
+      for (const conv of allConvs) {
+        const unread = (conv.messages || []).filter(
+          (m: StoredMessage) => m.direction === "Inbound" && m.readStatus === "Unread"
+        ).length;
+        if (conv.unreadCount !== unread) {
+          await conversationsCollection.updateOne(
+            { phoneNumber: conv.phoneNumber },
+            { $set: { unreadCount: unread } }
+          );
+        }
+      }
+    } catch (e) {
+      console.error("Read sync error:", e);
+    }
+
+    return NextResponse.json({ success: true, stats });
   } catch (error: unknown) {
-    console.error("❌ Auto-sync error:", error);
-    const err = error as { message?: string };
+    console.error("❌ FATAL:", error);
     return NextResponse.json(
-      { error: err.message },
+      { error: error instanceof Error ? error.message : "Unknown" }, 
       { status: 500 }
     );
   }

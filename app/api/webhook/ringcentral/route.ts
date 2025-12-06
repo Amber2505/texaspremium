@@ -185,25 +185,23 @@ export async function POST(request: NextRequest) {
       };
 
       // === UPSERT INTO CONVERSATION ===
-      // Using type assertion for MongoDB $push operation which has complex typing
-      const updateOperation = {
-        $push: {
-          messages: newMessage,
-        },
-        $set: {
-          lastMessageTime: newMessage.creationTime,
-        },
-        $inc: {
-          unreadCount: 1,
-        },
-        $setOnInsert: {
-          phoneNumber: phoneNumber,
-        },
-      };
-      
       const result = await conversationsCollection.updateOne(
         { phoneNumber: phoneNumber },
-        updateOperation as unknown as Parameters<typeof conversationsCollection.updateOne>[1],
+        {
+          $push: {
+            messages: newMessage,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any,
+          $set: {
+            lastMessageTime: newMessage.creationTime,
+          },
+          $inc: {
+            unreadCount: 1,
+          },
+          $setOnInsert: {
+            phoneNumber: phoneNumber,
+          },
+        },
         { upsert: true }
       );
 
@@ -236,7 +234,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     console.error("❌ Webhook error:", error);
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
