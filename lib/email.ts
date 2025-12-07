@@ -14,6 +14,7 @@ export async function sendPaymentNotification(paymentDetails: {
   customerEmail?: string;
   transactionId?: string;
   timestamp: Date;
+  paymentJson?: string | null;
 }) {
   const mailOptions = {
     from: process.env.EMAIL_USER,
@@ -55,6 +56,17 @@ export async function sendPaymentNotification(paymentDetails: {
               </tr>
             </table>
           </div>
+          
+          ${paymentDetails.paymentJson ? `
+          <div style="background: white; padding: 20px; border-radius: 8px; margin-top: 20px;">
+            <h3 style="color: #111827; margin-top: 0;">Full Payment Data (JSON)</h3>
+            <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; overflow-x: auto; font-size: 11px; line-height: 1.5;">${paymentDetails.paymentJson}</pre>
+          </div>
+          ` : ''}
+          
+          <p style="color: #6b7280; font-size: 14px; margin: 20px 0 0 0;">
+            This is an automated notification from Texas Premium Insurance Services.
+          </p>
         </div>
         
         <div style="background: #f3f4f6; padding: 15px; text-align: center; border-radius: 0 0 8px 8px;">
