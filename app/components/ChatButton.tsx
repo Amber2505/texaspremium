@@ -131,6 +131,19 @@ const clearChatFromStorage = () => {
   }
 };
 
+// ✅ BUSINESS HOURS CHECK - Monday-Saturday, 9 AM - 7 PM CST
+function isWithinBusinessHours(): boolean {
+  const now = new Date();
+  const cst = new Date(
+    now.toLocaleString("en-US", { timeZone: "America/Chicago" })
+  );
+  const day = cst.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
+  const hour = cst.getHours(); // 0-23
+
+  // Monday-Saturday (1-6), 9 AM - 7 PM (hour < 19 because 7 PM is 19:00)
+  return day >= 1 && day <= 6 && hour >= 9 && hour < 19;
+}
+
 function getStringSimilarity(str1: string, str2: string): number {
   const normalizeCompanyName = (s: string) => {
     return s
@@ -215,6 +228,11 @@ export default function ChatButton() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
 
+  // ✅ NEW STATE: Track business hours status
+  const [isBusinessHours, setIsBusinessHours] = useState(
+    isWithinBusinessHours()
+  );
+
   // Notification sound
   const notificationSoundRef = useRef<HTMLAudioElement | null>(null);
 
@@ -260,6 +278,21 @@ export default function ChatButton() {
   useEffect(() => {
     isLiveChatRef.current = isLiveChat;
   }, [isLiveChat]);
+
+  // ✅ NEW EFFECT: Check business hours every minute
+  useEffect(() => {
+    const checkBusinessHours = () => {
+      setIsBusinessHours(isWithinBusinessHours());
+    };
+
+    // Check immediately when component mounts
+    checkBusinessHours();
+
+    // Check every minute (60000ms)
+    const interval = setInterval(checkBusinessHours, 60000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   const router = useRouter();
 
@@ -1367,6 +1400,31 @@ export default function ChatButton() {
       };
     }
 
+    // ✅ CHECK FOR LIVE AGENT REQUESTS
+    const isRequestingLiveAgent =
+      lowerMessage.includes("live agent") ||
+      lowerMessage.includes("talk to someone") ||
+      lowerMessage.includes("speak to someone") ||
+      lowerMessage.includes("human") ||
+      lowerMessage.includes("real person") ||
+      lowerMessage.includes("representative") ||
+      lowerMessage.includes("talk to a person") ||
+      lowerMessage.includes("speak to a person") ||
+      lowerMessage.includes("connect me") ||
+      lowerMessage === "agent" ||
+      lowerMessage === "representative";
+
+    // ✅ IF REQUESTING LIVE AGENT OUTSIDE HOURS - Show SMS immediately
+    if (isRequestingLiveAgent && !isBusinessHours) {
+      return {
+        content:
+          "I'd be happy to help you connect with our team! However, live agents are currently unavailable.",
+        extra: {
+          requestLiveAgent: true, // This will trigger the SMS button UI
+        },
+      };
+    }
+
     // Otherwise, let API handle it
     return {
       content: "",
@@ -1438,14 +1496,29 @@ export default function ChatButton() {
       const data = await res.json();
 
       if (data.choices?.[0]?.message?.requestLiveAgent) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: data.choices[0].message.content,
-            extra: { requestLiveAgent: true },
-          },
-        ]);
+        // ✅ Check business hours before showing live agent prompt
+        if (!isBusinessHours) {
+          // Outside hours - show offline message instead of asking for info
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content:
+                "I'd be happy to help! However, our live agents are currently unavailable. You can text us and we'll respond during business hours.",
+              extra: { requestLiveAgent: true },
+            },
+          ]);
+        } else {
+          // Within hours - show normal prompt for name/phone
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: data.choices[0].message.content,
+              extra: { requestLiveAgent: true },
+            },
+          ]);
+        }
         setLoading(false);
         return;
       }
@@ -2337,15 +2410,44 @@ export default function ChatButton() {
                         !isLiveChat && (
                           <>
                             {isLatestLiveAgentRequest && !showLiveAgentForm ? (
-                              <button
-                                onClick={() => setShowLiveAgentForm(true)}
-                                className="mt-3 w-full sm:w-auto inline-block px-4 py-2.5 rounded-lg text-white 
-                                     bg-gradient-to-r from-red-700 to-blue-800 
-                                     text-sm font-medium hover:opacity-90 transition-all duration-200
-                                     active:scale-95 shadow-md"
-                              >
-                                💬 Connect to Live Agent
-                              </button>
+                              // ✅ Check business hours before showing connect button
+                              !isBusinessHours ? (
+                                // OUTSIDE HOURS: Show SMS alternative
+                                <div className="mt-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                                  <p className="text-sm font-medium text-orange-900 mb-2">
+                                    💬 Live agents are currently unavailable
+                                  </p>
+                                  <p className="text-xs text-orange-700 mb-3">
+                                    Our support hours:{" "}
+                                    <strong>
+                                      Monday-Saturday, 9 AM - 7 PM CST
+                                    </strong>
+                                  </p>
+                                  <a
+                                    href="sms:4697295185"
+                                    className="flex items-center justify-center gap-2 w-full px-4 py-2.5 
+                                                 bg-gradient-to-r from-red-700 to-blue-800 text-white rounded-lg 
+                                                 text-sm font-medium hover:opacity-90 transition active:scale-95 shadow-md"
+                                  >
+                                    <Phone className="w-4 h-4" />
+                                    Text 469-729-5185
+                                  </a>
+                                  <p className="text-xs text-orange-600 mt-2 text-center">
+                                    We&apos;ll respond during business hours
+                                  </p>
+                                </div>
+                              ) : (
+                                // WITHIN HOURS: Show normal connect button
+                                <button
+                                  onClick={() => setShowLiveAgentForm(true)}
+                                  className="mt-3 w-full sm:w-auto inline-block px-4 py-2.5 rounded-lg text-white 
+                                       bg-gradient-to-r from-red-700 to-blue-800 
+                                       text-sm font-medium hover:opacity-90 transition-all duration-200
+                                       active:scale-95 shadow-md"
+                                >
+                                  💬 Connect to Live Agent
+                                </button>
+                              )
                             ) : isLatestLiveAgentRequest &&
                               showLiveAgentForm ? (
                               <div className="mt-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
@@ -2396,6 +2498,21 @@ export default function ChatButton() {
                                   <div className="flex gap-2">
                                     <button
                                       onClick={() => {
+                                        // ✅ Check business hours before connecting
+                                        if (!isBusinessHours) {
+                                          setShowLiveAgentForm(false);
+                                          setMessages((prev) => [
+                                            ...prev,
+                                            {
+                                              role: "assistant",
+                                              content:
+                                                "Live agents are currently unavailable. Our support hours are Monday-Saturday, 9 AM - 7 PM CST. Please text us at 469-729-5185 and we'll respond during business hours.",
+                                              extra: null,
+                                            },
+                                          ]);
+                                          return;
+                                        }
+
                                         // ✅ Clear previous messages before connecting
                                         setMessages([]);
                                         setIsVerified(false);
