@@ -1,8 +1,24 @@
 // /api/messages/route.ts
-// Updated to support server-side pagination and search (phone + message content)
+// Updated to support server-side pagination, search, and GROUP CONVERSATIONS
 
 import { NextRequest, NextResponse } from "next/server";
 import clientPromise from "@/lib/mongodb";
+
+// Type for stored message
+interface StoredMessage {
+  subject?: string;
+}
+
+// Type for conversation document from MongoDB
+interface ConversationDocument {
+  phoneNumber: string;
+  conversationId?: string;
+  participants?: string[];
+  isGroup?: boolean;
+  lastMessageTime: string;
+  unreadCount?: number;
+  messages?: StoredMessage[];
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,21 +32,31 @@ export async function GET(request: NextRequest) {
     const collection = db.collection("texas_premium_messages");
 
     // Build query - search by phone number OR message content if provided
-    let query: Record<string, unknown> = {};
-    const matchingMessageIds: Map<string, string[]> = new Map(); // phoneNumber -> matching message snippets
+    type QueryFilter = Record<string, unknown>;
+    let query: QueryFilter = {};
+    const matchingMessageIds: Map<string, string[]> = new Map(); // conversationId -> matching message snippets
 
     if (search.trim()) {
       const searchTerm = search.trim();
       const isPhoneSearch = /^\d+$/.test(searchTerm.replace(/[\s\-\(\)\+]/g, ""));
 
       if (isPhoneSearch) {
-        // Pure phone number search
-        query.phoneNumber = { $regex: searchTerm.replace(/[\s\-\(\)\+]/g, ""), $options: "i" };
+        // Pure phone number search - search in phoneNumber, conversationId, AND participants array
+        const phoneRegex = { $regex: searchTerm.replace(/[\s\-\(\)\+]/g, ""), $options: "i" };
+        query = {
+          $or: [
+            { phoneNumber: phoneRegex },
+            { conversationId: phoneRegex },
+            { participants: phoneRegex },
+          ],
+        };
       } else {
         // Search both phone numbers AND message content
         query = {
           $or: [
             { phoneNumber: { $regex: searchTerm, $options: "i" } },
+            { conversationId: { $regex: searchTerm, $options: "i" } },
+            { participants: { $regex: searchTerm, $options: "i" } },
             { "messages.subject": { $regex: searchTerm, $options: "i" } },
           ],
         };
@@ -38,19 +64,21 @@ export async function GET(request: NextRequest) {
         // Find conversations with matching messages to highlight them
         const matchingConvs = await collection
           .find({ "messages.subject": { $regex: searchTerm, $options: "i" } })
-          .project({ phoneNumber: 1, messages: 1 })
+          .project({ phoneNumber: 1, conversationId: 1, messages: 1 })
           .toArray();
 
         for (const conv of matchingConvs) {
-          const matchingMsgs = (conv.messages || [])
-            .filter((m: { subject?: string }) => 
+          const convDoc = conv as ConversationDocument;
+          const matchingMsgs = (convDoc.messages || [])
+            .filter((m: StoredMessage) => 
               m.subject && m.subject.toLowerCase().includes(searchTerm.toLowerCase())
             )
             .slice(-3) // Get last 3 matching messages
-            .map((m: { subject?: string }) => m.subject || "");
+            .map((m: StoredMessage) => m.subject || "");
           
           if (matchingMsgs.length > 0) {
-            matchingMessageIds.set(conv.phoneNumber, matchingMsgs);
+            const key = convDoc.conversationId || convDoc.phoneNumber;
+            matchingMessageIds.set(key, matchingMsgs);
           }
         }
       }
@@ -67,6 +95,9 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .project({
         phoneNumber: 1,
+        conversationId: 1,      // NEW: Unique conversation identifier
+        participants: 1,        // NEW: Array of all participants
+        isGroup: 1,             // NEW: Flag for group messages
         lastMessageTime: 1,
         unreadCount: 1,
         messages: { $slice: -1 }, // Only get the last message for preview
@@ -74,15 +105,29 @@ export async function GET(request: NextRequest) {
       .toArray();
 
     // Transform to match expected format
-    const formattedConversations = conversations.map((conv) => ({
-      phoneNumber: conv.phoneNumber,
-      messageCount: conv.messages?.length || 0,
-      lastMessage: conv.messages?.[0] || null,
-      lastMessageTime: conv.lastMessageTime,
-      unreadCount: conv.unreadCount || 0,
-      // Include matching message snippets if this was a content search
-      matchingMessages: matchingMessageIds.get(conv.phoneNumber) || [],
-    }));
+    const formattedConversations = conversations
+      .map((conv) => {
+        const convDoc = conv as ConversationDocument;
+        // For backward compatibility, use conversationId if available, otherwise phoneNumber
+        const conversationId = convDoc.conversationId || convDoc.phoneNumber;
+        const participants = convDoc.participants || [convDoc.phoneNumber];
+        const isGroup = convDoc.isGroup || false;
+
+        return {
+          phoneNumber: convDoc.phoneNumber,
+          conversationId,           // NEW: Unique identifier for the conversation
+          participants,             // NEW: All participants in the conversation
+          isGroup,                  // NEW: Whether this is a group conversation
+          messageCount: convDoc.messages?.length || 0,
+          lastMessage: convDoc.messages?.[0] || null,
+          lastMessageTime: convDoc.lastMessageTime,
+          unreadCount: convDoc.unreadCount || 0,
+          // Include matching message snippets if this was a content search
+          matchingMessages: matchingMessageIds.get(conversationId) || [],
+        };
+      })
+      // CRITICAL: Filter out conversations with no messages
+      .filter(conv => conv.messageCount > 0);
 
     return NextResponse.json({
       conversations: formattedConversations,

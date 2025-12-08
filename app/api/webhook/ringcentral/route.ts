@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 const VALIDATION_TOKEN = process.env.RINGCENTRAL_WEBHOOK_TOKEN || "";
 const RAILWAY_NOTIFY_URL = process.env.RAILWAY_NOTIFY_URL;
+const MY_PHONE = process.env.RINGCENTRAL_PHONE_NUMBER || "";
 
 // Type definitions
 interface ProcessedAttachment {
@@ -21,6 +22,58 @@ interface ProcessedAttachment {
 
 interface ToRecipient {
   phoneNumber?: string;
+}
+
+interface MessageAttachment {
+  id?: number;
+  uri?: string;
+  type?: string;
+  fileName?: string;
+  contentType?: string;
+}
+
+interface MessageData {
+  id?: number;
+  direction?: string;
+  from?: { phoneNumber?: string };
+  to?: ToRecipient[];
+  attachments?: MessageAttachment[];
+  subject?: string;
+  type?: string;
+  creationTime?: string;
+  lastModifiedTime?: string;
+  messageStatus?: string;
+  uri?: string;
+  conversation?: { id?: number };
+}
+
+interface WebhookEvent {
+  eventType?: string;
+  body?: MessageData;
+}
+
+// Helper function to create a unique conversation ID from all participants
+function createConversationId(fromNumber: string, toNumbers: string[]): string {
+  // Collect all unique participants (excluding our own number)
+  const participants = new Set<string>();
+  
+  // Add sender
+  if (fromNumber && fromNumber !== MY_PHONE) {
+    participants.add(fromNumber);
+  }
+  
+  // Add all recipients (excluding our own number)
+  toNumbers.forEach(num => {
+    if (num && num !== MY_PHONE) {
+      participants.add(num);
+    }
+  });
+  
+  // Sort alphabetically for consistency
+  const sorted = Array.from(participants).sort();
+  
+  // Join with comma
+  return sorted.join(',');
 }
 
 // Initialize RingCentral SDK for attachment downloads
@@ -49,7 +102,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
+    const body: WebhookEvent[] = await request.json();
 
     for (const event of body) {
       if (event.eventType !== "/restapi/v1.0/account/~/extension/~/message-store") continue;
@@ -63,12 +116,28 @@ export async function POST(request: NextRequest) {
       // Use texas_premium_messages collection (conversation-based structure)
       const conversationsCollection = db.collection("texas_premium_messages");
 
-      const phoneNumber = msgData.from?.phoneNumber || "Unknown";
+      const fromNumber = msgData.from?.phoneNumber || "Unknown";
+      const toNumbers = (msgData.to || []).map((t: ToRecipient) => t.phoneNumber || "").filter(Boolean);
       const messageId = msgData.id?.toString() || Date.now().toString();
+
+      // Create conversation ID from all participants
+      const conversationId = createConversationId(fromNumber, toNumbers);
+      
+      // For backward compatibility, also store primary phone number (the sender for inbound)
+      const primaryPhone = fromNumber;
+      
+      // Determine if this is a group message
+      const isGroup = toNumbers.filter(n => n !== MY_PHONE).length > 1 || 
+                     (toNumbers.length === 1 && fromNumber !== toNumbers[0]);
+
+      console.log(`📥 Inbound message from ${fromNumber}`);
+      console.log(`   To: ${toNumbers.join(', ')}`);
+      console.log(`   Group: ${isGroup ? 'YES' : 'NO'}`);
+      console.log(`   Conversation ID: ${conversationId}`);
 
       // Check if this message already exists in the conversation
       const existingConversation = await conversationsCollection.findOne({
-        phoneNumber: phoneNumber,
+        conversationId: conversationId,
         "messages.id": messageId,
       });
 
@@ -81,7 +150,7 @@ export async function POST(request: NextRequest) {
       const processedAttachments: ProcessedAttachment[] = [];
 
       if (msgData.attachments && msgData.attachments.length > 0) {
-        console.log(`📎 Processing ${msgData.attachments.length} inbound attachment(s) from ${phoneNumber}...`);
+        console.log(`📎 Processing ${msgData.attachments.length} inbound attachment(s) from ${fromNumber}...`);
 
         try {
           // Get authenticated RingCentral client
@@ -171,22 +240,66 @@ export async function POST(request: NextRequest) {
         uri: msgData.uri || "",
         conversationId: msgData.conversation?.id?.toString() || messageId,
         from: {
-          phoneNumber: phoneNumber,
+          phoneNumber: fromNumber,
         },
         to: msgData.to?.map((t: ToRecipient) => ({ phoneNumber: t.phoneNumber || "" })) || [],
         direction: "Inbound",
         type: processedAttachments.length > 0 ? "MMS" : (msgData.type || "SMS"),
         subject: msgData.subject || "",
-        creationTime: new Date(msgData.creationTime).toISOString(),
-        lastModifiedTime: new Date(msgData.lastModifiedTime).toISOString(),
+        creationTime: new Date(msgData.creationTime || Date.now()).toISOString(),
+        lastModifiedTime: new Date(msgData.lastModifiedTime || Date.now()).toISOString(),
         readStatus: "Unread",
         messageStatus: msgData.messageStatus || "Received",
         attachments: processedAttachments,
       };
 
+      // === CRITICAL FIX: DELETE OLD SINGLE-PARTICIPANT CONVERSATIONS ===
+      // When a group message arrives, remove any old individual conversations
+      // for the same participants to prevent split conversations
+      if (isGroup) {
+        const participantsList = conversationId.split(',');
+        
+        // Find and delete any old single-participant conversations
+        for (const participant of participantsList) {
+          const oldConvs = await conversationsCollection.find({
+            $or: [
+              { phoneNumber: participant, conversationId: { $exists: false } },
+              { phoneNumber: participant, isGroup: { $ne: true } },
+              { conversationId: participant }
+            ]
+          }).toArray();
+
+          for (const oldConv of oldConvs) {
+            console.log(`🗑️ Deleting old single conversation for ${participant} (merging into group)`);
+            
+            // Migrate messages from old conversation to the group conversation
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const oldMessages = (oldConv as any).messages || [];
+            if (oldMessages.length > 0) {
+              console.log(`📦 Migrating ${oldMessages.length} messages from old conversation`);
+              await conversationsCollection.updateOne(
+                { conversationId: conversationId },
+                {
+                  $push: {
+                    messages: {
+                      $each: oldMessages
+                    }
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  } as any
+                },
+                { upsert: true }
+              );
+            }
+            
+            // Delete the old conversation
+            await conversationsCollection.deleteOne({ _id: oldConv._id });
+          }
+        }
+      }
+
       // === UPSERT INTO CONVERSATION ===
       const result = await conversationsCollection.updateOne(
-        { phoneNumber: phoneNumber },
+        { conversationId: conversationId },
         {
           $push: {
             messages: newMessage,
@@ -194,21 +307,23 @@ export async function POST(request: NextRequest) {
           } as any,
           $set: {
             lastMessageTime: newMessage.creationTime,
+            conversationId: conversationId,  // Ensure it's always set
+            participants: conversationId.split(','),  // Always update participants list
+            isGroup: isGroup,  // Always update group status
+            phoneNumber: primaryPhone, // Update primary phone
           },
           $inc: {
             unreadCount: 1,
-          },
-          $setOnInsert: {
-            phoneNumber: phoneNumber,
           },
         },
         { upsert: true }
       );
 
-      console.log(`💾 Inbound message saved to conversation ${phoneNumber}:`);
+      console.log(`💾 Inbound message saved to conversation ${conversationId}:`);
       console.log(`   - Message ID: ${messageId}`);
       console.log(`   - Attachments: ${processedAttachments.length} (${processedAttachments.filter(a => a.azureUrl).length} with Azure URLs)`);
       console.log(`   - Type: ${newMessage.type}`);
+      console.log(`   - Is Group: ${isGroup}`);
       console.log(`   - Upserted: ${result.upsertedCount > 0}, Modified: ${result.modifiedCount > 0}`);
 
       // === NOTIFY RAILWAY FOR REAL-TIME UPDATE ===
@@ -218,13 +333,15 @@ export async function POST(request: NextRequest) {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              phoneNumber: phoneNumber,
+              conversationId: conversationId,
+              phoneNumber: primaryPhone,
               messageId: messageId,
               timestamp: newMessage.creationTime,
               hasAttachments: processedAttachments.some(a => !!a.azureUrl),
+              isGroup: isGroup,
             }),
           });
-          console.log(`📡 Railway notified for ${phoneNumber}`);
+          console.log(`📡 Railway notified for ${conversationId}`);
         } catch (e) {
           console.error("Failed to notify Railway:", e);
         }

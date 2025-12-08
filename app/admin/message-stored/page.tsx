@@ -6,6 +6,9 @@ import Image from "next/image";
 
 interface ConversationSummary {
   phoneNumber: string;
+  conversationId?: string; // NEW: Unique identifier for conversation
+  participants?: string[]; // NEW: All participants in conversation
+  isGroup?: boolean; // NEW: Flag for group messages
   messageCount: number;
   lastMessage: RingCentralMessage;
   lastMessageTime: string;
@@ -35,6 +38,12 @@ export default function MessageStoredPage() {
   const [loading, setLoading] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
+  const [selectedConversationId, setSelectedConversationId] = useState<
+    string | null
+  >(null); // NEW
+  const [selectedParticipants, setSelectedParticipants] = useState<string[]>(
+    []
+  ); // NEW
   const [conversation, setConversation] = useState<RingCentralMessage[]>([]);
   const [mounted, setMounted] = useState(false);
   const [messageInput, setMessageInput] = useState("");
@@ -81,6 +90,11 @@ export default function MessageStoredPage() {
     number[]
   >([]);
 
+  // Menu and details modal state
+  const [showChatMenu, setShowChatMenu] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const chatMenuRef = useRef<HTMLDivElement>(null);
+
   // Memoize scrollToBottom to use in useEffect dependencies
   const scrollToBottom = useCallback(() => {
     if (shouldScrollToBottom)
@@ -113,11 +127,40 @@ export default function MessageStoredPage() {
   // Back to conversations (for mobile)
   const handleBack = useCallback(() => {
     setSelectedPhone(null);
+    setSelectedConversationId(null); // NEW
+    setSelectedParticipants([]); // NEW
     setSelectMode(false);
     setSelectedMessageIds(new Set());
     setActiveSearchText("");
     setMatchingMessageIndices([]);
   }, []);
+
+  // NEW: Helper to format phone number
+  const formatPhoneNumber = (p: string) => {
+    const c = p.replace(/\D/g, "");
+    // Remove +1 and format as (XXX) XXX-XXXX
+    if (c.length === 11 && c.startsWith("1")) {
+      return `(${c.slice(1, 4)}) ${c.slice(4, 7)}-${c.slice(7)}`;
+    }
+    if (c.length === 10) {
+      return `(${c.slice(0, 3)}) ${c.slice(3, 6)}-${c.slice(6)}`;
+    }
+    return p;
+  };
+
+  // NEW: Helper to display conversation name (single or group)
+  const getConversationName = (conv: ConversationSummary) => {
+    if (conv.isGroup && conv.participants && conv.participants.length > 1) {
+      // Group: show "Name, Name, Name (3)"
+      const formatted = conv.participants.map((p) => formatPhoneNumber(p));
+      if (formatted.length <= 2) {
+        return formatted.join(", ");
+      }
+      return `${formatted.slice(0, 2).join(", ")} +${formatted.length - 2}`;
+    }
+    // Single conversation
+    return formatPhoneNumber(conv.phoneNumber);
+  };
 
   useEffect(() => setMounted(true), []);
 
@@ -165,31 +208,15 @@ export default function MessageStoredPage() {
           .then((r) => r.json())
           .then((data) => {
             const newConversations = data.conversations || [];
-            // Only update if there are changes
-            if (newConversations.length > 0) {
-              setConversations((prev) => {
-                // Create a map of existing conversations by phone number
-                const existingMap = new Map(
-                  prev.map((c) => [c.phoneNumber, c])
-                );
-
-                // Update/add new conversations
-                newConversations.forEach((conv: ConversationSummary) => {
-                  existingMap.set(conv.phoneNumber, conv);
-                });
-
-                // Convert back to array and sort by lastMessageTime
-                return Array.from(existingMap.values()).sort(
-                  (a, b) =>
-                    new Date(b.lastMessageTime).getTime() -
-                    new Date(a.lastMessageTime).getTime()
-                );
-              });
-              setTotalCount(data.total || newConversations.length);
+            // CRITICAL FIX: Replace state entirely with fresh API data
+            // This removes conversations that no longer exist in MongoDB
+            if (newConversations.length >= 0) {
+              setConversations(newConversations);
+              setTotalCount(data.total || 0);
             }
           });
       }
-    }, 5000);
+    }, 10000); // 10 seconds
     return () => clearInterval(interval);
   }, [mounted, searchInput]);
 
@@ -203,6 +230,24 @@ export default function MessageStoredPage() {
     return () => document.removeEventListener("click", handler);
   }, [openDropdown]);
 
+  // Close chat menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        chatMenuRef.current &&
+        !chatMenuRef.current.contains(event.target as Node)
+      ) {
+        setShowChatMenu(false);
+      }
+    };
+
+    if (showChatMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [showChatMenu]);
+
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
@@ -214,9 +259,61 @@ export default function MessageStoredPage() {
     return () => container.removeEventListener("scroll", onScroll);
   }, [selectedPhone]);
 
+  // Poll active conversation for new messages (every 5 seconds)
+  useEffect(() => {
+    if (!selectedConversationId || !mounted) return;
+
+    const pollConversation = async () => {
+      try {
+        const res = await fetch(
+          `/api/messages/conversation?conversationId=${encodeURIComponent(
+            selectedConversationId
+          )}&skip=0&limit=10`
+        );
+        const data = await res.json();
+        const newMessages = data.messages || [];
+
+        // Only update if we have new messages
+        if (newMessages.length > conversation.length) {
+          setConversation(newMessages);
+
+          // Automatically mark as read since user is viewing the conversation
+          await markAsRead(selectedConversationId);
+
+          // Update conversation list to remove unread indicator
+          setConversations((prev) =>
+            prev.map((c) =>
+              (c.conversationId || c.phoneNumber) === selectedConversationId
+                ? { ...c, unreadCount: 0 }
+                : c
+            )
+          );
+
+          // Auto-scroll if user is near bottom
+          if (shouldScrollToBottom) {
+            setTimeout(scrollToBottom, 100);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to poll conversation:", error);
+      }
+    };
+
+    // Poll every 5 seconds
+    const interval = setInterval(pollConversation, 5000);
+    return () => clearInterval(interval);
+  }, [
+    selectedConversationId,
+    mounted,
+    conversation.length,
+    shouldScrollToBottom,
+    scrollToBottom,
+  ]);
+
   // Load older messages when scrolling up - useCallback version
   const loadMoreMessages = useCallback(async () => {
-    if (!selectedPhone || isLoadingMoreMessages || !hasMoreMessages) return;
+    if (!selectedConversationId || isLoadingMoreMessages || !hasMoreMessages)
+      return;
 
     setIsLoadingMoreMessages(true);
 
@@ -225,8 +322,8 @@ export default function MessageStoredPage() {
 
     try {
       const res = await fetch(
-        `/api/messages/conversation?phoneNumber=${encodeURIComponent(
-          selectedPhone
+        `/api/messages/conversation?conversationId=${encodeURIComponent(
+          selectedConversationId
         )}&skip=${messagesSkip}&limit=10`
       );
       const data = await res.json();
@@ -262,12 +359,17 @@ export default function MessageStoredPage() {
     } finally {
       setIsLoadingMoreMessages(false);
     }
-  }, [selectedPhone, isLoadingMoreMessages, hasMoreMessages, messagesSkip]);
+  }, [
+    selectedConversationId,
+    isLoadingMoreMessages,
+    hasMoreMessages,
+    messagesSkip,
+  ]);
 
   // Load older messages when scrolling to top
   useEffect(() => {
     const container = messagesContainerRef.current;
-    if (!container || !selectedPhone) return;
+    if (!container || !selectedConversationId) return;
 
     const handleScroll = () => {
       if (isLoadingMoreMessages || !hasMoreMessages) return;
@@ -279,10 +381,15 @@ export default function MessageStoredPage() {
 
     container.addEventListener("scroll", handleScroll);
     return () => container.removeEventListener("scroll", handleScroll);
-  }, [selectedPhone, isLoadingMoreMessages, hasMoreMessages, loadMoreMessages]);
+  }, [
+    selectedConversationId,
+    isLoadingMoreMessages,
+    hasMoreMessages,
+    loadMoreMessages,
+  ]);
 
   useEffect(() => {
-    if (!selectedPhone) return;
+    if (!selectedConversationId) return;
 
     const ws = new WebSocket(process.env.NEXT_PUBLIC_RAILWAY_WS_URL!);
 
@@ -290,7 +397,7 @@ export default function MessageStoredPage() {
       ws.send(
         JSON.stringify({
           type: "join",
-          room: `conversation:${selectedPhone}`,
+          room: `conversation:${selectedConversationId}`,
         })
       );
     };
@@ -300,8 +407,8 @@ export default function MessageStoredPage() {
       if (data.type === "newRingCentralMessage") {
         // Fetch latest messages and merge with existing
         fetch(
-          `/api/messages/conversation?phoneNumber=${encodeURIComponent(
-            selectedPhone
+          `/api/messages/conversation?conversationId=${encodeURIComponent(
+            selectedConversationId
           )}&skip=0&limit=10`
         )
           .then((r) => r.json())
@@ -323,7 +430,7 @@ export default function MessageStoredPage() {
     };
 
     return () => ws.close();
-  }, [selectedPhone, scrollToBottom]);
+  }, [selectedConversationId, scrollToBottom]);
 
   // Server-side infinite scroll
   useEffect(() => {
@@ -372,18 +479,15 @@ export default function MessageStoredPage() {
 
     const adjustHeight = () => {
       textarea.style.height = "auto";
-      const newHeight = Math.min(textarea.scrollHeight, 160); // Increased from 128px to 160px
+      const newHeight = Math.min(textarea.scrollHeight, 160);
       textarea.style.height = newHeight + "px";
     };
 
-    // Adjust on input
     textarea.addEventListener("input", adjustHeight);
-
-    // Also adjust when messageInput changes (for programmatic updates)
     adjustHeight();
 
     return () => textarea.removeEventListener("input", adjustHeight);
-  }, [messageInput]); // Add messageInput as dependency
+  }, [messageInput]);
 
   const fetchMessages = async (skip = 0, search = "", append = false) => {
     if (skip === 0 && !append) setLoading(true);
@@ -407,9 +511,12 @@ export default function MessageStoredPage() {
       if (append) {
         setConversations((prev) => {
           // Deduplicate: only add conversations that don't already exist
-          const existingPhones = new Set(prev.map((c) => c.phoneNumber));
+          const existingKeys = new Set(
+            prev.map((c) => c.conversationId || c.phoneNumber)
+          );
           const uniqueNew = newConversations.filter(
-            (c: ConversationSummary) => !existingPhones.has(c.phoneNumber)
+            (c: ConversationSummary) =>
+              !existingKeys.has(c.conversationId || c.phoneNumber)
           );
           return [...prev, ...uniqueNew];
         });
@@ -443,8 +550,16 @@ export default function MessageStoredPage() {
     }, 300);
   };
 
-  const viewConversation = async (phoneNumber: string, searchText?: string) => {
-    setSelectedPhone(phoneNumber);
+  const viewConversation = async (
+    conv: ConversationSummary,
+    searchText?: string
+  ) => {
+    const conversationId = conv.conversationId || conv.phoneNumber;
+    const participants = conv.participants || [conv.phoneNumber];
+
+    setSelectedPhone(conv.phoneNumber); // Keep for backward compatibility
+    setSelectedConversationId(conversationId); // NEW
+    setSelectedParticipants(participants); // NEW
     setMessageInput("");
     setSelectMode(false);
     setSelectedMessageIds(new Set());
@@ -459,30 +574,54 @@ export default function MessageStoredPage() {
     setShouldScrollToBottom(!searchText);
 
     try {
-      let url = `/api/messages/conversation?phoneNumber=${encodeURIComponent(
-        phoneNumber
+      let url = `/api/messages/conversation?conversationId=${encodeURIComponent(
+        conversationId
       )}`;
 
       if (searchText && searchText.trim()) {
-        // If searching, pass searchText to get messages around the match
         url += `&searchText=${encodeURIComponent(searchText.trim())}`;
       } else {
-        // Normal load - get last 10 messages
         url += `&skip=0&limit=10`;
       }
 
       const res = await fetch(url);
       const data = await res.json();
+
+      // If conversation not found (no messages and total is 0), remove it from list
+      if (data.total === 0 && (!data.messages || data.messages.length === 0)) {
+        console.log(
+          `⚠️ Conversation ${conversationId} not found in MongoDB - removing from list`
+        );
+
+        // Remove from conversations list
+        setConversations((prev) =>
+          prev.filter(
+            (c) => (c.conversationId || c.phoneNumber) !== conversationId
+          )
+        );
+
+        // Clear selected conversation
+        setSelectedPhone(null);
+        setSelectedConversationId(null);
+        setSelectedParticipants([]);
+        setConversation([]);
+        setIsLoadingConversation(false);
+
+        alert(
+          "This conversation no longer exists and has been removed from the list."
+        );
+        return;
+      }
+
       setConversation(data.messages || []);
       setHasMoreMessages(data.hasMore || false);
       setMessagesSkip(data.messages?.length || 0);
 
-      // Store matching indices for highlighting
       if (data.matchingIndices && data.matchingIndices.length > 0) {
         setMatchingMessageIndices(data.matchingIndices);
       }
 
-      await markAsRead(phoneNumber);
+      await markAsRead(conversationId);
 
       const unreadIds = (data.messages || [])
         .filter(
@@ -501,11 +640,12 @@ export default function MessageStoredPage() {
 
       setConversations((prev) =>
         prev.map((c) =>
-          c.phoneNumber === phoneNumber ? { ...c, unreadCount: 0 } : c
+          (c.conversationId || c.phoneNumber) === conversationId
+            ? { ...c, unreadCount: 0 }
+            : c
         )
       );
 
-      // Scroll to first matching message if searching, otherwise scroll to bottom
       if (
         searchText &&
         data.firstMatchIndex !== undefined &&
@@ -532,23 +672,23 @@ export default function MessageStoredPage() {
     }
   };
 
-  const markAsRead = async (phoneNumber: string) => {
+  const markAsRead = async (conversationId: string) => {
     try {
       await fetch("/api/messages/mark-read", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneNumber }),
+        body: JSON.stringify({ conversationId }),
       });
     } catch {
       // Error handled silently
     }
   };
 
-  const markAsUnread = async (phoneNumber: string) => {
+  const markAsUnread = async (conversationId: string) => {
     try {
       const response = await fetch(
-        `/api/messages/conversation?phoneNumber=${encodeURIComponent(
-          phoneNumber
+        `/api/messages/conversation?conversationId=${encodeURIComponent(
+          conversationId
         )}&all=true`
       );
       const data = await response.json();
@@ -572,12 +712,13 @@ export default function MessageStoredPage() {
       await fetch("/api/messages/mark-unread", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneNumber }),
+        body: JSON.stringify({ conversationId }),
       });
 
       setConversations((prev) =>
         prev.map((conv) => {
-          if (conv.phoneNumber === phoneNumber) {
+          const key = conv.conversationId || conv.phoneNumber;
+          if (key === conversationId) {
             const messageCount = conv.messageCount || 1;
             return { ...conv, unreadCount: messageCount };
           }
@@ -594,12 +735,11 @@ export default function MessageStoredPage() {
     }
   };
 
-  const deleteConversation = async (phoneNumber: string) => {
-    if (
-      !confirm(
-        `Delete entire conversation with ${formatPhoneNumber(phoneNumber)}?`
-      )
-    ) {
+  const deleteConversation = async (
+    conversationId: string,
+    displayName: string
+  ) => {
+    if (!confirm(`Delete entire conversation with ${displayName}?`)) {
       return;
     }
 
@@ -607,17 +747,45 @@ export default function MessageStoredPage() {
       const response = await fetch("/api/messages/delete-conversation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneNumber }),
+        body: JSON.stringify({ conversationId }),
       });
+
+      // If 404, conversation doesn't exist - still remove from UI
+      if (response.status === 404) {
+        console.log(
+          `⚠️ Conversation ${conversationId} not found - removing from list anyway`
+        );
+
+        setConversations((prev) =>
+          prev.filter(
+            (conv) =>
+              (conv.conversationId || conv.phoneNumber) !== conversationId
+          )
+        );
+
+        if (selectedConversationId === conversationId) {
+          setSelectedPhone(null);
+          setSelectedConversationId(null);
+          setSelectedParticipants([]);
+          setConversation([]);
+        }
+
+        setOpenDropdown(null);
+        return;
+      }
 
       if (!response.ok) throw new Error("Failed to delete conversation");
 
       setConversations((prev) =>
-        prev.filter((conv) => conv.phoneNumber !== phoneNumber)
+        prev.filter(
+          (conv) => (conv.conversationId || conv.phoneNumber) !== conversationId
+        )
       );
 
-      if (selectedPhone === phoneNumber) {
+      if (selectedConversationId === conversationId) {
         setSelectedPhone(null);
+        setSelectedConversationId(null);
+        setSelectedParticipants([]);
         setConversation([]);
       }
 
@@ -629,19 +797,56 @@ export default function MessageStoredPage() {
   };
 
   const startNewConversation = () => {
-    const cleaned = newPhoneNumber.replace(/\D/g, "");
-    if (cleaned.length < 10) return alert("Please enter a valid phone number");
+    const input = newPhoneNumber.trim();
+    if (!input) return alert("Please enter at least one phone number");
 
-    const formatted = cleaned.startsWith("1") ? `+${cleaned}` : `+1${cleaned}`;
-    const existing = conversations.find((c) => c.phoneNumber === formatted);
+    // Split by comma to support multiple numbers
+    const phoneNumbers = input
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    // Format all phone numbers
+    const formattedPhones: string[] = [];
+    for (const phone of phoneNumbers) {
+      const cleaned = phone.replace(/\D/g, "");
+      if (cleaned.length < 10) {
+        return alert(
+          `Invalid phone number: ${phone}. Must be at least 10 digits.`
+        );
+      }
+      const formatted = cleaned.startsWith("1")
+        ? `+${cleaned}`
+        : `+1${cleaned}`;
+      formattedPhones.push(formatted);
+    }
+
+    // Remove duplicates
+    const uniquePhones = Array.from(new Set(formattedPhones));
+
+    // Sort to create consistent conversationId
+    const sortedPhones = uniquePhones.sort();
+    const conversationId = sortedPhones.join(",");
+    // const isGroup = uniquePhones.length > 1;
+
+    // CRITICAL FIX: Only find conversations with EXACT same participants
+    // Don't open group chat when trying to message someone individually
+    const existing = conversations.find((c) => {
+      const cId = c.conversationId || c.phoneNumber;
+      return cId === conversationId;
+    });
 
     setShowNewMessageModal(false);
     setNewPhoneNumber("");
 
     if (existing) {
-      viewConversation(formatted);
+      // Found exact match - open it
+      viewConversation(existing);
     } else {
-      setSelectedPhone(formatted);
+      // Create new conversation
+      setSelectedPhone(formattedPhones[0]); // For backward compatibility
+      setSelectedConversationId(conversationId);
+      setSelectedParticipants(sortedPhones);
       setConversation([]);
       setMessageInput("");
       setSelectedFiles([]);
@@ -650,7 +855,7 @@ export default function MessageStoredPage() {
 
   const sendMessage = async () => {
     if (
-      !selectedPhone ||
+      !selectedConversationId ||
       (!messageInput.trim() && selectedFiles.length === 0) ||
       sending
     )
@@ -684,7 +889,7 @@ export default function MessageStoredPage() {
         creationTime: now,
         lastModifiedTime: now,
         from: { phoneNumber: "+14697295185" },
-        to: [{ phoneNumber: selectedPhone }],
+        to: selectedParticipants.map((p) => ({ phoneNumber: p })), // NEW: Send to all participants
         readStatus: "Read",
         messageStatus: "Sending",
         attachments: tempAttachments as RingCentralMessage["attachments"],
@@ -696,8 +901,9 @@ export default function MessageStoredPage() {
       setShouldScrollToBottom(true);
 
       setConversations((prev) =>
-        prev.map((c) =>
-          c.phoneNumber === selectedPhone
+        prev.map((c) => {
+          const key = c.conversationId || c.phoneNumber;
+          return key === selectedConversationId
             ? {
                 ...c,
                 lastMessageTime: now,
@@ -706,21 +912,29 @@ export default function MessageStoredPage() {
                   subject: text || "Attachment",
                 },
               }
-            : c
-        )
+            : c;
+        })
       );
 
       const formData = new FormData();
-      formData.append("to", selectedPhone);
+
+      // NEW: Send to all participants in group
+      if (selectedParticipants.length > 1) {
+        // Group message - send to all participants
+        selectedParticipants.forEach((p) => {
+          formData.append("to[]", p);
+        });
+      } else {
+        // Single recipient
+        formData.append("to", selectedParticipants[0] || selectedPhone || "");
+      }
+
       formData.append("message", text);
       filesToSend.forEach((f) => formData.append("files", f));
 
       const res = await fetch("/api/send", {
         method: "POST",
-        body: hasFiles
-          ? formData
-          : JSON.stringify({ to: selectedPhone, message: text }),
-        headers: hasFiles ? {} : { "Content-Type": "application/json" },
+        body: formData,
       });
 
       if (!res.ok) throw new Error("Send failed");
@@ -730,7 +944,6 @@ export default function MessageStoredPage() {
         if (a.uri?.startsWith("blob:")) URL.revokeObjectURL(a.uri);
       });
 
-      // Focus input for next message
       setTimeout(() => messageInputRef.current?.focus(), 100);
     } catch {
       alert("Failed to send");
@@ -745,12 +958,15 @@ export default function MessageStoredPage() {
   };
 
   const deleteMessages = async (ids: string[]) => {
-    if (!selectedPhone || ids.length === 0) return;
+    if (!selectedConversationId || ids.length === 0) return;
     try {
       const res = await fetch("/api/messages/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messageIds: ids, phoneNumber: selectedPhone }),
+        body: JSON.stringify({
+          messageIds: ids,
+          conversationId: selectedConversationId,
+        }),
       });
       if (!res.ok) throw new Error();
       setConversation((prev) => prev.filter((m) => !ids.includes(m.id!)));
@@ -771,18 +987,6 @@ export default function MessageStoredPage() {
     setSelectedMessageIds(set);
   };
 
-  const formatPhoneNumber = (p: string) => {
-    const c = p.replace(/\D/g, "");
-    // Remove +1 and format as (XXX) XXX-XXXX
-    if (c.length === 11 && c.startsWith("1")) {
-      return `(${c.slice(1, 4)}) ${c.slice(4, 7)}-${c.slice(7)}`;
-    }
-    if (c.length === 10) {
-      return `(${c.slice(0, 3)}) ${c.slice(3, 6)}-${c.slice(6)}`;
-    }
-    return p;
-  };
-
   // Render text with clickable links, emails, and phone numbers
   const renderTextWithLinks = (
     text: string,
@@ -790,7 +994,6 @@ export default function MessageStoredPage() {
   ): React.ReactNode => {
     if (!text) return null;
 
-    // Combined regex for URLs, emails, and phone numbers
     const combinedRegex =
       /(https?:\/\/[^\s]+|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|\+?1?[-.\s]?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4})/g;
 
@@ -804,7 +1007,6 @@ export default function MessageStoredPage() {
     matches.forEach((matchedText, i) => {
       const matchPosition = text.indexOf(matchedText, lastIndex);
 
-      // Add text before the match
       if (matchPosition > lastIndex) {
         result.push(
           <span key={`text-${i}`}>
@@ -819,12 +1021,10 @@ export default function MessageStoredPage() {
           : "text-blue-600 hover:text-blue-800"
       }`;
 
-      // Determine type by checking patterns and make it clickable
       if (
         matchedText.startsWith("http://") ||
         matchedText.startsWith("https://")
       ) {
-        // URL
         result.push(
           <a
             key={`link-${i}`}
@@ -838,7 +1038,6 @@ export default function MessageStoredPage() {
           </a>
         );
       } else if (matchedText.includes("@") && matchedText.includes(".")) {
-        // Email
         result.push(
           <a
             key={`email-${i}`}
@@ -850,7 +1049,6 @@ export default function MessageStoredPage() {
           </a>
         );
       } else {
-        // Phone number
         const cleanPhone = matchedText.replace(/\D/g, "");
         result.push(
           <a
@@ -867,7 +1065,6 @@ export default function MessageStoredPage() {
       lastIndex = matchPosition + matchedText.length;
     });
 
-    // Add any remaining text after the last match
     if (lastIndex < text.length) {
       result.push(<span key="text-end">{text.substring(lastIndex)}</span>);
     }
@@ -882,11 +1079,9 @@ export default function MessageStoredPage() {
     allImages: Array<{ url: string; filename: string }>
   ) => {
     const currentIndex = allImages.findIndex((img) => img.url === url);
-    // Ensure filename has extension
     let finalFilename = filename;
     if (!filename.includes(".")) {
-      // Try to get extension from URL
-      const urlPath = url.split("?")[0]; // Remove query params
+      const urlPath = url.split("?")[0];
       const urlExt = urlPath.split(".").pop()?.toLowerCase();
       if (
         urlExt &&
@@ -904,15 +1099,14 @@ export default function MessageStoredPage() {
       ) {
         finalFilename = `${filename}.${urlExt}`;
       } else {
-        finalFilename = `${filename}.jpg`; // Default to jpg for images
+        finalFilename = `${filename}.jpg`;
       }
     }
     setLightboxImage({ url, filename: finalFilename, allImages, currentIndex });
   };
 
-  // Proper download function using proxy to avoid CORS issues
+  // Download function
   const downloadFile = async (url: string, filename: string) => {
-    // Ensure filename has extension
     let finalFilename = filename;
     if (!filename.includes(".")) {
       const urlPath = url.split("?")[0];
@@ -938,7 +1132,6 @@ export default function MessageStoredPage() {
     }
 
     try {
-      // Use our proxy API to download the file
       const proxyUrl = `/api/download?url=${encodeURIComponent(
         url
       )}&filename=${encodeURIComponent(finalFilename)}`;
@@ -960,7 +1153,6 @@ export default function MessageStoredPage() {
       window.URL.revokeObjectURL(blobUrl);
     } catch (err) {
       console.error("Download failed:", err);
-      // Fallback: try direct download
       const link = document.createElement("a");
       link.href = url;
       link.download = finalFilename;
@@ -998,7 +1190,7 @@ export default function MessageStoredPage() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-100">
-      {/* Header - Only show on conversation list view on mobile */}
+      {/* Header */}
       <div
         className={`bg-white border-b border-gray-200 px-4 sm:px-6 py-4 ${
           selectedPhone ? "hidden md:block" : ""
@@ -1015,30 +1207,56 @@ export default function MessageStoredPage() {
             height={50}
             className="h-15 w-auto object-contain hidden sm:block"
           />
-          <button
-            onClick={() => setShowNewMessageModal(true)}
-            className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setConversations([]);
+                setHasMore(true);
+                fetchMessages(0, searchInput, false);
+              }}
+              className="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
+              title="Refresh conversations"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            <span className="hidden sm:inline">New Message</span>
-          </button>
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              <span className="hidden sm:inline">Refresh</span>
+            </button>
+            <button
+              onClick={() => setShowNewMessageModal(true)}
+              className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+              <span className="hidden sm:inline">New Message</span>
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar - Hide on mobile when conversation is selected */}
+        {/* Sidebar */}
         <div
           className={`w-full md:w-96 bg-white border-r border-gray-200 flex flex-col ${
             selectedPhone ? "hidden md:flex" : "flex"
@@ -1094,25 +1312,26 @@ export default function MessageStoredPage() {
             </div>
           </div>
 
-          {/* Conversations list with infinite scroll */}
+          {/* Conversations list */}
           <div className="flex-1 overflow-y-auto" ref={conversationsListRef}>
             {loading ? (
               <div className="flex items-center justify-center h-full">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               </div>
             ) : (
-              /* Server-side paginated conversations */
               conversations.map((conv, index) => {
-                const isSelected = selectedPhone === conv.phoneNumber;
+                const convKey = conv.conversationId || conv.phoneNumber;
+                const isSelected = selectedConversationId === convKey;
                 const lastMsg = conv.lastMessage;
                 const isUnread =
                   (conv.unreadCount ?? 0) > 0 ||
                   (lastMsg?.direction === "Inbound" &&
                     lastMsg?.readStatus === "Unread");
+                const displayName = getConversationName(conv);
 
                 return (
                   <div
-                    key={`${conv.phoneNumber}-${index}`}
+                    key={`${convKey}-${index}`}
                     className={`p-4 border-b border-gray-100 transition-colors relative ${
                       isSelected
                         ? "bg-blue-50 border-l-4 border-l-blue-600"
@@ -1122,17 +1341,28 @@ export default function MessageStoredPage() {
                     <div className="flex items-start gap-3">
                       <div
                         onClick={() => {
-                          // Pass search text only for content searches (has matching messages)
                           const isContentSearch =
                             conv.matchingMessages &&
                             conv.matchingMessages.length > 0;
                           viewConversation(
-                            conv.phoneNumber,
+                            conv,
                             isContentSearch ? searchInput : undefined
                           );
                         }}
-                        className="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center cursor-pointer"
+                        className="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center cursor-pointer relative"
                       >
+                        {/* Group indicator */}
+                        {conv.isGroup && (
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full border-2 border-white flex items-center justify-center">
+                            <svg
+                              className="w-2.5 h-2.5 text-white"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+                            </svg>
+                          </div>
+                        )}
                         <svg
                           className="w-8 h-8 text-white"
                           fill="currentColor"
@@ -1148,22 +1378,33 @@ export default function MessageStoredPage() {
                             conv.matchingMessages &&
                             conv.matchingMessages.length > 0;
                           viewConversation(
-                            conv.phoneNumber,
+                            conv,
                             isContentSearch ? searchInput : undefined
                           );
                         }}
                         className="flex-1 min-w-0 cursor-pointer"
                       >
                         <div className="flex items-center justify-between mb-1">
-                          <h3
-                            className={`${
-                              isUnread ? "font-bold" : "font-semibold"
-                            } text-gray-900 text-sm sm:text-base`}
-                          >
-                            {formatPhoneNumber(conv.phoneNumber)}
-                          </h3>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500">
+                          <div className="flex-1 min-w-0">
+                            <h3
+                              className={`${
+                                isUnread ? "font-bold" : "font-semibold"
+                              } text-gray-900 text-sm sm:text-base truncate`}
+                              title={displayName}
+                            >
+                              {displayName}
+                            </h3>
+                            {conv.isGroup &&
+                              conv.participants &&
+                              conv.participants.length > 1 && (
+                                <p className="text-xs text-gray-500">
+                                  Group • {conv.participants.length}{" "}
+                                  participants
+                                </p>
+                              )}
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-xs text-gray-500 whitespace-nowrap">
                               {new Date(
                                 conv.lastMessageTime
                               ).toLocaleTimeString([], {
@@ -1172,7 +1413,7 @@ export default function MessageStoredPage() {
                               })}
                             </span>
                             {isUnread && (
-                              <div className="w-3 h-3 bg-blue-500 rounded-full shadow-sm"></div>
+                              <div className="w-3 h-3 bg-blue-500 rounded-full shadow-sm flex-shrink-0"></div>
                             )}
                           </div>
                         </div>
@@ -1194,7 +1435,6 @@ export default function MessageStoredPage() {
                           )}
                           {lastMsg?.subject || "No message"}
                         </p>
-                        {/* Show matching message snippets during content search */}
                         {conv.matchingMessages &&
                           conv.matchingMessages.length > 0 &&
                           searchInput && (
@@ -1225,9 +1465,7 @@ export default function MessageStoredPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             setOpenDropdown(
-                              openDropdown === conv.phoneNumber
-                                ? null
-                                : conv.phoneNumber
+                              openDropdown === convKey ? null : convKey
                             );
                           }}
                           className="p-2 hover:bg-gray-200 rounded-full transition-colors"
@@ -1241,12 +1479,12 @@ export default function MessageStoredPage() {
                           </svg>
                         </button>
 
-                        {openDropdown === conv.phoneNumber && (
+                        {openDropdown === convKey && (
                           <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                markAsUnread(conv.phoneNumber);
+                                markAsUnread(convKey);
                               }}
                               className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 border-b border-gray-100"
                             >
@@ -1268,7 +1506,7 @@ export default function MessageStoredPage() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                deleteConversation(conv.phoneNumber);
+                                deleteConversation(convKey, displayName);
                               }}
                               className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 rounded-b-lg"
                             >
@@ -1295,7 +1533,6 @@ export default function MessageStoredPage() {
                 );
               })
             )}
-            {/* Loading indicator for infinite scroll */}
             {(isLoadingMore || hasMore) && conversations.length > 0 && (
               <div className="flex items-center justify-center p-4 text-gray-500">
                 <div className="flex items-center gap-2">
@@ -1315,7 +1552,7 @@ export default function MessageStoredPage() {
           </div>
         </div>
 
-        {/* Chat Area - Show full screen on mobile when conversation is selected */}
+        {/* Chat Area */}
         <div
           className={`flex-1 flex flex-col bg-gray-50 ${
             selectedPhone ? "flex" : "hidden md:flex"
@@ -1340,11 +1577,10 @@ export default function MessageStoredPage() {
             </div>
           ) : (
             <>
-              {/* Chat Header with Back Button - STICKY */}
+              {/* Chat Header - STICKY */}
               <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-10">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 sm:gap-3">
-                    {/* Back Button - More prominent on mobile */}
                     <button
                       onClick={handleBack}
                       className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors flex items-center gap-1 text-gray-600"
@@ -1367,7 +1603,18 @@ export default function MessageStoredPage() {
                       </span>
                     </button>
 
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0 relative">
+                      {selectedParticipants.length > 1 && (
+                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full border-2 border-white flex items-center justify-center">
+                          <svg
+                            className="w-2.5 h-2.5 text-white"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+                          </svg>
+                        </div>
+                      )}
                       <svg
                         className="w-6 h-6 sm:w-8 sm:h-8 text-white"
                         fill="currentColor"
@@ -1378,8 +1625,22 @@ export default function MessageStoredPage() {
                     </div>
                     <div className="flex flex-col min-w-0">
                       <h2 className="font-semibold text-gray-900 text-sm sm:text-base truncate max-w-[150px] sm:max-w-none">
-                        {formatPhoneNumber(selectedPhone)}
+                        {selectedParticipants.length > 1
+                          ? `${selectedParticipants
+                              .map((p) => formatPhoneNumber(p))
+                              .slice(0, 2)
+                              .join(", ")}${
+                              selectedParticipants.length > 2
+                                ? ` +${selectedParticipants.length - 2}`
+                                : ""
+                            }`
+                          : formatPhoneNumber(selectedPhone)}
                       </h2>
+                      {selectedParticipants.length > 1 && (
+                        <span className="text-xs text-gray-500">
+                          Group • {selectedParticipants.length} participants
+                        </span>
+                      )}
                       {activeSearchText &&
                         matchingMessageIndices.length > 0 && (
                           <div className="flex items-center gap-2">
@@ -1390,7 +1651,12 @@ export default function MessageStoredPage() {
                               onClick={() => {
                                 setActiveSearchText("");
                                 setMatchingMessageIndices([]);
-                                viewConversation(selectedPhone);
+                                const currentConv = conversations.find(
+                                  (c) =>
+                                    (c.conversationId || c.phoneNumber) ===
+                                    selectedConversationId
+                                );
+                                if (currentConv) viewConversation(currentConv);
                               }}
                               className="text-xs text-gray-500 hover:text-gray-700 underline"
                             >
@@ -1425,12 +1691,75 @@ export default function MessageStoredPage() {
                       </button>
                     </div>
                   ) : (
-                    <button
-                      onClick={() => setSelectMode(true)}
-                      className="text-gray-500 hover:text-gray-700 text-sm sm:text-base p-2"
-                    >
-                      Select
-                    </button>
+                    <div className="relative" ref={chatMenuRef}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowChatMenu(!showChatMenu);
+                        }}
+                        className="text-gray-500 hover:text-gray-700 p-2 hover:bg-gray-100 rounded-full transition-colors"
+                        title="More options"
+                      >
+                        <svg
+                          className="w-6 h-6"
+                          fill="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <circle cx="12" cy="5" r="2" />
+                          <circle cx="12" cy="12" r="2" />
+                          <circle cx="12" cy="19" r="2" />
+                        </svg>
+                      </button>
+
+                      {showChatMenu && (
+                        <div className="absolute right-0 top-12 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                          <button
+                            onClick={() => {
+                              setShowDetailsModal(true);
+                              setShowChatMenu(false);
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                              />
+                            </svg>
+                            Details
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectMode(true);
+                              setShowChatMenu(false);
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                              />
+                            </svg>
+                            Select
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -1440,7 +1769,6 @@ export default function MessageStoredPage() {
                 ref={messagesContainerRef}
                 className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3 sm:space-y-4"
               >
-                {/* Loading indicator for older messages */}
                 {(isLoadingMoreMessages || hasMoreMessages) &&
                   conversation.length > 0 && (
                     <div className="flex items-center justify-center py-4">
@@ -1459,7 +1787,6 @@ export default function MessageStoredPage() {
                     </div>
                   )}
 
-                {/* Loading state when first viewing conversation */}
                 {isLoadingConversation && (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center">
@@ -1486,7 +1813,6 @@ export default function MessageStoredPage() {
                   </div>
                 )}
 
-                {/* Empty state when no messages */}
                 {!isLoadingConversation && conversation.length === 0 && (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-center text-gray-500">
@@ -1579,7 +1905,6 @@ export default function MessageStoredPage() {
                               <div className="absolute inset-0 rounded-2xl ring-4 ring-blue-400 pointer-events-none opacity-30" />
                             )}
 
-                            {/* Search match indicator */}
                             {isMatchingMessage && activeSearchText && (
                               <div className="flex items-center gap-1 mb-1">
                                 <span className="text-[10px] font-medium bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
@@ -1588,11 +1913,19 @@ export default function MessageStoredPage() {
                               </div>
                             )}
 
+                            {/* Show sender in group messages */}
+                            {!isOutbound &&
+                              selectedParticipants.length > 1 &&
+                              msg.from?.phoneNumber && (
+                                <div className="text-xs font-semibold text-gray-500 mb-1">
+                                  {formatPhoneNumber(msg.from.phoneNumber)}
+                                </div>
+                              )}
+
                             {msg.subject && (
                               <p className="break-words whitespace-pre-wrap mb-2 text-sm sm:text-base">
                                 {isMatchingMessage && activeSearchText
-                                  ? // Highlight matching text
-                                    (() => {
+                                  ? (() => {
                                       const text = msg.subject;
                                       const searchLower =
                                         activeSearchText.toLowerCase();
@@ -1644,7 +1977,7 @@ export default function MessageStoredPage() {
                               </p>
                             )}
 
-                            {/* Attachments */}
+                            {/* Attachments (continuing from previous section - keeping attachment rendering logic the same) */}
                             {msg.attachments?.length ? (
                               <div className="space-y-2 mt-2">
                                 {msg.attachments.map(
@@ -1653,7 +1986,6 @@ export default function MessageStoredPage() {
                                     if (!url) return null;
 
                                     if (att.contentType?.startsWith("image/")) {
-                                      // Collect all images for lightbox navigation
                                       const allImages = conversation.flatMap(
                                         (m) =>
                                           (m.attachments || [])
@@ -2086,7 +2418,6 @@ export default function MessageStoredPage() {
                           if (item.type.startsWith("image/")) {
                             const file = item.getAsFile();
                             if (file) {
-                              // Check file size (1.5MB limit for MMS)
                               if (file.size > 1.5 * 1024 * 1024) {
                                 alert(
                                   `Image is too large (${(
@@ -2097,7 +2428,6 @@ export default function MessageStoredPage() {
                                 );
                                 continue;
                               }
-                              // Rename with timestamp
                               const newFile = new File(
                                 [file],
                                 `pasted-image-${Date.now()}.${
@@ -2113,7 +2443,7 @@ export default function MessageStoredPage() {
                         }
 
                         if (imageFiles.length > 0) {
-                          e.preventDefault(); // Prevent pasting image data as text
+                          e.preventDefault();
                           setSelectedFiles((prev) => [...prev, ...imageFiles]);
                         }
                       }}
@@ -2168,15 +2498,18 @@ export default function MessageStoredPage() {
       {showNewMessageModal && (
         <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 shadow-2xl border border-gray-200">
-            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-4">
+            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">
               New Message
             </h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Enter one or multiple phone numbers separated by commas
+            </p>
             <input
               type="tel"
               value={newPhoneNumber}
               onChange={(e) => setNewPhoneNumber(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && startNewConversation()}
-              placeholder="+19727486404"
+              placeholder="+19727486404, +16825513029, ..."
               className="w-full px-4 py-3 border rounded-lg mb-4 text-base"
               autoFocus
             />
@@ -2316,6 +2649,196 @@ export default function MessageStoredPage() {
 
             <div className="absolute bottom-4 sm:bottom-20 left-1/2 -translate-x-1/2 text-white bg-black/50 px-4 py-2 rounded-full text-xs sm:text-sm max-w-[80%] sm:max-w-md truncate">
               {lightboxImage.filename}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Details Modal */}
+      {showDetailsModal && (
+        <div
+          className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center p-4 z-50"
+          onClick={() => setShowDetailsModal(false)}
+        >
+          <div
+            className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl border border-gray-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900">
+                Conversation Details
+              </h3>
+              <button
+                onClick={() => setShowDetailsModal(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Conversation Type */}
+              <div>
+                <label className="text-sm font-medium text-gray-500">
+                  Type
+                </label>
+                <div className="mt-1 flex items-center gap-2">
+                  {selectedParticipants.length > 1 ? (
+                    <>
+                      <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
+                        <svg
+                          className="w-5 h-5 text-white"
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                        >
+                          <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+                        </svg>
+                      </div>
+                      <span className="text-gray-900 font-medium">
+                        Group Conversation
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                        <svg
+                          className="w-5 h-5 text-white"
+                          fill="currentColor"
+                          viewBox="0 0 20 20"
+                        >
+                          <path
+                            fillRule="evenodd"
+                            d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                      </div>
+                      <span className="text-gray-900 font-medium">
+                        Direct Message
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Participants */}
+              <div>
+                <label className="text-sm font-medium text-gray-500">
+                  {selectedParticipants.length > 1
+                    ? "Participants"
+                    : "Phone Number"}
+                  {selectedParticipants.length > 1 && (
+                    <span className="ml-1 text-gray-400">
+                      ({selectedParticipants.length})
+                    </span>
+                  )}
+                </label>
+                <div className="mt-2 space-y-2">
+                  {selectedParticipants.map((participant, index) => (
+                    <div
+                      key={participant}
+                      className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold ${
+                          selectedParticipants.length > 1
+                            ? "bg-gradient-to-br from-purple-400 to-purple-600"
+                            : "bg-gradient-to-br from-blue-400 to-blue-600"
+                        }`}
+                      >
+                        {selectedParticipants.length > 1 ? (
+                          index + 1
+                        ) : (
+                          <svg
+                            className="w-5 h-5"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-medium text-gray-900">
+                          {formatPhoneNumber(participant)}
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          {participant}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(participant);
+                          // Could add a toast notification here
+                        }}
+                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-full transition-colors"
+                        title="Copy phone number"
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Message Count */}
+              <div>
+                <label className="text-sm font-medium text-gray-500">
+                  Messages
+                </label>
+                <div className="mt-1 text-gray-900 font-medium">
+                  {conversation.length} total
+                </div>
+              </div>
+
+              {/* Conversation ID (for debugging) */}
+              {selectedConversationId && (
+                <div>
+                  <label className="text-sm font-medium text-gray-500">
+                    Conversation ID
+                  </label>
+                  <div className="mt-1 text-xs text-gray-600 font-mono bg-gray-50 p-2 rounded break-all">
+                    {selectedConversationId}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setShowDetailsModal(false)}
+                className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 font-medium transition-colors"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

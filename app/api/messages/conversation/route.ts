@@ -1,18 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from "@/lib/mongodb";
 
+// Type for stored message
+interface StoredMessage {
+  id?: string;
+  subject?: string;
+  direction?: string;
+  readStatus?: string;
+}
+
+// Type for conversation document
+interface ConversationDocument {
+  phoneNumber: string;
+  conversationId?: string;
+  participants?: string[];
+  isGroup?: boolean;
+  messages?: StoredMessage[];
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const phoneNumber = searchParams.get('phoneNumber');
+    const conversationId = searchParams.get('conversationId');
     const fetchAll = searchParams.get('all') === 'true';
     const skip = parseInt(searchParams.get('skip') || '0', 10);
     const limit = fetchAll ? 10000 : parseInt(searchParams.get('limit') || '10', 10);
     const searchText = searchParams.get('searchText') || ''; // For message content search
     
-    if (!phoneNumber) {
+    if (!phoneNumber && !conversationId) {
       return NextResponse.json(
-        { error: 'Phone number is required' },
+        { error: 'Phone number or conversation ID is required' },
         { status: 400 }
       );
     }
@@ -21,15 +39,30 @@ export async function GET(request: NextRequest) {
     const db = client.db("db");
     const conversationsCollection = db.collection("texas_premium_messages");
     
-    console.log(`🔍 Fetching conversation for: ${phoneNumber} (skip: ${skip}, limit: ${limit}, searchText: ${searchText || 'none'})`);
+    console.log(`🔍 Fetching conversation - conversationId: ${conversationId || 'N/A'}, phone: ${phoneNumber || 'N/A'} (skip: ${skip}, limit: ${limit}, searchText: ${searchText || 'none'})`);
     
-    // Find conversation by phone number
-    const conversation = await conversationsCollection.findOne({
-      phoneNumber: phoneNumber,
-    });
+    // Find conversation by conversationId (preferred) or phoneNumber (backward compatibility)
+    let conversation: ConversationDocument | null = null;
+    if (conversationId) {
+      conversation = await conversationsCollection.findOne({
+        conversationId: conversationId,
+      }) as ConversationDocument | null;
+    } else if (phoneNumber) {
+      // Try conversationId first (for single conversations, conversationId = phoneNumber)
+      conversation = await conversationsCollection.findOne({
+        conversationId: phoneNumber,
+      }) as ConversationDocument | null;
+      
+      // Fallback to old phoneNumber field for backward compatibility
+      if (!conversation) {
+        conversation = await conversationsCollection.findOne({
+          phoneNumber: phoneNumber,
+        }) as ConversationDocument | null;
+      }
+    }
     
     if (!conversation) {
-      console.log(`✅ No conversation found for ${phoneNumber}`);
+      console.log(`✅ No conversation found`);
       return NextResponse.json({
         messages: [],
         total: 0,
@@ -38,6 +71,9 @@ export async function GET(request: NextRequest) {
         hasMore: false,
         searchText,
         matchingIndices: [],
+        conversationId: conversationId || phoneNumber,
+        isGroup: false,
+        participants: phoneNumber ? [phoneNumber] : [],
       });
     }
     
@@ -45,7 +81,7 @@ export async function GET(request: NextRequest) {
     
     // **CRITICAL FIX: Deduplicate messages by ID before processing**
     const seenIds = new Set<string>();
-    const uniqueMessages = allMessages.filter((msg: { id?: string }) => {
+    const uniqueMessages = allMessages.filter((msg: StoredMessage) => {
       if (!msg.id) return true; // Keep messages without IDs (shouldn't happen)
       if (seenIds.has(msg.id)) {
         console.log(`⚠️  Duplicate message found in DB: ${msg.id}, removing from response`);
@@ -56,8 +92,11 @@ export async function GET(request: NextRequest) {
     });
     
     const total = uniqueMessages.length;
+    const isGroup = conversation.isGroup || false;
+    const participants = conversation.participants || (conversation.conversationId ? conversation.conversationId.split(',') : [phoneNumber || '']);
     
     console.log(`📊 Total messages after dedup: ${total} (removed ${allMessages.length - total} duplicates)`);
+    console.log(`📊 Group: ${isGroup}, Participants: [${participants.join(', ')}]`);
     
     // If searching for text, find matching messages and return around them
     if (searchText.trim()) {
@@ -65,7 +104,7 @@ export async function GET(request: NextRequest) {
       
       // Find all matching message indices
       const matchingIndices: number[] = [];
-      uniqueMessages.forEach((msg: { subject?: string }, index: number) => {
+      uniqueMessages.forEach((msg: StoredMessage, index: number) => {
         if (msg.subject && msg.subject.toLowerCase().includes(searchLower)) {
           matchingIndices.push(index);
         }
@@ -84,6 +123,9 @@ export async function GET(request: NextRequest) {
           searchText,
           matchingIndices: [],
           firstMatchIndex: -1,
+          conversationId: conversation.conversationId || phoneNumber,
+          isGroup,
+          participants,
         });
       }
       
@@ -116,6 +158,9 @@ export async function GET(request: NextRequest) {
         matchingIndices: relativeMatchingIndices,
         firstMatchIndex: relativeMatchingIndices[0] || 0,
         absoluteFirstMatch: firstMatchIndex,
+        conversationId: conversation.conversationId || phoneNumber,
+        isGroup,
+        participants,
       });
     }
     
@@ -129,6 +174,9 @@ export async function GET(request: NextRequest) {
         hasMore: false,
         searchText: '',
         matchingIndices: [],
+        conversationId: conversation.conversationId || phoneNumber,
+        isGroup,
+        participants,
       });
     }
     
@@ -152,6 +200,9 @@ export async function GET(request: NextRequest) {
       hasMore,
       searchText: '',
       matchingIndices: [],
+      conversationId: conversation.conversationId || phoneNumber,
+      isGroup,
+      participants,
     });
   } catch (error: unknown) {
     console.error('❌ Get conversation error:', error);

@@ -3,11 +3,15 @@ import connectToDatabase from "@/lib/mongodb";
 
 export async function POST(request: NextRequest) {
   try {
-    const { phoneNumber } = await request.json();
+    const body: { phoneNumber?: string; conversationId?: string } = await request.json();
+    const { phoneNumber, conversationId } = body;
     
-    if (!phoneNumber) {
+    // Use conversationId if provided, otherwise fall back to phoneNumber for backward compatibility
+    const identifier = conversationId || phoneNumber;
+    
+    if (!identifier) {
       return NextResponse.json(
-        { error: 'Phone number is required' },
+        { error: 'Conversation ID or phone number is required' },
         { status: 400 }
       );
     }
@@ -16,40 +20,54 @@ export async function POST(request: NextRequest) {
     const db = client.db("db");
     const conversationsCollection = db.collection("texas_premium_messages");
     
-    console.log(`📖 Marking messages as read for: ${phoneNumber}`);
+    // Find conversation by conversationId (preferred) or phoneNumber (backward compatibility)
+    type QueryFilter = Record<string, unknown>;
+    let query: QueryFilter;
+    if (conversationId) {
+      query = { conversationId: conversationId };
+    } else {
+      query = {
+        $or: [
+          { conversationId: phoneNumber },
+          { phoneNumber: phoneNumber }
+        ]
+      };
+    }
     
-    // Update all inbound unread messages in the conversation
+    // Mark all inbound messages as read and reset unread count
     const result = await conversationsCollection.updateOne(
-      { phoneNumber: phoneNumber },
+      query,
       {
         $set: {
           "messages.$[elem].readStatus": "Read",
           unreadCount: 0,
-        }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any,
+        },
+      },
       {
-        arrayFilters: [
-          { 
-            "elem.direction": "Inbound",
-            "elem.readStatus": "Unread"
-          }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ] as any
+        arrayFilters: [{ "elem.direction": "Inbound" }],
       }
     );
     
-    console.log(`✅ Marked messages as read (modified: ${result.modifiedCount})`);
+    if (result.matchedCount === 0) {
+      console.log(`⚠️ No conversation found for: ${identifier}`);
+      return NextResponse.json(
+        { error: 'Conversation not found' },
+        { status: 404 }
+      );
+    }
     
-    return NextResponse.json({
+    console.log(`✅ Marked conversation as read: ${identifier} (${result.modifiedCount} messages updated)`);
+    
+    return NextResponse.json({ 
       success: true,
-      updated: result.modifiedCount,
+      conversationId: identifier,
+      messagesUpdated: result.modifiedCount,
     });
   } catch (error: unknown) {
     console.error('❌ Mark as read error:', error);
     const err = error as { message?: string };
     return NextResponse.json(
-      { error: err.message },
+      { error: err.message || 'Failed to mark as read' },
       { status: 500 }
     );
   }
