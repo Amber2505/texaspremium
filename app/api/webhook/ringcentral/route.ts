@@ -284,7 +284,7 @@ export async function POST(request: NextRequest) {
                     messages: {
                       $each: oldMessages
                     }
-                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   } as any
                 },
                 { upsert: true }
@@ -303,7 +303,7 @@ export async function POST(request: NextRequest) {
         {
           $push: {
             messages: newMessage,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } as any,
           $set: {
             lastMessageTime: newMessage.creationTime,

@@ -65,6 +65,12 @@ async function downloadAndUploadAttachment(uri, filename, contentType, authToken
       headers: { 'Authorization': `Bearer ${authToken}` }
     });
     
+    // Check for rate limiting
+    if (response.status === 429) {
+      console.error(`   🚫 Rate limited on attachment download`);
+      return null;
+    }
+    
     if (!response.ok) {
       console.error(`   ❌ Download failed: ${response.status}`);
       return null;
@@ -191,6 +197,8 @@ const MY_PHONE_NUMBER = process.env.MY_PHONE_NUMBER || '+14697295185';
 const RINGCENTRAL_SERVER = 'https://platform.ringcentral.com';
 let lastSyncTime = null;
 let nextSyncTime = null;
+let rateLimitedUntil = null;
+let consecutiveErrors = 0;
 
 async function getRingCentralPlatform() {
   const SDK = require('@ringcentral/sdk').SDK;
@@ -208,6 +216,13 @@ async function getRingCentralPlatform() {
 
 async function syncRingCentralMessages() {
   const startTime = Date.now();
+
+  // Check if we're rate limited
+  if (rateLimitedUntil && Date.now() < rateLimitedUntil) {
+    const waitSeconds = Math.ceil((rateLimitedUntil - Date.now()) / 1000);
+    console.log(`⏳ Rate limited, waiting ${waitSeconds}s...`);
+    return { success: false, error: 'Rate limited', waitSeconds };
+  }
 
   if (!conversationsCollection) {
     return { success: false, error: 'Database not connected' };
@@ -293,6 +308,12 @@ async function syncRingCentralMessages() {
 
       if (!needsProcessing) continue;
 
+      // Limit API calls per sync to avoid rate limiting (max 5 fetches per sync)
+      if (synced + attachmentsFixed >= 5) {
+        console.log('⚠️ Reached max fetches per sync (5), will continue next cycle');
+        break;
+      }
+
       // For inbound messages, fetch full message to get attachment details
       let fullMessage = msg;
       
@@ -302,6 +323,13 @@ async function syncRingCentralMessages() {
             `${RINGCENTRAL_SERVER}/restapi/v1.0/account/~/extension/~/message-store/${messageId}`,
             { headers: { 'Authorization': `Bearer ${authToken}` } }
           );
+          
+          // Check for rate limiting
+          if (fullMsgResponse.status === 429) {
+            console.log('🚫 Rate limited on message fetch!');
+            rateLimitedUntil = Date.now() + 60000; // Wait 60 seconds
+            break;
+          }
           
           if (fullMsgResponse.ok) {
             fullMessage = await fullMsgResponse.json();
@@ -425,10 +453,14 @@ async function syncRingCentralMessages() {
       }
     }
 
-    // Two-way read status sync
+    // Two-way read status sync (skip if rate limited)
     let readStatusSynced = 0;
     let unreadStatusSynced = 0;
     
+    // Skip read sync if we hit rate limits during message sync
+    if (rateLimitedUntil && Date.now() < rateLimitedUntil) {
+      console.log('⏭️ Skipping read status sync due to rate limiting');
+    } else {
     try {
       const allConversations = await conversationsCollection.find({}).toArray();
       const unreadMessageMap = new Map();
@@ -541,9 +573,14 @@ async function syncRingCentralMessages() {
     } catch (readSyncError) {
       console.error('❌ Read status sync error:', readSyncError.message);
     }
+    } // End of rate limit check for read sync
 
     const duration = Date.now() - startTime;
     lastSyncTime = new Date().toISOString();
+    
+    // Reset rate limit counters on success
+    consecutiveErrors = 0;
+    rateLimitedUntil = null;
     
     const shouldLog = synced > 0 || attachmentsDownloaded > 0 || attachmentsFixed > 0 || 
                       readStatusSynced > 0 || unreadStatusSynced > 0 || Date.now() % 60000 < 5000;
@@ -570,6 +607,17 @@ async function syncRingCentralMessages() {
 
   } catch (error) {
     console.error(`❌ Sync error:`, error.message);
+    
+    // Handle rate limiting
+    if (error.message?.includes('rate') || error.message?.includes('429') || error.message?.includes('Request rate exceeded')) {
+      consecutiveErrors++;
+      // Exponential backoff: 60s, 120s, 240s, max 5 min
+      const backoffSeconds = Math.min(60 * Math.pow(2, consecutiveErrors - 1), 300);
+      rateLimitedUntil = Date.now() + (backoffSeconds * 1000);
+      console.log(`🚫 Rate limited! Backing off for ${backoffSeconds}s`);
+      return { success: false, error: 'Rate limited', backoffSeconds };
+    }
+    
     return { success: false, error: error.message };
   }
 }
@@ -595,8 +643,8 @@ async function startServer() {
   console.log(`☁️  Azure Storage: ${azureConfigured ? 'Configured' : 'NOT configured - attachments will not be saved'}`);
 
   if (rcConfigured) {
-    // Sync interval in milliseconds (default: 5 seconds)
-    const syncIntervalMs = parseInt(process.env.SYNC_INTERVAL_MS || '5000', 10);
+    // Sync interval in milliseconds (default: 30 seconds to avoid rate limits)
+    const syncIntervalMs = parseInt(process.env.SYNC_INTERVAL_MS || '30000', 10);
     
     console.log(`\n📅 RingCentral Sync Interval: ${syncIntervalMs}ms (${syncIntervalMs/1000}s)`);
     
