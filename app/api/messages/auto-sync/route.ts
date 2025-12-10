@@ -2,33 +2,12 @@ import { NextResponse } from "next/server";
 import { SDK } from "@ringcentral/sdk";
 
 const RINGCENTRAL_SERVER = "https://platform.ringcentral.com";
-const MY_PHONE = process.env.RINGCENTRAL_PHONE_NUMBER || "";
 
 interface StoredMessage {
   id?: string;
   direction?: string;
   readStatus?: string;
   attachments?: Array<{ azureUrl?: string }>;
-}
-
-// Helper to create conversationId from all participants
-function createConversationId(fromNumber: string, toNumbers: string[]): string {
-  const participants = new Set<string>();
-  
-  // Add sender (if not us)
-  if (fromNumber && fromNumber !== MY_PHONE) {
-    participants.add(fromNumber);
-  }
-  
-  // Add all recipients (if not us)
-  toNumbers.forEach(num => {
-    if (num && num !== MY_PHONE) {
-      participants.add(num);
-    }
-  });
-  
-  // Sort alphabetically and join
-  return Array.from(participants).sort().join(',');
 }
 
 export async function GET() {
@@ -91,35 +70,22 @@ export async function GET() {
     // STEP 4: Process each message
     for (const msg of messages) {
       const messageId = msg.id.toString();
-      const fromNumber = msg.from?.phoneNumber || "";
-      const toNumbers = (msg.to || []).map((t: { phoneNumber?: string }) => t.phoneNumber || "").filter(Boolean);
+      const isOutbound = msg.direction === "Outbound";
+      const otherPhone = isOutbound ? msg.to?.[0]?.phoneNumber : msg.from?.phoneNumber;
       
-      // Create proper conversationId from ALL participants
-      const conversationId = createConversationId(fromNumber, toNumbers);
-      const participants = conversationId.split(',');
-      const isGroup = participants.length > 1;
-      const primaryPhone = msg.direction === "Outbound" ? toNumbers[0] : fromNumber;
+      if (!otherPhone) continue;
       
-      if (!conversationId || !primaryPhone) {
-        console.log(`⏭️ Skipping message ${messageId} - no valid participants`);
-        continue;
-      }
-      
-      // Only process inbound messages
+      // Only process inbound messages with potential attachments
       if (msg.direction !== "Inbound") {
         continue;
       }
 
       console.log(`\n────────────────────────────────────────`);
-      console.log(`📨 Message ${messageId}`);
-      console.log(`   From: ${fromNumber}`);
-      console.log(`   To: ${toNumbers.join(', ')}`);
-      console.log(`   ConversationId: ${conversationId}`);
-      console.log(`   Group: ${isGroup ? 'YES' : 'NO'} (${participants.length} participants)`);
+      console.log(`📨 Message ${messageId} from ${otherPhone}`);
       console.log(`   List API attachments: ${msg.attachments?.length || 0}`);
 
-      // Check MongoDB by conversationId
-      const existingConv = await conversationsCollection.findOne({ conversationId: conversationId });
+      // Check MongoDB
+      const existingConv = await conversationsCollection.findOne({ phoneNumber: otherPhone });
       const existingMsg = existingConv?.messages?.find((m: StoredMessage) => m.id === messageId);
 
       if (existingMsg) {
@@ -228,9 +194,9 @@ export async function GET() {
 
       // Save to MongoDB
       if (existingMsg) {
-        // Update existing message
+        // Update existing
         const result = await conversationsCollection.updateOne(
-          { conversationId: conversationId, "messages.id": messageId },
+          { phoneNumber: otherPhone, "messages.id": messageId },
           { 
             $set: { 
               "messages.$.attachments": processedAttachments,
@@ -256,27 +222,18 @@ export async function GET() {
           attachments: processedAttachments,
         };
 
-        // Upsert conversation with proper group fields
         const result = await conversationsCollection.updateOne(
-          { conversationId: conversationId },
+          { phoneNumber: otherPhone, "messages.id": { $ne: messageId } },
           {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             $push: { messages: { $each: [messageObj], $sort: { creationTime: 1 } } } as any,
-            $set: { 
-              lastMessageTime: fullMessage.creationTime, 
-              lastMessageId: messageId,
-              conversationId: conversationId,  // Ensure set
-              participants: participants,      // All participants
-              isGroup: isGroup,               // Group flag
-              phoneNumber: primaryPhone,      // For backward compat
-            },
+            $set: { lastMessageTime: fullMessage.creationTime, lastMessageId: messageId },
             $inc: { unreadCount: 1 },
           },
           { upsert: true }
         );
         
-        console.log(`   💾 Saved to ${isGroup ? 'GROUP' : 'SINGLE'} conversation: ${conversationId}`);
-        console.log(`      modified=${result.modifiedCount}, upserted=${result.upsertedCount}`);
+        console.log(`   💾 Added: modified=${result.modifiedCount}, upserted=${result.upsertedCount}`);
         if (result.modifiedCount > 0 || result.upsertedCount > 0) stats.newSaved++;
       }
       
@@ -302,7 +259,7 @@ export async function GET() {
         ).length;
         if (conv.unreadCount !== unread) {
           await conversationsCollection.updateOne(
-            { _id: conv._id },
+            { phoneNumber: conv.phoneNumber },
             { $set: { unreadCount: unread } }
           );
         }

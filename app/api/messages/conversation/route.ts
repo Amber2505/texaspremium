@@ -18,6 +18,25 @@ interface ConversationDocument {
   messages?: StoredMessage[];
 }
 
+// Helper function to normalize phone numbers
+function normalizePhone(phone: string): string {
+  if (!phone) return phone;
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  if (phone.startsWith('+')) return phone;
+  return `+${digits}`;
+}
+
+// Normalize a conversationId (which may contain multiple phones for groups)
+function normalizeConversationId(convId: string): string {
+  if (!convId) return convId;
+  if (convId.includes(',')) {
+    return convId.split(',').map(p => normalizePhone(p.trim())).sort().join(',');
+  }
+  return normalizePhone(convId);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -26,7 +45,7 @@ export async function GET(request: NextRequest) {
     const fetchAll = searchParams.get('all') === 'true';
     const skip = parseInt(searchParams.get('skip') || '0', 10);
     const limit = fetchAll ? 10000 : parseInt(searchParams.get('limit') || '10', 10);
-    const searchText = searchParams.get('searchText') || ''; // For message content search
+    const searchText = searchParams.get('searchText') || '';
     
     if (!phoneNumber && !conversationId) {
       return NextResponse.json(
@@ -39,30 +58,100 @@ export async function GET(request: NextRequest) {
     const db = client.db("db");
     const conversationsCollection = db.collection("texas_premium_messages");
     
-    console.log(`🔍 Fetching conversation - conversationId: ${conversationId || 'N/A'}, phone: ${phoneNumber || 'N/A'} (skip: ${skip}, limit: ${limit}, searchText: ${searchText || 'none'})`);
+    // Normalize the input for matching
+    const normalizedPhone = phoneNumber ? normalizePhone(phoneNumber) : null;
+    const normalizedConvId = conversationId ? normalizeConversationId(conversationId) : null;
     
-    // Find conversation by conversationId (preferred) or phoneNumber (backward compatibility)
+    console.log(`🔍 Fetching conversation:`);
+    console.log(`   Raw: conversationId=${conversationId}, phoneNumber=${phoneNumber}`);
+    console.log(`   Normalized: convId=${normalizedConvId}, phone=${normalizedPhone}`);
+    console.log(`   skip: ${skip}, limit: ${limit}, searchText: ${searchText || 'none'}`);
+    
+    // Build a comprehensive query to find the conversation
+    // This handles various scenarios:
+    // 1. New format with conversationId field
+    // 2. Old format with only phoneNumber field
+    // 3. Phone number format variations
     let conversation: ConversationDocument | null = null;
-    if (conversationId) {
+    
+    // Try multiple lookup strategies
+    const lookupValue = normalizedConvId || normalizedPhone;
+    const rawValue = conversationId || phoneNumber;
+    
+    if (lookupValue) {
+      // Strategy 1: Direct match on conversationId (normalized)
       conversation = await conversationsCollection.findOne({
-        conversationId: conversationId,
-      }) as ConversationDocument | null;
-    } else if (phoneNumber) {
-      // Try conversationId first (for single conversations, conversationId = phoneNumber)
-      conversation = await conversationsCollection.findOne({
-        conversationId: phoneNumber,
+        conversationId: lookupValue,
       }) as ConversationDocument | null;
       
-      // Fallback to old phoneNumber field for backward compatibility
+      if (conversation) {
+        console.log(`   ✅ Found by conversationId (normalized): ${lookupValue}`);
+      }
+      
+      // Strategy 2: Direct match on conversationId (raw value)
+      if (!conversation && rawValue !== lookupValue) {
+        conversation = await conversationsCollection.findOne({
+          conversationId: rawValue,
+        }) as ConversationDocument | null;
+        
+        if (conversation) {
+          console.log(`   ✅ Found by conversationId (raw): ${rawValue}`);
+        }
+      }
+      
+      // Strategy 3: Match on phoneNumber field (normalized)
       if (!conversation) {
         conversation = await conversationsCollection.findOne({
-          phoneNumber: phoneNumber,
+          phoneNumber: lookupValue,
         }) as ConversationDocument | null;
+        
+        if (conversation) {
+          console.log(`   ✅ Found by phoneNumber (normalized): ${lookupValue}`);
+        }
+      }
+      
+      // Strategy 4: Match on phoneNumber field (raw value)
+      if (!conversation && rawValue !== lookupValue) {
+        conversation = await conversationsCollection.findOne({
+          phoneNumber: rawValue,
+        }) as ConversationDocument | null;
+        
+        if (conversation) {
+          console.log(`   ✅ Found by phoneNumber (raw): ${rawValue}`);
+        }
+      }
+      
+      // Strategy 5: Check if the value is in participants array
+      if (!conversation) {
+        conversation = await conversationsCollection.findOne({
+          participants: { $in: [lookupValue, rawValue].filter(Boolean) },
+        }) as ConversationDocument | null;
+        
+        if (conversation) {
+          console.log(`   ✅ Found by participants array`);
+        }
+      }
+      
+      // Strategy 6: Regex match for phone variations (last resort)
+      if (!conversation && normalizedPhone) {
+        const digits = normalizedPhone.replace(/\D/g, '');
+        const last10 = digits.slice(-10);
+        
+        conversation = await conversationsCollection.findOne({
+          $or: [
+            { phoneNumber: { $regex: last10 } },
+            { conversationId: { $regex: last10 } },
+          ]
+        }) as ConversationDocument | null;
+        
+        if (conversation) {
+          console.log(`   ✅ Found by regex match on last 10 digits: ${last10}`);
+        }
       }
     }
     
     if (!conversation) {
-      console.log(`✅ No conversation found`);
+      console.log(`   ❌ No conversation found for: ${rawValue}`);
       return NextResponse.json({
         messages: [],
         total: 0,
@@ -74,17 +163,18 @@ export async function GET(request: NextRequest) {
         conversationId: conversationId || phoneNumber,
         isGroup: false,
         participants: phoneNumber ? [phoneNumber] : [],
+        notFound: true,
       });
     }
     
     const allMessages = conversation.messages || [];
     
-    // **CRITICAL FIX: Deduplicate messages by ID before processing**
+    // Deduplicate messages by ID
     const seenIds = new Set<string>();
     const uniqueMessages = allMessages.filter((msg: StoredMessage) => {
-      if (!msg.id) return true; // Keep messages without IDs (shouldn't happen)
+      if (!msg.id) return true;
       if (seenIds.has(msg.id)) {
-        console.log(`⚠️  Duplicate message found in DB: ${msg.id}, removing from response`);
+        console.log(`   ⚠️ Duplicate message removed: ${msg.id}`);
         return false;
       }
       seenIds.add(msg.id);
@@ -93,16 +183,20 @@ export async function GET(request: NextRequest) {
     
     const total = uniqueMessages.length;
     const isGroup = conversation.isGroup || false;
-    const participants = conversation.participants || (conversation.conversationId ? conversation.conversationId.split(',') : [phoneNumber || '']);
+    const participants = conversation.participants || 
+                        (conversation.conversationId ? conversation.conversationId.split(',') : 
+                        [conversation.phoneNumber || phoneNumber || '']);
     
-    console.log(`📊 Total messages after dedup: ${total} (removed ${allMessages.length - total} duplicates)`);
-    console.log(`📊 Group: ${isGroup}, Participants: [${participants.join(', ')}]`);
+    const duplicatesRemoved = allMessages.length - total;
+    if (duplicatesRemoved > 0) {
+      console.log(`   📊 Removed ${duplicatesRemoved} duplicate messages`);
+    }
+    console.log(`   📊 Total: ${total} messages, Group: ${isGroup}, Participants: [${participants.join(', ')}]`);
     
-    // If searching for text, find matching messages and return around them
+    // Text search logic
     if (searchText.trim()) {
       const searchLower = searchText.toLowerCase();
       
-      // Find all matching message indices
       const matchingIndices: number[] = [];
       uniqueMessages.forEach((msg: StoredMessage, index: number) => {
         if (msg.subject && msg.subject.toLowerCase().includes(searchLower)) {
@@ -111,7 +205,6 @@ export async function GET(request: NextRequest) {
       });
       
       if (matchingIndices.length === 0) {
-        // No matches, return last 10 messages as normal
         const startIndex = Math.max(0, total - limit);
         const messages = uniqueMessages.slice(startIndex, total);
         return NextResponse.json({
@@ -123,16 +216,13 @@ export async function GET(request: NextRequest) {
           searchText,
           matchingIndices: [],
           firstMatchIndex: -1,
-          conversationId: conversation.conversationId || phoneNumber,
+          conversationId: conversation.conversationId || conversation.phoneNumber,
           isGroup,
           participants,
         });
       }
       
-      // Get the first match and load messages around it
       const firstMatchIndex = matchingIndices[0];
-      
-      // Load 5 messages before and after the first match (or more to get context)
       const contextBefore = 5;
       const contextAfter = 5;
       const startIndex = Math.max(0, firstMatchIndex - contextBefore);
@@ -140,12 +230,11 @@ export async function GET(request: NextRequest) {
       
       const messages = uniqueMessages.slice(startIndex, endIndex);
       
-      // Adjust matching indices relative to the returned slice
       const relativeMatchingIndices = matchingIndices
         .filter(idx => idx >= startIndex && idx < endIndex)
         .map(idx => idx - startIndex);
       
-      console.log(`✅ Search "${searchText}": Found ${matchingIndices.length} matches, returning ${messages.length} messages (indices ${startIndex}-${endIndex})`);
+      console.log(`   ✅ Search "${searchText}": ${matchingIndices.length} matches, returning ${messages.length} messages`);
       
       return NextResponse.json({
         messages,
@@ -158,13 +247,13 @@ export async function GET(request: NextRequest) {
         matchingIndices: relativeMatchingIndices,
         firstMatchIndex: relativeMatchingIndices[0] || 0,
         absoluteFirstMatch: firstMatchIndex,
-        conversationId: conversation.conversationId || phoneNumber,
+        conversationId: conversation.conversationId || conversation.phoneNumber,
         isGroup,
         participants,
       });
     }
     
-    // If fetching all, return all messages
+    // Fetch all
     if (fetchAll) {
       return NextResponse.json({
         messages: uniqueMessages,
@@ -174,23 +263,19 @@ export async function GET(request: NextRequest) {
         hasMore: false,
         searchText: '',
         matchingIndices: [],
-        conversationId: conversation.conversationId || phoneNumber,
+        conversationId: conversation.conversationId || conversation.phoneNumber,
         isGroup,
         participants,
       });
     }
     
-    // Normal pagination: return newest messages first
-    // skip=0 gets the last 10, skip=10 gets the 10 before that, etc.
+    // Normal pagination
     const startIndex = Math.max(0, total - skip - limit);
     const endIndex = total - skip;
-    
-    // Get the slice of messages (still in chronological order for display)
     const messages = uniqueMessages.slice(startIndex, endIndex);
-    
     const hasMore = startIndex > 0;
     
-    console.log(`✅ Returning ${messages.length} of ${total} messages (indices ${startIndex}-${endIndex}, hasMore: ${hasMore})`);
+    console.log(`   ✅ Returning ${messages.length}/${total} messages (indices ${startIndex}-${endIndex}, hasMore: ${hasMore})`);
     
     return NextResponse.json({
       messages,
@@ -200,7 +285,7 @@ export async function GET(request: NextRequest) {
       hasMore,
       searchText: '',
       matchingIndices: [],
-      conversationId: conversation.conversationId || phoneNumber,
+      conversationId: conversation.conversationId || conversation.phoneNumber,
       isGroup,
       participants,
     });
