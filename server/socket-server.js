@@ -7,7 +7,6 @@ const { BlobServiceClient } = require('@azure/storage-blob');
 const app = express();
 app.use(express.json());
 
-// Create HTTP server FROM Express app
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
@@ -27,6 +26,66 @@ const io = new Server(httpServer, {
   transports: ['websocket', 'polling'],
   allowEIO3: true
 });
+
+// ================================================
+// CONSTANTS
+// ================================================
+const MY_PHONE_NUMBER = process.env.MY_PHONE_NUMBER || '+14697295185';
+const RINGCENTRAL_SERVER = 'https://platform.ringcentral.com';
+
+// ================================================
+// HELPER: Normalize phone number
+// ================================================
+function normalizePhone(phone) {
+  if (!phone) return '';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  if (phone.startsWith('+')) return phone;
+  return `+${digits}`;
+}
+
+// ================================================
+// HELPER: Determine if message is group and build conversationId
+// ================================================
+function getConversationInfo(msg) {
+  const myPhone = normalizePhone(MY_PHONE_NUMBER);
+  const fromPhone = normalizePhone(msg.from?.phoneNumber || '');
+  const toPhones = (msg.to || []).map(t => normalizePhone(t.phoneNumber || '')).filter(Boolean);
+  
+  // Get all recipients EXCEPT our number
+  const otherRecipients = toPhones.filter(p => p !== myPhone);
+  
+  // Build participants list
+  const participants = new Set();
+  
+  if (msg.direction === 'Inbound') {
+    // Inbound: sender + other recipients (excluding us)
+    participants.add(fromPhone);
+    otherRecipients.forEach(p => participants.add(p));
+  } else {
+    // Outbound: all recipients (excluding us)
+    otherRecipients.forEach(p => participants.add(p));
+  }
+  
+  const participantsArray = Array.from(participants).filter(Boolean).sort();
+  
+  // Group = more than 1 participant (excluding us)
+  const isGroup = participantsArray.length > 1;
+  
+  // ConversationId = sorted participants joined by comma
+  const conversationId = participantsArray.join(',');
+  
+  // Primary phone (for backward compatibility)
+  const primaryPhone = msg.direction === 'Inbound' ? fromPhone : participantsArray[0] || '';
+  
+  return {
+    conversationId,
+    participants: participantsArray,
+    isGroup,
+    primaryPhone,
+  };
+}
 
 // ================================================
 // AZURE STORAGE HELPER
@@ -65,7 +124,6 @@ async function downloadAndUploadAttachment(uri, filename, contentType, authToken
       headers: { 'Authorization': `Bearer ${authToken}` }
     });
     
-    // Check for rate limiting
     if (response.status === 429) {
       console.error(`   🚫 Rate limited on attachment download`);
       return null;
@@ -92,20 +150,23 @@ async function downloadAndUploadAttachment(uri, filename, contentType, authToken
 // ================================================
 app.post('/notify/ringcentral', (req, res) => {
   try {
-    const { phoneNumber, messageId, timestamp, subject } = req.body;
+    const { phoneNumber, conversationId, messageId, timestamp, subject, isGroup } = req.body;
 
-    if (!phoneNumber) {
-      console.warn('Missing phoneNumber in /notify/ringcentral');
-      return res.status(400).json({ error: "Missing phoneNumber" });
+    const roomId = conversationId || phoneNumber;
+    if (!roomId) {
+      console.warn('Missing phoneNumber/conversationId in /notify/ringcentral');
+      return res.status(400).json({ error: "Missing identifier" });
     }
 
-    console.log(`New RingCentral message → broadcasting to conversation:${phoneNumber}`);
+    console.log(`📡 Broadcasting to conversation:${roomId} (group: ${isGroup})`);
 
-    io.to(`conversation:${phoneNumber}`).emit('newRingCentralMessage', {
+    io.to(`conversation:${roomId}`).emit('newRingCentralMessage', {
+      conversationId: roomId,
       phoneNumber,
       messageId,
       timestamp,
       subject: subject || "New message",
+      isGroup,
     });
 
     res.json({ success: true });
@@ -143,8 +204,6 @@ let db;
 let liveChatHistoryCollection;
 let deletedChatsCollection;
 let mongoClient = null;
-
-// For RingCentral sync
 let messagesDb;
 let conversationsCollection;
 
@@ -165,12 +224,10 @@ async function connectMongoDB() {
     await mongoClient.db().admin().ping();
     console.log('MongoDB ping successful');
     
-    // Live chat database
     db = mongoClient.db('myFirstDatabase');
     liveChatHistoryCollection = db.collection('live_chat_history');
     deletedChatsCollection = db.collection('deleted_chats_history');
     
-    // RingCentral messages database
     messagesDb = mongoClient.db('db');
     conversationsCollection = messagesDb.collection('texas_premium_messages');
     
@@ -191,10 +248,8 @@ async function connectMongoDB() {
 }
 
 // ================================================
-// RINGCENTRAL SYNC FUNCTION (WITH ATTACHMENTS)
+// RINGCENTRAL SYNC FUNCTION (WITH GROUP ROUTING)
 // ================================================
-const MY_PHONE_NUMBER = process.env.MY_PHONE_NUMBER || '+14697295185';
-const RINGCENTRAL_SERVER = 'https://platform.ringcentral.com';
 let lastSyncTime = null;
 let nextSyncTime = null;
 let rateLimitedUntil = null;
@@ -217,7 +272,6 @@ async function getRingCentralPlatform() {
 async function syncRingCentralMessages() {
   const startTime = Date.now();
 
-  // Check if we're rate limited
   if (rateLimitedUntil && Date.now() < rateLimitedUntil) {
     const waitSeconds = Math.ceil((rateLimitedUntil - Date.now()) / 1000);
     console.log(`⏳ Rate limited, waiting ${waitSeconds}s...`);
@@ -228,7 +282,6 @@ async function syncRingCentralMessages() {
     return { success: false, error: 'Database not connected' };
   }
 
-  // Check required env vars
   const requiredVars = ['RINGCENTRAL_CLIENT_ID', 'RINGCENTRAL_CLIENT_SECRET', 'RINGCENTRAL_JWT'];
   const missingVars = requiredVars.filter(v => !process.env[v]);
   
@@ -239,8 +292,6 @@ async function syncRingCentralMessages() {
 
   try {
     const platform = await getRingCentralPlatform();
-    
-    // Get auth token ONCE at the start
     const authData = await platform.auth().data();
     const authToken = authData.access_token;
     
@@ -249,7 +300,6 @@ async function syncRingCentralMessages() {
       return { success: false, error: 'No auth token' };
     }
 
-    // Fetch messages from last 60 minutes
     const dateFrom = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     
     const response = await platform.get('/restapi/v1.0/account/~/extension/~/message-store', {
@@ -265,56 +315,66 @@ async function syncRingCentralMessages() {
     let skipped = 0;
     let attachmentsDownloaded = 0;
     let attachmentsFixed = 0;
+    let groupMessages = 0;
+    let individualMessages = 0;
 
     for (const msg of messages) {
-      const isOutbound = msg.direction === 'Outbound';
-      const otherPhone = isOutbound 
-        ? msg.to?.[0]?.phoneNumber 
-        : msg.from?.phoneNumber;
-
-      if (!otherPhone) {
+      const messageId = msg.id.toString();
+      
+      // ════════════════════════════════════════════════════════════════
+      // KEY CHANGE: Use getConversationInfo to determine group vs individual
+      // ════════════════════════════════════════════════════════════════
+      const convInfo = getConversationInfo(msg);
+      const { conversationId, participants, isGroup, primaryPhone } = convInfo;
+      
+      if (!conversationId) {
         skipped++;
         continue;
       }
 
-      const messageId = msg.id.toString();
-
-      // Check if message already exists
+      // Check if message already exists in THIS conversation
       const existingConv = await conversationsCollection.findOne({
-        phoneNumber: otherPhone
+        conversationId: conversationId,
+        'messages.id': messageId
       });
 
-      const existingMsg = existingConv?.messages?.find(m => m.id === messageId);
-
-      // Determine if we need to process
-      let needsProcessing = false;
-      let isFixingExisting = false;
-
-      if (!existingMsg) {
-        needsProcessing = true;
-      } else {
+      if (existingConv) {
         // Check if attachments need fixing
-        const hasAzureUrls = existingMsg.attachments?.some(a => a.azureUrl);
+        const existingMsg = existingConv.messages?.find(m => m.id === messageId);
+        const hasAzureUrls = existingMsg?.attachments?.some(a => a.azureUrl);
         const rcHasAttachments = msg.attachments?.length > 0;
         
-        if (!hasAzureUrls && rcHasAttachments) {
-          needsProcessing = true;
-          isFixingExisting = true;
-        } else {
+        if (hasAzureUrls || !rcHasAttachments) {
           skipped++;
           continue;
         }
+        // Fall through to fix attachments
       }
 
-      if (!needsProcessing) continue;
+      // Also check if message exists in WRONG conversation (individual when should be group)
+      if (isGroup) {
+        const wrongConv = await conversationsCollection.findOne({
+          conversationId: { $ne: conversationId },
+          'messages.id': messageId
+        });
+        
+        if (wrongConv) {
+          console.log(`   🔄 Message ${messageId} found in wrong conversation, will move to group`);
+          // Remove from wrong conversation
+          await conversationsCollection.updateOne(
+            { _id: wrongConv._id },
+            { $pull: { messages: { id: messageId } } }
+          );
+        }
+      }
 
-      // Limit API calls per sync to avoid rate limiting (max 5 fetches per sync)
-      if (synced + attachmentsFixed >= 5) {
-        console.log('⚠️ Reached max fetches per sync (5), will continue next cycle');
+      // Limit API calls per sync
+      if (synced + attachmentsFixed >= 10) {
+        console.log('⚠️ Reached max fetches per sync (10), will continue next cycle');
         break;
       }
 
-      // For inbound messages, fetch full message to get attachment details
+      // For inbound messages, fetch full message details
       let fullMessage = msg;
       
       if (msg.direction === 'Inbound') {
@@ -324,10 +384,9 @@ async function syncRingCentralMessages() {
             { headers: { 'Authorization': `Bearer ${authToken}` } }
           );
           
-          // Check for rate limiting
           if (fullMsgResponse.status === 429) {
             console.log('🚫 Rate limited on message fetch!');
-            rateLimitedUntil = Date.now() + 60000; // Wait 60 seconds
+            rateLimitedUntil = Date.now() + 60000;
             break;
           }
           
@@ -344,12 +403,8 @@ async function syncRingCentralMessages() {
       
       if (fullMessage.attachments && fullMessage.attachments.length > 0) {
         for (const att of fullMessage.attachments) {
-          // Skip text attachments
-          if (!att.contentType || att.contentType.startsWith('text/')) {
-            continue;
-          }
+          if (!att.contentType || att.contentType.startsWith('text/')) continue;
           
-          // Only process media types
           const isMedia = att.contentType.startsWith('image/') ||
                          att.contentType.startsWith('audio/') ||
                          att.contentType.startsWith('video/');
@@ -384,201 +439,170 @@ async function syncRingCentralMessages() {
         }
       }
 
-      // Save to MongoDB
-      if (isFixingExisting) {
-        // Update existing message with attachments
-        const result = await conversationsCollection.updateOne(
-          { phoneNumber: otherPhone, 'messages.id': messageId },
-          { 
-            $set: { 
-              'messages.$.attachments': processedAttachments,
-              'messages.$.type': processedAttachments.length > 0 ? 'MMS' : 'SMS'
-            } 
-          }
-        );
-        
-        if (result.modifiedCount > 0) {
-          attachmentsFixed++;
-        }
-      } else {
-        // Add new message
-        const messageObj = {
-          id: messageId,
-          direction: fullMessage.direction,
-          type: processedAttachments.length > 0 ? 'MMS' : (fullMessage.type || 'SMS'),
-          subject: fullMessage.subject || '',
-          creationTime: fullMessage.creationTime,
-          lastModifiedTime: fullMessage.lastModifiedTime,
-          readStatus: fullMessage.direction === 'Inbound' ? 'Unread' : 'Read',
-          messageStatus: fullMessage.messageStatus,
-          from: fullMessage.from,
-          to: fullMessage.to,
-          attachments: processedAttachments,
-        };
+      // Build message object
+      const messageObj = {
+        id: messageId,
+        direction: fullMessage.direction,
+        type: processedAttachments.length > 0 ? 'MMS' : (fullMessage.type || 'SMS'),
+        subject: fullMessage.subject || '',
+        creationTime: fullMessage.creationTime,
+        lastModifiedTime: fullMessage.lastModifiedTime,
+        readStatus: fullMessage.direction === 'Inbound' ? 'Unread' : 'Read',
+        messageStatus: fullMessage.messageStatus,
+        from: fullMessage.from,
+        to: fullMessage.to,
+        attachments: processedAttachments,
+      };
 
-        const updateOperation = {
-          $push: {
-            messages: {
-              $each: [messageObj],
-              $sort: { creationTime: 1 },
-            },
+      // ════════════════════════════════════════════════════════════════
+      // SAVE TO CORRECT CONVERSATION (group or individual)
+      // ════════════════════════════════════════════════════════════════
+      const updateOperation = {
+        $push: {
+          messages: {
+            $each: [messageObj],
+            $sort: { creationTime: 1 },
           },
-          $set: {
-            lastMessageTime: fullMessage.creationTime,
-            lastMessageId: messageId,
-          },
-        };
+        },
+        $set: {
+          conversationId: conversationId,
+          participants: participants,
+          isGroup: isGroup,
+          phoneNumber: primaryPhone,
+          lastMessageTime: fullMessage.creationTime,
+          lastMessageId: messageId,
+        },
+      };
 
-        if (fullMessage.direction === 'Inbound') {
-          updateOperation.$inc = { unreadCount: 1 };
-        }
-
-        await conversationsCollection.updateOne(
-          { phoneNumber: otherPhone },
-          updateOperation,
-          { upsert: true }
-        );
-
-        synced++;
-        
-        // Broadcast new message
-        io.to(`conversation:${otherPhone}`).emit('newRingCentralMessage', {
-          phoneNumber: otherPhone,
-          messageId: messageId,
-          timestamp: fullMessage.creationTime,
-          subject: fullMessage.subject || '',
-          direction: fullMessage.direction,
-          hasAttachments: processedAttachments.length > 0,
-        });
+      if (fullMessage.direction === 'Inbound') {
+        updateOperation.$inc = { unreadCount: 1 };
       }
+
+      await conversationsCollection.updateOne(
+        { conversationId: conversationId },
+        updateOperation,
+        { upsert: true }
+      );
+
+      synced++;
+      if (isGroup) {
+        groupMessages++;
+        console.log(`📨 GROUP: ${conversationId} - "${fullMessage.subject?.substring(0, 30) || 'No text'}"`);
+      } else {
+        individualMessages++;
+        console.log(`📨 INDIVIDUAL: ${conversationId} - "${fullMessage.subject?.substring(0, 30) || 'No text'}"`);
+      }
+      
+      // Broadcast new message
+      io.to(`conversation:${conversationId}`).emit('newRingCentralMessage', {
+        conversationId: conversationId,
+        phoneNumber: primaryPhone,
+        messageId: messageId,
+        timestamp: fullMessage.creationTime,
+        subject: fullMessage.subject || '',
+        direction: fullMessage.direction,
+        hasAttachments: processedAttachments.length > 0,
+        isGroup: isGroup,
+      });
     }
 
-    // Two-way read status sync (skip if rate limited)
+    // Two-way read status sync
     let readStatusSynced = 0;
     let unreadStatusSynced = 0;
     
-    // Skip read sync if we hit rate limits during message sync
-    if (rateLimitedUntil && Date.now() < rateLimitedUntil) {
-      console.log('⏭️ Skipping read status sync due to rate limiting');
-    } else {
-    try {
-      const allConversations = await conversationsCollection.find({}).toArray();
-      const unreadMessageMap = new Map();
-      const readMessageMap = new Map();
+    if (!(rateLimitedUntil && Date.now() < rateLimitedUntil)) {
+      try {
+        const allConversations = await conversationsCollection.find({}).toArray();
+        const unreadMessageMap = new Map();
+        const readMessageMap = new Map();
 
-      for (const conversation of allConversations) {
-        const phoneNumber = conversation.phoneNumber;
-        const conversationMessages = conversation.messages || [];
+        for (const conversation of allConversations) {
+          const convId = conversation.conversationId || conversation.phoneNumber;
+          const conversationMessages = conversation.messages || [];
 
-        const unreadInbound = conversationMessages.filter(
-          (m) => m.direction === 'Inbound' && m.readStatus === 'Unread' && m.id
-        );
+          conversationMessages.filter(m => m.direction === 'Inbound' && m.readStatus === 'Unread' && m.id)
+            .forEach(m => unreadMessageMap.set(m.id, { convId, messageId: m.id }));
 
-        unreadInbound.forEach((m) => {
-          unreadMessageMap.set(m.id, { phoneNumber, messageId: m.id });
-        });
+          conversationMessages.filter(m => m.direction === 'Inbound' && m.readStatus === 'Read' && m.id)
+            .forEach(m => readMessageMap.set(m.id, { convId, messageId: m.id }));
+        }
 
-        const readInbound = conversationMessages.filter(
-          (m) => m.direction === 'Inbound' && m.readStatus === 'Read' && m.id
-        );
+        if (unreadMessageMap.size > 0) {
+          const readResponse = await platform.get(
+            '/restapi/v1.0/account/~/extension/~/message-store',
+            { messageType: 'SMS', readStatus: 'Read', perPage: 1000 }
+          );
 
-        readInbound.forEach((m) => {
-          readMessageMap.set(m.id, { phoneNumber, messageId: m.id });
-        });
+          const rcReadMessages = (await readResponse.json()).records || [];
+          const conversationsToUpdate = new Set();
+
+          for (const rcMessage of rcReadMessages) {
+            const msgId = rcMessage.id.toString();
+            if (unreadMessageMap.has(msgId)) {
+              const { convId } = unreadMessageMap.get(msgId);
+              await conversationsCollection.updateOne(
+                { conversationId: convId, 'messages.id': msgId },
+                { $set: { 'messages.$.readStatus': 'Read' } }
+              );
+              conversationsToUpdate.add(convId);
+              readStatusSynced++;
+            }
+          }
+
+          for (const convId of conversationsToUpdate) {
+            const conversation = await conversationsCollection.findOne({ conversationId: convId });
+            if (conversation) {
+              const newUnreadCount = (conversation.messages || [])
+                .filter(m => m.direction === 'Inbound' && m.readStatus === 'Unread').length;
+              await conversationsCollection.updateOne(
+                { conversationId: convId },
+                { $set: { unreadCount: newUnreadCount } }
+              );
+            }
+          }
+        }
+
+        if (readMessageMap.size > 0) {
+          const unreadResponse = await platform.get(
+            '/restapi/v1.0/account/~/extension/~/message-store',
+            { messageType: 'SMS', readStatus: 'Unread', perPage: 1000 }
+          );
+
+          const rcUnreadMessages = (await unreadResponse.json()).records || [];
+          const conversationsToUpdate = new Set();
+
+          for (const rcMessage of rcUnreadMessages) {
+            const msgId = rcMessage.id.toString();
+            if (readMessageMap.has(msgId)) {
+              const { convId } = readMessageMap.get(msgId);
+              await conversationsCollection.updateOne(
+                { conversationId: convId, 'messages.id': msgId },
+                { $set: { 'messages.$.readStatus': 'Unread' } }
+              );
+              conversationsToUpdate.add(convId);
+              unreadStatusSynced++;
+            }
+          }
+
+          for (const convId of conversationsToUpdate) {
+            const conversation = await conversationsCollection.findOne({ conversationId: convId });
+            if (conversation) {
+              const newUnreadCount = (conversation.messages || [])
+                .filter(m => m.direction === 'Inbound' && m.readStatus === 'Unread').length;
+              await conversationsCollection.updateOne(
+                { conversationId: convId },
+                { $set: { unreadCount: newUnreadCount } }
+              );
+            }
+          }
+        }
+      } catch (readSyncError) {
+        console.error('❌ Read status sync error:', readSyncError.message);
       }
-
-      // Sync Read status: RC Read → MongoDB Read
-      if (unreadMessageMap.size > 0) {
-        const readResponse = await platform.get(
-          '/restapi/v1.0/account/~/extension/~/message-store',
-          { messageType: 'SMS', readStatus: 'Read', perPage: 1000 }
-        );
-
-        const rcReadMessages = (await readResponse.json()).records || [];
-        const conversationsToUpdate = new Set();
-
-        for (const rcMessage of rcReadMessages) {
-          const msgId = rcMessage.id.toString();
-
-          if (unreadMessageMap.has(msgId)) {
-            const { phoneNumber } = unreadMessageMap.get(msgId);
-
-            await conversationsCollection.updateOne(
-              { phoneNumber, 'messages.id': msgId },
-              { $set: { 'messages.$.readStatus': 'Read' } }
-            );
-
-            conversationsToUpdate.add(phoneNumber);
-            readStatusSynced++;
-          }
-        }
-
-        for (const phoneNumber of conversationsToUpdate) {
-          const conversation = await conversationsCollection.findOne({ phoneNumber });
-          
-          if (conversation) {
-            const newUnreadCount = (conversation.messages || []).filter(
-              (m) => m.direction === 'Inbound' && m.readStatus === 'Unread'
-            ).length;
-
-            await conversationsCollection.updateOne(
-              { phoneNumber },
-              { $set: { unreadCount: newUnreadCount } }
-            );
-          }
-        }
-      }
-
-      // Sync Unread status: RC Unread → MongoDB Unread
-      if (readMessageMap.size > 0) {
-        const unreadResponse = await platform.get(
-          '/restapi/v1.0/account/~/extension/~/message-store',
-          { messageType: 'SMS', readStatus: 'Unread', perPage: 1000 }
-        );
-
-        const rcUnreadMessages = (await unreadResponse.json()).records || [];
-        const conversationsToUpdate = new Set();
-
-        for (const rcMessage of rcUnreadMessages) {
-          const msgId = rcMessage.id.toString();
-
-          if (readMessageMap.has(msgId)) {
-            const { phoneNumber } = readMessageMap.get(msgId);
-
-            await conversationsCollection.updateOne(
-              { phoneNumber, 'messages.id': msgId },
-              { $set: { 'messages.$.readStatus': 'Unread' } }
-            );
-
-            conversationsToUpdate.add(phoneNumber);
-            unreadStatusSynced++;
-          }
-        }
-
-        for (const phoneNumber of conversationsToUpdate) {
-          const conversation = await conversationsCollection.findOne({ phoneNumber });
-          
-          if (conversation) {
-            const newUnreadCount = (conversation.messages || []).filter(
-              (m) => m.direction === 'Inbound' && m.readStatus === 'Unread'
-            ).length;
-
-            await conversationsCollection.updateOne(
-              { phoneNumber },
-              { $set: { unreadCount: newUnreadCount } }
-            );
-          }
-        }
-      }
-    } catch (readSyncError) {
-      console.error('❌ Read status sync error:', readSyncError.message);
     }
-    } // End of rate limit check for read sync
 
     const duration = Date.now() - startTime;
     lastSyncTime = new Date().toISOString();
-    
-    // Reset rate limit counters on success
     consecutiveErrors = 0;
     rateLimitedUntil = null;
     
@@ -587,19 +611,19 @@ async function syncRingCentralMessages() {
     
     if (shouldLog) {
       console.log(`✅ Sync completed in ${duration}ms:`);
-      console.log(`   - New messages: ${synced} (skipped: ${skipped})`);
-      console.log(`   - Attachments downloaded: ${attachmentsDownloaded}`);
-      console.log(`   - Attachments fixed: ${attachmentsFixed}`);
-      console.log(`   - Read status synced: ${readStatusSynced}`);
-      console.log(`   - Unread status synced: ${unreadStatusSynced}`);
+      console.log(`   - New messages: ${synced} (${groupMessages} group, ${individualMessages} individual)`);
+      console.log(`   - Skipped: ${skipped}`);
+      console.log(`   - Attachments: ${attachmentsDownloaded}`);
+      console.log(`   - Read synced: ${readStatusSynced}, Unread synced: ${unreadStatusSynced}`);
     }
 
     return { 
       success: true, 
       synced, 
+      groupMessages,
+      individualMessages,
       skipped, 
       attachmentsDownloaded,
-      attachmentsFixed,
       readStatusSynced, 
       unreadStatusSynced, 
       durationMs: duration 
@@ -608,10 +632,8 @@ async function syncRingCentralMessages() {
   } catch (error) {
     console.error(`❌ Sync error:`, error.message);
     
-    // Handle rate limiting
     if (error.message?.includes('rate') || error.message?.includes('429') || error.message?.includes('Request rate exceeded')) {
       consecutiveErrors++;
-      // Exponential backoff: 60s, 120s, 240s, max 5 min
       const backoffSeconds = Math.min(60 * Math.pow(2, consecutiveErrors - 1), 300);
       rateLimitedUntil = Date.now() + (backoffSeconds * 1000);
       console.log(`🚫 Rate limited! Backing off for ${backoffSeconds}s`);
@@ -633,28 +655,23 @@ async function startServer() {
     console.error('Chat history and sync features will not work');
   }
 
-  // Check if RingCentral is configured
   const rcConfigured = process.env.RINGCENTRAL_CLIENT_ID && 
                        process.env.RINGCENTRAL_CLIENT_SECRET && 
                        process.env.RINGCENTRAL_JWT;
 
-  // Check if Azure is configured
   const azureConfigured = !!process.env.AZURE_STORAGE_CONNECTION_STRING;
   console.log(`☁️  Azure Storage: ${azureConfigured ? 'Configured' : 'NOT configured - attachments will not be saved'}`);
 
   if (rcConfigured) {
-    // Sync interval in milliseconds (default: 30 seconds to avoid rate limits)
     const syncIntervalMs = parseInt(process.env.SYNC_INTERVAL_MS || '30000', 10);
     
     console.log(`\n📅 RingCentral Sync Interval: ${syncIntervalMs}ms (${syncIntervalMs/1000}s)`);
     
-    // Run initial sync after 5 seconds
     setTimeout(() => {
       console.log('🚀 Running initial RingCentral sync...');
       syncRingCentralMessages();
     }, 5000);
 
-    // Use setInterval for sub-minute sync
     let isSyncing = false;
     setInterval(async () => {
       if (isSyncing) {
@@ -685,7 +702,7 @@ async function startServer() {
 startServer();
 
 // ================================================
-// SOCKET.IO HANDLERS (unchanged from original)
+// SOCKET.IO HANDLERS (ALL ORIGINAL HANDLERS PRESERVED)
 // ================================================
 const activeSessions = new Map();
 const adminSockets = new Set();
@@ -753,17 +770,19 @@ io.on('connection', (socket) => {
   console.log('Client connected:', socket.id, 'at', new Date().toISOString());
 
   // Allow clients to join RingCentral conversation rooms
-  socket.on('join-conversation', ({ phoneNumber }) => {
-    if (phoneNumber) {
-      socket.join(`conversation:${phoneNumber}`);
-      console.log(`Socket ${socket.id} joined conversation:${phoneNumber}`);
+  socket.on('join-conversation', ({ phoneNumber, conversationId }) => {
+    const roomId = conversationId || phoneNumber;
+    if (roomId) {
+      socket.join(`conversation:${roomId}`);
+      console.log(`Socket ${socket.id} joined conversation:${roomId}`);
     }
   });
 
-  socket.on('leave-conversation', ({ phoneNumber }) => {
-    if (phoneNumber) {
-      socket.leave(`conversation:${phoneNumber}`);
-      console.log(`Socket ${socket.id} left conversation:${phoneNumber}`);
+  socket.on('leave-conversation', ({ phoneNumber, conversationId }) => {
+    const roomId = conversationId || phoneNumber;
+    if (roomId) {
+      socket.leave(`conversation:${roomId}`);
+      console.log(`Socket ${socket.id} left conversation:${roomId}`);
     }
   });
 
