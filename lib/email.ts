@@ -16,12 +16,33 @@ export async function sendPaymentNotification(paymentDetails: {
   timestamp: Date;
   paymentJson?: string | null;
 }) {
+  // Format timestamp in CST
+  const cstTimestamp = paymentDetails.timestamp.toLocaleString('en-US', {
+    timeZone: 'America/Chicago',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }) + ' CST';
+
+  // Escape HTML in JSON to prevent rendering issues
+  const escapedJson = paymentDetails.paymentJson 
+    ? paymentDetails.paymentJson
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+    : null;
+
   const mailOptions = {
     from: process.env.EMAIL_USER,
     to: process.env.NOTIFICATION_EMAIL,
     subject: '💳 New Payment Received - Texas Premium Insurance',
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
         <div style="background: #A0103D; padding: 20px; border-radius: 8px 8px 0 0;">
           <h2 style="color: white; margin: 0;">New Payment Received!</h2>
         </div>
@@ -49,20 +70,17 @@ export async function sendPaymentNotification(paymentDetails: {
               </tr>
               <tr>
                 <td style="padding: 12px 0; font-weight: 600; color: #374151;">Date & Time:</td>
-                <td style="padding: 12px 0; color: #111827;">${paymentDetails.timestamp.toLocaleString('en-US', {
-                  dateStyle: 'full',
-                  timeStyle: 'short'
-                })}</td>
+                <td style="padding: 12px 0; color: #111827;">${cstTimestamp}</td>
               </tr>
             </table>
           </div>
           
-          ${paymentDetails.paymentJson ? `
           <div style="background: white; padding: 20px; border-radius: 8px; margin-top: 20px;">
-            <h3 style="color: #111827; margin-top: 0;">Full Payment Data (JSON)</h3>
-            <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; overflow-x: auto; font-size: 11px; line-height: 1.5;">${paymentDetails.paymentJson}</pre>
+            <h3 style="color: #111827; margin-top: 0;">📋 Complete Square Webhook JSON</h3>
+            <div style="background: #1e293b; padding: 20px; border-radius: 8px; overflow-x: auto;">
+              <pre style="color: #4ade80; font-size: 12px; line-height: 1.6; margin: 0; white-space: pre-wrap; word-wrap: break-word; font-family: 'Courier New', monospace;">${escapedJson || 'No JSON data received'}</pre>
+            </div>
           </div>
-          ` : ''}
           
           <p style="color: #6b7280; font-size: 14px; margin: 20px 0 0 0;">
             This is an automated notification from Texas Premium Insurance Services.

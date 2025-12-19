@@ -4,28 +4,23 @@ import { sendPaymentNotification } from '@/lib/email';
 export async function POST(request: Request) {
   try {
     const body = await request.text();
-    // Verify webhook signature (optional but recommended for security)
-    // const webhookSignatureKey = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY;
-    // const hash = crypto.createHmac('sha256', webhookSignatureKey).update(body).digest('base64');
-    // if (hash !== signature) {
-    //   return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
-    // }
-
     const event = JSON.parse(body);
     
-    // Check if this is a payment completed event
-    if (event.type === 'payment.created' || event.type === 'payment.updated') {
-      const payment = event.data.object.payment;
-      
-      // Send notification email
-      await sendPaymentNotification({
-        amount: `$${(payment.total_money.amount / 100).toFixed(2)}`,
-        customerName: payment.buyer_email_address || 'Customer',
-        customerEmail: payment.buyer_email_address,
-        transactionId: payment.id,
-        timestamp: new Date(payment.created_at),
-      });
-    }
+    // Try to extract payment info if available
+    const payment = event.data?.object?.payment || {};
+    const amount = payment.total_money?.amount 
+      ? `$${(payment.total_money.amount / 100).toFixed(2)}`
+      : 'See JSON below';
+    
+    // Send notification email with full JSON
+    await sendPaymentNotification({
+      amount: amount,
+      customerName: payment.buyer_email_address || payment.note || 'See JSON below',
+      customerEmail: payment.buyer_email_address || 'See JSON below',
+      transactionId: payment.id || event.data?.id || 'See JSON below',
+      timestamp: new Date(), // Date object as expected by email.ts
+      paymentJson: JSON.stringify(event, null, 2), // Full JSON payload
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
