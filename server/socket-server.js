@@ -53,30 +53,20 @@ function getConversationInfo(msg) {
   const fromPhone = normalizePhone(msg.from?.phoneNumber || '');
   const toPhones = (msg.to || []).map(t => normalizePhone(t.phoneNumber || '')).filter(Boolean);
   
-  // Get all recipients EXCEPT our number
   const otherRecipients = toPhones.filter(p => p !== myPhone);
   
-  // Build participants list
   const participants = new Set();
   
   if (msg.direction === 'Inbound') {
-    // Inbound: sender + other recipients (excluding us)
     participants.add(fromPhone);
     otherRecipients.forEach(p => participants.add(p));
   } else {
-    // Outbound: all recipients (excluding us)
     otherRecipients.forEach(p => participants.add(p));
   }
   
   const participantsArray = Array.from(participants).filter(Boolean).sort();
-  
-  // Group = more than 1 participant (excluding us)
   const isGroup = participantsArray.length > 1;
-  
-  // ConversationId = sorted participants joined by comma
   const conversationId = participantsArray.join(',');
-  
-  // Primary phone (for backward compatibility)
   const primaryPhone = msg.direction === 'Inbound' ? fromPhone : participantsArray[0] || '';
   
   return {
@@ -216,8 +206,10 @@ async function connectMongoDB() {
     console.log('Attempting to connect to MongoDB...');
     
     mongoClient = new MongoClient(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
+      serverSelectionTimeoutMS: 10000,
+      socketTimeoutMS: 30000,
+      connectTimeoutMS: 10000,
+      maxPoolSize: 10,
     });
     
     await mongoClient.connect();
@@ -230,6 +222,11 @@ async function connectMongoDB() {
     
     messagesDb = mongoClient.db('db');
     conversationsCollection = messagesDb.collection('texas_premium_messages');
+    
+    // Create index for faster message lookups
+    await conversationsCollection.createIndex({ 'messages.id': 1 }).catch(() => {});
+    await conversationsCollection.createIndex({ conversationId: 1 }).catch(() => {});
+    await conversationsCollection.createIndex({ phoneNumber: 1 }).catch(() => {});
     
     const count = await liveChatHistoryCollection.countDocuments();
     console.log(`MongoDB connected successfully. Found ${count} existing chat records.`);
@@ -254,6 +251,7 @@ let lastSyncTime = null;
 let nextSyncTime = null;
 let rateLimitedUntil = null;
 let consecutiveErrors = 0;
+let isSyncing = false;
 
 async function getRingCentralPlatform() {
   const SDK = require('@ringcentral/sdk').SDK;
@@ -270,15 +268,23 @@ async function getRingCentralPlatform() {
 }
 
 async function syncRingCentralMessages() {
+  if (isSyncing) {
+    console.log('⏳ Sync already in progress, skipping...');
+    return { success: false, error: 'Sync in progress' };
+  }
+  
+  isSyncing = true;
   const startTime = Date.now();
 
   if (rateLimitedUntil && Date.now() < rateLimitedUntil) {
     const waitSeconds = Math.ceil((rateLimitedUntil - Date.now()) / 1000);
     console.log(`⏳ Rate limited, waiting ${waitSeconds}s...`);
+    isSyncing = false;
     return { success: false, error: 'Rate limited', waitSeconds };
   }
 
   if (!conversationsCollection) {
+    isSyncing = false;
     return { success: false, error: 'Database not connected' };
   }
 
@@ -287,6 +293,7 @@ async function syncRingCentralMessages() {
   
   if (missingVars.length > 0) {
     console.error(`❌ Missing RingCentral env vars: ${missingVars.join(', ')}`);
+    isSyncing = false;
     return { success: false, error: `Missing env vars: ${missingVars.join(', ')}` };
   }
 
@@ -297,6 +304,7 @@ async function syncRingCentralMessages() {
     
     if (!authToken) {
       console.error('❌ No auth token available');
+      isSyncing = false;
       return { success: false, error: 'No auth token' };
     }
 
@@ -314,16 +322,12 @@ async function syncRingCentralMessages() {
     let synced = 0;
     let skipped = 0;
     let attachmentsDownloaded = 0;
-    let attachmentsFixed = 0;
     let groupMessages = 0;
     let individualMessages = 0;
 
     for (const msg of messages) {
       const messageId = msg.id.toString();
       
-      // ════════════════════════════════════════════════════════════════
-      // KEY CHANGE: Use getConversationInfo to determine group vs individual
-      // ════════════════════════════════════════════════════════════════
       const convInfo = getConversationInfo(msg);
       const { conversationId, participants, isGroup, primaryPhone } = convInfo;
       
@@ -332,45 +336,43 @@ async function syncRingCentralMessages() {
         continue;
       }
 
-      // Check if message already exists in THIS conversation
-      const existingConv = await conversationsCollection.findOne({
-        conversationId: conversationId,
-        'messages.id': messageId
-      });
+      // ════════════════════════════════════════════════════════════════
+      // FIX: Check if message exists in ANY conversation (by message ID)
+      // This handles both old (phoneNumber) and new (conversationId) formats
+      // ════════════════════════════════════════════════════════════════
+      const existingMsg = await conversationsCollection.findOne(
+        { 'messages.id': messageId },
+        { projection: { _id: 1, conversationId: 1, phoneNumber: 1, 'messages.$': 1 } }
+      );
 
-      if (existingConv) {
-        // Check if attachments need fixing
-        const existingMsg = existingConv.messages?.find(m => m.id === messageId);
-        const hasAzureUrls = existingMsg?.attachments?.some(a => a.azureUrl);
+      if (existingMsg) {
+        // Message already exists somewhere
+        const existingMsgData = existingMsg.messages?.[0];
+        const hasAzureUrls = existingMsgData?.attachments?.some(a => a.azureUrl);
         const rcHasAttachments = msg.attachments?.length > 0;
         
-        if (hasAzureUrls || !rcHasAttachments) {
+        // Check if it's in the WRONG conversation (needs moving to group)
+        const existingConvId = existingMsg.conversationId || existingMsg.phoneNumber;
+        
+        if (isGroup && existingConvId !== conversationId) {
+          console.log(`   🔄 Moving message ${messageId} from ${existingConvId} to group ${conversationId}`);
+          // Remove from wrong conversation
+          await conversationsCollection.updateOne(
+            { _id: existingMsg._id },
+            { $pull: { messages: { id: messageId } } }
+          );
+          // Will be added to correct conversation below
+        } else if (hasAzureUrls || !rcHasAttachments) {
+          // Message exists in correct place with attachments handled
           skipped++;
           continue;
         }
-        // Fall through to fix attachments
-      }
-
-      // Also check if message exists in WRONG conversation (individual when should be group)
-      if (isGroup) {
-        const wrongConv = await conversationsCollection.findOne({
-          conversationId: { $ne: conversationId },
-          'messages.id': messageId
-        });
-        
-        if (wrongConv) {
-          console.log(`   🔄 Message ${messageId} found in wrong conversation, will move to group`);
-          // Remove from wrong conversation
-          await conversationsCollection.updateOne(
-            { _id: wrongConv._id },
-            { $pull: { messages: { id: messageId } } }
-          );
-        }
+        // Fall through to fix attachments or add to correct conversation
       }
 
       // Limit API calls per sync
-      if (synced + attachmentsFixed >= 10) {
-        console.log('⚠️ Reached max fetches per sync (10), will continue next cycle');
+      if (synced >= 10) {
+        console.log('⚠️ Reached max syncs (10), will continue next cycle');
         break;
       }
 
@@ -447,16 +449,14 @@ async function syncRingCentralMessages() {
         subject: fullMessage.subject || '',
         creationTime: fullMessage.creationTime,
         lastModifiedTime: fullMessage.lastModifiedTime,
-        readStatus: fullMessage.direction === 'Inbound' ? 'Unread' : 'Read',
+        readStatus: fullMessage.readStatus || (fullMessage.direction === 'Inbound' ? 'Unread' : 'Read'),
         messageStatus: fullMessage.messageStatus,
         from: fullMessage.from,
         to: fullMessage.to,
         attachments: processedAttachments,
       };
 
-      // ════════════════════════════════════════════════════════════════
-      // SAVE TO CORRECT CONVERSATION (group or individual)
-      // ════════════════════════════════════════════════════════════════
+      // Save to correct conversation
       const updateOperation = {
         $push: {
           messages: {
@@ -474,7 +474,7 @@ async function syncRingCentralMessages() {
         },
       };
 
-      if (fullMessage.direction === 'Inbound') {
+      if (fullMessage.direction === 'Inbound' && fullMessage.readStatus === 'Unread') {
         updateOperation.$inc = { unreadCount: 1 };
       }
 
@@ -506,96 +506,23 @@ async function syncRingCentralMessages() {
       });
     }
 
-    // Two-way read status sync
+    // ════════════════════════════════════════════════════════════════
+    // OPTIMIZED: Two-way read status sync with timeout
+    // ════════════════════════════════════════════════════════════════
     let readStatusSynced = 0;
     let unreadStatusSynced = 0;
     
     if (!(rateLimitedUntil && Date.now() < rateLimitedUntil)) {
       try {
-        const allConversations = await conversationsCollection.find({}).toArray();
-        const unreadMessageMap = new Map();
-        const readMessageMap = new Map();
-
-        for (const conversation of allConversations) {
-          const convId = conversation.conversationId || conversation.phoneNumber;
-          const conversationMessages = conversation.messages || [];
-
-          conversationMessages.filter(m => m.direction === 'Inbound' && m.readStatus === 'Unread' && m.id)
-            .forEach(m => unreadMessageMap.set(m.id, { convId, messageId: m.id }));
-
-          conversationMessages.filter(m => m.direction === 'Inbound' && m.readStatus === 'Read' && m.id)
-            .forEach(m => readMessageMap.set(m.id, { convId, messageId: m.id }));
-        }
-
-        if (unreadMessageMap.size > 0) {
-          const readResponse = await platform.get(
-            '/restapi/v1.0/account/~/extension/~/message-store',
-            { messageType: 'SMS', readStatus: 'Read', perPage: 1000 }
-          );
-
-          const rcReadMessages = (await readResponse.json()).records || [];
-          const conversationsToUpdate = new Set();
-
-          for (const rcMessage of rcReadMessages) {
-            const msgId = rcMessage.id.toString();
-            if (unreadMessageMap.has(msgId)) {
-              const { convId } = unreadMessageMap.get(msgId);
-              await conversationsCollection.updateOne(
-                { conversationId: convId, 'messages.id': msgId },
-                { $set: { 'messages.$.readStatus': 'Read' } }
-              );
-              conversationsToUpdate.add(convId);
-              readStatusSynced++;
-            }
-          }
-
-          for (const convId of conversationsToUpdate) {
-            const conversation = await conversationsCollection.findOne({ conversationId: convId });
-            if (conversation) {
-              const newUnreadCount = (conversation.messages || [])
-                .filter(m => m.direction === 'Inbound' && m.readStatus === 'Unread').length;
-              await conversationsCollection.updateOne(
-                { conversationId: convId },
-                { $set: { unreadCount: newUnreadCount } }
-              );
-            }
-          }
-        }
-
-        if (readMessageMap.size > 0) {
-          const unreadResponse = await platform.get(
-            '/restapi/v1.0/account/~/extension/~/message-store',
-            { messageType: 'SMS', readStatus: 'Unread', perPage: 1000 }
-          );
-
-          const rcUnreadMessages = (await unreadResponse.json()).records || [];
-          const conversationsToUpdate = new Set();
-
-          for (const rcMessage of rcUnreadMessages) {
-            const msgId = rcMessage.id.toString();
-            if (readMessageMap.has(msgId)) {
-              const { convId } = readMessageMap.get(msgId);
-              await conversationsCollection.updateOne(
-                { conversationId: convId, 'messages.id': msgId },
-                { $set: { 'messages.$.readStatus': 'Unread' } }
-              );
-              conversationsToUpdate.add(convId);
-              unreadStatusSynced++;
-            }
-          }
-
-          for (const convId of conversationsToUpdate) {
-            const conversation = await conversationsCollection.findOne({ conversationId: convId });
-            if (conversation) {
-              const newUnreadCount = (conversation.messages || [])
-                .filter(m => m.direction === 'Inbound' && m.readStatus === 'Unread').length;
-              await conversationsCollection.updateOne(
-                { conversationId: convId },
-                { $set: { unreadCount: newUnreadCount } }
-              );
-            }
-          }
-        }
+        // Set a timeout for read status sync (15 seconds max)
+        const readSyncPromise = syncReadStatus(platform);
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Read sync timeout')), 15000)
+        );
+        
+        const readSyncResult = await Promise.race([readSyncPromise, timeoutPromise]);
+        readStatusSynced = readSyncResult.readSynced || 0;
+        unreadStatusSynced = readSyncResult.unreadSynced || 0;
       } catch (readSyncError) {
         console.error('❌ Read status sync error:', readSyncError.message);
       }
@@ -606,8 +533,9 @@ async function syncRingCentralMessages() {
     consecutiveErrors = 0;
     rateLimitedUntil = null;
     
-    const shouldLog = synced > 0 || attachmentsDownloaded > 0 || attachmentsFixed > 0 || 
-                      readStatusSynced > 0 || unreadStatusSynced > 0 || Date.now() % 60000 < 5000;
+    const shouldLog = synced > 0 || attachmentsDownloaded > 0 || 
+                      readStatusSynced > 0 || unreadStatusSynced > 0 || 
+                      duration > 5000;
     
     if (shouldLog) {
       console.log(`✅ Sync completed in ${duration}ms:`);
@@ -617,6 +545,7 @@ async function syncRingCentralMessages() {
       console.log(`   - Read synced: ${readStatusSynced}, Unread synced: ${unreadStatusSynced}`);
     }
 
+    isSyncing = false;
     return { 
       success: true, 
       synced, 
@@ -631,6 +560,7 @@ async function syncRingCentralMessages() {
 
   } catch (error) {
     console.error(`❌ Sync error:`, error.message);
+    isSyncing = false;
     
     if (error.message?.includes('rate') || error.message?.includes('429') || error.message?.includes('Request rate exceeded')) {
       consecutiveErrors++;
@@ -642,6 +572,130 @@ async function syncRingCentralMessages() {
     
     return { success: false, error: error.message };
   }
+}
+
+// Separate function for read status sync with better error handling
+async function syncReadStatus(platform) {
+  let readSynced = 0;
+  let unreadSynced = 0;
+  
+  // Get all inbound messages with their read status from MongoDB
+  const conversationsWithInbound = await conversationsCollection.find(
+    { 'messages.direction': 'Inbound' },
+    { projection: { conversationId: 1, phoneNumber: 1, 'messages.id': 1, 'messages.direction': 1, 'messages.readStatus': 1 } }
+  ).limit(50).toArray(); // Limit to prevent timeout
+  
+  const localUnreadIds = new Set();
+  const localReadIds = new Set();
+  const messageConvMap = new Map();
+  
+  for (const conv of conversationsWithInbound) {
+    const convId = conv.conversationId || conv.phoneNumber;
+    for (const msg of (conv.messages || [])) {
+      if (msg.direction === 'Inbound' && msg.id) {
+        messageConvMap.set(msg.id, convId);
+        if (msg.readStatus === 'Unread') {
+          localUnreadIds.add(msg.id);
+        } else {
+          localReadIds.add(msg.id);
+        }
+      }
+    }
+  }
+  
+  if (localUnreadIds.size === 0 && localReadIds.size === 0) {
+    return { readSynced: 0, unreadSynced: 0 };
+  }
+  
+  // Check RingCentral for read messages (that we have as unread)
+  if (localUnreadIds.size > 0) {
+    const readResponse = await platform.get(
+      '/restapi/v1.0/account/~/extension/~/message-store',
+      { messageType: 'SMS', readStatus: 'Read', perPage: 500 }
+    );
+    
+    const rcReadMessages = (await readResponse.json()).records || [];
+    const rcReadIds = new Set(rcReadMessages.map(m => m.id.toString()));
+    
+    // Find messages that are Read in RC but Unread locally
+    const toMarkRead = [];
+    for (const msgId of localUnreadIds) {
+      if (rcReadIds.has(msgId)) {
+        toMarkRead.push({ msgId, convId: messageConvMap.get(msgId) });
+      }
+    }
+    
+    // Batch update
+    for (const { msgId, convId } of toMarkRead) {
+      await conversationsCollection.updateOne(
+        { $or: [{ conversationId: convId }, { phoneNumber: convId }], 'messages.id': msgId },
+        { $set: { 'messages.$.readStatus': 'Read' } }
+      );
+      readSynced++;
+    }
+    
+    // Update unread counts for affected conversations
+    const affectedConvs = new Set(toMarkRead.map(t => t.convId));
+    for (const convId of affectedConvs) {
+      const conv = await conversationsCollection.findOne({ 
+        $or: [{ conversationId: convId }, { phoneNumber: convId }] 
+      });
+      if (conv) {
+        const newUnreadCount = (conv.messages || [])
+          .filter(m => m.direction === 'Inbound' && m.readStatus === 'Unread').length;
+        await conversationsCollection.updateOne(
+          { _id: conv._id },
+          { $set: { unreadCount: newUnreadCount } }
+        );
+      }
+    }
+  }
+  
+  // Check RingCentral for unread messages (that we have as read)
+  if (localReadIds.size > 0) {
+    const unreadResponse = await platform.get(
+      '/restapi/v1.0/account/~/extension/~/message-store',
+      { messageType: 'SMS', readStatus: 'Unread', perPage: 500 }
+    );
+    
+    const rcUnreadMessages = (await unreadResponse.json()).records || [];
+    const rcUnreadIds = new Set(rcUnreadMessages.map(m => m.id.toString()));
+    
+    // Find messages that are Unread in RC but Read locally
+    const toMarkUnread = [];
+    for (const msgId of localReadIds) {
+      if (rcUnreadIds.has(msgId)) {
+        toMarkUnread.push({ msgId, convId: messageConvMap.get(msgId) });
+      }
+    }
+    
+    // Batch update
+    for (const { msgId, convId } of toMarkUnread) {
+      await conversationsCollection.updateOne(
+        { $or: [{ conversationId: convId }, { phoneNumber: convId }], 'messages.id': msgId },
+        { $set: { 'messages.$.readStatus': 'Unread' } }
+      );
+      unreadSynced++;
+    }
+    
+    // Update unread counts for affected conversations
+    const affectedConvs = new Set(toMarkUnread.map(t => t.convId));
+    for (const convId of affectedConvs) {
+      const conv = await conversationsCollection.findOne({ 
+        $or: [{ conversationId: convId }, { phoneNumber: convId }] 
+      });
+      if (conv) {
+        const newUnreadCount = (conv.messages || [])
+          .filter(m => m.direction === 'Inbound' && m.readStatus === 'Unread').length;
+        await conversationsCollection.updateOne(
+          { _id: conv._id },
+          { $set: { unreadCount: newUnreadCount } }
+        );
+      }
+    }
+  }
+  
+  return { readSynced, unreadSynced };
 }
 
 // ================================================
@@ -663,7 +717,7 @@ async function startServer() {
   console.log(`☁️  Azure Storage: ${azureConfigured ? 'Configured' : 'NOT configured - attachments will not be saved'}`);
 
   if (rcConfigured) {
-    const syncIntervalMs = parseInt(process.env.SYNC_INTERVAL_MS || '30000', 10);
+    const syncIntervalMs = parseInt(process.env.SYNC_INTERVAL_MS || '60000', 10);
     
     console.log(`\n📅 RingCentral Sync Interval: ${syncIntervalMs}ms (${syncIntervalMs/1000}s)`);
     
@@ -672,18 +726,8 @@ async function startServer() {
       syncRingCentralMessages();
     }, 5000);
 
-    let isSyncing = false;
     setInterval(async () => {
-      if (isSyncing) {
-        console.log('⏳ Sync already in progress, skipping...');
-        return;
-      }
-      isSyncing = true;
-      try {
-        await syncRingCentralMessages();
-      } finally {
-        isSyncing = false;
-      }
+      await syncRingCentralMessages();
     }, syncIntervalMs);
 
     const updateNextSyncTime = () => {
