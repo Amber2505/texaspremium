@@ -6,6 +6,9 @@ export async function POST(request: Request) {
     const body = await request.json();
     const transactionId = body.transactionId;
 
+    // Always capture the raw incoming body for debugging
+    const rawRequestBody = JSON.stringify(body, null, 2);
+
     // If we have a transaction ID, fetch real payment details from Square
     if (transactionId && transactionId !== 'Unknown') {
       try {
@@ -35,26 +38,42 @@ export async function POST(request: Request) {
             customerEmail: payment.buyerEmailAddress || 'N/A',
             transactionId: payment.id || transactionId,
             timestamp: payment.createdAt ? new Date(payment.createdAt) : new Date(),
-            // Add the full JSON in the email
-            paymentJson: JSON.stringify(payment, null, 2),
+            paymentJson: JSON.stringify({
+              squarePayment: payment,
+              originalRequest: body
+            }, null, 2),
           });
 
           return NextResponse.json({ success: true, message: 'Notification sent with payment details' });
         }
       } catch (squareError) {
         console.error('Square API error:', squareError);
-        // If Square API fails, send basic notification
+        // Square API failed - send notification with error info and raw request
+        await sendPaymentNotification({
+          amount: body.amount || 'See JSON below',
+          customerName: body.customerName || 'See JSON below',
+          customerEmail: body.customerEmail || 'See JSON below',
+          transactionId: transactionId || 'Unknown',
+          timestamp: new Date(),
+          paymentJson: JSON.stringify({
+            error: 'Square API lookup failed',
+            errorMessage: String(squareError),
+            originalRequest: body
+          }, null, 2),
+        });
+
+        return NextResponse.json({ success: true, message: 'Notification sent (Square API failed)' });
       }
     }
 
-    // Fallback: send basic notification
+    // Fallback: send notification with raw request body
     await sendPaymentNotification({
-      amount: body.amount || 'Payment received via Square',
-      customerName: body.customerName || 'Square Customer',
-      customerEmail: body.customerEmail || 'Check Square Dashboard',
+      amount: body.amount || 'See JSON below',
+      customerName: body.customerName || 'See JSON below',
+      customerEmail: body.customerEmail || 'See JSON below',
       transactionId: transactionId || 'Unknown',
       timestamp: new Date(),
-      paymentJson: null,
+      paymentJson: rawRequestBody, // Always include raw body
     });
 
     return NextResponse.json({ success: true, message: 'Notification sent' });
