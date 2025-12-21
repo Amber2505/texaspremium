@@ -9,6 +9,7 @@ import {
   Minus,
   Paperclip,
   Smile,
+  MessageSquare,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import io from "socket.io-client";
@@ -2429,7 +2430,7 @@ export default function ChatButton() {
                                                  bg-gradient-to-r from-red-700 to-blue-800 text-white rounded-lg 
                                                  text-sm font-medium hover:opacity-90 transition active:scale-95 shadow-md"
                                   >
-                                    <Phone className="w-4 h-4" />
+                                    <MessageSquare className="w-4 h-4" />
                                     Text 469-729-5185
                                   </a>
                                   <p className="text-xs text-orange-600 mt-2 text-center">
