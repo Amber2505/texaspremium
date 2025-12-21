@@ -33,7 +33,7 @@ export default function ViewDocuments() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [currentSkip, setCurrentSkip] = useState(0);
-  const [totalEmails, setTotalEmails] = useState(0);
+  // const [totalEmails, setTotalEmails] = useState(0);
   const [hasSearched, setHasSearched] = useState(false);
   const [loadCount, setLoadCount] = useState(0);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(
@@ -81,7 +81,7 @@ export default function ViewDocuments() {
       }
 
       setHasMore(data.hasMore);
-      setTotalEmails(data.total);
+      // setTotalEmails(data.total);
       setCurrentSkip(skip + limit);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
