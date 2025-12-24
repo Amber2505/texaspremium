@@ -16,6 +16,17 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Texas Premium Insurance Services",
   description: "Your Savings, Our Priority!",
+  icons: {
+    // 1. This icon shows in the browser tab
+    icon: "/favicon.ico",
+
+    // 2. This is the one Google often picks up for search results
+    // Ensure this file is at least 48x48px and square
+    shortcut: "/icon.png",
+
+    // 3. For mobile home screen bookmarks
+    apple: "/apple-icon.png",
+  },
 };
 
 export default function RootLayout({
