@@ -188,6 +188,116 @@ app.post('/trigger-sync', async (req, res) => {
 });
 
 // ================================================
+// ✅ NEW: ONE-TIME CLEANUP ENDPOINT
+// ================================================
+app.post('/cleanup-duplicates', async (req, res) => {
+  try {
+    console.log("\n\n🧹 ═══════════════════════════════════════════════════");
+    console.log("🧹 STARTING DUPLICATE CLEANUP...");
+    console.log("🧹 ═══════════════════════════════════════════════════\n");
+    
+    if (!conversationsCollection) {
+      return res.status(500).json({ error: 'Database not connected' });
+    }
+    
+    const allConversations = await conversationsCollection.find({}).toArray();
+    
+    const stats = {
+      processed: 0,
+      duplicatesRemoved: 0,
+      conversationsFixed: 0,
+      errors: 0
+    };
+    
+    for (const conv of allConversations) {
+      const identifier = conv.conversationId || conv.phoneNumber;
+      const originalCount = conv.messages?.length || 0;
+      
+      if (originalCount === 0) {
+        stats.processed++;
+        continue;
+      }
+      
+      // Deduplicate by ID
+      const seenIds = new Set();
+      const uniqueMessages = [];
+      let duplicatesInThisConv = 0;
+      
+      for (const msg of conv.messages) {
+        if (!msg.id) {
+          uniqueMessages.push(msg);
+          continue;
+        }
+        
+        if (seenIds.has(msg.id)) {
+          duplicatesInThisConv++;
+        } else {
+          seenIds.add(msg.id);
+          uniqueMessages.push(msg);
+        }
+      }
+      
+      if (duplicatesInThisConv > 0) {
+        try {
+          await conversationsCollection.updateOne(
+            { _id: conv._id },
+            { $set: { messages: uniqueMessages } }
+          );
+          
+          stats.duplicatesRemoved += duplicatesInThisConv;
+          stats.conversationsFixed++;
+          
+          console.log(`✅ ${identifier}: ${originalCount} → ${uniqueMessages.length} (removed ${duplicatesInThisConv})`);
+        } catch (error) {
+          console.error(`❌ Failed to update ${identifier}:`, error.message);
+          stats.errors++;
+        }
+      }
+      
+      stats.processed++;
+    }
+    
+    // Recalculate unread counts
+    console.log('\n🔄 Recalculating unread counts...');
+    const updated = await conversationsCollection.find({}).toArray();
+    let recalculated = 0;
+    
+    for (const conv of updated) {
+      const unreadCount = (conv.messages || []).filter(
+        m => m.direction === 'Inbound' && m.readStatus === 'Unread'
+      ).length;
+      
+      if (conv.unreadCount !== unreadCount) {
+        await conversationsCollection.updateOne(
+          { _id: conv._id },
+          { $set: { unreadCount } }
+        );
+        recalculated++;
+      }
+    }
+    
+    console.log(`✅ Recalculated ${recalculated} unread counts`);
+    
+    console.log("\n🧹 ═══════════════════════════════════════════════════");
+    console.log(`✅ CLEANUP COMPLETE!`);
+    console.log(`   Processed: ${stats.processed} conversations`);
+    console.log(`   Fixed: ${stats.conversationsFixed} conversations`);
+    console.log(`   Duplicates removed: ${stats.duplicatesRemoved}`);
+    console.log(`   Errors: ${stats.errors}`);
+    console.log("🧹 ═══════════════════════════════════════════════════\n");
+    
+    res.json({ 
+      success: true, 
+      stats,
+      message: `Removed ${stats.duplicatesRemoved} duplicates from ${stats.conversationsFixed} conversations`
+    });
+  } catch (error) {
+    console.error('❌ Cleanup error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ================================================
 // MONGODB CONNECTION
 // ================================================
 let db;
@@ -245,7 +355,7 @@ async function connectMongoDB() {
 }
 
 // ================================================
-// RINGCENTRAL SYNC FUNCTION (WITH GROUP ROUTING)
+// RINGCENTRAL SYNC FUNCTION (WITH FIXED DUPLICATE PREVENTION)
 // ================================================
 let lastSyncTime = null;
 let nextSyncTime = null;
@@ -268,6 +378,12 @@ async function getRingCentralPlatform() {
 }
 
 async function syncRingCentralMessages() {
+  // ✅ NEW: Emergency disable switch via environment variable
+  if (process.env.SYNC_DISABLED === 'true') {
+    console.log('⚠️ Sync disabled via SYNC_DISABLED environment variable');
+    return { success: false, error: 'Sync disabled' };
+  }
+
   if (isSyncing) {
     console.log('⏳ Sync already in progress, skipping...');
     return { success: false, error: 'Sync in progress' };
@@ -324,6 +440,8 @@ async function syncRingCentralMessages() {
     let attachmentsDownloaded = 0;
     let groupMessages = 0;
     let individualMessages = 0;
+    let duplicatesPrevented = 0; // ✅ NEW: Track prevented duplicates
+    let readStatusUpdated = 0; // ✅ NEW: Track read status updates
 
     for (const msg of messages) {
       const messageId = msg.id.toString();
@@ -337,8 +455,8 @@ async function syncRingCentralMessages() {
       }
 
       // ════════════════════════════════════════════════════════════════
-      // FIX: Check if message exists in ANY conversation (by message ID)
-      // This handles both old (phoneNumber) and new (conversationId) formats
+      // ✅ FIXED: Check if message exists in ANY conversation (by message ID)
+      // This prevents duplicates AND handles moving messages to correct conversation
       // ════════════════════════════════════════════════════════════════
       const existingMsg = await conversationsCollection.findOne(
         { 'messages.id': messageId },
@@ -350,6 +468,20 @@ async function syncRingCentralMessages() {
         const existingMsgData = existingMsg.messages?.[0];
         const hasAzureUrls = existingMsgData?.attachments?.some(a => a.azureUrl);
         const rcHasAttachments = msg.attachments?.length > 0;
+        
+        // ✅ NEW: Check if read status changed
+        const needsReadStatusUpdate = existingMsgData && 
+                                      existingMsgData.readStatus !== msg.readStatus &&
+                                      msg.direction === 'Inbound';
+        
+        if (needsReadStatusUpdate) {
+          console.log(`   🔄 Updating read status for ${messageId}: ${existingMsgData.readStatus} → ${msg.readStatus}`);
+          await conversationsCollection.updateOne(
+            { 'messages.id': messageId },
+            { $set: { 'messages.$.readStatus': msg.readStatus } }
+          );
+          readStatusUpdated++;
+        }
         
         // Check if it's in the WRONG conversation (needs moving to group)
         const existingConvId = existingMsg.conversationId || existingMsg.phoneNumber;
@@ -364,6 +496,7 @@ async function syncRingCentralMessages() {
           // Will be added to correct conversation below
         } else if (hasAzureUrls || !rcHasAttachments) {
           // Message exists in correct place with attachments handled
+          duplicatesPrevented++; // ✅ Track that we prevented a duplicate
           skipped++;
           continue;
         }
@@ -449,14 +582,30 @@ async function syncRingCentralMessages() {
         subject: fullMessage.subject || '',
         creationTime: fullMessage.creationTime,
         lastModifiedTime: fullMessage.lastModifiedTime,
-        readStatus: fullMessage.readStatus || (fullMessage.direction === 'Inbound' ? 'Unread' : 'Read'),
+        readStatus: fullMessage.readStatus || (fullMessage.direction === 'Inbound' ? 'Unread' : 'Read'), // ✅ Use RingCentral's status
         messageStatus: fullMessage.messageStatus,
         from: fullMessage.from,
         to: fullMessage.to,
         attachments: processedAttachments,
       };
 
-      // Save to correct conversation
+      // ════════════════════════════════════════════════════════════════
+      // ✅ CRITICAL FIX: Double-check message doesn't exist before inserting
+      // This prevents race conditions where message was added during processing
+      // ════════════════════════════════════════════════════════════════
+      const alreadyExists = await conversationsCollection.findOne({
+        conversationId: conversationId,
+        'messages.id': messageId
+      });
+
+      if (alreadyExists) {
+        console.log(`   ⚠️ Message ${messageId} already exists in ${conversationId} - duplicate prevented!`);
+        duplicatesPrevented++;
+        skipped++;
+        continue; // Skip to next message - DO NOT INSERT
+      }
+
+      // Safe to insert - message doesn't exist in this conversation
       const updateOperation = {
         $push: {
           messages: {
@@ -474,6 +623,7 @@ async function syncRingCentralMessages() {
         },
       };
 
+      // ✅ FIXED: Only increment unread if message is actually unread
       if (fullMessage.direction === 'Inbound' && fullMessage.readStatus === 'Unread') {
         updateOperation.$inc = { unreadCount: 1 };
       }
@@ -535,12 +685,15 @@ async function syncRingCentralMessages() {
     
     const shouldLog = synced > 0 || attachmentsDownloaded > 0 || 
                       readStatusSynced > 0 || unreadStatusSynced > 0 || 
+                      duplicatesPrevented > 0 || readStatusUpdated > 0 ||
                       duration > 5000;
     
     if (shouldLog) {
       console.log(`✅ Sync completed in ${duration}ms:`);
       console.log(`   - New messages: ${synced} (${groupMessages} group, ${individualMessages} individual)`);
       console.log(`   - Skipped: ${skipped}`);
+      console.log(`   - Duplicates prevented: ${duplicatesPrevented}`); // ✅ NEW
+      console.log(`   - Read status updated: ${readStatusUpdated}`); // ✅ NEW
       console.log(`   - Attachments: ${attachmentsDownloaded}`);
       console.log(`   - Read synced: ${readStatusSynced}, Unread synced: ${unreadStatusSynced}`);
     }
@@ -551,7 +704,9 @@ async function syncRingCentralMessages() {
       synced, 
       groupMessages,
       individualMessages,
-      skipped, 
+      skipped,
+      duplicatesPrevented, // ✅ NEW
+      readStatusUpdated, // ✅ NEW
       attachmentsDownloaded,
       readStatusSynced, 
       unreadStatusSynced, 
@@ -1345,5 +1500,6 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`RingCentral real-time endpoint: POST /notify/ringcentral`);
   console.log(`Health check: GET /health`);
   console.log(`Manual sync trigger: POST /trigger-sync`);
+  console.log(`🧹 Cleanup endpoint: POST /cleanup-duplicates`);
   console.log(`Server ready at ${new Date().toISOString()}`);
 });
