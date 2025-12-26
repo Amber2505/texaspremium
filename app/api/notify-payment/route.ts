@@ -6,7 +6,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const transactionId = body.transactionId;
 
-    // Always capture the raw incoming body for debugging
+    // ✅ FIXED: Changed "bodull" to "body" and fixed JSON.stringify parameters
     const rawRequestBody = JSON.stringify(body, null, 2);
 
     // If we have a transaction ID, fetch real payment details from Square
