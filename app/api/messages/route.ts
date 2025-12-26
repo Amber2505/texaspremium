@@ -1,5 +1,5 @@
 // /api/messages/route.ts
-// Updated to support server-side pagination, search, and GROUP CONVERSATIONS
+// Updated to support server-side pagination, search, unread filter, and GROUP CONVERSATIONS
 
 import { NextRequest, NextResponse } from "next/server";
 import clientPromise from "@/lib/mongodb";
@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
     const skip = parseInt(searchParams.get("skip") || "0", 10);
     const limit = parseInt(searchParams.get("limit") || "25", 10);
     const search = searchParams.get("search") || "";
+    const unreadOnly = searchParams.get("unreadOnly") === "true"; // ✅ NEW: Unread filter
 
     const client = await clientPromise;
     const db = client.db("db");
@@ -36,6 +37,11 @@ export async function GET(request: NextRequest) {
     let query: QueryFilter = {};
     const matchingMessageIds: Map<string, string[]> = new Map(); // conversationId -> matching message snippets
 
+    // ✅ NEW: Add unread filter to base query
+    if (unreadOnly) {
+      query.unreadCount = { $gt: 0 };
+    }
+
     if (search.trim()) {
       const searchTerm = search.trim();
       const isPhoneSearch = /^\d+$/.test(searchTerm.replace(/[\s\-\(\)\+]/g, ""));
@@ -43,27 +49,70 @@ export async function GET(request: NextRequest) {
       if (isPhoneSearch) {
         // Pure phone number search - search in phoneNumber, conversationId, AND participants array
         const phoneRegex = { $regex: searchTerm.replace(/[\s\-\(\)\+]/g, ""), $options: "i" };
-        query = {
-          $or: [
-            { phoneNumber: phoneRegex },
-            { conversationId: phoneRegex },
-            { participants: phoneRegex },
-          ],
-        };
+        
+        // ✅ UPDATED: Combine unread filter with search using $and
+        if (unreadOnly) {
+          query = {
+            $and: [
+              { unreadCount: { $gt: 0 } },
+              {
+                $or: [
+                  { phoneNumber: phoneRegex },
+                  { conversationId: phoneRegex },
+                  { participants: phoneRegex },
+                ],
+              },
+            ],
+          };
+        } else {
+          query = {
+            $or: [
+              { phoneNumber: phoneRegex },
+              { conversationId: phoneRegex },
+              { participants: phoneRegex },
+            ],
+          };
+        }
       } else {
         // Search both phone numbers AND message content
-        query = {
-          $or: [
-            { phoneNumber: { $regex: searchTerm, $options: "i" } },
-            { conversationId: { $regex: searchTerm, $options: "i" } },
-            { participants: { $regex: searchTerm, $options: "i" } },
-            { "messages.subject": { $regex: searchTerm, $options: "i" } },
-          ],
-        };
+        // ✅ UPDATED: Combine unread filter with search using $and
+        if (unreadOnly) {
+          query = {
+            $and: [
+              { unreadCount: { $gt: 0 } },
+              {
+                $or: [
+                  { phoneNumber: { $regex: searchTerm, $options: "i" } },
+                  { conversationId: { $regex: searchTerm, $options: "i" } },
+                  { participants: { $regex: searchTerm, $options: "i" } },
+                  { "messages.subject": { $regex: searchTerm, $options: "i" } },
+                ],
+              },
+            ],
+          };
+        } else {
+          query = {
+            $or: [
+              { phoneNumber: { $regex: searchTerm, $options: "i" } },
+              { conversationId: { $regex: searchTerm, $options: "i" } },
+              { participants: { $regex: searchTerm, $options: "i" } },
+              { "messages.subject": { $regex: searchTerm, $options: "i" } },
+            ],
+          };
+        }
 
         // Find conversations with matching messages to highlight them
+        // ✅ UPDATED: Include unread filter in content search
+        const contentSearchQuery: QueryFilter = {
+          "messages.subject": { $regex: searchTerm, $options: "i" },
+        };
+        
+        if (unreadOnly) {
+          contentSearchQuery.unreadCount = { $gt: 0 };
+        }
+
         const matchingConvs = await collection
-          .find({ "messages.subject": { $regex: searchTerm, $options: "i" } })
+          .find(contentSearchQuery)
           .project({ phoneNumber: 1, conversationId: 1, messages: 1 })
           .toArray();
 
@@ -136,6 +185,7 @@ export async function GET(request: NextRequest) {
       limit,
       hasMore: skip + formattedConversations.length < total,
       searchType: search.trim() ? (/^\d+$/.test(search.trim().replace(/[\s\-\(\)\+]/g, "")) ? "phone" : "content") : "none",
+      unreadOnly, // ✅ NEW: Include filter status in response
     });
   } catch (error) {
     console.error("Error fetching messages:", error);

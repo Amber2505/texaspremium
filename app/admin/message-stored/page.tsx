@@ -37,6 +37,7 @@ export default function MessageStoredPage() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchInput, setSearchInput] = useState("");
+  const [filterType, setFilterType] = useState<"all" | "unread">("all");
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [selectedConversationId, setSelectedConversationId] = useState<
     string | null
@@ -195,8 +196,8 @@ export default function MessageStoredPage() {
   }, []);
 
   useEffect(() => {
-    if (mounted) fetchMessages(0, "", false);
-  }, [mounted]);
+    if (mounted) fetchMessages(0, "", filterType, false);
+  }, [mounted, filterType]);
 
   // Polling for new messages (only refresh if not searching and on first page)
   useEffect(() => {
@@ -204,7 +205,11 @@ export default function MessageStoredPage() {
     const interval = setInterval(() => {
       // Only auto-refresh if not searching
       if (!searchInput.trim()) {
-        fetch("/api/messages?skip=0&limit=25")
+        fetch(
+          `/api/messages?skip=0&limit=25${
+            filterType === "unread" ? "&unreadOnly=true" : ""
+          }`
+        )
           .then((r) => r.json())
           .then((data) => {
             const newConversations = data.conversations || [];
@@ -218,7 +223,7 @@ export default function MessageStoredPage() {
       }
     }, 10000); // 10 seconds
     return () => clearInterval(interval);
-  }, [mounted, searchInput]);
+  }, [mounted, searchInput, filterType]);
 
   useEffect(() => {
     scrollToBottom();
@@ -443,7 +448,7 @@ export default function MessageStoredPage() {
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
 
       if (isNearBottom) {
-        fetchMessages(conversations.length, searchInput, true);
+        fetchMessages(conversations.length, searchInput, filterType, true);
       }
     };
 
@@ -489,7 +494,12 @@ export default function MessageStoredPage() {
     return () => textarea.removeEventListener("input", adjustHeight);
   }, [messageInput]);
 
-  const fetchMessages = async (skip = 0, search = "", append = false) => {
+  const fetchMessages = async (
+    skip = 0,
+    search = "",
+    filter: "all" | "unread" = "all",
+    append = false
+  ) => {
     if (skip === 0 && !append) setLoading(true);
     else setIsLoadingMore(true);
 
@@ -500,6 +510,10 @@ export default function MessageStoredPage() {
       });
       if (search.trim()) {
         params.append("search", search.trim());
+      }
+
+      if (filter === "unread") {
+        params.append("unreadOnly", "true");
       }
 
       const res = await fetch(`/api/messages?${params}`);
@@ -546,7 +560,7 @@ export default function MessageStoredPage() {
     searchTimeoutRef.current = setTimeout(() => {
       setConversations([]);
       setHasMore(true);
-      fetchMessages(0, value, false);
+      fetchMessages(0, value, filterType, false);
     }, 300);
   };
 
@@ -1212,7 +1226,7 @@ export default function MessageStoredPage() {
               onClick={() => {
                 setConversations([]);
                 setHasMore(true);
-                fetchMessages(0, searchInput, false);
+                fetchMessages(0, searchInput, filterType, false);
               }}
               className="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
               title="Refresh conversations"
@@ -1262,7 +1276,7 @@ export default function MessageStoredPage() {
             selectedPhone ? "hidden md:flex" : "flex"
           }`}
         >
-          <div className="p-4 border-b border-gray-200">
+          <div className="p-4 border-b border-gray-200 space-y-3">
             <div className="relative">
               <input
                 type="text"
@@ -1290,7 +1304,7 @@ export default function MessageStoredPage() {
                     setSearchInput("");
                     setConversations([]);
                     setHasMore(true);
-                    fetchMessages(0, "", false);
+                    fetchMessages(0, "", filterType, false);
                   }}
                   className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
                 >
@@ -1310,6 +1324,36 @@ export default function MessageStoredPage() {
                 </button>
               )}
             </div>
+            {/* Filter Dropdown */}
+            <div className="flex items-center gap-2">
+              <svg
+                className="w-5 h-5 text-gray-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+                />
+              </svg>
+              <select
+                value={filterType}
+                onChange={(e) => {
+                  const newFilter = e.target.value as "all" | "unread";
+                  setFilterType(newFilter);
+                  setConversations([]);
+                  setHasMore(true);
+                  fetchMessages(0, searchInput, newFilter, false);
+                }}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 font-medium"
+              >
+                <option value="all">All Messages</option>
+                <option value="unread">Unread Only</option>
+              </select>
+            </div>
           </div>
 
           {/* Conversations list */}
@@ -1317,6 +1361,32 @@ export default function MessageStoredPage() {
             {loading ? (
               <div className="flex items-center justify-center h-full">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              </div>
+            ) : conversations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-gray-500 p-6">
+                <svg
+                  className="w-16 h-16 mb-4 text-gray-300"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                  />
+                </svg>
+                <p className="text-center text-sm">
+                  {filterType === "unread"
+                    ? "No unread messages"
+                    : "No conversations yet"}
+                </p>
+                <p className="text-center text-xs text-gray-400 mt-1">
+                  {filterType === "unread"
+                    ? "All caught up!"
+                    : "Start a new conversation to begin"}
+                </p>
               </div>
             ) : (
               conversations.map((conv, index) => {

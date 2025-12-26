@@ -22,51 +22,48 @@ export async function POST(request: NextRequest) {
     const platform = rcsdk.platform();
     await platform.login({ jwt: process.env.RINGCENTRAL_JWT! });
 
-    console.log(`📬 Marking ${messageIds.length} messages as unread on RingCentral...`);
+    // ✅ CRITICAL FIX: Only mark the LAST (most recent) message as unread
+    // This avoids rate limiting and is how most messaging apps work
+    const lastMessageId = messageIds[messageIds.length - 1];
+    
+    console.log(`📬 Marking only the last message (${lastMessageId}) as unread on RingCentral`);
+    console.log(`   Skipping ${messageIds.length - 1} older messages to avoid rate limiting`);
 
-    // Mark each message as unread on RingCentral
-    const results = await Promise.allSettled(
-      messageIds.map(async (messageId) => {
-        try {
-          const response = await platform.put(
-            `/restapi/v1.0/account/~/extension/~/message-store/${messageId}`,
-            {
-              readStatus: "Unread",
-            }
-          );
-
-          const data = await response.json();
-          console.log(`✅ Marked message ${messageId} as unread on RingCentral`);
-          return data;
-        } catch (error: unknown) {
-          const err = error as { message?: string };
-          console.error(`❌ Failed to mark message ${messageId} as unread:`, err.message);
-          throw error;
+    try {
+      const response = await platform.put(
+        `/restapi/v1.0/account/~/extension/~/message-store/${lastMessageId}`,
+        {
+          readStatus: "Unread",
         }
-      })
-    );
+      );
 
-    // Check if all succeeded
-    const failures = results.filter((r) => r.status === "rejected");
-    const successes = results.filter((r) => r.status === "fulfilled");
+      await response.json();
+      console.log(`✅ Successfully marked last message ${lastMessageId} as unread on RingCentral`);
 
-    console.log(`✅ Successfully marked ${successes.length}/${messageIds.length} messages as unread on RingCentral`);
-
-    if (failures.length > 0) {
-      console.warn(`⚠️  ${failures.length} messages failed to mark as unread`);
+      return NextResponse.json({
+        success: true,
+        markedUnread: 1,
+        skipped: messageIds.length - 1,
+        total: messageIds.length,
+        message: `Marked last message as unread (conversation will show as unread)`,
+      });
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      console.error(`❌ Failed to mark message ${lastMessageId} as unread:`, err.message);
+      
+      return NextResponse.json(
+        { 
+          error: err.message || "Failed to mark message as unread",
+          success: false 
+        },
+        { status: 500 }
+      );
     }
-
-    return NextResponse.json({
-      success: true,
-      markedUnread: successes.length,
-      failed: failures.length,
-      total: messageIds.length,
-    });
   } catch (error: unknown) {
-    console.error("❌ Error marking messages as unread on RingCentral:", error);
+    console.error("❌ Error marking message as unread on RingCentral:", error);
     const err = error as { message?: string };
     return NextResponse.json(
-      { error: err.message || "Failed to mark messages as unread" },
+      { error: err.message || "Failed to mark message as unread" },
       { status: 500 }
     );
   }

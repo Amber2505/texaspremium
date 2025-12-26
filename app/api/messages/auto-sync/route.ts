@@ -64,6 +64,7 @@ export async function GET() {
       newSaved: 0, 
       fixed: 0, 
       attachmentsDownloaded: 0,
+      readStatusUpdated: 0, // ✅ NEW: Track read status updates
       errors: 0
     };
     
@@ -74,36 +75,55 @@ export async function GET() {
       const otherPhone = isOutbound ? msg.to?.[0]?.phoneNumber : msg.from?.phoneNumber;
       
       if (!otherPhone) continue;
-      
-      // Only process inbound messages with potential attachments
-      if (msg.direction !== "Inbound") {
-        continue;
-      }
 
       console.log(`\n────────────────────────────────────────`);
       console.log(`📨 Message ${messageId} from ${otherPhone}`);
-      console.log(`   List API attachments: ${msg.attachments?.length || 0}`);
+      console.log(`   Direction: ${msg.direction}, ReadStatus: ${msg.readStatus}`); // ✅ NEW: Log read status
 
       // Check MongoDB
       const existingConv = await conversationsCollection.findOne({ phoneNumber: otherPhone });
       const existingMsg = existingConv?.messages?.find((m: StoredMessage) => m.id === messageId);
 
       if (existingMsg) {
-        // Message exists - check if needs fixing
+        // ✅ NEW: Check if read status changed
+        const needsReadStatusUpdate = existingMsg.readStatus !== msg.readStatus;
         const hasAzureUrls = existingMsg.attachments?.some((a: { azureUrl?: string }) => a.azureUrl);
-        console.log(`   MongoDB: EXISTS, has azureUrls: ${hasAzureUrls}`);
         
-        if (hasAzureUrls) {
-          console.log(`   ⏭️ Skipping - already has attachments`);
+        console.log(`   MongoDB: EXISTS, readStatus: ${existingMsg.readStatus} → ${msg.readStatus}, has azureUrls: ${hasAzureUrls}`);
+        
+        // ✅ NEW: Update read status if changed
+        if (needsReadStatusUpdate && msg.direction === "Inbound") {
+          console.log(`   🔄 Updating read status: ${existingMsg.readStatus} → ${msg.readStatus}`);
+          await conversationsCollection.updateOne(
+            { phoneNumber: otherPhone, "messages.id": messageId },
+            { $set: { "messages.$.readStatus": msg.readStatus } }
+          );
+          stats.readStatusUpdated++;
+        }
+        
+        // Skip if already has attachments and read status is synced
+        if (hasAzureUrls && !needsReadStatusUpdate) {
+          console.log(`   ⏭️ Skipping - already synced`);
           stats.skipped++;
           continue;
         }
-        console.log(`   🔧 Needs attachment fix`);
+        
+        // Only fetch full message if we need to fix attachments
+        if (!hasAzureUrls && msg.direction === "Inbound") {
+          console.log(`   🔧 Needs attachment fix`);
+        } else {
+          stats.skipped++;
+          continue;
+        }
       } else {
         console.log(`   MongoDB: NEW message`);
       }
 
-      // ALWAYS fetch full message for inbound
+      // Only fetch full message for inbound messages that need attachment processing
+      if (msg.direction !== "Inbound") {
+        continue;
+      }
+
       console.log(`   🔍 Fetching full message...`);
       
       let fullMessage;
@@ -120,7 +140,7 @@ export async function GET() {
         }
         
         fullMessage = await fullMsgResponse.json();
-        console.log(`   ✅ Full message has ${fullMessage.attachments?.length || 0} attachments`);
+        console.log(`   ✅ Full message has ${fullMessage.attachments?.length || 0} attachments, readStatus: ${fullMessage.readStatus}`);
       } catch (e) {
         console.log(`   ❌ Fetch error:`, e);
         stats.errors++;
@@ -194,20 +214,21 @@ export async function GET() {
 
       // Save to MongoDB
       if (existingMsg) {
-        // Update existing
+        // Update existing - include read status from RingCentral
         const result = await conversationsCollection.updateOne(
           { phoneNumber: otherPhone, "messages.id": messageId },
           { 
             $set: { 
               "messages.$.attachments": processedAttachments,
-              "messages.$.type": processedAttachments.length > 0 ? "MMS" : "SMS"
+              "messages.$.type": processedAttachments.length > 0 ? "MMS" : "SMS",
+              "messages.$.readStatus": fullMessage.readStatus, // ✅ NEW: Sync read status
             } 
           }
         );
         console.log(`   💾 Updated: modified=${result.modifiedCount}`);
         if (result.modifiedCount > 0) stats.fixed++;
       } else {
-        // Add new message
+        // Add new message - use RingCentral's read status
         const messageObj = {
           id: messageId,
           direction: fullMessage.direction,
@@ -215,12 +236,15 @@ export async function GET() {
           subject: fullMessage.subject || "",
           creationTime: fullMessage.creationTime,
           lastModifiedTime: fullMessage.lastModifiedTime,
-          readStatus: "Unread",
+          readStatus: fullMessage.readStatus, // ✅ FIXED: Use RingCentral's actual status instead of hardcoding "Unread"
           messageStatus: fullMessage.messageStatus,
           from: fullMessage.from,
           to: fullMessage.to,
           attachments: processedAttachments,
         };
+
+        // ✅ FIXED: Only increment unreadCount if message is actually unread
+        const incrementUnread = fullMessage.readStatus === "Unread" ? 1 : 0;
 
         const result = await conversationsCollection.updateOne(
           { phoneNumber: otherPhone, "messages.id": { $ne: messageId } },
@@ -228,12 +252,12 @@ export async function GET() {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             $push: { messages: { $each: [messageObj], $sort: { creationTime: 1 } } } as any,
             $set: { lastMessageTime: fullMessage.creationTime, lastMessageId: messageId },
-            $inc: { unreadCount: 1 },
+            $inc: { unreadCount: incrementUnread }, // ✅ FIXED: Only increment if unread
           },
           { upsert: true }
         );
         
-        console.log(`   💾 Added: modified=${result.modifiedCount}, upserted=${result.upsertedCount}`);
+        console.log(`   💾 Added: modified=${result.modifiedCount}, upserted=${result.upsertedCount}, unreadIncrement=${incrementUnread}`);
         if (result.modifiedCount > 0 || result.upsertedCount > 0) stats.newSaved++;
       }
       
@@ -247,25 +271,36 @@ export async function GET() {
     console.log(`   Fixed: ${stats.fixed}`);
     console.log(`   Skipped: ${stats.skipped}`);
     console.log(`   Attachments: ${stats.attachmentsDownloaded}`);
+    console.log(`   Read status synced: ${stats.readStatusUpdated}`); // ✅ NEW
     console.log(`   Errors: ${stats.errors}`);
     console.log(`═══════════════════════════════════════════════════════════\n`);
 
-    // Quick read status sync
+    // ✅ IMPROVED: Recalculate unreadCount for ALL conversations
+    console.log(`\n🔄 Recalculating unread counts...`);
     try {
       const allConvs = await conversationsCollection.find({}).toArray();
+      let recalculated = 0;
+      
       for (const conv of allConvs) {
-        const unread = (conv.messages || []).filter(
+        // Count messages that are BOTH inbound AND unread
+        const actualUnread = (conv.messages || []).filter(
           (m: StoredMessage) => m.direction === "Inbound" && m.readStatus === "Unread"
         ).length;
-        if (conv.unreadCount !== unread) {
+        
+        // Only update if count is wrong
+        if (conv.unreadCount !== actualUnread) {
           await conversationsCollection.updateOne(
             { phoneNumber: conv.phoneNumber },
-            { $set: { unreadCount: unread } }
+            { $set: { unreadCount: actualUnread } }
           );
+          recalculated++;
+          console.log(`   📊 ${conv.phoneNumber}: ${conv.unreadCount} → ${actualUnread}`);
         }
       }
+      
+      console.log(`✅ Recalculated ${recalculated} conversations`);
     } catch (e) {
-      console.error("Read sync error:", e);
+      console.error("❌ Read count recalculation error:", e);
     }
 
     return NextResponse.json({ success: true, stats });
