@@ -69,23 +69,25 @@ export async function POST(request: Request) {
     } catch (squareError: unknown) {
       console.error("❌ Square API error:", squareError);
 
-      // Improved error extraction for serialization
-      let errorDetails: any = {};
+      // ✅ FIXED: Use const and proper type
+      const errorDetails: Record<string, unknown> = {};
+      
       if (squareError instanceof Error) {
         errorDetails.name = squareError.name;
         errorDetails.message = squareError.message;
         errorDetails.stack = squareError.stack;
       }
+      
       // Square-specific properties (from ApiError)
       if (squareError && typeof squareError === 'object') {
         if ('statusCode' in squareError) {
-          errorDetails.statusCode = (squareError as any).statusCode;
+          errorDetails.statusCode = (squareError as Record<string, unknown>).statusCode;
         }
         if ('errors' in squareError) {
-          errorDetails.errors = (squareError as any).errors;  // Array of { category, code, detail, field }
+          errorDetails.errors = (squareError as Record<string, unknown>).errors;
         }
         if ('response' in squareError) {
-          errorDetails.response = (squareError as any).response;  // Raw response if available
+          errorDetails.response = (squareError as Record<string, unknown>).response;
         }
       } else if (typeof squareError === 'string') {
         errorDetails.message = squareError;
@@ -93,7 +95,7 @@ export async function POST(request: Request) {
 
       console.error("Error details:", errorDetails);
       
-      apiResponse = `Error: ${JSON.stringify(errorDetails, null, 2)}`;  // Now captures useful info
+      apiResponse = `Error: ${JSON.stringify(errorDetails, null, 2)}`;
       
       // Continue with fallback values
     }
