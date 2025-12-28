@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     let customerName = "Square Customer";
     let customerEmail = "Check Square Dashboard";
 
-    let apiResponse = '';  // New variable to capture JSON or error
+    let apiResponse = '';  // To capture JSON or error
 
     // Try to fetch payment details from Square
     try {
@@ -68,15 +68,32 @@ export async function POST(request: Request) {
       }
     } catch (squareError: unknown) {
       console.error("❌ Square API error:", squareError);
-      if (squareError && typeof squareError === 'object' && 'message' in squareError) {
-        console.error("Error details:", {
-          message: (squareError as { message?: string }).message,
-          errors: (squareError as { errors?: unknown }).errors,
-          statusCode: (squareError as { statusCode?: number }).statusCode,
-        });
+
+      // Improved error extraction for serialization
+      let errorDetails: any = {};
+      if (squareError instanceof Error) {
+        errorDetails.name = squareError.name;
+        errorDetails.message = squareError.message;
+        errorDetails.stack = squareError.stack;
       }
+      // Square-specific properties (from ApiError)
+      if (squareError && typeof squareError === 'object') {
+        if ('statusCode' in squareError) {
+          errorDetails.statusCode = (squareError as any).statusCode;
+        }
+        if ('errors' in squareError) {
+          errorDetails.errors = (squareError as any).errors;  // Array of { category, code, detail, field }
+        }
+        if ('response' in squareError) {
+          errorDetails.response = (squareError as any).response;  // Raw response if available
+        }
+      } else if (typeof squareError === 'string') {
+        errorDetails.message = squareError;
+      }
+
+      console.error("Error details:", errorDetails);
       
-      apiResponse = `Error: ${JSON.stringify(squareError, null, 2)}`;  // Capture error details
+      apiResponse = `Error: ${JSON.stringify(errorDetails, null, 2)}`;  // Now captures useful info
       
       // Continue with fallback values
     }
@@ -108,7 +125,7 @@ export async function POST(request: Request) {
             <p><strong>Transaction ID:</strong> ${transactionId}</p>
             <p><strong>Date:</strong> ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })}</p>
             
-            <!-- New JSON debug section -->
+            <!-- JSON debug section -->
             <h4 style="margin-top: 20px; color: #333;">Full Square API Response JSON:</h4>
             <pre style="background-color: #fff; padding: 10px; border: 1px solid #ddd; overflow-x: auto; font-size: 12px;">
 ${apiResponse || 'No response captured'}
