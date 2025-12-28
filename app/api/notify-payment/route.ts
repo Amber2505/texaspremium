@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
 
-// ✅ CORRECT: CommonJS import with proper destructuring
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const { Client, Environment } = require('square');
+const square = require('square');
 
 export async function POST(request: Request) {
   try {
@@ -12,10 +11,9 @@ export async function POST(request: Request) {
 
     console.log("📧 Notify payment triggered for transaction:", transactionId);
 
-    // ✅ CORRECT: CommonJS syntax - Client with accessToken
-    const squareClient = new Client({
-      accessToken: process.env.SQUARE_ACCESS_TOKEN,
-      environment: Environment.Production,
+    const squareClient = new square.SquareClient({
+      token: process.env.SQUARE_ACCESS_TOKEN,
+      environment: square.SquareEnvironment.Production,
     });
 
     let amount = "Payment received via Square";
@@ -67,7 +65,6 @@ export async function POST(request: Request) {
       }
     } catch (squareError: unknown) {
       console.error("❌ Square API error:", squareError);
-      console.error("❌ Full error:", JSON.stringify(squareError, null, 2));
       if (squareError && typeof squareError === 'object' && 'message' in squareError) {
         console.error("Error details:", {
           message: (squareError as { message?: string }).message,
