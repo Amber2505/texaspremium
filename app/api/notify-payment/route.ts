@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
-
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const square = require('square');
 
@@ -20,6 +19,8 @@ export async function POST(request: Request) {
     let customerName = "Square Customer";
     let customerEmail = "Check Square Dashboard";
 
+    let apiResponse = '';  // New variable to capture JSON or error
+
     // Try to fetch payment details from Square
     try {
       console.log("🔍 Fetching payment from Square API...");
@@ -27,7 +28,9 @@ export async function POST(request: Request) {
       const { result } = await squareClient.paymentsApi.getPayment(transactionId);
       
       console.log("✅ Square API response:", JSON.stringify(result, null, 2));
-
+      
+      apiResponse = JSON.stringify(result, null, 2);  // Capture successful response
+      
       if (result.payment) {
         const payment = result.payment;
         
@@ -72,6 +75,9 @@ export async function POST(request: Request) {
           statusCode: (squareError as { statusCode?: number }).statusCode,
         });
       }
+      
+      apiResponse = `Error: ${JSON.stringify(squareError, null, 2)}`;  // Capture error details
+      
       // Continue with fallback values
     }
 
@@ -101,18 +107,24 @@ export async function POST(request: Request) {
             <p><strong>Customer Email:</strong> ${customerEmail}</p>
             <p><strong>Transaction ID:</strong> ${transactionId}</p>
             <p><strong>Date:</strong> ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })}</p>
+            
+            <!-- New JSON debug section -->
+            <h4 style="margin-top: 20px; color: #333;">Full Square API Response JSON:</h4>
+            <pre style="background-color: #fff; padding: 10px; border: 1px solid #ddd; overflow-x: auto; font-size: 12px;">
+${apiResponse || 'No response captured'}
+            </pre>
           </div>
 
           <div style="background-color: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
             <p style="margin: 0; color: #1976d2;">
               <strong>🔗 View in Square Dashboard:</strong><br/>
-              <a href="https://squareup.com/dashboard/sales/transactions/${transactionId}" 
+              <a href="https://squareup.com/dashboard/sales/transactions/${transactionId}"
                  style="color: #1976d2;">
                 Click here to view transaction
               </a>
             </p>
           </div>
-
+          
           <p style="color: #666; font-size: 12px; margin-top: 30px;">
             This is an automated notification from Texas Premium Insurance Services.
           </p>
