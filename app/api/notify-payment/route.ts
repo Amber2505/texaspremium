@@ -100,7 +100,7 @@ export async function POST(request: Request) {
             <p><strong>Customer Name:</strong> ${customerName}</p>
             <p><strong>Customer Email:</strong> ${customerEmail}</p>
             <p><strong>Transaction ID:</strong> ${transactionId}</p>
-            <p><strong>Date:</strong> ${new Date().toLocaleString()}</p>
+            <p><strong>Date:</strong> ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })}</p>
           </div>
 
           <div style="background-color: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
