@@ -32,7 +32,7 @@ export async function POST(request: Request) {
           customerEmail = customer.emailAddress || customerEmail;
         }
       } catch (e) {
-        console.warn("Profile fetch failed");
+        console.warn(`${e}Profile fetch failed`);
       }
     }
 
