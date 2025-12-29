@@ -37,8 +37,9 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    console.error('Webhook error:', error);
+  } catch (error: unknown) { // Change 'any' to 'unknown'
+    const message = error instanceof Error ? error.message : "Unknown Webhook Error";
+    console.error('Webhook error:', message);
     return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
   }
 }

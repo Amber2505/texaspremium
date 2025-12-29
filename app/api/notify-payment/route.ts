@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { sendPaymentNotification } from '@/lib/email';
-import { SquareClient, SquareEnvironment } from 'square';
+import { SquareClient, SquareEnvironment, SquareError } from 'square'; // Added SquareError
 
 const client = new SquareClient({
   token: process.env.SQUARE_ACCESS_TOKEN!,
@@ -12,8 +12,6 @@ const client = new SquareClient({
 export async function POST(request: Request) {
   try {
     const { transactionId } = await request.json();
-
-    // v43 uses .get({ paymentId: ... })
     const { payment } = await client.payments.get({ paymentId: transactionId });
 
     if (!payment || payment.status !== 'COMPLETED') {
@@ -23,7 +21,6 @@ export async function POST(request: Request) {
     let customerName = payment.note || "Square Customer";
     let customerEmail = payment.buyerEmailAddress || "Check Dashboard";
 
-    // v43 uses .get({ customerId: ... })
     if (payment.customerId) {
       try {
         const { customer } = await client.customers.get({ customerId: payment.customerId });
@@ -32,7 +29,7 @@ export async function POST(request: Request) {
           customerEmail = customer.emailAddress || customerEmail;
         }
       } catch (e) {
-        console.warn(`${e}Profile fetch failed`);
+        console.warn("Profile fetch failed:", e);
       }
     }
 
@@ -50,8 +47,17 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    console.error("API Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) { // Change 'any' to 'unknown'
+    let message = "Internal Server Error";
+    
+    // Type guard for Square-specific errors
+    if (error instanceof SquareError) {
+      message = error.errors?.[0]?.detail || error.message;
+    } else if (error instanceof Error) {
+      message = error.message;
+    }
+
+    console.error("API Error:", message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
