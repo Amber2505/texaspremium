@@ -1,181 +1,57 @@
 import { NextResponse } from "next/server";
-import nodemailer from "nodemailer";
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const square = require('square');
+import { sendPaymentNotification } from '@/lib/email';
+import { SquareClient, SquareEnvironment } from 'square';
+
+const client = new SquareClient({
+  token: process.env.SQUARE_ACCESS_TOKEN!,
+  environment: process.env.SQUARE_ENVIRONMENT === 'production' 
+    ? SquareEnvironment.Production 
+    : SquareEnvironment.Sandbox,
+});
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { transactionId } = body;
+    const { transactionId } = await request.json();
 
-    console.log("📧 Notify payment triggered for transaction:", transactionId);
+    // v43 uses .get({ paymentId: ... })
+    const { payment } = await client.payments.get({ paymentId: transactionId });
 
-    const squareClient = new square.SquareClient({
-      token: process.env.SQUARE_ACCESS_TOKEN,
-      environment: process.env.SQUARE_ENVIRONMENT,
-    });
-
-    let amount = "Payment received via Square";
-    let customerName = "Square Customer";
-    let customerEmail = "Check Square Dashboard";
-
-    let apiResponse = '';  // To capture JSON or error
-
-    // Try to fetch payment details from Square
-    try {
-      console.log("🔍 Fetching payment from Square API...");
-      
-      const { result } = await squareClient.paymentsApi.getPayment(transactionId);
-      
-      console.log("✅ Square API response:", JSON.stringify(result, null, 2));
-      
-      apiResponse = JSON.stringify(result, null, 2);  // Capture successful response
-      
-      if (result.payment) {
-        const payment = result.payment;
-        
-        // Format amount (Square uses cents)
-        if (payment.amountMoney?.amount) {
-          const amountInDollars = Number(payment.amountMoney.amount) / 100;
-          amount = `$${amountInDollars.toFixed(2)} ${payment.amountMoney.currency || 'USD'}`;
-        }
-
-        // Get customer email
-        if (payment.buyerEmailAddress) {
-          customerEmail = payment.buyerEmailAddress;
-        }
-
-        // Try to get customer details
-        if (payment.customerId) {
-          try {
-            const customerResponse = await squareClient.customersApi.retrieveCustomer(payment.customerId);
-            if (customerResponse.result.customer) {
-              const customer = customerResponse.result.customer;
-              const firstName = customer.givenName || '';
-              const lastName = customer.familyName || '';
-              customerName = `${firstName} ${lastName}`.trim() || customer.emailAddress || "Square Customer";
-              
-              if (customer.emailAddress) {
-                customerEmail = customer.emailAddress;
-              }
-            }
-          } catch (customerError) {
-            console.warn("⚠️ Could not fetch customer details:", customerError);
-          }
-        }
-
-        console.log("📊 Extracted payment info:", { amount, customerName, customerEmail });
-      }
-    } catch (squareError: unknown) {
-      console.error("❌ Square API error:", squareError);
-
-      // ✅ FIXED: Use const and proper type
-      const errorDetails: Record<string, unknown> = {};
-      
-      if (squareError instanceof Error) {
-        errorDetails.name = squareError.name;
-        errorDetails.message = squareError.message;
-        errorDetails.stack = squareError.stack;
-      }
-      
-      // Square-specific properties (from ApiError)
-      if (squareError && typeof squareError === 'object') {
-        if ('statusCode' in squareError) {
-          errorDetails.statusCode = (squareError as Record<string, unknown>).statusCode;
-        }
-        if ('errors' in squareError) {
-          errorDetails.errors = (squareError as Record<string, unknown>).errors;
-        }
-        if ('response' in squareError) {
-          errorDetails.response = (squareError as Record<string, unknown>).response;
-        }
-      } else if (typeof squareError === 'string') {
-        errorDetails.message = squareError;
-      }
-
-      console.error("Error details:", errorDetails);
-      
-      apiResponse = `Error: ${JSON.stringify(errorDetails, null, 2)}`;
-      
-      // Continue with fallback values
+    if (!payment || payment.status !== 'COMPLETED') {
+      return NextResponse.json({ success: false, message: 'Payment not completed' });
     }
 
-    // Send email notification
-    console.log("📧 Sending email notification...");
+    let customerName = payment.note || "Square Customer";
+    let customerEmail = payment.buyerEmailAddress || "Check Dashboard";
 
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
+    // v43 uses .get({ customerId: ... })
+    if (payment.customerId) {
+      try {
+        const { customer } = await client.customers.get({ customerId: payment.customerId });
+        if (customer) {
+          customerName = `${customer.givenName || ''} ${customer.familyName || ''}`.trim();
+          customerEmail = customer.emailAddress || customerEmail;
+        }
+      } catch (e) {
+        console.warn("Profile fetch failed");
+      }
+    }
+
+    const amountStr = `$${(Number(payment.amountMoney?.amount) / 100).toFixed(2)} ${payment.amountMoney?.currency}`;
+
+    await sendPaymentNotification({
+      amount: amountStr,
+      customerName,
+      customerEmail,
+      transactionId: payment.id!,
+      timestamp: new Date(),
+      paymentJson: JSON.stringify(payment, (key, value) =>
+        typeof value === 'bigint' ? value.toString() : value, 2
+      ),
     });
 
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: process.env.NOTIFICATION_EMAIL,
-      subject: `💰 New Square Payment: ${amount}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #4CAF50;">New Payment Received via Square</h2>
-          
-          <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="margin-top: 0; color: #333;">Payment Details</h3>
-            <p><strong>Amount:</strong> ${amount}</p>
-            <p><strong>Customer Name:</strong> ${customerName}</p>
-            <p><strong>Customer Email:</strong> ${customerEmail}</p>
-            <p><strong>Transaction ID:</strong> ${transactionId}</p>
-            <p><strong>Date:</strong> ${new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' })}</p>
-            
-            <!-- JSON debug section -->
-            <h4 style="margin-top: 20px; color: #333;">Full Square API Response JSON:</h4>
-            <pre style="background-color: #fff; padding: 10px; border: 1px solid #ddd; overflow-x: auto; font-size: 12px;">
-${apiResponse || 'No response captured'}
-            </pre>
-          </div>
-
-          <div style="background-color: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
-            <p style="margin: 0; color: #1976d2;">
-              <strong>🔗 View in Square Dashboard:</strong><br/>
-              <a href="https://squareup.com/dashboard/sales/transactions/${transactionId}"
-                 style="color: #1976d2;">
-                Click here to view transaction
-              </a>
-            </p>
-          </div>
-          
-          <p style="color: #666; font-size: 12px; margin-top: 30px;">
-            This is an automated notification from Texas Premium Insurance Services.
-          </p>
-        </div>
-      `,
-    };
-
-    await transporter.sendMail(mailOptions);
-    console.log("✅ Email sent successfully!");
-
-    return NextResponse.json({
-      success: true,
-      message: "Payment notification sent",
-      paymentInfo: {
-        amount,
-        customerName,
-        customerEmail,
-        transactionId,
-      },
-    });
-  } catch (error: unknown) {
-    console.error("❌ Notify payment error:", error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    const errorStack = error instanceof Error ? error.stack : undefined;
-    
-    return NextResponse.json(
-      {
-        error: "Failed to send payment notification",
-        errorMessage,
-        stack: errorStack,
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error("API Error:", error);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
