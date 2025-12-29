@@ -12,7 +12,7 @@ export async function POST(request: Request) {
 
     const squareClient = new square.SquareClient({
       token: process.env.SQUARE_ACCESS_TOKEN,
-      environment: square.SquareEnvironment.Production,
+      environment: process.env.SQUARE_ENVIRONMENT,
     });
 
     let amount = "Payment received via Square";
