@@ -8,10 +8,11 @@ import { useSearchParams } from "next/navigation";
 
 export default function ThankYouContent() {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hasNotified = useRef(false); // Prevents duplicate emails on refresh/re-render
   const searchParams = useSearchParams();
 
   useEffect(() => {
-    // Trigger confetti
+    // 1. Trigger confetti
     confetti({
       particleCount: 100,
       spread: 100,
@@ -20,7 +21,7 @@ export default function ThankYouContent() {
       disableForReducedMotion: true,
     });
 
-    // Handle video
+    // 2. Handle video
     const video = videoRef.current;
     if (video) {
       const handleEnded = () => {
@@ -30,26 +31,33 @@ export default function ThankYouContent() {
       video.onended = handleEnded;
     }
 
-    // Send simple payment notification
+    // 3. Send payment notification to your API
     const sendNotification = async () => {
+      // Get the transaction ID from Square's redirect URL
+      // Square usually sends 'transactionId' or 'checkoutId'
+      const transactionId =
+        searchParams.get("transactionId") || searchParams.get("checkoutId");
+
+      // Guard: Don't send if we already sent it in this session, or if no ID exists
+      if (hasNotified.current || !transactionId) {
+        return;
+      }
+
       try {
-        const checkoutId =
-          searchParams.get("checkoutId") ||
-          searchParams.get("transactionId") ||
-          "Unknown";
+        hasNotified.current = true; // Mark as sent immediately
 
         await fetch("/api/notify-payment", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            amount: "Payment received via Square",
-            customerName: "Square Customer",
-            customerEmail: "Check Square Dashboard",
-            transactionId: checkoutId,
+            transactionId: transactionId,
           }),
         });
+        console.log("Notification trigger sent successfully");
       } catch (error) {
         console.error("Failed to send notification:", error);
+        // Reset so it can try again if it failed
+        hasNotified.current = false;
       }
     };
 
@@ -69,11 +77,13 @@ export default function ThankYouContent() {
           src="/ccprocessed.mp4"
           muted
           autoPlay
+          playsInline
           className="mx-auto mb-6 h-48 rounded-lg"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.8, delay: 0.2, ease: easeOut }}
         />
+
         <motion.h1
           className="text-4xl font-bold text-red-800 mb-4"
           initial={{ opacity: 0, y: -20 }}
@@ -82,6 +92,7 @@ export default function ThankYouContent() {
         >
           Thank You!
         </motion.h1>
+
         <motion.p
           className="text-lg text-gray-700 mb-4"
           initial={{ opacity: 0, y: -10 }}
@@ -91,6 +102,7 @@ export default function ThankYouContent() {
           Your payment to Texas Premium Insurance Services is complete.
           We&apos;re grateful for your trust in us!
         </motion.p>
+
         <motion.p
           className="text-lg text-gray-700 mb-8"
           initial={{ opacity: 0, y: -10 }}
@@ -112,7 +124,7 @@ export default function ThankYouContent() {
 
         <Link
           href="/"
-          className="inline-block bg-[#A0103D] text-white font-semibold py-3 px-6 rounded-md hover:bg-[#102a56]"
+          className="inline-block bg-[#A0103D] text-white font-semibold py-3 px-6 rounded-md hover:bg-[#102a56] transition-colors"
         >
           GET QUOTE
         </Link>
