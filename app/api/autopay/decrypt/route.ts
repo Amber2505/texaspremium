@@ -100,6 +100,7 @@ export async function POST(request: NextRequest) {
             ipAddress: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'Unknown',
             action: 'decrypt_view',
           }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } as any
       }
     );
