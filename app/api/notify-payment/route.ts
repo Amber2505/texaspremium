@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
 export async function POST() {
-  // We are now relying 100% on the Webhook to prevent duplicate emails.
-  return NextResponse.json({ message: "Handled by Webhook" });
+  // Completely disabled to prevent duplicates with Webhook
+  return NextResponse.json({ status: "disabled_use_webhook_instead" });
 }

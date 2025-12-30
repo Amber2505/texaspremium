@@ -17,35 +17,27 @@ export async function POST(request: Request) {
     if (!isValid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const event = JSON.parse(body);
-    
-    // GUARD 1: Only trigger on payment updates (this avoids the 'created' duplicate)
-    if (event.type !== 'payment.updated') {
-      return NextResponse.json({ skipped: true }, { status: 200 });
-    }
-
     const payment = event.data?.object?.payment;
 
-    // GUARD 2: Only proceed if status is COMPLETED
-    if (payment && payment.status === 'COMPLETED') {
+    // 1. Log to see which event is hitting you (Check your Vercel/server logs)
+    console.log(`WEBHOOK: Event ${event.type} | Payment Status: ${payment?.status}`);
+
+    // 2. ONLY act if it's the 'payment.updated' AND 'COMPLETED' status
+    if (event.type === 'payment.updated' && payment?.status === 'COMPLETED') {
+      
       const money = payment.amount_money || payment.total_money;
       const amountStr = `$${(Number(money.amount) / 100).toFixed(2)} ${money.currency}`;
 
-      // Name Extraction (Using Amber's data structure)
       const billing = payment.billing_address;
-      const shipping = payment.shipping_address;
-      const firstName = billing?.first_name || shipping?.first_name || "";
-      const lastName = billing?.last_name || shipping?.last_name || "";
-      
-      let customerName = `${firstName} ${lastName}`.trim();
-      if (!customerName) {
-        customerName = payment.card_details?.cardholder_name || payment.note || "Guest Customer";
-      }
+      const customerName = `${billing?.first_name || ""} ${billing?.last_name || ""}`.trim() || 
+                           payment.card_details?.cardholder_name || "Guest";
 
-      // Card details formatting
       const card = payment.card_details?.card;
       const methodStr = `${card?.card_brand || "CARD"} **** ${card?.last_4 || ""} (Exp: ${card?.exp_month}/${card?.exp_year})`;
 
-      await sendPaymentNotification({
+      // 3. FIRE AND FORGET (No 'await')
+      // This sends the email in the background so we can respond to Square immediately
+      sendPaymentNotification({
         amount: amountStr,
         customerName,
         customerEmail: payment.buyer_email_address || "Check Dashboard",
@@ -53,14 +45,18 @@ export async function POST(request: Request) {
         transactionId: payment.id,
         timestamp: new Date(),
         paymentJson: JSON.stringify(event, null, 2),
-      });
+      }).catch(err => console.error("Email error:", err));
 
+      // 4. Respond to Square within milliseconds
       return NextResponse.json({ success: true }, { status: 200 });
     }
 
-    return NextResponse.json({ received: true }, { status: 200 });
+    // Always respond 200 to events we aren't using so Square stops retrying them
+    return NextResponse.json({ ignored: true }, { status: 200 });
+    
   } catch (error) {
-    console.error('Webhook error:', error);
-    return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
+    console.error('Webhook Error:', error);
+    // Even on error, return 200 to Square to stop the email loop during testing
+    return NextResponse.json({ error: 'Internal Error' }, { status: 200 });
   }
 }
