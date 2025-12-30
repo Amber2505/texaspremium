@@ -14,40 +14,40 @@ export async function POST(request: Request) {
       notificationUrl: process.env.SQUARE_NOTIFICATION_URL!,
     });
 
-    if (!isValid) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    if (!isValid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const event = JSON.parse(body);
+    
+    // GUARD 1: Only trigger on payment updates (this avoids the 'created' duplicate)
+    if (event.type !== 'payment.updated') {
+      return NextResponse.json({ skipped: true }, { status: 200 });
+    }
+
     const payment = event.data?.object?.payment;
 
-    // CRITICAL: Only proceed if the payment is COMPLETED. 
-    // This prevents 5 emails as the payment moves through "Approved", "Captured", etc.
+    // GUARD 2: Only proceed if status is COMPLETED
     if (payment && payment.status === 'COMPLETED') {
-      
       const money = payment.amount_money || payment.total_money;
       const amountStr = `$${(Number(money.amount) / 100).toFixed(2)} ${money.currency}`;
 
-      // 1. Better Name Extraction (Billing -> Shipping -> Cardholder -> Note)
-      const firstName = payment.billing_address?.first_name || payment.shipping_address?.first_name || "";
-      const lastName = payment.billing_address?.last_name || payment.shipping_address?.last_name || "";
+      // Name Extraction (Using Amber's data structure)
+      const billing = payment.billing_address;
+      const shipping = payment.shipping_address;
+      const firstName = billing?.first_name || shipping?.first_name || "";
+      const lastName = billing?.last_name || shipping?.last_name || "";
       
       let customerName = `${firstName} ${lastName}`.trim();
-      
       if (!customerName) {
         customerName = payment.card_details?.cardholder_name || payment.note || "Guest Customer";
       }
 
-      // 2. Enhanced Card Details (Brand + Last 4 + Expiry)
+      // Card details formatting
       const card = payment.card_details?.card;
-      const cardBrand = card?.card_brand || "CARD";
-      const last4 = card?.last_4 ? `**** ${card.last_4}` : "";
-      const expiry = card?.exp_month ? ` (Exp: ${card.exp_month}/${card.exp_year})` : "";
-      const methodStr = `${cardBrand} ${last4}${expiry}`;
+      const methodStr = `${card?.card_brand || "CARD"} **** ${card?.last_4 || ""} (Exp: ${card?.exp_month}/${card?.exp_year})`;
 
       await sendPaymentNotification({
         amount: amountStr,
-        customerName: customerName,
+        customerName,
         customerEmail: payment.buyer_email_address || "Check Dashboard",
         method: methodStr,
         transactionId: payment.id,
@@ -55,14 +55,11 @@ export async function POST(request: Request) {
         paymentJson: JSON.stringify(event, null, 2),
       });
 
-      // Return 200 immediately so Square stops retrying
       return NextResponse.json({ success: true }, { status: 200 });
     }
 
-    // For other statuses (like APPROVED), we just say "thanks" but don't send an email
     return NextResponse.json({ received: true }, { status: 200 });
-    
-  } catch (error: unknown) {
+  } catch (error) {
     console.error('Webhook error:', error);
     return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
   }
