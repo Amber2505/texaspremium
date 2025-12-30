@@ -12,6 +12,8 @@ export async function sendPaymentNotification(paymentDetails: {
   amount?: string;
   customerName?: string;
   customerEmail?: string;
+  customerPhone?: string;
+  method?: string;
   transactionId?: string;
   timestamp: Date;
   paymentJson?: string | null;
@@ -35,50 +37,51 @@ export async function sendPaymentNotification(paymentDetails: {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;')
-    : null;
+    : 'No Data';
 
   const mailOptions = {
     from: process.env.EMAIL_USER,
     to: process.env.NOTIFICATION_EMAIL,
-    subject: `💳 New Payment Received: ${paymentDetails.amount}`,
+    subject: `💳 New Payment: ${paymentDetails.amount} - ${paymentDetails.customerName}`,
     html: `
-      <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto;">
-        <div style="background: #A0103D; padding: 20px; border-radius: 8px 8px 0 0;">
-          <h2 style="color: white; margin: 0;">New Payment Received!</h2>
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden;">
+        <div style="background: #A0103D; padding: 20px; text-align: center;">
+          <h2 style="color: white; margin: 0;">Texas Premium Insurance - Payment Received</h2>
         </div>
-        <div style="background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb;">
-          <div style="background: white; padding: 20px; border-radius: 8px;">
-            <h3 style="color: #111827; margin-top: 0;">Payment Details</h3>
-            <table style="width: 100%; border-collapse: collapse;">
-              <tr style="border-bottom: 1px solid #e5e7eb;">
-                <td style="padding: 12px 0; font-weight: 600; color: #374151;">Amount:</td>
-                <td style="padding: 12px 0; color: #059669; font-size: 18px; font-weight: bold;">${paymentDetails.amount || 'N/A'}</td>
-              </tr>
-              <tr style="border-bottom: 1px solid #e5e7eb;">
-                <td style="padding: 12px 0; font-weight: 600; color: #374151;">Customer:</td>
-                <td style="padding: 12px 0; color: #111827;">${paymentDetails.customerName || 'N/A'}</td>
-              </tr>
-              <tr style="border-bottom: 1px solid #e5e7eb;">
-                <td style="padding: 12px 0; font-weight: 600; color: #374151;">Email:</td>
-                <td style="padding: 12px 0; color: #111827;">${paymentDetails.customerEmail || 'N/A'}</td>
-              </tr>
-              <tr style="border-bottom: 1px solid #e5e7eb;">
-                <td style="padding: 12px 0; font-weight: 600; color: #374151;">Transaction ID:</td>
-                <td style="padding: 12px 0; color: #111827; font-family: monospace; font-size: 12px;">${paymentDetails.transactionId || 'N/A'}</td>
-              </tr>
-              <tr>
-                <td style="padding: 12px 0; font-weight: 600; color: #374151;">Date:</td>
-                <td style="padding: 12px 0; color: #111827;">${cstTimestamp}</td>
-              </tr>
-            </table>
-          </div>
-          <div style="background: white; padding: 20px; border-radius: 8px; margin-top: 20px;">
-            <h3 style="color: #111827; margin-top: 0;">📋 Raw Square Data</h3>
-            <div style="background: #1e293b; padding: 20px; border-radius: 8px; overflow-x: auto;">
-              <pre style="color: #4ade80; font-size: 11px; margin: 0; white-space: pre-wrap; font-family: monospace;">${escapedJson || 'No data'}</pre>
+        <div style="padding: 20px; background: #ffffff;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 12px 0; border-bottom: 1px solid #f3f4f6; color: #6b7280;">Amount</td>
+              <td style="padding: 12px 0; border-bottom: 1px solid #f3f4f6; font-weight: bold; color: #059669; text-align: right; font-size: 18px;">${paymentDetails.amount}</td>
+            </tr>
+            <tr>
+              <td style="padding: 12px 0; border-bottom: 1px solid #f3f4f6; color: #6b7280;">Customer Name</td>
+              <td style="padding: 12px 0; border-bottom: 1px solid #f3f4f6; text-align: right; font-weight: bold;">${paymentDetails.customerName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 12px 0; border-bottom: 1px solid #f3f4f6; color: #6b7280;">Email Address</td>
+              <td style="padding: 12px 0; border-bottom: 1px solid #f3f4f6; text-align: right;">${paymentDetails.customerEmail}</td>
+            </tr>
+            <tr>
+              <td style="padding: 12px 0; border-bottom: 1px solid #f3f4f6; color: #6b7280;">Payment Method</td>
+              <td style="padding: 12px 0; border-bottom: 1px solid #f3f4f6; text-align: right;">${paymentDetails.method || 'Card'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 12px 0; border-bottom: 1px solid #f3f4f6; color: #6b7280;">Transaction ID</td>
+              <td style="padding: 12px 0; border-bottom: 1px solid #f3f4f6; font-family: monospace; font-size: 11px; text-align: right;">${paymentDetails.transactionId}</td>
+            </tr>
+            <tr>
+              <td style="padding: 12px 0; color: #6b7280;">Date/Time</td>
+              <td style="padding: 12px 0; text-align: right; font-size: 13px;">${cstTimestamp}</td>
+            </tr>
+          </table>
+          
+          <div style="margin-top: 30px;">
+            <p style="font-weight: bold; color: #374151; font-size: 13px; margin-bottom: 10px;">📋 Raw Square JSON Data:</p>
+            <div style="background: #1e293b; padding: 15px; border-radius: 6px; overflow-x: auto;">
+              <pre style="color: #4ade80; font-size: 11px; margin: 0; white-space: pre-wrap; font-family: monospace;">${escapedJson}</pre>
             </div>
           </div>
-          <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">Automated notification from Texas Premium Insurance Services.</p>
         </div>
       </div>
     `,

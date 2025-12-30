@@ -22,14 +22,20 @@ export async function POST(request: Request) {
     const event = JSON.parse(body);
     const payment = event.data?.object?.payment;
 
-    if (payment && payment.status === 'COMPLETED') {
+    if (payment && (payment.status === 'COMPLETED' || payment.status === 'APPROVED')) {
       const money = payment.amount_money || payment.total_money;
       const amountStr = `$${(Number(money.amount) / 100).toFixed(2)} ${money.currency}`;
 
+      // Webhook JSON uses snake_case
+      const name = payment.card_details?.cardholder_name || payment.note || "Guest Customer";
+      const email = payment.buyer_email_address || "Check Dashboard";
+      const brand = payment.card_details?.card?.card_brand || "Card";
+
       await sendPaymentNotification({
         amount: amountStr,
-        customerName: payment.note || payment.buyer_email_address || 'Square Customer',
-        customerEmail: payment.buyer_email_address || 'Check Dashboard',
+        customerName: name,
+        customerEmail: email,
+        method: brand,
         transactionId: payment.id,
         timestamp: new Date(),
         paymentJson: JSON.stringify(event, null, 2),
@@ -37,8 +43,8 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (error: unknown) { // Change 'any' to 'unknown'
-    const message = error instanceof Error ? error.message : "Unknown Webhook Error";
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Webhook Error";
     console.error('Webhook error:', message);
     return NextResponse.json({ error: 'Internal Error' }, { status: 500 });
   }
