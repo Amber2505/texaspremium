@@ -55,7 +55,8 @@ export async function POST(request: Request) {
       try {
         await Promise.race([emailPromise, timeoutPromise]);
         console.log("✅ Email sent within Square's time limit.");
-      } catch (err: any) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      } catch (_err) {
         console.warn("⚠️ Email took too long or failed, but responding to Square to stop retries.");
       }
       // ----------------------------------
