@@ -8,7 +8,6 @@ export async function POST(request: Request) {
     const body = await request.text();
     const signature = request.headers.get('x-square-hmacsha256-signature') || '';
 
-    // Verify Signature
     const notificationUrl = process.env.SQUARE_NOTIFICATION_URL || 'https://www.texaspremiumins.com/api/square-webhook';
     const isValid = WebhooksHelper.verifySignature({
       requestBody: body,
@@ -22,49 +21,37 @@ export async function POST(request: Request) {
     const event = JSON.parse(body);
     const payment = event.data?.object?.payment;
 
+    // --- THE FIX: STRICT FILTERING ---
+    // Only proceed if the event is 'payment.updated' AND the status is 'COMPLETED'
+    // This ignores 'APPROVED' and 'CAPTURED' events which were causing the extra emails.
     if (event.type === 'payment.updated' && payment?.status === 'COMPLETED') {
+      
+      console.log(`🎯 TARGET REACHED: Payment ${payment.id} is COMPLETED. Sending 1 email.`);
+
       const money = payment.amount_money || payment.total_money;
       const amountStr = `$${(Number(money.amount) / 100).toFixed(2)} ${money.currency}`;
-
       const billing = payment.billing_address;
       const customerName = `${billing?.first_name || ""} ${billing?.last_name || ""}`.trim() || 
                            payment.card_details?.cardholder_name || "Guest";
 
-      const card = payment.card_details?.card;
-      const methodStr = `${card?.card_brand || "CARD"} **** ${card?.last_4 || ""}`;
-
-      // --- THE FIX FOR GMAIL TIMEOUTS ---
-      // We try to send the email, but if it takes more than 1.5 seconds, 
-      // we stop waiting so we can tell Square "Success" before the timeout.
-      console.log(`📧 Attempting email for ${payment.id}...`);
-      
-      const emailPromise = sendPaymentNotification({
+      // Send the email (Using Resend or Gmail)
+      await sendPaymentNotification({
         amount: amountStr,
         customerName,
         customerEmail: payment.buyer_email_address || "Check Dashboard",
-        method: methodStr,
+        method: `${payment.card_details?.card?.card_brand} **** ${payment.card_details?.card?.last_4}`,
         transactionId: payment.id,
         timestamp: new Date(),
         paymentJson: JSON.stringify(event, null, 2),
       });
 
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Email Timeout')), 1500)
-      );
-
-      try {
-        await Promise.race([emailPromise, timeoutPromise]);
-        console.log("✅ Email sent within Square's time limit.");
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      } catch (_err) {
-        console.warn("⚠️ Email took too long or failed, but responding to Square to stop retries.");
-      }
-      // ----------------------------------
-
       return NextResponse.json({ success: true }, { status: 200 });
     }
 
+    // If it's not COMPLETED (e.g., APPROVED), we just log it and say "thanks" to Square
+    console.log(`ℹ️ Skipping event ${event.type} with status ${payment?.status}`);
     return NextResponse.json({ ignored: true }, { status: 200 });
+
   } catch (error: any) {
     console.error('❌ Webhook Error:', error.message);
     return NextResponse.json({ success: true }, { status: 200 });
