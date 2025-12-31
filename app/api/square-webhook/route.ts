@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { sendPaymentNotification } from '@/lib/email';
 import { WebhooksHelper } from 'square';
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 export async function POST(request: Request) {
   // CLONE the request for processing later so we can respond to Square immediately
