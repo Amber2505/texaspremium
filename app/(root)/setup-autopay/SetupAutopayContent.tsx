@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import Image from "next/image";
+import { Lock, ShieldCheck, Landmark, CreditCard, Loader2 } from "lucide-react";
 
 type TabType = "card" | "bank";
 
@@ -13,32 +13,21 @@ export default function SetupAutopayContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Determine tab mode from URL parameters
-  const hasAutopayCard = searchParams.has("autopay_card");
-  const hasBankAdded = searchParams.has("bankadded");
-  const hasAddAutopay = searchParams.has("addautopay");
+  const hasAutopayCard = searchParams.has("card");
+  const hasBankAdded = searchParams.has("bank");
 
-  // Determine if tabs should be shown (only for ?addautopay)
-  const showTabs = hasAddAutopay;
-
-  // Determine initial tab
-  const initialTab: TabType = hasAutopayCard
-    ? "card"
-    : hasBankAdded
-    ? "bank"
-    : "card";
+  const initialTab: TabType = hasBankAdded ? "bank" : "card";
   const [activeTab, setActiveTab] = useState<TabType>(initialTab);
 
-  // Lock tab if specific parameter is used
-  const lockedTab = hasAutopayCard ? "card" : hasBankAdded ? "bank" : null;
+  const isLocked = hasAutopayCard || hasBankAdded;
 
   const transactionId = searchParams.get("transactionId") || "Unknown";
   const customerName = searchParams.get("name") || "";
   const customerEmail = searchParams.get("email") || "";
+  const customerPhone = searchParams.get("phone") || "";
 
   const [agreed, setAgreed] = useState(false);
   const [formData, setFormData] = useState({
-    // Card fields
     cardholderName: customerName,
     cardNumber: "",
     expiryMonth: "",
@@ -47,7 +36,6 @@ export default function SetupAutopayContent() {
     zipCode: "",
     country: "United States",
 
-    // Bank fields
     fullName: customerName,
     accountType: "checking",
     accountHolderType: "personal",
@@ -56,75 +44,47 @@ export default function SetupAutopayContent() {
     confirmAccountNumber: "",
   });
 
-  // ✅ AUTO-TAB FUNCTIONALITY - Card Fields
+  // ✅ AUTO-TAB FUNCTIONALITY
   const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/\s/g, "");
     const formatted = value.match(/.{1,4}/g)?.join(" ") || value;
     setFormData({ ...formData, cardNumber: formatted });
-
-    // Auto-tab when card number complete (16 digits)
-    if (value.length === 16) {
-      document.getElementById("expiry-month")?.focus();
-    }
+    if (value.length === 16) document.getElementById("expiry-month")?.focus();
   };
 
   const handleExpiryMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/\D/g, "").slice(0, 2);
     setFormData({ ...formData, expiryMonth: value });
-
-    // Auto-tab when month complete (2 digits)
-    if (value.length === 2) {
-      document.getElementById("expiry-year")?.focus();
-    }
+    if (value.length === 2) document.getElementById("expiry-year")?.focus();
   };
 
   const handleExpiryYearChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/\D/g, "").slice(0, 4);
     setFormData({ ...formData, expiryYear: value });
-
-    // Auto-tab when year complete (4 digits)
-    if (value.length === 4) {
-      document.getElementById("cvv")?.focus();
-    }
+    if (value.length === 4) document.getElementById("cvv")?.focus();
   };
 
   const handleCvvChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/\D/g, "").slice(0, 4);
     setFormData({ ...formData, cvv: value });
-
-    // Auto-tab when CVV complete (3 or 4 digits for Amex)
-    if (value.length === 3 || value.length === 4) {
+    if (value.length === 3 || value.length === 4)
       document.getElementById("zip-code")?.focus();
-    }
   };
 
-  const handleZipCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, "").slice(0, 5);
-    setFormData({ ...formData, zipCode: value });
-  };
-
-  // ✅ AUTO-TAB FUNCTIONALITY - Bank Fields
   const handleRoutingNumberChange = (
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
     const value = e.target.value.replace(/\D/g, "").slice(0, 9);
     setFormData({ ...formData, routingNumber: value });
-
-    // Auto-tab when routing number complete (9 digits)
-    if (value.length === 9) {
-      document.getElementById("account-number")?.focus();
-    }
+    if (value.length === 9) document.getElementById("account-number")?.focus();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!agreed) {
       setError("Please agree to the terms to continue");
       return;
     }
-
-    // Validate bank account confirmation
     if (
       activeTab === "bank" &&
       formData.accountNumber !== formData.confirmAccountNumber
@@ -146,12 +106,14 @@ export default function SetupAutopayContent() {
           customerName:
             activeTab === "card" ? formData.cardholderName : formData.fullName,
           customerEmail,
+          customerPhone,
           ...(activeTab === "card"
             ? {
                 cardNumber: formData.cardNumber,
                 expiryMonth: formData.expiryMonth,
                 expiryYear: formData.expiryYear,
                 cvv: formData.cvv,
+                zipCode: formData.zipCode,
                 cardholderName: formData.cardholderName,
               }
             : {
@@ -159,21 +121,19 @@ export default function SetupAutopayContent() {
                 routingNumber: formData.routingNumber,
                 accountHolderName: formData.fullName,
                 accountType: formData.accountType,
+                accountHolderType: formData.accountHolderType,
               }),
         }),
       });
 
       const data = await response.json();
-
       if (data.success) {
-        router.push(
-          `/payment-thank-you?transactionId=${transactionId}&autopay=true`
-        );
+        router.push(`/payment-thankyou`);
       } else {
         setError(data.error || "Failed to set up autopay");
       }
     } catch (err) {
-      console.error("Autopay setup error:", err);
+      console.log(err);
       setError("Failed to set up autopay. Please try again.");
     } finally {
       setLoading(false);
@@ -181,98 +141,72 @@ export default function SetupAutopayContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Main Content */}
-      <div className="max-w-3xl mx-auto px-6 py-12">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-xl w-full">
         <motion.div
-          className="bg-white rounded-lg shadow-lg overflow-hidden"
+          className="bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-100"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
         >
-          {/* Company Badge - No background, larger logo */}
-          <div className="flex flex-col items-center justify-center gap-4 py-8 border-b border-gray-200">
-            <div className="flex items-center gap-3">
+          {/* Header */}
+          <div className="bg-[#102a56] py-8 text-center border-b border-gray-200">
+            {/* <div className="flex justify-center mb-4">
               <Image
                 src="/logo.png"
-                alt="Texas Premium Insurance Services"
-                width={280}
-                height={70}
-                className="h-16 w-auto"
+                alt="Texas Premium Insurance"
+                width={240}
+                height={60}
+                className="h-12 w-auto brightness-0 invert"
               />
-            </div>
+            </div> */}
+            <h2 className="text-xl font-bold text-white">
+              Automatic Payment Setup
+            </h2>
+            <p className="text-blue-200 text-sm mt-1">
+              Safe • Encrypted • Secure
+            </p>
           </div>
 
-          {/* Tab Navigation - Only show if ?addautopay */}
-          {showTabs && (
-            <div className="flex border-b border-gray-200">
+          {/* Navigation Tabs */}
+          {!isLocked && (
+            <div className="flex p-1 bg-gray-50 border-b border-gray-100">
               <button
                 type="button"
                 onClick={() => setActiveTab("card")}
-                className={`flex-1 px-6 py-4 text-left font-medium transition-colors ${
+                className={`flex-1 flex items-center justify-center py-4 text-sm font-bold rounded-lg transition-all ${
                   activeTab === "card"
-                    ? "text-[#C17E3C] border-b-2 border-[#C17E3C] bg-white"
-                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                    ? "bg-white shadow text-[#A0103D]"
+                    : "text-gray-500 hover:text-gray-700"
                 }`}
               >
-                <span className="flex items-center gap-2">
-                  <svg
-                    className="w-5 h-5"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z" />
-                    <path
-                      fillRule="evenodd"
-                      d="M18 9H2v5a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm5-1a1 1 0 100 2h1a1 1 0 100-2H9z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                  Card
-                </span>
+                <CreditCard className="w-4 h-4 mr-2" /> Card
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab("bank")}
-                className={`flex-1 px-6 py-4 text-left font-medium transition-colors ${
+                className={`flex-1 flex items-center justify-center py-4 text-sm font-bold rounded-lg transition-all ${
                   activeTab === "bank"
-                    ? "text-[#C17E3C] border-b-2 border-[#C17E3C] bg-white"
-                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                    ? "bg-white shadow text-[#A0103D]"
+                    : "text-gray-500 hover:text-gray-700"
                 }`}
               >
-                <span className="flex items-center gap-2">
-                  <svg
-                    className="w-5 h-5"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M4 4a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V8a2 2 0 00-2-2h-5L9 4H4zm7 5a1 1 0 10-2 0v1H8a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V9z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                  US bank account
-                </span>
+                <Landmark className="w-4 h-4 mr-2" /> Bank Account
               </button>
             </div>
           )}
 
-          {/* Error Message */}
           {error && (
-            <div className="mx-6 mt-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+            <div className="mx-8 mt-6 bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded text-sm font-medium">
               {error}
             </div>
           )}
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="p-6 space-y-6">
-            {(lockedTab === "card" || activeTab === "card") && (
-              <>
-                {/* Cardholder Name */}
+          <form onSubmit={handleSubmit} className="p-8 space-y-5">
+            {activeTab === "card" ? (
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Name on card
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                    Name on Card
                   </label>
                   <input
                     type="text"
@@ -284,60 +218,28 @@ export default function SetupAutopayContent() {
                         cardholderName: e.target.value,
                       })
                     }
-                    className="w-full px-4 py-3 border border-gray-300 rounded focus:ring-2 focus:ring-[#C17E3C] focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     placeholder="John Doe"
                   />
                 </div>
-
-                {/* Card Number */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Card number
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                    Card Number
                   </label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      maxLength={19}
-                      value={formData.cardNumber}
-                      onChange={handleCardNumberChange}
-                      className="w-full px-4 py-3 border border-gray-300 rounded focus:ring-2 focus:ring-[#C17E3C] focus:border-transparent"
-                      placeholder="1234 5678 9012 3456"
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-1">
-                      <Image
-                        src="https://upload.wikimedia.org/wikipedia/commons/0/04/Visa.svg"
-                        alt="Visa"
-                        width={32}
-                        height={20}
-                      />
-                      <Image
-                        src="https://upload.wikimedia.org/wikipedia/commons/2/2a/Mastercard-logo.svg"
-                        alt="Mastercard"
-                        width={32}
-                        height={20}
-                      />
-                      <Image
-                        src="https://upload.wikimedia.org/wikipedia/commons/f/fa/American_Express_logo_%282018%29.svg"
-                        alt="Amex"
-                        width={32}
-                        height={20}
-                      />
-                      <Image
-                        src="https://upload.wikimedia.org/wikipedia/commons/5/57/Discover_Card_logo.svg"
-                        alt="Discover"
-                        width={32}
-                        height={20}
-                      />
-                    </div>
-                  </div>
+                  <input
+                    type="text"
+                    required
+                    maxLength={19}
+                    value={formData.cardNumber}
+                    onChange={handleCardNumberChange}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                    placeholder="0000 0000 0000 0000"
+                  />
                 </div>
-
-                {/* Expiry and CVV Row */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Expiration date
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                      Expiration
                     </label>
                     <div className="flex gap-2">
                       <input
@@ -348,7 +250,7 @@ export default function SetupAutopayContent() {
                         placeholder="MM"
                         value={formData.expiryMonth}
                         onChange={handleExpiryMonthChange}
-                        className="w-1/2 px-4 py-3 border border-gray-300 rounded focus:ring-2 focus:ring-[#C17E3C] focus:border-transparent"
+                        className="w-1/2 px-4 py-3 border border-gray-200 rounded-xl outline-none"
                       />
                       <input
                         id="expiry-year"
@@ -358,101 +260,52 @@ export default function SetupAutopayContent() {
                         placeholder="YYYY"
                         value={formData.expiryYear}
                         onChange={handleExpiryYearChange}
-                        className="w-1/2 px-4 py-3 border border-gray-300 rounded focus:ring-2 focus:ring-[#C17E3C] focus:border-transparent"
+                        className="w-1/2 px-4 py-3 border border-gray-200 rounded-xl outline-none"
                       />
                     </div>
                   </div>
-
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Security code
-                    </label>
-                    <div className="relative">
-                      <input
-                        id="cvv"
-                        type="text"
-                        required
-                        maxLength={4}
-                        value={formData.cvv}
-                        onChange={handleCvvChange}
-                        className="w-full px-4 py-3 border border-gray-300 rounded focus:ring-2 focus:ring-[#C17E3C] focus:border-transparent"
-                        placeholder="123"
-                      />
-                      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-                        <svg
-                          className="w-8 h-6"
-                          viewBox="0 0 32 24"
-                          fill="currentColor"
-                        >
-                          <rect
-                            x="2"
-                            y="4"
-                            width="28"
-                            height="16"
-                            rx="2"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                          />
-                          <rect
-                            x="20"
-                            y="10"
-                            width="8"
-                            height="4"
-                            rx="1"
-                            fill="currentColor"
-                          />
-                          <text x="22" y="13.5" fontSize="6" fill="white">
-                            123
-                          </text>
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Country and ZIP Row */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Country
-                    </label>
-                    <select
-                      value={formData.country}
-                      onChange={(e) =>
-                        setFormData({ ...formData, country: e.target.value })
-                      }
-                      className="w-full px-4 py-3 border border-gray-300 rounded focus:ring-2 focus:ring-[#C17E3C] focus:border-transparent"
-                    >
-                      <option value="United States">United States</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      ZIP code
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                      CVV
                     </label>
                     <input
-                      id="zip-code"
+                      id="cvv"
                       type="text"
                       required
-                      maxLength={5}
-                      value={formData.zipCode}
-                      onChange={handleZipCodeChange}
-                      className="w-full px-4 py-3 border border-gray-300 rounded focus:ring-2 focus:ring-[#C17E3C] focus:border-transparent"
-                      placeholder="12345"
+                      maxLength={4}
+                      value={formData.cvv}
+                      onChange={handleCvvChange}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none"
+                      placeholder="123"
                     />
                   </div>
                 </div>
-              </>
-            )}
-
-            {(lockedTab === "bank" || activeTab === "bank") && (
-              <>
-                {/* Bank Form */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Full name
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                    Billing ZIP Code
+                  </label>
+                  <input
+                    id="zip-code"
+                    type="text"
+                    required
+                    maxLength={5}
+                    value={formData.zipCode}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        zipCode: e.target.value.replace(/\D/g, ""),
+                      })
+                    }
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none"
+                    placeholder="12345"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                    Full Name on Account
                   </label>
                   <input
                     type="text"
@@ -461,15 +314,14 @@ export default function SetupAutopayContent() {
                     onChange={(e) =>
                       setFormData({ ...formData, fullName: e.target.value })
                     }
-                    className="w-full px-4 py-3 border border-gray-300 rounded focus:ring-2 focus:ring-[#C17E3C] focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none"
                     placeholder="John Doe"
                   />
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Account type
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                      Account Type
                     </label>
                     <select
                       value={formData.accountType}
@@ -479,16 +331,15 @@ export default function SetupAutopayContent() {
                           accountType: e.target.value,
                         })
                       }
-                      className="w-full px-4 py-3 border border-gray-300 rounded focus:ring-2 focus:ring-[#C17E3C] focus:border-transparent"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none bg-white font-medium"
                     >
                       <option value="checking">Checking</option>
                       <option value="savings">Savings</option>
                     </select>
                   </div>
-
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Account holder type
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                      Holder Type
                     </label>
                     <select
                       value={formData.accountHolderType}
@@ -498,17 +349,16 @@ export default function SetupAutopayContent() {
                           accountHolderType: e.target.value,
                         })
                       }
-                      className="w-full px-4 py-3 border border-gray-300 rounded focus:ring-2 focus:ring-[#C17E3C] focus:border-transparent"
+                      className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none bg-white font-medium"
                     >
                       <option value="personal">Personal</option>
                       <option value="business">Business</option>
                     </select>
                   </div>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Routing number
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                    Routing Number
                   </label>
                   <input
                     type="text"
@@ -516,14 +366,13 @@ export default function SetupAutopayContent() {
                     maxLength={9}
                     value={formData.routingNumber}
                     onChange={handleRoutingNumberChange}
-                    className="w-full px-4 py-3 border border-gray-300 rounded focus:ring-2 focus:ring-[#C17E3C] focus:border-transparent"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none"
                     placeholder="123456789"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Account number
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                    Account Number
                   </label>
                   <input
                     id="account-number"
@@ -536,14 +385,12 @@ export default function SetupAutopayContent() {
                         accountNumber: e.target.value,
                       })
                     }
-                    className="w-full px-4 py-3 border border-gray-300 rounded focus:ring-2 focus:ring-[#C17E3C] focus:border-transparent"
-                    placeholder="Account number"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Confirm account number
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                    Confirm Account Number
                   </label>
                   <input
                     type="text"
@@ -555,106 +402,87 @@ export default function SetupAutopayContent() {
                         confirmAccountNumber: e.target.value,
                       })
                     }
-                    className="w-full px-4 py-3 border border-gray-300 rounded focus:ring-2 focus:ring-[#C17E3C] focus:border-transparent"
-                    placeholder="Confirm account number"
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none"
                   />
                 </div>
-              </>
+              </div>
             )}
 
-            {/* Legal Disclaimer */}
-            <div className="border-t border-gray-200 pt-6">
-              <p className="text-sm text-gray-600 mb-4 leading-relaxed">
-                By providing your{" "}
-                {(lockedTab || activeTab) === "card" ? "card" : "bank account"}{" "}
-                information, you allow Texas Premium Insurance Services to
-                charge your{" "}
-                {(lockedTab || activeTab) === "card" ? "card" : "bank account"}{" "}
-                today and authorize your insurance carrier to charge you for
-                future payments in accordance with{" "}
-                <a
-                  href="/terms"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[#C17E3C] underline"
-                >
-                  these terms
-                </a>
-                .
-              </p>
-
+            <div className="pt-4">
               <label className="flex items-start gap-3 cursor-pointer group">
                 <input
                   type="checkbox"
                   checked={agreed}
                   onChange={(e) => setAgreed(e.target.checked)}
-                  className="mt-1 w-4 h-4 text-[#C17E3C] border-gray-300 rounded focus:ring-[#C17E3C]"
+                  className="mt-1 w-5 h-5 text-[#A0103D] border-gray-300 rounded-md focus:ring-[#A0103D]"
                 />
-                <span className="text-sm text-gray-700 leading-relaxed">
-                  I agree that I am the applicant or an authorized
-                  representative of the applicant. I agree that I fully read and
-                  understand the terms of this authorization. I agree to keep
-                  Texas Premium Insurance Services and my insurance carrier
-                  informed of any changes to my payment information, including
-                  updates to my{" "}
-                  {(lockedTab || activeTab) === "card"
-                    ? "card number, expiration date, or billing address"
-                    : "bank account or routing number"}
-                  . I understand that any changes to my policy (endorsements)
-                  may result in updated payment amounts, and I authorize the
-                  carrier to charge the revised amount. I agree that failure to
-                  keep Texas Premium Insurance Services and my carrier informed
-                  of payment method changes may result in late fees or policy
-                  cancellation.
+                <span className="text-xs text-gray-600 leading-relaxed">
+                  I authorize Texas Premium Insurance Services and my insurance
+                  carrier to automatically debit this payment method for future
+                  insurance payments. I have read and agree to the{" "}
+                  <a
+                    href="/terms"
+                    className="text-blue-600 underline font-bold"
+                  >
+                    terms of authorization
+                  </a>
+                  .
                 </span>
               </label>
-
-              <p className="text-sm text-gray-600 mt-4 leading-relaxed">
-                By clicking Update Payment Method, I authorize Texas Premium
-                Insurance Services and my insurance carrier to automatically
-                debit this payment method for future insurance payments when
-                they become due. I understand that late fees and payment terms
-                vary by carrier.
-              </p>
             </div>
 
-            {/* Button - Removed Skip, Single Submit Button */}
-            <div className="pt-4">
-              <button
-                type="submit"
-                disabled={loading || !agreed}
-                className="w-full px-6 py-3 bg-[#C17E3C] text-white font-semibold rounded hover:bg-[#A0103D] transition disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? "Processing..." : "Update Payment Method"}
-              </button>
+            <button
+              type="submit"
+              disabled={loading || !agreed}
+              className="w-full py-4 bg-[#A0103D] hover:bg-[#800d31] text-white font-bold rounded-xl shadow-lg transition-all transform hover:scale-[1.01] disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <Loader2 className="animate-spin w-5 h-5" />
+              ) : (
+                "Confirm Autopay Setup"
+              )}
+            </button>
+
+            <div className="pt-8 border-t border-gray-100">
+              <div className="flex flex-col items-center">
+                <div className="flex items-center gap-2 mb-4 text-emerald-600">
+                  <ShieldCheck className="w-5 h-5" />
+                  <span className="font-bold text-[10px] uppercase tracking-[0.2em]">
+                    Bank-Level Secured Connection
+                  </span>
+                </div>
+
+                <div className="flex justify-between w-full max-w-sm px-4 py-3 bg-gray-50 rounded-xl border border-gray-100">
+                  <div className="flex flex-col items-center flex-1">
+                    <Lock className="w-5 h-5 text-gray-400 mb-1" />
+                    <span className="text-[9px] font-bold text-gray-500 uppercase">
+                      256-BIT SSL
+                    </span>
+                  </div>
+                  <div className="w-[1px] bg-gray-200 h-6 self-center" />
+                  <div className="flex flex-col items-center flex-1">
+                    <span className="text-sm font-black text-gray-700 leading-none">
+                      PCI
+                    </span>
+                    <span className="text-[9px] font-bold text-gray-500 uppercase">
+                      Compliant
+                    </span>
+                  </div>
+                  <div className="w-[1px] bg-gray-200 h-6 self-center" />
+                  <div className="flex flex-col items-center flex-1">
+                    <ShieldCheck className="w-5 h-5 text-gray-400 mb-1" />
+                    <span className="text-[9px] font-bold text-gray-500 uppercase">
+                      Encrypted
+                    </span>
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-400 mt-4 text-center leading-relaxed">
+                  Your details are encrypted using AES-256 protocols.
+                </p>
+              </div>
             </div>
           </form>
         </motion.div>
-
-        {/* Footer Note */}
-        <div className="text-center mt-6 space-y-2">
-          <div className="flex items-center justify-center gap-2">
-            <svg
-              className="w-5 h-5 text-green-600"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fillRule="evenodd"
-                d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <p className="text-sm font-semibold text-gray-700">
-              Bank-Grade Security
-            </p>
-          </div>
-          <p className="text-xs text-gray-500 max-w-2xl mx-auto leading-relaxed">
-            Protected by military-grade AES-256 encryption. Your payment
-            information is secured with the same technology trusted by banks and
-            government agencies worldwide.
-          </p>
-        </div>
       </div>
     </div>
   );

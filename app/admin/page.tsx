@@ -1,5 +1,3 @@
-// /admin/page
-
 "use client";
 import { useState, useEffect } from "react";
 import {
@@ -9,6 +7,7 @@ import {
   Calendar,
   Shield,
   MessageSquare,
+  CreditCard,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -308,6 +307,31 @@ export default function AdminLoginPage() {
             </p>
             <div className="mt-4 flex items-center text-green-600 font-medium group-hover:translate-x-2 transition-transform">
               Open Reminders →
+            </div>
+          </button>
+
+          {/* Autopay Portal Card */}
+          <button
+            onClick={() => navigateTo("/admin/autopay")}
+            className="group bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 p-8 text-left border-2 border-transparent hover:border-red-500"
+          >
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-16 h-16 bg-gradient-to-r from-red-600 to-red-800 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                <CreditCard className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Autopay Portal
+                </h2>
+                <p className="text-gray-600 text-sm">Manage payment methods</p>
+              </div>
+            </div>
+            <p className="text-gray-600">
+              Securely view and manage customer autopay information. Access
+              encrypted payment details and billing records.
+            </p>
+            <div className="mt-4 flex items-center text-red-600 font-medium group-hover:translate-x-2 transition-transform">
+              Open Autopay Portal →
             </div>
           </button>
         </div>

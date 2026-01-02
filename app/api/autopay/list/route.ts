@@ -7,12 +7,12 @@ export async function GET() {
     const db = client_db.db("db");
     const autopayCollection = db.collection("autopay_customers");
 
-    // ✅ FIXED: Only use inclusion (1) - MongoDB projection
     const customers = await autopayCollection
       .find({})
       .project({
         _id: 1,
         customerName: 1,
+        customerPhone: 1,
         customerEmail: 1,
         method: 1,
         status: 1,
@@ -22,7 +22,6 @@ export async function GET() {
         cardBrand: 1,
         accountLast4: 1,
         accountType: 1,
-        // Encrypted fields automatically excluded by not listing them
       })
       .sort({ createdAt: -1 })
       .toArray();
