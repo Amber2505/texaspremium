@@ -37,6 +37,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        <meta name="apple-mobile-web-app-title" content="TPIS" />
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-FPGRHNVV8M"
           strategy="afterInteractive"
