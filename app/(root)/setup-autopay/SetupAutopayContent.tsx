@@ -421,7 +421,7 @@ export default function SetupAutopayContent() {
                   carrier to automatically debit this payment method for future
                   insurance payments. I have read and agree to the{" "}
                   <a
-                    href="/terms"
+                    href="/terms#purchases-and-payment"
                     className="text-blue-600 underline font-bold"
                   >
                     terms of authorization
