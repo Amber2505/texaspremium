@@ -422,6 +422,8 @@ export default function SetupAutopayContent() {
                   insurance payments. I have read and agree to the{" "}
                   <a
                     href="/terms#purchases-and-payment"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="text-blue-600 underline font-bold"
                   >
                     terms of authorization
