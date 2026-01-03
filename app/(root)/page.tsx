@@ -96,9 +96,9 @@ export default function HomePage() {
             </h1>
             <p className="text-xl text-gray-700 mb-6">
               With access to 40+ leading companies and over 10 years of industry
-              expertise, we'll guide you to the right coverage. Don't navigate
-              the insurance maze alone - schedule your free consultation and let
-              us help you find the perfect fit.
+              expertise, we&apos;ll guide you to the right coverage. Don&apos;t
+              navigate the insurance maze alone - schedule your free
+              consultation and let us help you find the perfect fit.
             </p>
           </div>
 
@@ -123,8 +123,9 @@ export default function HomePage() {
                 <p className="text-3xl">
                   Not sure what kind of coverage you need?
                 </p>{" "}
-                Speak with one of our professional agents we'll help you find
-                the best and most affordable insurance option tailored for you.
+                Speak with one of our professional agents we&apos;ll help you
+                find the best and most affordable insurance option tailored for
+                you.
               </div>
               <a
                 href="tel:+14697295185"
@@ -477,7 +478,7 @@ export default function HomePage() {
               <p className="text-gray-700 mb-4 italic">
                 Outstanding customer service! Texas Premium Insurance Services
                 is truly a one-stop shop for all your insurance needs across the
-                state. No matter where you are in Texas, they've got you
+                state. No matter where you are in Texas, they&apos;ve got you
                 covered!
               </p>
               <p className="text-gray-900 font-semibold">Maya Chen</p>
