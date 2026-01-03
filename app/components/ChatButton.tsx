@@ -860,6 +860,36 @@ export default function ChatButton() {
     });
   }, []);
 
+  useEffect(() => {
+    const handleOpenLiveAgent = () => {
+      console.log("🎯 Live agent chat triggered from home page");
+
+      // Open chat
+      setOpen(true);
+
+      // Show live agent form after a brief delay
+      setTimeout(() => {
+        setShowLiveAgentForm(true);
+
+        // Clear the flag
+        sessionStorage.removeItem("openLiveAgentChat");
+      }, 300);
+    };
+
+    // Check for flag on mount (in case user refreshed page)
+    if (sessionStorage.getItem("openLiveAgentChat") === "true") {
+      console.log("📌 Live agent flag found in sessionStorage");
+      handleOpenLiveAgent();
+    }
+
+    // Listen for custom event
+    window.addEventListener("openLiveAgentChat", handleOpenLiveAgent);
+
+    return () => {
+      window.removeEventListener("openLiveAgentChat", handleOpenLiveAgent);
+    };
+  }, []);
+
   // Restore chat session on mount
   useEffect(() => {
     const restoredSession = loadChatFromStorage();
