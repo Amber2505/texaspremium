@@ -32,19 +32,16 @@ export default function HomePage() {
     }
   }, []);
 
-  // ✅ NEW FUNCTION: Open chat with live agent form
   const openLiveAgentChat = () => {
-    // Set flag for ChatButton to open with live agent form
     sessionStorage.setItem("openLiveAgentChat", "true");
-
-    // Dispatch custom event to notify ChatButton
     window.dispatchEvent(new CustomEvent("openLiveAgentChat"));
   };
 
   return (
     <>
-      <div className="relative bg-[#E5E5E5] py-16 px-4 sm:px-6 lg:px-8">
-        {/* Main container with flex layout for text and image */}
+      {/* ===== SECTION 1: HERO ===== */}
+      {/* MOBILE: py-8 (32px) | TABLET+: py-12 (48px) */}
+      <div className="relative bg-[#E5E5E5] py-8 md:py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between">
           {/* Left side: Text and Button */}
           <div className="lg:w-1/2 text-center lg:text-left">
@@ -87,20 +84,21 @@ export default function HomePage() {
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between mt-16"></div>
-
+      {/* ===== SECTION 2: PERSONALIZED SOLUTIONS ===== */}
+      <div className="relative bg-[#E5E5E5] py-8 md:py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between">
-          {/* Left side: Text and Button */}
+          {/* Left side: Text */}
           <div className="lg:w-1/2 text-center lg:text-left">
             <h1 className="text-5xl font-bold text-gray-900 mb-4">
               Experience the Difference: Personalized Insurance Solutions
             </h1>
             <p className="text-xl text-gray-700 mb-6">
-              With acess to 40+ leading companies and over 10 years of industry
-              expertise, we&apos;ll guide you to the right coverage. Don&apos;t
-              navigate the insurance maze alone - schedule your free
-              consultation and let us help you find the perfect fit.
+              With access to 40+ leading companies and over 10 years of industry
+              expertise, we'll guide you to the right coverage. Don't navigate
+              the insurance maze alone - schedule your free consultation and let
+              us help you find the perfect fit.
             </p>
           </div>
 
@@ -125,9 +123,8 @@ export default function HomePage() {
                 <p className="text-3xl">
                   Not sure what kind of coverage you need?
                 </p>{" "}
-                Speak with one of our professional agents we&apos;ll help you
-                find the best and most affordable insurance option tailored for
-                you.
+                Speak with one of our professional agents we'll help you find
+                the best and most affordable insurance option tailored for you.
               </div>
               <a
                 href="tel:+14697295185"
@@ -138,11 +135,11 @@ export default function HomePage() {
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between mt-16"></div>
-
-        {/* New Section with Interactive GIF Cards */}
-        <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+      {/* ===== SECTION 3: INSURANCE TYPES (GIF CARDS) ===== */}
+      <div className="relative bg-[#E5E5E5] py-8 md:py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
             {/* Auto Card */}
             <a
@@ -204,9 +201,7 @@ export default function HomePage() {
                 />
               </div>
               <p className="text-xl font-bold text-gray-900 mb-2">Rental</p>
-              <p className="text-sm text-gray-500 mb-6">
-                Protect your business
-              </p>
+              <p className="text-sm text-gray-500 mb-6">Protect your rental</p>
               <div className="inline-block bg-[#a0103d] text-white font-semibold py-2 px-6 rounded-md group-hover:bg-[#102a56] transition-colors">
                 Quote Now &gt;&gt;
               </div>
@@ -283,10 +278,12 @@ export default function HomePage() {
             </a>
           </div>
         </div>
+      </div>
 
-        {/* Let's Start Saving Section - Fully Clickable Cards */}
-        <div className="max-w-7xl mx-auto py-20 px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
+      {/* ===== SECTION 4: READY TO START SAVING (CTA) ===== */}
+      <div className="relative bg-[#E5E5E5] py-8 md:py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
               Ready to start saving?
             </h2>
@@ -296,7 +293,7 @@ export default function HomePage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-            {/* Box 1: Clickable Call Card */}
+            {/* Box 1: Call */}
             <a
               href="tel:+14697295185"
               className="group bg-white rounded-2xl shadow-lg p-10 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
@@ -328,7 +325,7 @@ export default function HomePage() {
               </div>
             </a>
 
-            {/* Box 2: Clickable Text Card */}
+            {/* Box 2: Text */}
             <a
               href="sms:+14697295185"
               className="group bg-white rounded-2xl shadow-lg p-10 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
@@ -360,7 +357,7 @@ export default function HomePage() {
               </div>
             </a>
 
-            {/* Box 3: Clickable Chat Card - ✅ UPDATED TO OPEN LIVE AGENT */}
+            {/* Box 3: Chat Live */}
             <button
               onClick={openLiveAgentChat}
               className="group bg-white rounded-2xl shadow-lg p-10 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
@@ -395,9 +392,11 @@ export default function HomePage() {
             </button>
           </div>
         </div>
+      </div>
 
-        {/* Customer Testimonials Section */}
-        <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+      {/* ===== SECTION 5: CUSTOMER TESTIMONIALS ===== */}
+      <div className="relative bg-[#E5E5E5] py-8 md:py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
               What are customers saying?
@@ -478,7 +477,7 @@ export default function HomePage() {
               <p className="text-gray-700 mb-4 italic">
                 Outstanding customer service! Texas Premium Insurance Services
                 is truly a one-stop shop for all your insurance needs across the
-                state. No matter where you are in Texas, they&apos;ve got you
+                state. No matter where you are in Texas, they've got you
                 covered!
               </p>
               <p className="text-gray-900 font-semibold">Maya Chen</p>
@@ -494,10 +493,11 @@ export default function HomePage() {
             </div>
           </div>
         </div>
+      </div>
 
-        <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between mt-16"></div>
-
-        <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
+      {/* ===== SECTION 6: 3 EASY STEPS ===== */}
+      <div className="relative bg-[#E5E5E5] py-8 md:py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
               Compare and Save in 3 Easy Steps
@@ -601,15 +601,16 @@ export default function HomePage() {
               </p>
             </div>
           </div>
-        </div>
 
-        <div className="text-center mt-12">
-          <a
-            href="/quote"
-            className="inline-block bg-[#A0103D] text-white font-semibold py-3 px-8 rounded-full hover:bg-[#102a56] transition"
-          >
-            Start Your Quote
-          </a>
+          {/* Final CTA Button */}
+          <div className="text-center mt-12">
+            <a
+              href="/auto"
+              className="inline-block bg-[#A0103D] text-white font-semibold py-3 px-8 rounded-full hover:bg-[#102a56] transition"
+            >
+              Start Your Quote
+            </a>
+          </div>
         </div>
       </div>
     </>

@@ -384,7 +384,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                 </svg>
               </a>
             </div>
-            <div className="text-sm text-white">
+            <div className="text-sm text-white text-center">
               <p className="text-white">
                 © {currentYear} Texas Premium Insurance Services, LLC
               </p>
@@ -394,20 +394,6 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                   className="underline text-white hover:text-blue-400"
                 >
                   Terms of Use and Privacy Policy
-                </a>{" "}
-                |{" "}
-                <a
-                  href="/licenses"
-                  className="underline text-white hover:text-blue-400"
-                >
-                  Licenses
-                </a>{" "}
-                |{" "}
-                <a
-                  href="/accessibility"
-                  className="underline text-white hover:text-blue-400"
-                >
-                  Accessibility
                 </a>
               </p>
             </div>

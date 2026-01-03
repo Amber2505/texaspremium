@@ -867,16 +867,31 @@ export default function ChatButton() {
       // Open chat
       setOpen(true);
 
-      // Show live agent form after a brief delay
-      setTimeout(() => {
-        setShowLiveAgentForm(true);
+      // ✅ Check if we should show live agent prompt
+      const shouldShowLiveAgent = sessionStorage.getItem("openLiveAgentChat");
 
-        // Clear the flag
-        sessionStorage.removeItem("openLiveAgentChat");
-      }, 300);
+      if (shouldShowLiveAgent === "true") {
+        // Wait for chat to open and UI to render
+        setTimeout(() => {
+          console.log("💬 Showing live agent welcome message...");
+
+          // ✅ BOT sends welcome message (not user!)
+          setMessages([
+            {
+              role: "assistant",
+              content:
+                "👋 Hi! I'll connect you with a live agent right away. Please provide your information below:",
+              extra: { requestLiveAgent: true },
+            },
+          ]);
+
+          // Clear the flag
+          sessionStorage.removeItem("openLiveAgentChat");
+        }, 300); // Quick delay for UI to render
+      }
     };
 
-    // Check for flag on mount (in case user refreshed page)
+    // Check for flag on mount
     if (sessionStorage.getItem("openLiveAgentChat") === "true") {
       console.log("📌 Live agent flag found in sessionStorage");
       handleOpenLiveAgent();
