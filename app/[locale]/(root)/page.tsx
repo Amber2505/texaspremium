@@ -1,9 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
-import { Link } from "lucide-react";
 
 export default function HomePage() {
   const t = useTranslations("home");

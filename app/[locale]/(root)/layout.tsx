@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import ChatWidget from "../components/ChatButton";
 import { useTranslations, useLocale } from "next-intl";
 
@@ -12,7 +12,6 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
   const locale = useLocale();
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   const [isGetInsuranceOpen, setIsGetInsuranceOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -81,14 +80,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
   const switchLanguage = (newLocale: string) => {
     // Remove the current locale from the pathname and add the new one
     const pathWithoutLocale = pathname.replace(`/${locale}`, "");
-
-    // Preserve all query parameters
-    const queryString = searchParams.toString();
-    const newUrl = `/${newLocale}${pathWithoutLocale}${
-      queryString ? `?${queryString}` : ""
-    }`;
-
-    router.push(newUrl);
+    router.push(`/${newLocale}${pathWithoutLocale}`);
   };
 
   return (
