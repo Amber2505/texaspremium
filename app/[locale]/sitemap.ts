@@ -1,3 +1,4 @@
+// app/[locale]/sitemap.ts
 import { MetadataRoute } from 'next'
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -23,13 +24,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/terms', priority: 0.3, changeFreq: 'yearly' as const },
   ]
 
-  // Flatten the array to create localized versions of every route
+  // 🔥 IMPROVED: Add hreflang alternates for better multilingual SEO
   return routes.flatMap((route) =>
     locales.map((locale) => ({
       url: `${baseUrl}/${locale}${route.path}`,
       lastModified: new Date(),
       changeFrequency: route.changeFreq,
       priority: route.priority,
+      // ✅ NEW: Tell Google about language alternatives
+      alternates: {
+        languages: {
+          en: `${baseUrl}/en${route.path}`,
+          es: `${baseUrl}/es${route.path}`,
+        },
+      },
     }))
   )
 }
