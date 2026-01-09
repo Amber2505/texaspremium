@@ -1,3 +1,4 @@
+// app/[locale]/(root)/layout.tsx
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
@@ -78,9 +79,18 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
   };
 
   const switchLanguage = (newLocale: string) => {
-    // Remove the current locale from the pathname and add the new one
     const pathWithoutLocale = pathname.replace(`/${locale}`, "");
-    router.push(`/${newLocale}${pathWithoutLocale}`);
+
+    // 🔥 NEW: Get query parameters
+    const searchParams = new URLSearchParams(window.location.search);
+    const queryString = searchParams.toString();
+
+    // 🔥 NEW: Build URL with query params preserved
+    const newUrl = `/${newLocale}${pathWithoutLocale}${
+      queryString ? `?${queryString}` : ""
+    }`;
+
+    router.push(newUrl);
   };
 
   return (
