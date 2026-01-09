@@ -1,3 +1,4 @@
+// api/ai-suggestion
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import OpenAI from 'openai';

@@ -1,0 +1,2244 @@
+{
+  "Metadata": {
+  "title": "Texas Premium Insurance Services | Ahorros y protección",
+  "description": "Seguros asequibles para automóviles, hogares y comercios en Texas. ¡Sus ahorros, nuestra prioridad!"
+},
+  "home": {
+    "hero": {
+      "title": "¡Sus ahorros, nuestra prioridad!",
+      "subtitle": "Protegiendo lo que más importa: automóvil, hogar, inquilinos, negocios y más.",
+      "cta": "OBTENGA UNA COTIZACIÓN"
+    },
+    "personalized": {
+      "title": "Experimente la diferencia: soluciones de seguros personalizadas",
+      "description": "Con acceso a más de 40 empresas líderes y más de 10 años de experiencia en el sector, le guiaremos para que encuentre la cobertura adecuada. No navegue solo por el laberinto de los seguros: programe su consulta gratuita y déjenos ayudarle a encontrar la opción perfecta.",
+      "stats": {
+        "companies": {
+          "number": "Más de 40",
+          "label": "EMPRESAS"
+        },
+        "experience": {
+          "number": "más de 10",
+          "label": "AÑOS DE EXPERIENCIA"
+        }
+      },
+      "card": {
+        "question": "¿No está seguro de qué tipo de cobertura necesita?",
+        "description": "Hable con uno de nuestros agentes profesionales y le ayudaremos a encontrar la mejor opción de seguro y la más asequible, adaptada a sus necesidades.",
+        "cta": "LLÁMENOS"
+      }
+    },
+    "insuranceTypes": {
+      "auto": {
+        "title": "Automóvil",
+        "description": "Proteja su automóvil",
+        "cta": "Solicite una cotización ahora >>"
+      },
+      "home": {
+        "title": "Hogar",
+        "description": "Proteja su hogar",
+        "cta": "Solicite una cotización ahora >>"
+      },
+      "motorcycle": {
+        "title": "Motocicleta",
+        "description": "Proteja su vehículo",
+        "cta": "Presupuesto ahora >>"
+      },
+      "commercial": {
+        "title": "Comercial",
+        "description": "Proteja su negocio",
+        "cta": "Solicite una cotización ahora >>"
+      },
+      "other": {
+        "title": "Otros",
+        "description": "Opciones de seguros especializado",
+        "cta": "Contáctenos >>"
+      },
+      "rental": {
+        "title": "Alquiler",
+        "description": "Proteja su alquiler",
+        "cta": "Presupuesto ahora >>"
+      }
+    },
+    "contact": {
+      "title": "¿Listo para empezar a ahorrar?",
+      "subtitle": "Elija una forma de conectarse y obtenga su cotización.",
+      "call": {
+        "title": "Llámenos",
+        "description": "Hable con un agente en cuestión de minutos.",
+        "cta": "Llame ahora"
+      },
+      "text": {
+        "title": "Envíanos un texto",
+        "description": "Respuestas rápidas en su teléfono.",
+        "cta": "Enviar mensaje"
+      },
+      "chat": {
+        "title": "Chat en vivo",
+        "description": "Hable con nosotros aquí mismo, en línea.",
+        "cta": "Iniciar chat"
+      }
+    },
+    "testimonials": {
+      "title": "¿Qué dicen los clientes?",
+      "reviews": {
+        "leslie": {
+          "text": "Servicio excepcional en todo momento por parte de Texas Premium Insurance Services. Me facilitaron la contratación de una nueva póliza y me encontraron un precio estupendo. Poder gestionar todo por mensaje de texto es increíblemente cómodo. ¡Su eficiencia y atención al detalle realmente destacan!",
+          "name": "Leslie Vance"
+        },
+        "darius": {
+          "text": "El personal de Texas Premium Insurance Services es increíblemente atento y siempre está dispuesto a ayudarte. Se toman el tiempo necesario para explicarte la cobertura, las ventajas y los costes, y se dedican a encontrar las mejores tarifas, incluso para aquellos con restricciones de conducción.",
+          "name": "Darius Reed"
+        },
+        "maya": {
+          "text": "¡Un servicio de atención al cliente excepcional! Texas Premium Insurance Services es realmente una ventanilla única para todas tus necesidades de seguros en todo el estado. No importa en qué parte de Texas te encuentres, ¡ellos te cubren!",
+          "name": "Maya Chen"
+        }
+      }
+    },
+    "steps": {
+      "title": "Compare y ahorre en 3 sencillos pasos",
+      "subtitle": "Conseguir la cobertura adecuada nunca ha sido tan fácil",
+      "step1": {
+        "title": "Cuéntenos sobre usted",
+        "description": "Comparta algunos detalles sobre sus necesidades de seguro para que podamos encontrar las mejores opciones para usted."
+      },
+      "step2": {
+        "title": "Compare las principales aseguradoras",
+        "description": "Buscaremos entre más de 40 compañías líderes para ofrecerle las tarifas más competitivas."
+      },
+      "step3": {
+        "title": "Obtenga cobertura y ahorre",
+        "description": "Elija su plan y comience a ahorrar con la cobertura que se adapte a sus necesidades."
+      },
+      "cta": "Inicie su cotización"
+    }
+  },
+  "boats": {
+    "header": {
+      "callToAction": "Llame para obtener una cotización",
+      "title": "Seguro para barcos y embarcaciones en Texas",
+      "subtitle": "¡Proteja sus aventuras náuticas en Texas!",
+      "description": "Esta guía explica qué es el seguro para barcos y embarcaciones, por qué lo necesita, cómo obtenerlo y qué cubre para los propietarios de barcos de Texas que desean proteger sus embarcaciones y actividades acuáticas.",
+      "getStarted": "Empiece ahora",
+      "imageAlt": "Barco en un lago de Texas"
+    },
+    "form": {
+      "title": "Solicite un presupuesto de seguro para barcos y embarcaciones",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "Su nombre completo",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "Su dirección de correo electrónico",
+      "phoneLabel": "Número de teléfono",
+      "phonePlaceholder": "Su número de teléfono",
+      "messageLabel": "Mensaje",
+      "messagePlaceholder": "Cuéntenos cuáles son sus necesidades de seguro para embarcaciones y motos acuáticas",
+      "submitButton": "Enviar consulta",
+      "successMessage": "¡Gracias por su consulta! Un agente se pondrá en contacto con usted en breve.",
+      "errorMessage": "No se ha podido enviar la consulta por SMS. Vuelva a intentarlo o llame al (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "¿Qué es el seguro para embarcaciones y motos acuáticas en Texas?",
+      "paragraph1": "El seguro para embarcaciones y motos acuáticas en Texas es una póliza especializada que protege barcos, motos acuáticas, yates y otras embarcaciones utilizadas con fines recreativos o personales. Cubre los daños a su embarcación, sus pertenencias personales y los riesgos de responsabilidad civil, lo que le garantiza protección financiera durante su estancia en el agua. En Texas, aunque el seguro para embarcaciones no siempre es obligatorio por ley, a menudo lo exigen las entidades crediticias o los puertos deportivos para las embarcaciones financiadas o amarradas.",
+      "paragraph2": "Este seguro protege su embarcación y le garantiza una navegación sin preocupaciones por los lagos, ríos y aguas costeras de Texas."
+    },
+    "whyNeed": {
+      "title": "¿Por qué necesita un seguro para embarcaciones y botes en Texas?",
+      "intro": "El seguro para embarcaciones y motos acuáticas es esencial para proteger su embarcación y cubrir los riesgos de responsabilidad civil mientras navega en Texas. Las razones más comunes para contratar este seguro incluyen:",
+      "reasons": {
+        "lender": {
+          "title": "Requisitos de los prestamistas",
+          "description": "Si su embarcación o moto acuática está financiada, los prestamistas suelen exigir un seguro para proteger su inversión."
+        },
+        "marina": {
+          "title": "Requisitos del puerto deportivo o del almacén",
+          "description": "Muchos puertos deportivos o instalaciones de almacenamiento de Texas exigen una prueba de seguro para atracar o almacenar su embarcación."
+        },
+        "vesselProtection": {
+          "title": "Protección de la embarcación",
+          "description": "Cubre las reparaciones o la sustitución de los daños sufridos por su embarcación o moto acuática a causa de accidentes, robos, vandalismo o desastres naturales, como tormentas."
+        },
+        "liability": {
+          "title": "Cobertura de responsabilidad",
+          "description": "Le protege de la responsabilidad financiera si su embarcación causa lesiones o daños materiales a terceros mientras navega."
+        },
+        "belongings": {
+          "title": "Efectos personales",
+          "description": "Reemplaza los artículos personales de su embarcación, como el equipo de pesca o los dispositivos electrónicos, dañados por eventos cubiertos."
+        },
+        "weather": {
+          "title": "Riesgos relacionados con el clima",
+          "description": "Las zonas costeras y los lagos de Texas son propensos a huracanes, tormentas e inundaciones, que pueden dañar su embarcación."
+        }
+      },
+      "conclusion": "Tanto si utiliza su embarcación para pescar, practicar deportes acuáticos o por placer, el seguro para embarcaciones y motos acuáticas es una inversión inteligente para proteger su embarcación y evitar costosas reparaciones o gastos legales en Texas."
+    },
+    "howItWorks": {
+      "title": "¿Cómo funciona el seguro para embarcaciones y vehículos acuáticos en Texas?",
+      "intro": "El seguro para embarcaciones y vehículos acuáticos en Texas ofrece una cobertura personalizada para todo tipo de embarcaciones, desde pequeñas motos acuáticas hasta grandes yates. Así es como funciona el proceso:",
+      "steps": {
+        "step1": {
+          "title": "Evalúe sus necesidades",
+          "description": "Evalúe el tipo, el valor y el uso de su embarcación o moto acuática (por ejemplo, barco de pesca, moto acuática o yate) para determinar la cobertura que necesita."
+        },
+        "step2": {
+          "title": "Póngase en contacto con nosotros",
+          "intro": "Póngase en contacto con Texas Premium Insurance Services y le ayudaremos a encontrar la póliza de seguro para embarcaciones y motos acuáticas más adecuada.",
+          "bullet1": "Personalizaremos la cobertura de responsabilidad civil, daños físicos, efectos personales y complementos opcionales, como la cobertura de salvamento o remolque.",
+          "bullet2": "Nos aseguraremos de que la póliza cumpla con los requisitos de cualquier prestamista, puerto deportivo o estado."
+        },
+        "step3": {
+          "title": "Emisión de la póliza",
+          "description": "Trabajaremos con las principales aseguradoras para emitir una póliza que proteja su vehículo recreativo y cumpla con las regulaciones de Texas."
+        },
+        "step4": {
+          "title": "Pagos de primas",
+          "description": "Pagará primas (mensuales o anuales) para mantener la cobertura. Le ayudaremos a encontrar opciones asequibles que se adapten a su presupuesto."
+        },
+        "step5": {
+          "title": "Proceso de reclamaciones",
+          "description": "Si su embarcación sufre daños o se enfrenta a una reclamación por responsabilidad civil, póngase en contacto con nosotros y le guiaremos en la presentación de una reclamación a su aseguradora para una resolución rápida."
+        },
+        "step6": {
+          "title": "Asistencia continua",
+          "description": "Supervisaremos su póliza para asegurarnos de que se mantenga actualizada y le recomendaremos ajustes a medida que cambien sus necesidades náuticas o el uso de su embarcación."
+        }
+      },
+      "coverage": {
+        "intro": "El seguro estándar para embarcaciones y motos acuáticas suele cubrir:",
+        "items": {
+          "liability": {
+            "title": "Responsabilidad civil",
+            "description": "Cubre los daños físicos y materiales causados por su embarcación."
+          },
+          "physical": {
+            "title": "Daños físicos",
+            "description": "Reparaciones o sustitución de los daños causados a su embarcación o moto acuática por accidentes u otros eventos cubiertos."
+          },
+          "belongings": {
+            "title": "Efectos personales",
+            "description": "Sustitución de artículos de su embarcación, como equipo de pesca o aparatos electrónicos."
+          },
+          "emergency": {
+            "title": "Asistencia de emergencia",
+            "description": "Cubre el remolque, el suministro de combustible u otra asistencia en el agua si su embarcación sufre una avería."
+          }
+        },
+        "optional": "Se pueden añadir coberturas opcionales, como la retirada por huracán, la retirada de restos de naufragios o la cobertura para navegantes sin seguro, en función de sus necesidades náuticas y de su ubicación en Texas."
+      }
+    },
+    "footer": {
+      "callToAction": "Contrate hoy mismo su seguro para embarcaciones y motos acuáticas"
+    }
+  },
+  "rv": {
+    "header": {
+      "callToAction": "Llame para obtener una cotización",
+      "title": "Seguro para autocaravanas en Texas",
+      "subtitle": "¡Proteja sus aventuras en autocaravana en Texas!",
+      "description": "Esta guía explica qué es el seguro para vehículos recreativos, por qué lo necesita, cómo obtenerlo y qué cubre para los propietarios de vehículos recreativos de Texas que desean proteger sus vehículos recreativos y sus experiencias de viaje.",
+      "getStarted": "Empiece ahora",
+      "imageAlt": "Vehículo recreativo aparcado en un paisaje pintoresco de Texas"
+    },
+    "form": {
+      "title": "Solicite una cotización de seguro para vehículos recreativos",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "Su nombre completo",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "Su dirección de correo electrónico",
+      "phoneLabel": "Número de teléfono",
+      "phonePlaceholder": "Su número de teléfono",
+      "messageLabel": "Mensaje",
+      "messagePlaceholder": "Cuéntenos cuáles son sus necesidades de seguro para autocaravanas",
+      "submitButton": "Enviar consulta",
+      "successMessage": "¡Gracias por su consulta! Un agente se pondrá en contacto con usted en breve.",
+      "errorMessage": "No se ha podido enviar la consulta por SMS. Vuelva a intentarlo o llame al (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "¿Qué es el seguro para autocaravanas en Texas?",
+      "paragraph1": "El seguro para vehículos recreativos en Texas es una póliza especializada que protege los vehículos recreativos, como autocaravanas, remolques de viaje y caravanas, utilizados para viajar, acampar o vivir a tiempo completo. Cubre los daños a su vehículo recreativo, sus pertenencias personales y los riesgos de responsabilidad civil, lo que garantiza la protección financiera durante sus aventuras. En Texas, el seguro para vehículos recreativos suele ser obligatorio si su vehículo recreativo es motorizado o financiado, o si lo utiliza como residencia principal.",
+      "paragraph2": "Este seguro protege su RV y garantiza el cumplimiento de la normativa de Texas, lo que le permite disfrutar de sus viajes con tranquilidad."
+    },
+    "whyNeed": {
+      "title": "¿Por qué necesita un seguro para vehículos recreativos en Texas?",
+      "intro": "El seguro para vehículos recreativos es esencial para proteger su vehículo recreativo y cubrir los riesgos de responsabilidad civil mientras viaja o acampa en Texas. Las razones más comunes para contratar un seguro para vehículos recreativos incluyen:",
+      "reasons": {
+        "legal": {
+          "title": "Requisitos legales",
+          "description": "Las autocaravanas motorizadas en Texas deben tener una cobertura mínima de responsabilidad civil (30/60/25) para cubrir lesiones corporales y daños a la propiedad, similar al seguro de automóvil."
+        },
+        "lender": {
+          "title": "Requisitos del prestamista",
+          "description": "Si su autocaravana está financiada, los prestamistas suelen exigir un seguro para proteger su inversión."
+        },
+        "property": {
+          "title": "Protección de la propiedad",
+          "description": "Cubre las reparaciones o la sustitución de los daños causados a su autocaravana por accidentes, robos, vandalismo o desastres naturales como tormentas."
+        },
+        "liability": {
+          "title": "Cobertura de responsabilidad civil",
+          "description": "Le protege de la responsabilidad financiera si su autocaravana causa lesiones o daños materiales a terceros mientras circula por la carretera o se encuentra en un camping."
+        },
+        "belongings": {
+          "title": "Pertenencias personales",
+          "description": "Reemplaza los artículos personales que se encuentran dentro de su autocaravana, como aparatos electrónicos o equipo de acampada, dañados por eventos cubiertos."
+        },
+        "fullTime": {
+          "title": "Vida a tiempo completo en una autocaravana",
+          "description": "Si vive a tiempo completo en su autocaravana, una cobertura especializada puede protegerla como su residencia principal, de forma similar a un seguro de hogar."
+        }
+      },
+      "conclusion": "Tanto si utiliza su autocaravana para escapadas de fin de semana como para vivir a tiempo completo, el seguro de autocaravanas es una inversión inteligente para proteger su vehículo y evitar costosas reparaciones o gastos legales en Texas."
+    },
+    "howItWorks": {
+      "title": "¿Cómo funciona el seguro para autocaravanas en Texas?",
+      "intro": "El seguro para autocaravanas en Texas ofrece una cobertura personalizada para vehículos recreativos, ya sean motorizados o remolcables. Así es como funciona el proceso:",
+      "steps": {
+        "step1": {
+          "title": "Evalúe sus necesidades",
+          "description": "Evalúe el tipo, el valor y el uso de su RV (por ejemplo, autocaravana, remolque de viaje o caravana) para determinar la cobertura que necesita."
+        },
+        "step2": {
+          "title": "Póngase en contacto con nosotros",
+          "intro": "Póngase en contacto con Texas Premium Insurance Services y le ayudaremos a encontrar la póliza de seguro para RV adecuada.",
+          "bullet1": "Personalizaremos la cobertura de responsabilidad civil, daños físicos, pertenencias personales y complementos opcionales, como asistencia en carretera o cobertura a tiempo completo.",
+          "bullet2": "Nos aseguraremos de que la póliza cumpla con los requisitos de cualquier prestamista o del estado."
+        },
+        "step3": {
+          "title": "Emisión de la póliza",
+          "description": "Trabajaremos con las principales aseguradoras para emitir una póliza que proteja su vehículo recreativo y cumpla con las regulaciones de Texas."
+        },
+        "step4": {
+          "title": "Pagos de primas",
+          "description": "Pagará primas (mensuales o anuales) para mantener la cobertura. Le ayudaremos a encontrar opciones asequibles que se adapten a su presupuesto."
+        },
+        "step5": {
+          "title": "Proceso de reclamaciones",
+          "description": "Si su autocaravana sufre daños o se enfrenta a una reclamación por responsabilidad civil, póngase en contacto con nosotros y le guiaremos en la presentación de una reclamación a su aseguradora para una resolución rápida."
+        },
+        "step6": {
+          "title": "Asistencia continua",
+          "description": "Supervisaremos su póliza para asegurarnos de que se mantenga actualizada y le recomendaremos ajustes a medida que cambien sus necesidades o el uso de su RV."
+        }
+      },
+      "coverage": {
+        "intro": "El seguro estándar para RV suele cubrir:",
+        "items": {
+          "liability": {
+            "title": "Responsabilidad civil",
+            "description": "Cubre los daños físicos y materiales causados por su autocaravana."
+          },
+          "physical": {
+            "title": "Daños físicos",
+            "description": "Reparaciones o sustitución de los daños causados a su autocaravana por accidentes u otros eventos cubiertos."
+          },
+          "belongings": {
+            "title": "Efectos personales",
+            "description": "Sustitución de artículos dentro de su autocaravana, como equipo de acampada o aparatos electrónicos."
+          },
+          "emergency": {
+            "title": "Gastos de emergencia",
+            "description": "Cubre los gastos de alojamiento temporal o de viaje si su RV queda inhabitable debido a un evento cubierto."
+          }
+        },
+        "optional": "Se pueden añadir coberturas opcionales, como asistencia en carretera, responsabilidad civil a tiempo completo o responsabilidad civil durante las vacaciones, en función del uso de su RV y su ubicación en Texas."
+      }
+    },
+    "footer": {
+      "callToAction": "Contrate hoy mismo su seguro para autocaravanas"
+    }
+  },
+  "sr22": {
+    "header": {
+      "callToAction": "Llame para obtener un presupuesto",
+      "title": "Seguro SR-22 en Texas",
+      "subtitle": "¿Necesita un SR-22 en Texas?",
+      "description": "Esta guía explica qué es un SR-22, por qué podría necesitarlo, cómo obtenerlo y qué significa para los conductores de Texas que desean recuperar sus privilegios de conducir.",
+      "getStarted": "Comience ahora",
+      "imageAlt": "Profesional de negocios en una oficina moderna"
+    },
+    "form": {
+      "title": "Solicite una cotización de seguro SR-22",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "Su nombre completo",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "Su dirección de correo electrónico",
+      "phoneLabel": "Número de teléfono",
+      "phonePlaceholder": "Su número de teléfono",
+      "messageLabel": "Mensaje",
+      "messagePlaceholder": "Cuéntenos sus necesidades de SR-22 o su situación al volante",
+      "submitButton": "Enviar consulta",
+      "successMessage": "¡Gracias por su consulta! Un agente se pondrá en contacto con usted en breve.",
+      "errorMessage": "No se ha podido enviar la consulta por SMS. Vuelva a intentarlo o llame al (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "¿Qué es el seguro SR-22 en Texas?",
+      "paragraph1": "En Texas, un SR-22 es un certificado de responsabilidad financiera presentado por su compañía de seguros de automóviles ante el Departamento de Seguridad Pública de Texas (DPS) para demostrar que usted cuenta con la cobertura mínima de seguro de responsabilidad civil exigida por el estado. No es un tipo de seguro, sino un documento que verifica que usted cumple con los requisitos de responsabilidad financiera de Texas, que normalmente se exigen a los conductores de alto riesgo tras infracciones graves de tráfico o suspensiones del permiso de conducir.",
+      "paragraph2": "El SR-22 garantiza que mantenga una cobertura de seguro continua durante un período específico, lo que le permite recuperar o mantener sus privilegios de conducir en Texas."
+    },
+    "whyNeed": {
+      "title": "¿Por qué podría necesitar un SR-22 en Texas?",
+      "intro": "En Texas, se requiere un SR-22 para los conductores que han cometido ciertas infracciones o a los que se les ha suspendido el permiso de conducir. Las razones más comunes incluyen:",
+      "reasons": {
+        "dwi": {
+          "title": "Condenas por conducir bajo los efectos del alcohol o las drogas",
+          "description": "Conducir en estado de embriaguez o bajo los efectos del alcohol o las drogas es un motivo habitual para que se exija un SR-22."
+        },
+        "uninsured": {
+          "title": "Conducir sin seguro",
+          "description": "Conducir un vehículo sin un seguro de responsabilidad civil válido infringe la ley de Texas y a menudo requiere un SR-22."
+        },
+        "suspended": {
+          "title": "Conducir con el permiso suspendido o revocado",
+          "description": "Si le pillan conduciendo con el permiso suspendido, es posible que necesite un SR-22 para recuperarlo."
+        },
+        "violations": {
+          "title": "Infracciones de tráfico graves",
+          "description": "Infracciones como conducir de forma imprudente o acumular demasiados puntos en su historial de conducción pueden dar lugar a la obligación de presentar un SR-22."
+        },
+        "accidents": {
+          "title": "Accidentes con culpa sin seguro",
+          "description": "Causar un accidente sin estar asegurado a menudo requiere un SR-22 para demostrar la responsabilidad financiera futura."
+        },
+        "judgments": {
+          "title": "Incumplimiento del pago de sentencias",
+          "description": "Las sentencias pendientes relacionadas con el tráfico pueden requerir la presentación de un SR-22."
+        }
+      },
+      "conclusion": "El DPS de Texas o un tribunal le notificarán si se requiere un SR-22, normalmente a través de una orden judicial o una carta del DPS."
+    },
+    "howItWorks": {
+      "title": "¿Cómo funciona el seguro SR-22 en Texas?",
+      "intro": "Un SR-22 en Texas es un formulario que su proveedor de seguros presenta ante el DPS de Texas para confirmar que usted tiene al menos el seguro de responsabilidad civil mínimo del estado, que es de 30/60/25 (30 000 dólares por persona, 60 000 dólares por accidente por lesiones corporales y 25 000 dólares por daños materiales). Así es como funciona el proceso:",
+      "steps": {
+        "step1": {
+          "title": "Notificación",
+          "description": "Recibe una orden judicial o una carta del Departamento de Seguridad Pública de Texas (DPS) en la que se le indica que debe presentar un SR-22."
+        },
+        "step2": {
+          "title": "Contáctenos",
+          "intro": "Póngase en contacto con Texas Premium Insurance Services y nos encargaremos del proceso SR-22 por usted, haciéndolo sencillo y sin estrés.",
+          "bullet1": "Si es propietario de un vehículo, podemos proporcionarle una póliza de seguro de automóvil que incluya la presentación del SR-22.",
+          "bullet2": "Si no es propietario de un automóvil, le ayudaremos a obtener una póliza SR-22 para no propietarios que cumpla con los requisitos de Texas."
+        },
+        "step3": {
+          "title": "Presentación del SR-22",
+          "description": "Una vez que su póliza esté vigente, haremos que su aseguradora presente electrónicamente el SR-22 ante el DPS de Texas. La mayoría de las compañías cobran una pequeña tarifa de presentación."
+        },
+        "step4": {
+          "title": "Enviar al DPS",
+          "description": "Además de la presentación electrónica, también debe enviar su documentación SR-22 al DPS de Texas. Puede enviarla utilizando cualquiera de los siguientes métodos:",
+          "mailingAddress": {
+            "title": "Dirección postal",
+            "line1": "Departamento de Seguridad Pública de Texas",
+            "line2": "Servicio de Cumplimiento y Ejecución",
+            "line3": "P.O. Box 4087",
+            "line4": "Austin, TX 78773-0320"
+          },
+          "fax": {
+            "title": "Fax",
+            "number": "(512) 424-2848"
+          },
+          "email": {
+            "title": "Correo electrónico",
+            "address": "driver.improvement@dps.texas.gov"
+          }
+        },
+        "step5": {
+          "title": "Mantener la cobertura",
+          "description": "Debe mantener una cobertura de seguro continua durante el periodo de vigencia del requisito SR-22, que suele ser de 2 años en Texas. Una interrupción en la cobertura dará lugar a sanciones."
+        },
+        "step6": {
+          "title": "Supervisión del DPS",
+          "description": "El DPS de Texas supervisa activamente el estado de su seguro. Si su póliza caduca o se cancela, su aseguradora presentará un formulario SR-26, lo que puede dar lugar a la suspensión de la licencia u otras consecuencias."
+        },
+        "step7": {
+          "title": "Finalización",
+          "description": "Una vez finalizado el periodo SR-22, puede solicitar que se dé por concluida la presentación y nosotros nos coordinaremos con su aseguradora para detener la presentación del SR-22, lo que puede reducir sus primas."
+        }
+      }
+    },
+    "footer": {
+      "callToAction": "Obtenga hoy mismo su seguro SR-22"
+    }
+  },
+  "homeowners": {
+    "header": {
+      "callToAction": "Llame para obtener una cotización",
+      "title": "Seguro para propietarios de viviendas en Texas",
+      "subtitle": "¡Proteja su hogar en Texas!",
+      "description": "Esta guía explica qué es el seguro para propietarios de viviendas, por qué lo necesita, cómo obtenerlo y qué cubre para los propietarios de viviendas de Texas que desean proteger sus propiedades y pertenencias.",
+      "getStarted": "Comience ahora",
+      "imageAlt": "Exterior de una vivienda moderna en Texas"
+    },
+    "form": {
+      "title": "Solicite una cotización de seguro para propietarios de viviendas",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "Su nombre completo",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "Su dirección de correo electrónico",
+      "phoneLabel": "Número de teléfono",
+      "phonePlaceholder": "Su número de teléfono",
+      "messageLabel": "Mensaje",
+      "messagePlaceholder": "Cuéntenos cuáles son sus necesidades en materia de seguro de vivienda",
+      "submitButton": "Enviar consulta",
+      "successMessage": "¡Gracias por su consulta! Un agente se pondrá en contacto con usted en breve.",
+      "errorMessage": "No se ha podido enviar la consulta por SMS. Vuelva a intentarlo o llame al (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "¿Qué es el seguro de vivienda en Texas?",
+      "paragraph1": "El seguro de vivienda en Texas es una póliza que protege su hogar, sus pertenencias personales y los riesgos de responsabilidad civil frente a eventos como incendios, robos, tormentas o lesiones en su propiedad. Proporciona cobertura financiera para reparaciones, sustituciones y gastos legales, lo que garantiza la seguridad de su inversión y su tranquilidad. En Texas, las entidades hipotecarias suelen exigir un seguro de vivienda para proteger sus intereses financieros en su propiedad.",
+      "paragraph2": "Este seguro es esencial para los propietarios de viviendas en Texas debido a los riesgos únicos del estado, como huracanes, granizadas e inundaciones, que pueden causar daños importantes a la propiedad."
+    },
+    "whyNeed": {
+      "title": "¿Por qué necesita un seguro de vivienda en Texas?",
+      "intro": "El seguro de vivienda es fundamental para proteger su hogar y su estabilidad financiera en Texas. Las razones más comunes para contratar un seguro de vivienda incluyen:",
+      "reasons": {
+        "mortgage": {
+          "title": "Requisitos hipotecarios",
+          "description": "La mayoría de los prestamistas exigen un seguro de vivienda como condición para conceder la hipoteca, con el fin de proteger su inversión en su propiedad."
+        },
+        "property": {
+          "title": "Protección de la propiedad",
+          "description": "Cubre los gastos de reparación o reconstrucción si su vivienda sufre daños por eventos cubiertos, como incendios, tormentas de viento o vandalismo."
+        },
+        "belongings": {
+          "title": "Pertenencias personales",
+          "description": "Reemplaza los artículos personales como muebles, aparatos electrónicos o ropa dañados por eventos cubiertos como robos o desastres naturales."
+        },
+        "liability": {
+          "title": "Cobertura de responsabilidad civil",
+          "description": "Le protege de la responsabilidad financiera si alguien resulta herido en su propiedad o si accidentalmente daña la propiedad de otra persona."
+        },
+        "weather": {
+          "title": "Riesgos relacionados con el clima",
+          "description": "Texas es propenso a huracanes, tornados, granizadas e inundaciones, que pueden causar daños importantes a su vivienda y sus pertenencias."
+        },
+        "peace": {
+          "title": "Tranquilidad",
+          "description": "Le garantiza protección financiera frente a eventos inesperados, lo que le permite centrarse en disfrutar de su hogar."
+        }
+      },
+      "conclusion": "Incluso si es propietario de su vivienda, el seguro de hogar es una inversión inteligente para proteger su propiedad y evitar costosas reparaciones o gastos legales en el impredecible entorno de Texas."
+    },
+    "howItWorks": {
+      "title": "¿Cómo funciona el seguro de hogar en Texas?",
+      "intro": "El seguro de vivienda en Texas ofrece una cobertura completa adaptada a las necesidades de su hogar. Así es como funciona el proceso:",
+      "steps": {
+        "step1": {
+          "title": "Evalúe sus necesidades",
+          "description": "Evalúe el valor de su vivienda, sus pertenencias personales y los posibles riesgos de responsabilidad civil para determinar la cantidad de cobertura que necesita."
+        },
+        "step2": {
+          "title": "Póngase en contacto con nosotros",
+          "intro": "Póngase en contacto con Texas Premium Insurance Services y le ayudaremos a encontrar la póliza de seguro de vivienda adecuada.",
+          "bullet1": "Personalizaremos la cobertura para la vivienda, los bienes personales, la responsabilidad civil y los complementos opcionales, como el seguro contra inundaciones o tormentas.",
+          "bullet2": "Nos aseguraremos de que la póliza cumpla con los requisitos del prestamista o con sus necesidades específicas."
+        },
+        "step3": {
+          "title": "Emisión de la póliza",
+          "description": "Trabajaremos con las mejores aseguradoras para emitir una póliza que proteja su vivienda y cumpla con la normativa de Texas."
+        },
+        "step4": {
+          "title": "Pagos de primas",
+          "description": "Usted pagará primas (mensuales o anuales) para mantener la cobertura. Le ayudaremos a encontrar opciones económicas que se adapten a sus necesidades."
+        },
+        "step5": {
+          "title": "Proceso de reclamaciones",
+          "description": "Si su vivienda o sus pertenencias sufren daños, o si se enfrenta a una reclamación por responsabilidad civil, póngase en contacto con nosotros y le guiaremos en el proceso de presentación de una reclamación a su aseguradora para una resolución rápida."
+        },
+        "step6": {
+          "title": "Asistencia continua",
+          "description": "Supervisaremos su póliza para asegurarnos de que se mantenga actualizada y le recomendaremos ajustes a medida que cambien sus necesidades o si realiza reformas o se muda."
+        }
+      },
+      "coverage": {
+        "intro": "El seguro estándar para propietarios de viviendas suele cubrir:",
+        "items": {
+          "dwelling": {
+            "title": "Vivienda",
+            "description": "Costes de reparación o reconstrucción de la estructura de su vivienda."
+          },
+          "personal": {
+            "title": "Bienes personales",
+            "description": "Sustitución de artículos como muebles, aparatos electrónicos o ropa."
+          },
+          "liability": {
+            "title": "Responsabilidad civil",
+            "description": "Protección contra demandas o gastos médicos si alguien resulta herido en su propiedad."
+          },
+          "living": {
+            "title": "Gastos de manutención adicionales",
+            "description": "Gastos de alojamiento temporal si su vivienda queda inhabitable debido a un evento cubierto por la póliza."
+          }
+        },
+        "optional": "Se pueden añadir coberturas opcionales, como un seguro contra inundaciones o una cobertura para artículos de gran valor, en función de sus necesidades y de su ubicación en Texas."
+      }
+    },
+    "footer": {
+      "callToAction": "Obtenga hoy mismo su seguro de vivienda"
+    }
+  },
+  "renters": {
+    "header": {
+      "callToAction": "Llame para obtener una cotización",
+      "title": "Seguro para inquilinos en Texas",
+      "subtitle": "¡Proteja sus pertenencias como inquilino en Texas!",
+      "description": "Esta guía explica qué es el seguro para inquilinos, por qué lo necesita, cómo obtenerlo y qué cubre para los inquilinos de Texas que desean proteger sus bienes personales y su responsabilidad civil.",
+      "getStarted": "Comience ahora",
+      "imageAlt": "Acogedor interior de un apartamento en Texas"
+    },
+    "form": {
+      "title": "Solicite una cotización de seguro para inquilinos",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "Su nombre completo",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "Su dirección de correo electrónico",
+      "phoneLabel": "Número de teléfono",
+      "phonePlaceholder": "Su número de teléfono",
+      "messageLabel": "Mensaje",
+      "messagePlaceholder": "Cuéntenos cuáles son sus necesidades en materia de seguro para inquilinos",
+      "submitButton": "Enviar consulta",
+      "successMessage": "¡Gracias por su consulta! Un agente se pondrá en contacto con usted en breve.",
+      "errorMessage": "No se ha podido enviar la consulta por SMS. Vuelva a intentarlo o llame al (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "¿Qué es el seguro para inquilinos en Texas?",
+      "paragraph1": "El seguro para inquilinos en Texas es una póliza diseñada para proteger a los inquilinos cubriendo sus pertenencias personales, responsabilidad civil y gastos de subsistencia adicionales en caso de acontecimientos inesperados como robos, incendios o desastres naturales. A diferencia del seguro para propietarios, se centra en las pertenencias y la responsabilidad civil del inquilino, no en el edificio en sí, que normalmente está cubierto por el seguro del propietario.",
+      "paragraph2": "Este seguro proporciona tranquilidad a los inquilinos de Texas, garantizando la protección financiera de sus pertenencias y los riesgos de responsabilidad civil en apartamentos, condominios o casas alquiladas."
+    },
+    "whyNeed": {
+      "title": "¿Por qué necesita un seguro para inquilinos en Texas?",
+      "intro": "El seguro para inquilinos es esencial para proteger sus bienes personales y cubrir los riesgos de responsabilidad civil mientras alquila en Texas. Las razones más comunes para contratar un seguro para inquilinos incluyen:",
+      "reasons": {
+        "landlord": {
+          "title": "Requisitos del propietario",
+          "description": "Muchos propietarios o empresas de gestión inmobiliaria de Texas exigen un seguro para inquilinos como condición para el alquiler."
+        },
+        "property": {
+          "title": "Protección de bienes personales",
+          "description": "Cubre el costo de reemplazar artículos personales como aparatos electrónicos, muebles o ropa dañados por eventos cubiertos como incendios o robos."
+        },
+        "liability": {
+          "title": "Cobertura de responsabilidad civil",
+          "description": "Le protege de la responsabilidad financiera si alguien resulta herido en su vivienda alquilada o si accidentalmente daña la propiedad de otra persona."
+        },
+        "weather": {
+          "title": "Riesgos relacionados con el clima",
+          "description": "Texas es propenso a huracanes, tornados e inundaciones, que pueden dañar sus pertenencias; el seguro para inquilinos ayuda a cubrir estas pérdidas."
+        },
+        "living": {
+          "title": "Gastos de vida adicionales",
+          "description": "Paga el alojamiento temporal u otros gastos si su alquiler se vuelve inhabitable debido a un evento cubierto."
+        },
+        "affordable": {
+          "title": "Protección asequible",
+          "description": "El seguro para inquilinos es rentable, ya que suele costar menos de 20 dólares al mes, lo que lo convierte en una inversión inteligente para la seguridad financiera."
+        }
+      },
+      "conclusion": "Aunque su arrendador no lo exija, el seguro para inquilinos es una opción acertada para proteger sus pertenencias y evitar gastos inesperados en el impredecible entorno de Texas."
+    },
+    "howItWorks": {
+      "title": "¿Cómo funciona el seguro para inquilinos en Texas?",
+      "intro": "El seguro para inquilinos en Texas ofrece una cobertura adaptada a las necesidades de los inquilinos. Así es como funciona el proceso:",
+      "steps": {
+        "step1": {
+          "title": "Evalúa tus necesidades",
+          "description": "Evalúa el valor de tus pertenencias personales y los posibles riesgos de responsabilidad civil para determinar la cantidad de cobertura que necesitas."
+        },
+        "step2": {
+          "title": "Contáctanos",
+          "intro": "Ponte en contacto con Texas Premium Insurance Services y te ayudaremos a encontrar la póliza de seguro para inquilinos adecuada.",
+          "bullet1": "Personalizaremos la cobertura para bienes personales, responsabilidad civil, gastos de subsistencia adicionales y complementos opcionales, como cobertura contra inundaciones o joyas.",
+          "bullet2": "Nos aseguraremos de que la póliza cumpla con los requisitos del propietario o del contrato de alquiler."
+        },
+        "step3": {
+          "title": "Emisión de la póliza",
+          "description": "Trabajaremos con las principales aseguradoras para emitir una póliza que proteja sus pertenencias y cumpla con las regulaciones de Texas."
+        },
+        "step4": {
+          "title": "Pagos de primas",
+          "description": "Pagará primas asequibles (mensuales o anuales) para mantener la cobertura. Le ayudaremos a encontrar opciones económicas."
+        },
+        "step5": {
+          "title": "Proceso de reclamaciones",
+          "description": "Si sus pertenencias sufren daños o se enfrenta a una reclamación de responsabilidad civil, póngase en contacto con nosotros y le guiaremos en la presentación de una reclamación a su aseguradora para una resolución rápida."
+        },
+        "step6": {
+          "title": "Asistencia continua",
+          "description": "Supervisaremos su póliza para asegurarnos de que se mantenga actualizada y le recomendaremos ajustes a medida que cambien sus necesidades o si se muda a una nueva vivienda de alquiler."
+        }
+      },
+      "coverage": {
+        "intro": "El seguro de alquiler estándar suele cubrir:",
+        "items": {
+          "personal": {
+            "title": "Bienes personales",
+            "description": "Sustitución o reparación de pertenencias como muebles, aparatos electrónicos o ropa."
+          },
+          "liability": {
+            "title": "Responsabilidad civil",
+            "description": "Protección contra demandas o gastos médicos si alguien resulta herido en su vivienda alquilada."
+          },
+          "living": {
+            "title": "Gastos de manutención adicionales",
+            "description": "Gastos de alojamiento temporal si su alquiler queda inhabitable."
+          },
+          "medical": {
+            "title": "Protección médica para invitados",
+            "description": "Cubre los gastos médicos de los huéspedes que resulten heridos en su propiedad alquilada."
+          }
+        },
+        "optional": "Se pueden añadir coberturas opcionales, como seguro contra inundaciones o protección de artículos de alto valor, en función de sus necesidades y su ubicación en Texas."
+      }
+    },
+    "footer": {
+      "callToAction": "Contrate hoy mismo su seguro para inquilinos"
+    }
+  },
+  "mobileHome": {
+    "header": {
+      "callToAction": "Llame para obtener un presupuesto",
+      "title": "Seguro para casas móviles en Texas",
+      "subtitle": "¡Proteja su casa móvil en Texas!",
+      "description": "Esta guía explica qué es el seguro para casas móviles, por qué lo necesita, cómo obtenerlo y qué cubre para los residentes de Texas que desean proteger su hogar y sus pertenencias.",
+      "getStarted": "Empiece ahora",
+      "imageAlt": "Casa móvil en un paisaje pintoresco de Texas"
+    },
+    "form": {
+      "title": "Solicite una cotización de seguro para casas móviles",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "Su nombre completo",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "Su dirección de correo electrónico",
+      "phoneLabel": "Número de teléfono",
+      "phonePlaceholder": "Su número de teléfono",
+      "messageLabel": "Mensaje",
+      "messagePlaceholder": "Cuéntenos cuáles son sus necesidades de seguro para casas móviles",
+      "submitButton": "Enviar consulta",
+      "successMessage": "¡Gracias por su consulta! Un agente se pondrá en contacto con usted en breve.",
+      "errorMessage": "No se ha podido enviar la consulta por SMS. Vuelva a intentarlo o llame al (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "¿Qué es el seguro para casas móviles en Texas?",
+      "paragraph1": "El seguro para casas móviles en Texas es una póliza especializada diseñada para proteger las casas prefabricadas o móviles, que difieren de las casas tradicionales construidas in situ. Proporciona protección financiera contra daños a su vivienda, pertenencias personales y riesgos de responsabilidad civil. En Texas, los prestamistas suelen exigir un seguro para casas móviles si tiene un préstamo sobre su vivienda o si vive en un parque de casas móviles.",
+      "paragraph2": "Este seguro garantiza que su inversión esté protegida contra riesgos comunes como tormentas, incendios o robos, lo que le da tranquilidad como propietario de una casa móvil en Texas."
+    },
+    "whyNeed": {
+      "title": "¿Por qué necesita un seguro para casas móviles en Texas?",
+      "intro": "Las casas móviles se enfrentan a riesgos únicos debido a su construcción y ubicación, lo que hace que el seguro sea esencial. Las razones comunes para contratar un seguro para casas móviles en Texas incluyen:",
+      "reasons": {
+        "lender": {
+          "title": "Requisitos del prestamista",
+          "description": "Si tiene una hipoteca o un préstamo sobre su casa móvil, es probable que su prestamista le exija un seguro para proteger su inversión."
+        },
+        "park": {
+          "title": "Normas de los parques de casas móviles",
+          "description": "Muchas comunidades de casas móviles de Texas exigen a los residentes que contraten un seguro como condición para residir en ellas."
+        },
+        "weather": {
+          "title": "Riesgos relacionados con el clima",
+          "description": "Texas es propenso a huracanes, tornados y granizadas, que pueden causar daños importantes a las casas móviles."
+        },
+        "theft": {
+          "title": "Robo o vandalismo",
+          "description": "Las casas móviles pueden ser vulnerables al robo o al vandalismo, y el seguro puede cubrir las pérdidas de su propiedad o sus pertenencias."
+        },
+        "liability": {
+          "title": "Protección de responsabilidad civil",
+          "description": "Si alguien se lesiona en su propiedad, la cobertura de responsabilidad civil puede protegerle de los gastos legales y médicos."
+        },
+        "peace": {
+          "title": "Tranquilidad",
+          "description": "El seguro le garantiza protección financiera frente a acontecimientos inesperados, preservando su hogar y su estilo de vida."
+        }
+      },
+      "conclusion": "Aunque no sea obligatorio por ley, el seguro para casas móviles es una inversión inteligente para proteger su hogar y sus pertenencias en el impredecible entorno de Texas."
+    },
+    "howItWorks": {
+      "title": "¿Cómo funciona el seguro para casas móviles en Texas?",
+      "intro": "El seguro para casas móviles en Texas ofrece una cobertura adaptada a las necesidades específicas de las casas prefabricadas. Así es como funciona el proceso:",
+      "steps": {
+        "step1": {
+          "title": "Evalúe sus necesidades",
+          "description": "Determine el valor de su casa móvil, sus pertenencias personales y cualquier estructura adicional (como cobertizos o porches) para garantizar una cobertura adecuada."
+        },
+        "step2": {
+          "title": "Póngase en contacto con nosotros",
+          "intro": "Póngase en contacto con Texas Premium Insurance Services y le guiaremos para encontrar la póliza de seguro para casas móviles adecuada.",
+          "bullet1": "Le ayudaremos a elegir la cobertura para la estructura de su vivienda, sus bienes personales, la responsabilidad civil y complementos opcionales como la cobertura contra inundaciones o tormentas de viento.",
+          "bullet2": "Si alquila su casa móvil, podemos ofrecerle una póliza adaptada a las necesidades de los inquilinos."
+        },
+        "step3": {
+          "title": "Emisión de la póliza",
+          "description": "Una vez que seleccione una póliza, trabajaremos con las principales aseguradoras para emitir su cobertura, asegurándonos de que se cumplan todos los requisitos (como las normas del prestamista o del parque)."
+        },
+        "step4": {
+          "title": "Pagos de primas",
+          "description": "Usted pagará primas (mensuales o anuales) para mantener la cobertura. Le ayudaremos a encontrar opciones asequibles que se ajusten a su presupuesto."
+        },
+        "step5": {
+          "title": "Proceso de reclamaciones",
+          "description": "Si su vivienda sufre daños o se enfrenta a una reclamación por responsabilidad civil, póngase en contacto con nosotros y le ayudaremos a presentar una reclamación a su aseguradora para obtener una resolución rápida."
+        },
+        "step6": {
+          "title": "Asistencia continua",
+          "description": "Supervisaremos su póliza para asegurarnos de que se mantenga actualizada y le recomendaremos ajustes a medida que cambien sus necesidades o si traslada su casa móvil."
+        }
+      },
+      "coverage": {
+        "intro": "El seguro estándar para casas móviles suele cubrir:",
+        "items": {
+          "dwelling": {
+            "title": "Vivienda",
+            "description": "Reparaciones o sustitución de la estructura de su casa móvil."
+          },
+          "personal": {
+            "title": "Bienes personales",
+            "description": "Sustitución de artículos como muebles o aparatos electrónicos."
+          },
+          "liability": {
+            "title": "Responsabilidad",
+            "description": "Protección contra demandas o gastos médicos si alguien resulta herido."
+          },
+          "living": {
+            "title": "Gastos de manutención adicionales",
+            "description": "Gastos de alojamiento temporal si su vivienda queda inhabitable."
+          }
+        },
+        "optional": "Es posible que se recomienden coberturas opcionales, como seguros contra inundaciones o terremotos, en función de su ubicación en Texas."
+      }
+    },
+    "footer": {
+      "callToAction": "Contrate hoy mismo su seguro para casas móviles"
+    }
+  },
+  "commercialAuto": {
+    "header": {
+      "callToAction": "Llame para obtener una cotización",
+      "title": "Seguro de automóvil comercial en Texas",
+      "subtitle": "¡Proteja los vehículos de su empresa en Texas!",
+      "description": "Esta guía explica qué es el seguro de automóvil comercial, por qué lo necesita su empresa, cómo obtenerlo y qué cubre para las empresas de Texas que dependen de vehículos para sus operaciones.",
+      "getStarted": "Empiece ahora",
+      "imageAlt": "Vehículo comercial en un entorno empresarial de Texas"
+    },
+    "form": {
+      "title": "Solicite una cotización de seguro de automóvil comercial",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "Su nombre completo",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "Su dirección de correo electrónico comercial",
+      "phoneLabel": "Número de teléfono",
+      "phonePlaceholder": "Su número de teléfono",
+      "messageLabel": "Mensaje",
+      "messagePlaceholder": "Cuéntenos cuáles son sus necesidades de seguro de automóvil comercial",
+      "submitButton": "Enviar consulta",
+      "successMessage": "¡Gracias por su consulta! Un agente se pondrá en contacto con usted en breve.",
+      "errorMessage": "No se ha podido enviar la consulta por SMS. Vuelva a intentarlo o llame al (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "¿Qué es el seguro de automóvil comercial en Texas?",
+      "paragraph1": "El seguro de automóvil comercial en Texas es una póliza diseñada para proteger los vehículos utilizados con fines comerciales, como furgonetas de reparto, coches de empresa o camiones de servicio. A diferencia del seguro de automóvil personal, cubre riesgos específicos asociados a las operaciones comerciales, como la responsabilidad civil, los daños al vehículo y los incidentes relacionados con los empleados. En Texas, el seguro de automóvil comercial suele ser obligatorio para cumplir con la normativa estatal y proteger los activos de su empresa.",
+      "paragraph2": "Este seguro garantiza que su negocio pueda funcionar sin problemas, incluso después de accidentes, robos u otros incidentes que involucren a sus vehículos comerciales."
+    },
+    "whyNeed": {
+      "title": "¿Por qué necesita un seguro de automóvil comercial en Texas?",
+      "intro": "Las empresas que dependen de vehículos necesitan un seguro de automóvil comercial para protegerse contra pérdidas financieras y cumplir con las leyes de Texas. Entre las razones más comunes para contratar un seguro de automóvil comercial se incluyen:",
+      "reasons": {
+        "legal": {
+          "title": "Requisitos legales",
+          "description": "Texas exige a las empresas que contraten una cobertura mínima de responsabilidad civil (30/60/25) para los vehículos utilizados con fines comerciales, con el fin de cubrir lesiones corporales y daños materiales."
+        },
+        "asset": {
+          "title": "Protección de los activos empresariales",
+          "description": "Protege su inversión en vehículos, que son fundamentales para sus operaciones, contra daños, robos o vandalismo."
+        },
+        "employee": {
+          "title": "Seguridad de los empleados",
+          "description": "Cubre los accidentes en los que se vean involucrados los empleados que conducen vehículos de la empresa, incluidos los gastos médicos o las reclamaciones por responsabilidad civil."
+        },
+        "client": {
+          "title": "Requisitos de los clientes o contratos",
+          "description": "Muchos clientes o contratos exigen una prueba de seguro de automóvil comercial antes de hacer negocios."
+        },
+        "liability": {
+          "title": "Riesgos de responsabilidad",
+          "description": "Protege su negocio de demandas judiciales si un vehículo de la empresa causa lesiones o daños materiales a terceros."
+        },
+        "continuity": {
+          "title": "Continuidad del negocio",
+          "description": "Garantiza que su negocio pueda recuperarse rápidamente de incidentes relacionados con vehículos sin una carga financiera significativa."
+        }
+      },
+      "conclusion": "Aunque no sea obligatorio por ley, el seguro de automóvil comercial es esencial para que las empresas mitiguen los riesgos y mantengan la estabilidad operativa."
+    },
+    "howItWorks": {
+      "title": "¿Cómo funciona el seguro de automóvil comercial en Texas?",
+      "intro": "El seguro de automóviles comerciales en Texas ofrece una cobertura personalizada para los vehículos utilizados en las operaciones comerciales. Así es como funciona el proceso:",
+      "steps": {
+        "step1": {
+          "title": "Evalúe sus necesidades",
+          "description": "Evalúe los tipos de vehículos que utiliza su empresa (por ejemplo, furgonetas, camiones o flotas), su valor y los riesgos asociados a sus operaciones."
+        },
+        "step2": {
+          "title": "Póngase en contacto con nosotros",
+          "intro": "Póngase en contacto con Texas Premium Insurance Services y le ayudaremos a encontrar la póliza de seguro de automóvil comercial adecuada.",
+          "bullet1": "Personalizaremos la cobertura de responsabilidad civil, daños físicos, conductores sin seguro o con seguro insuficiente y complementos opcionales como la asistencia en carretera.",
+          "bullet2": "Si tiene empleados que conducen, le garantizamos la cobertura de responsabilidad civil para vehículos alquilados y no propios."
+        },
+        "step3": {
+          "title": "Emisión de la póliza",
+          "description": "Trabajaremos con las principales aseguradoras para emitir una póliza que cumpla con los requisitos de Texas y las necesidades de su negocio, incluidas las demandas de cobertura específicas de cada cliente."
+        },
+        "step4": {
+          "title": "Pagos de primas",
+          "description": "Pagará primas (mensuales o anuales) para mantener la cobertura. Le ayudaremos a encontrar opciones rentables que se adapten a su presupuesto."
+        },
+        "step5": {
+          "title": "Proceso de reclamaciones",
+          "description": "Si se produce un accidente o una pérdida, póngase en contacto con nosotros y le guiaremos a través del proceso de presentación de una reclamación a su aseguradora para una resolución rápida."
+        },
+        "step6": {
+          "title": "Asistencia continua",
+          "description": "Supervisaremos su póliza para garantizar que siga cumpliendo con la normativa y le recomendaremos actualizaciones a medida que su negocio crezca o se incorporen nuevos vehículos."
+        }
+      },
+      "coverage": {
+        "intro": "El seguro de automóvil comercial estándar suele cubrir:",
+        "items": {
+          "liability": {
+            "title": "Responsabilidad civil",
+            "description": "Cubre las lesiones corporales y los daños materiales causados por sus vehículos."
+          },
+          "physical": {
+            "title": "Daños físicos",
+            "description": "Reparaciones o sustitución por daños a los vehículos de su empresa."
+          },
+          "uninsured": {
+            "title": "Conductores sin seguro o con seguro insuficiente",
+            "description": "Protección si otro conductor carece de un seguro adecuado."
+          },
+          "medical": {
+            "title": "Gastos médicos",
+            "description": "Cubre los gastos médicos por lesiones sufridas en un accidente."
+          }
+        },
+        "optional": "Se pueden añadir coberturas opcionales, como protección de la carga o remolque, en función de las necesidades de su negocio."
+      }
+    },
+    "footer": {
+      "callToAction": "Contrate hoy mismo su seguro de automóvil comercial"
+    }
+  },
+  "cgl": {
+    "header": {
+      "callToAction": "Llame para obtener una cotización",
+      "title": "Seguro de responsabilidad civil general comercial",
+      "subtitle": "¿Proteger su negocio en Texas?",
+      "description": "Esta guía explica qué es el seguro de responsabilidad civil general comercial (CGL), por qué lo necesita, cómo obtenerlo y cómo Texas Premium Insurance Services mantiene su negocio seguro.",
+      "getStarted": "Empiece ahora",
+      "imageAlt": "Profesional de negocios en una oficina moderna"
+    },
+    "form": {
+      "title": "Solicite una cotización de seguro CGL",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "Su nombre completo",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "Su dirección de correo electrónico",
+      "phoneLabel": "Número de teléfono",
+      "phonePlaceholder": "Su número de teléfono",
+      "messageLabel": "Mensaje",
+      "messagePlaceholder": "Cuéntenos sobre su negocio o sus necesidades de cobertura",
+      "submitButton": "Enviar consulta",
+      "successMessage": "¡Gracias por su consulta! Nos pondremos en contacto con usted pronto."
+    },
+    "whatIs": {
+      "title": "¿Qué es el seguro de responsabilidad civil general comercial?",
+      "paragraph1": "El seguro de responsabilidad civil general comercial (CGL) es una póliza fundamental para las empresas de Texas, ya que protege contra riesgos comunes como lesiones corporales, daños a la propiedad y daños publicitarios causados por sus operaciones, productos o instalaciones. Cubre los gastos legales, los acuerdos extrajudiciales y los gastos médicos si un tercero (por ejemplo, un cliente o un proveedor) demanda a su empresa.",
+      "paragraph2": "El CGL es esencial para empresas como contratistas, minoristas, restaurantes y oficinas. En Texas Premium Insurance Services, ofrecemos pólizas CGL personalizadas para proteger su empresa de Texas de responsabilidades inesperadas. Llámenos al",
+      "paragraph2End": "para obtener más información."
+    },
+    "whyNeed": {
+      "title": "¿Por qué necesita un seguro CGL?",
+      "intro": "El seguro CGL es vital para que las empresas de Texas eviten la ruina financiera por demandas o reclamaciones. Las razones por las que lo necesita incluyen:",
+      "reasons": {
+        "legal": {
+          "title": "Protección legal",
+          "description": "Cubre los gastos legales si un cliente resbala y se cae en su tienda o si un producto causa daños."
+        },
+        "contract": {
+          "title": "Requisitos contractuales",
+          "description": "Muchos clientes, propietarios o proveedores exigen una cobertura CGL antes de firmar contratos."
+        },
+        "financial": {
+          "title": "Seguridad financiera",
+          "description": "Paga los daños o las facturas médicas, evitando gastos de bolsillo que podrían llevar a su empresa a la quiebra."
+        },
+        "reputation": {
+          "title": "Reputación",
+          "description": "Demuestra profesionalidad y responsabilidad ante los clientes y socios."
+        },
+        "compliance": {
+          "title": "Cumplimiento normativo",
+          "description": "Algunas industrias de Texas exigen un seguro CGL para cumplir con las normas de licencia o reglamentarias (consulte con"
+        }
+      },
+      "conclusion": "Proteja su negocio hoy mismo. Llame a Texas Premium Insurance Services al"
+    },
+    "howItWorks": {
+      "title": "¿Cómo funciona el seguro CGL?",
+      "intro": "Contratar un seguro CGL para su negocio en Texas es muy sencillo con Texas Premium Insurance Services. Este es el proceso:",
+      "steps": {
+        "step1": {
+          "title": "Evalúe sus necesidades",
+          "description": "Identifique el tipo, el tamaño y los riesgos de su negocio (por ejemplo, construcción, comercio minorista o servicios profesionales). Revise las regulaciones de la industria en"
+        },
+        "step2": {
+          "title": "Contáctenos",
+          "intro": "Llame al",
+          "description": "para hablar con nuestro equipo. Recopilaremos información sobre su negocio, incluyendo:",
+          "items": {
+            "type": "Tipo y tamaño de la empresa",
+            "revenue": "Ingresos anuales y nómina",
+            "location": "Ubicación y operaciones",
+            "claims": "Historial de reclamaciones"
+          }
+        },
+        "step3": {
+          "title": "Elija su cobertura",
+          "intro": "Ofrecemos pólizas CGL personalizables:",
+          "items": {
+            "bodily": {
+              "title": "Lesiones corporales",
+              "description": "Cubre las lesiones a terceros (por ejemplo, un cliente que tropieza en su tienda)."
+            },
+            "property": {
+              "title": "Daños a la propiedad",
+              "description": "Cubre los daños causados a la propiedad de terceros por su negocio."
+            },
+            "advertising": {
+              "title": "Daños personales y publicitarios",
+              "description": "Cubre reclamaciones como difamación o infracción de derechos de autor."
+            },
+            "products": {
+              "title": "Productos-Operaciones completadas",
+              "description": "Cubre los daños causados por productos o servicios después de su finalización."
+            }
+          }
+        },
+        "step4": {
+          "title": "Compre su póliza",
+          "description": "Le proporcionaremos un presupuesto a partir de un coste bajo, más las tarifas aplicables. Pague de forma segura en línea o por teléfono y reciba los documentos de su póliza al instante."
+        },
+        "step5": {
+          "title": "Certificado de seguro",
+          "description": "Emitiremos un certificado de seguro (COI) para compartir con los clientes o propietarios como prueba de la cobertura."
+        },
+        "step6": {
+          "title": "Presente reclamaciones fácilmente",
+          "description": "Si surge una reclamación, póngase en contacto con nosotros para obtener orientación. Le ayudaremos a presentar la reclamación a la aseguradora para una rápida resolución."
+        },
+        "step7": {
+          "title": "Asistencia continua",
+          "description": "Nuestro equipo está a su disposición para ajustar la cobertura, renovar pólizas o responder a sus preguntas. Llame al"
+        }
+      }
+    },
+    "coverage": {
+      "title": "Opciones de cobertura",
+      "intro": "Las pólizas de seguro CGL se adaptan a las necesidades de su negocio en Texas. Las coberturas comunes incluyen:",
+      "items": {
+        "bodily": {
+          "title": "Lesiones corporales",
+          "description": "Gastos médicos por lesiones a terceros causadas por las operaciones de su negocio."
+        },
+        "property": {
+          "title": "Daños a la propiedad",
+          "description": "Reparaciones por daños a la propiedad de terceros (por ejemplo, un contratista que daña el suelo de un cliente)."
+        },
+        "advertising": {
+          "title": "Lesiones personales y publicidad",
+          "description": "Gastos legales por reclamaciones como difamación o publicidad engañosa."
+        },
+        "products": {
+          "title": "Productos-Operaciones completadas",
+          "description": "Responsabilidad por daños causados por productos o servicios después de la entrega."
+        },
+        "medical": {
+          "title": "Pagos médicos",
+          "description": "Cubre gastos médicos menores de terceros, independientemente de la culpa."
+        },
+        "addons": {
+          "title": "Complementos",
+          "description": "Cobertura complementaria, responsabilidad cibernética o responsabilidad profesional para una mayor protección."
+        }
+      },
+      "help": "¿Necesita ayuda para elegir? Llámenos al"
+    },
+    "costs": {
+      "title": "Costes del seguro CGL",
+      "intro": "El coste del seguro CGL varía en función del tipo de negocio, el tamaño y los riesgos. Con Texas Premium Insurance Services, obtendrá tarifas competitivas:",
+      "items": {
+        "starting": {
+          "title": "Punto de partida",
+          "description": "La cobertura comienza desde un costo bajo, más tarifas aplicables, dependiendo de su póliza."
+        },
+        "factors": {
+          "title": "Factores que afectan el costo",
+          "description": "Tipo de negocio (por ejemplo, construcción vs. minorista), ingresos anuales, número de empleados, ubicación e historial de reclamaciones."
+        },
+        "affordable": {
+          "title": "Opciones asequibles",
+          "description": "Las pequeñas empresas pueden calificar para pólizas de prima baja, mientras que las industrias de alto riesgo pueden necesitar límites más altos."
+        },
+        "noHidden": {
+          "title": "Sin tarifas ocultas",
+          "description": "Cotizaciones transparentes con todas las tarifas incluidas por adelantado."
+        }
+      },
+      "example": "Ejemplo: una pequeña tienda minorista puede empezar con un coste bajo, mientras que una empresa de construcción puede pagar más debido a los mayores riesgos. Obtenga un presupuesto personalizado llamando al"
+    },
+    "risks": {
+      "title": "Riesgos de operar sin un seguro CGL",
+      "intro": "Operar un negocio en Texas sin un seguro CGL le expone a riesgos significativos:",
+      "items": {
+        "lawsuits": {
+          "title": "Demandas",
+          "description": "Pagar de su bolsillo los honorarios legales y los acuerdos extrajudiciales por reclamaciones como lesiones a clientes o daños a la propiedad."
+        },
+        "financial": {
+          "title": "Pérdidas financieras",
+          "description": "Una sola reclamación podría costar más de 100 000 dólares en daños y perjuicios, lo que pondría en peligro la supervivencia de su negocio."
+        },
+        "contracts": {
+          "title": "Incumplimiento de contratos",
+          "description": "Pierda contratos si los clientes exigen una cobertura CGL que usted no puede proporcionar."
+        },
+        "reputation": {
+          "title": "Daño a la reputación",
+          "description": "La falta de seguro puede indicar falta de profesionalidad a los clientes o socios."
+        }
+      },
+      "conclusion": "Evite estos riesgos con Texas Premium Insurance Services. Llame al"
+    },
+    "faq": {
+      "title": "Preguntas frecuentes",
+      "questions": {
+        "required": {
+          "question": "¿Es obligatorio el seguro CGL en Texas?",
+          "answer": "No es obligatorio por ley para la mayoría de las empresas, pero muchos clientes, propietarios o industrias lo exigen. Consulte con"
+        },
+        "businesses": {
+          "question": "¿Qué empresas necesitan un seguro CGL?",
+          "answer": "Cualquier empresa que tenga interacción con el público, como contratistas, minoristas o restaurantes, se beneficia del CGL. Podemos evaluar sus necesidades, llámenos."
+        },
+        "employees": {
+          "question": "¿Cubre el CGL las lesiones de los empleados?",
+          "answer": "No, las lesiones de los empleados están cubiertas por el seguro de compensación laboral. Ofrecemos ambos seguros. Contáctenos para obtener un paquete."
+        },
+        "claim": {
+          "question": "¿Cómo presento una reclamación CGL?",
+          "answer": "Contáctenos al (469) 729-5185 y le guiaremos a través del proceso de presentación de una reclamación con su aseguradora para una rápida resolución."
+        }
+      }
+    },
+    "footer": {
+      "callToAction": "Obtenga su seguro CGL hoy mismo"
+    }
+  },
+  "mexico": {
+    "header": {
+      "callToAction": "Llame para obtener una cotización",
+      "title": "Seguro de automóvil para turistas en México",
+      "subtitle": "¿Va a conducir a México desde Texas?",
+      "description": "Esta guía explica por qué necesita un seguro de automóvil para turistas en México, qué cubre, cómo obtenerlo y cómo Texas Premium Insurance Services se lo pone fácil a los conductores de Texas.",
+      "getStarted": "Empiece ahora",
+      "imageAlt": "Profesional de negocios en una oficina moderna"
+    },
+    "form": {
+      "title": "Solicite una cotización de seguro de automóvil para turistas en México",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "Su nombre completo",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "Su dirección de correo electrónico",
+      "phoneLabel": "Número de teléfono",
+      "phonePlaceholder": "Su número de teléfono",
+      "messageLabel": "Mensaje",
+      "messagePlaceholder": "Cuéntenos sobre su viaje a México o sus necesidades de seguro",
+      "submitButton": "Enviar consulta",
+      "successMessage": "¡Gracias por su consulta! Un agente se pondrá en contacto con usted pronto.",
+      "errorMessage": "No se pudo enviar la consulta por SMS. Inténtelo de nuevo o llame al (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "¿Qué es el seguro de automóvil para turistas en México?",
+      "paragraph1": "El seguro de automóvil para turistas en México es una póliza obligatoria para los conductores de Texas que viajan a México. Su seguro de automóvil de EE. UU. no es válido en México, por lo que esta cobertura le garantiza el cumplimiento de los requisitos legales mexicanos en materia de seguro de responsabilidad civil. Le protege a usted, a sus pasajeros y a otras personas en caso de accidente, lo que le permite cumplir con la normativa y conducir con tranquilidad al sur de la frontera.",
+      "paragraph2": "Emitidas por aseguradoras mexicanas autorizadas, estas pólizas ofrecen opciones a corto plazo adaptadas a los turistas de Texas y cubren vehículos con matrícula estadounidense, incluidos automóviles, autocaravanas, motocicletas y remolques. En Texas Premium Insurance Services, nos asociamos con las aseguradoras mexicanas mejor calificadas para ofrecerle una cobertura asequible y confiable para su viaje."
+    },
+    "whyNeed": {
+      "title": "¿Por qué necesita un seguro de automóvil para turistas en México?",
+      "intro": "La legislación mexicana exige que todos los conductores que circulen por carreteras federales tengan un seguro de responsabilidad civil de una aseguradora con licencia mexicana. Conducir sin él es ilegal y arriesgado. He aquí por qué los conductores de Texas necesitan esta cobertura:",
+      "reasons": {
+        "legal": {
+          "title": "Cumplimiento legal",
+          "description": "Sin un seguro mexicano válido, se enfrenta a multas, incautación del vehículo o penas de cárcel si se ve involucrado en un accidente."
+        },
+        "financial": {
+          "title": "Protección financiera",
+          "description": "Usted es personalmente responsable de los daños o lesiones causados en un accidente por culpa suya, lo que puede costarle cientos de miles de dólares."
+        },
+        "usPolicy": {
+          "title": "Las pólizas estadounidenses no son válidas",
+          "description": "Su seguro de automóvil de Texas no es válido en México, por lo que quedará desprotegido."
+        },
+        "finance": {
+          "title": "Requisitos financieros",
+          "description": "Si su vehículo está financiado, su prestamista puede exigirle una póliza específica para México a fin de emitir una carta de permiso para viajar al extranjero."
+        },
+        "peace": {
+          "title": "Tranquilidad",
+          "description": "La cobertura le garantiza protección contra accidentes, robos o emergencias en carretera mientras explora México."
+        }
+      },
+      "conclusion": "Conduzca con confianza en México. Llame a Texas Premium Insurance Services al",
+      "conclusionEnd": "para comenzar."
+    },
+    "howItWorks": {
+      "title": "¿Cómo funciona el seguro de automóvil para turistas en México?",
+      "intro": "Obtener un seguro de automóvil para turistas en México es rápido y sencillo con Texas Premium Insurance Services. Este es el proceso para que los conductores de Texas estén cubiertos antes de su viaje:",
+      "steps": {
+        "step1": {
+          "title": "Planifique su viaje",
+          "description": "Determine las fechas de su viaje, el tipo de vehículo (coche, autocaravana, motocicleta, etc.) y los destinos en México. Consulte las advertencias de viaje en",
+          "descriptionEnd": "para mantenerse informado."
+        },
+        "step2": {
+          "title": "Póngase en contacto con nosotros",
+          "intro": "Llame al",
+          "description": "para hablar con nuestro equipo. Recopilaremos información sobre su viaje y su vehículo, incluyendo:",
+          "items": {
+            "license": "Licencia de conducir estadounidense o mexicana",
+            "registration": "Matriculación del vehículo",
+            "insurance": "Detalles del seguro de Texas",
+            "travel": "Fechas del viaje y necesidades de cobertura (solo responsabilidad civil o cobertura total)"
+          }
+        },
+        "step3": {
+          "title": "Elija su cobertura",
+          "intro": "Ofrecemos opciones flexibles que se adaptan a sus necesidades:",
+          "items": {
+            "liability": {
+              "title": "Solo responsabilidad civil",
+              "description": "Cumple con los requisitos mínimos de México y cubre los daños o lesiones que usted cause a terceros."
+            },
+            "full": {
+              "title": "Cobertura completa",
+              "description": "Incluye responsabilidad civil, daños físicos, robo, vandalismo, gastos médicos y asistencia en carretera."
+            },
+            "addons": {
+              "title": "Complementos",
+              "description": "Asistencia legal, asistencia en viaje o cobertura para unidades remolcadas."
+            }
+          }
+        },
+        "step4": {
+          "title": "Compre su póliza",
+          "description": "Le proporcionaremos un presupuesto a partir de un bajo coste, más las tarifas aplicables. Pague de forma segura en línea o por teléfono y reciba su póliza al instante por correo electrónico."
+        },
+        "step5": {
+          "title": "Lleve consigo una prueba de seguro",
+          "description": "Imprima los documentos de su póliza y manténgalos en su vehículo en todo momento. Las autoridades mexicanas pueden solicitar una prueba durante las paradas de tráfico o los accidentes."
+        },
+        "step6": {
+          "title": "Viaje con confianza",
+          "description": "Conduzca de forma legal y segura en México, sabiendo que está cubierto. Si se produce un accidente, llame al número que figura en su póliza para obtener asistencia inmediata en caso de siniestro."
+        },
+        "step7": {
+          "title": "Asistencia continua",
+          "description": "Nuestro equipo está disponible para responder preguntas, ampliar la cobertura o ayudar con las reclamaciones durante su viaje. Llámenos al"
+        }
+      }
+    },
+    "coverage": {
+      "title": "Opciones de cobertura",
+      "intro": "Las pólizas de seguro de automóvil para turistas en México se pueden personalizar para los conductores de Texas. Los tipos de cobertura más comunes incluyen:",
+      "items": {
+        "liability": {
+          "title": "Seguro de responsabilidad civil",
+          "description": "Cobertura obligatoria por lesiones corporales y daños a la propiedad causados a terceros, con límites de hasta 1 000 000 $."
+        },
+        "physical": {
+          "title": "Daños físicos",
+          "description": "Cubre los daños causados a su vehículo por accidentes, colisiones o vuelcos."
+        },
+        "theft": {
+          "title": "Robo y vandalismo",
+          "description": "Protege contra el robo total o parcial y los daños intencionados a su vehículo."
+        },
+        "medical": {
+          "title": "Gastos médicos",
+          "description": "Cubre los gastos médicos para usted y sus pasajeros, hasta los límites de la póliza."
+        },
+        "roadside": {
+          "title": "Asistencia en carretera",
+          "description": "Incluye remolque, suministro de combustible, cambio de neumáticos y otros servicios de emergencia."
+        },
+        "legal": {
+          "title": "Asistencia legal",
+          "description": "Proporciona asistencia legal y cobertura de fianza si se enfrenta a problemas legales después de un accidente."
+        },
+        "travel": {
+          "title": "Asistencia en viaje",
+          "description": "Ayuda con la pérdida de pasaportes, la organización de viajes de emergencia o las emergencias en carretera."
+        }
+      },
+      "help": "¿No está seguro de qué cobertura es la adecuada para usted? Llámenos al",
+      "helpEnd": "para obtener asesoramiento personalizado."
+    },
+    "costs": {
+      "title": "Costos del seguro de automóvil para turistas en México",
+      "intro": "El costo del seguro de automóvil para turistas en México varía en función de su vehículo, la duración del viaje y el nivel de cobertura. Con Texas Premium Insurance Services, obtendrá tarifas competitivas adaptadas a los conductores de Texas:",
+      "items": {
+        "starting": {
+          "title": "Punto de partida",
+          "description": "La cobertura comienza desde un costo bajo, más tarifas aplicables, dependiendo de su póliza."
+        },
+        "factors": {
+          "title": "Factores que afectan el costo",
+          "description": "Tipo de vehículo (automóvil, RV, motocicleta), duración del viaje (diario, semanal o anual), tipo de cobertura (solo responsabilidad civil o completa) y perfil del conductor."
+        },
+        "affordable": {
+          "title": "Opciones asequibles",
+          "description": "Las pólizas diarias son económicas para viajes cortos, mientras que las pólizas anuales ofrecen ahorros para los viajeros frecuentes."
+        },
+        "noHidden": {
+          "title": "Sin cargos ocultos",
+          "description": "Ofrecemos presupuestos transparentes con todos los cargos incluidos por adelantado."
+        }
+      },
+      "example": "Ejemplo: un viaje de una semana con cobertura solo de responsabilidad civil para un automóvil estándar puede tener un costo inicial bajo, mientras que la cobertura completa para una autocaravana puede costar más. Obtenga un presupuesto personalizado llamando al"
+    },
+    "risks": {
+      "title": "Riesgos de conducir sin cobertura",
+      "intro": "Conducir en México sin el seguro adecuado puede acarrear graves consecuencias para los conductores de Texas:",
+      "items": {
+        "legal": {
+          "title": "Sanciones legales",
+          "description": "Multas, incautación del vehículo o detención si no puede demostrar su responsabilidad financiera después de un accidente."
+        },
+        "financial": {
+          "title": "Responsabilidad financiera",
+          "description": "Usted es responsable de pagar de su bolsillo los daños o lesiones, que pueden superar los 300 000 dólares en casos graves."
+        },
+        "noProtection": {
+          "title": "Sin protección",
+          "description": "Sin cobertura, no estará protegido contra robos, daños o gastos médicos."
+        },
+        "border": {
+          "title": "Problemas fronterizos",
+          "description": "Algunos puestos fronterizos pueden exigir una prueba de seguro antes de permitir la entrada."
+        }
+      },
+      "conclusion": "Evite estos riesgos con una póliza de Texas Premium Insurance Services. Llame",
+      "conclusionEnd": "para obtener cobertura hoy mismo."
+    },
+    "faq": {
+      "title": "Preguntas frecuentes",
+      "questions": {
+        "mandatory": {
+          "question": "¿Es obligatorio el seguro de automóvil para turistas en México?",
+          "answer": "Sí, la ley mexicana exige que todos los conductores tengan un seguro de responsabilidad civil de una aseguradora mexicana. Su póliza de Texas no es válida."
+        },
+        "license": {
+          "question": "¿Puedo usar una licencia de conducir estadounidense o mexicana?",
+          "answer": "Sí, se acepta una licencia de conducir estadounidense válida (de Texas) o una licencia de conducir mexicana para comprar un seguro de automóvil para turistas en México."
+        },
+        "border": {
+          "question": "¿Puedo contratar un seguro en la frontera?",
+          "answer": "Sí, pero es arriesgado conducir sin seguro hasta que contrate una póliza. Le recomendamos que contrate la cobertura por adelantado a través de nosotros para obtener protección inmediata."
+        },
+        "accident": {
+          "question": "¿Qué pasa si tengo un accidente en México?",
+          "answer": "Póngase en contacto inmediatamente con el número de reclamaciones de su aseguradora (que figura en su póliza). Nuestro equipo puede ayudarle con el proceso, solo tiene que llamarnos al (469) 729-5185."
+        }
+      }
+    },
+    "footer": {
+      "callToAction": "Obtenga hoy mismo su cobertura para México"
+    }
+  },
+  "bondedTitle": {
+    "header": {
+      "callToAction": "Llame para obtener una cotización",
+      "title": "Certificado de título de garantía de Texas",
+      "subtitle": "¿Necesita un título de garantía en Texas?",
+      "description": "Esta guía explica qué es un certificado de título de garantía, por qué puede necesitarlo, cómo obtenerlo y qué significa para los propietarios de vehículos de Texas que desean registrar su vehículo sin título.",
+      "getStarted": "Comience ahora",
+      "imageAlt": "Profesional de negocios en una oficina moderna"
+    },
+    "form": {
+      "title": "Solicite una cotización de fianza",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "Su nombre completo",
+      "emailLabel": "Correo electrónico",
+      "emailPlaceholder": "Su dirección de correo electrónico",
+      "phoneLabel": "Número de teléfono",
+      "phonePlaceholder": "Su número de teléfono",
+      "messageLabel": "Mensaje",
+      "messagePlaceholder": "Cuéntenos cuáles son sus necesidades en materia de títulos garantizados o la situación de su vehículo",
+      "submitButton": "Enviar consulta",
+      "successMessage": "¡Gracias por su consulta! Un agente se pondrá en contacto con usted en breve.",
+      "errorMessage": "No se ha podido enviar la consulta por SMS. Vuelva a intentarlo o llame al (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "¿Qué es un título garantizado de Texas?",
+      "paragraph1": "Un certificado de título garantizado de Texas, también conocido como título garantizado o título perdido, es un documento emitido por el Departamento de Vehículos Motorizados de Texas (TxDMV) para establecer la propiedad del vehículo cuando el título original se ha perdido, dañado, asignado incorrectamente o no está disponible. Según lo exige el Código de Transporte de Texas §501.053, la fianza sirve como garantía financiera para proteger a los propietarios anteriores, los acreedores hipotecarios y los futuros propietarios contra reclamaciones fraudulentas de propiedad. Permanece activa durante tres años, tras los cuales se emite un título estándar si no se presenta ninguna reclamación.",
+      "paragraph2": "Un título garantizado le permite registrar, asegurar, vender o transferir legalmente la propiedad de un vehículo en Texas. A menudo es necesario en situaciones como la compra de un vehículo sin título, la recuperación de un vehículo robado o la resolución de transacciones incompletas. En Texas Premium Insurance Services, hacemos que la obtención de su fianza sea rápida y sin complicaciones."
+    },
+    "whyNeed": {
+      "title": "¿Por qué necesita un título garantizado?",
+      "intro": "El TxDMV exige un título garantizado cuando no se puede proporcionar una prueba suficiente de la propiedad. Entre los casos más comunes se incluyen:",
+      "reasons": {
+        "lost": "Título original perdido o robado.",
+        "never": "Título nunca recibido del vendedor.",
+        "damaged": "Título dañado o ilegible.",
+        "improperly": "Título asignado incorrectamente (por ejemplo, faltan firmas).",
+        "purchased": "Vehículo comprado sin título en una venta privada.",
+        "gifted": "Vehículo regalado sin transferencia de título."
+      },
+      "conclusion": "La fianza garantiza una indemnización si otra persona demuestra ser el propietario legítimo durante el plazo de tres años de la fianza. Permítanos ayudarle a navegar por este proceso con facilidad."
+    },
+    "howItWorks": {
+      "title": "¿Cómo funciona un título garantizado en Texas?",
+      "intro": "Una fianza de certificado de título de Texas es una forma sencilla de matricular su vehículo cuando falta el título. Así es como funciona el proceso con Texas Premium Insurance Services:",
+      "steps": {
+        "step1": {
+          "title": "Determine la necesidad",
+          "description": "Confirme con el TxDMV que se requiere un título garantizado para su vehículo. Puede consultar los requisitos o descargar los formularios en"
+        },
+        "step2": {
+          "title": "Póngase en contacto con nosotros",
+          "intro": "Póngase en contacto con Texas Premium Insurance Services llamando al",
+          "description": "Le guiaremos a través del proceso de obtención del título garantizado, haciéndolo sencillo y sin estrés.",
+          "items": {
+            "provide": "Proporcione los datos del vehículo (año, marca, modelo, número de identificación del vehículo) y la prueba de propiedad (por ejemplo, la factura de compra).",
+            "gather": "Le ayudaremos a reunir los formularios necesarios de TxDMV, como el formulario VTR-275 (Solicitud de información sobre vehículos de motor) y el formulario VTR-130-SOF (Declaración de hechos para el título garantizado)."
+          }
+        },
+        "step3": {
+          "title": "Presentar la solicitud inicial",
+          "description": "Envíe sus documentos y una tasa de solicitud de 15 dólares al centro de servicios regional de TxDMV más cercano. TxDMV emitirá una Notificación de determinación de título garantizado (formulario VTR-130-ND), en la que se especificará el importe de la fianza (normalmente 1,5 veces el valor del vehículo)."
+        },
+        "step4": {
+          "title": "Compre su fianza",
+          "description": "Le proporcionaremos una fianza adaptada a los requisitos de la TxDMV. Las fianzas de hasta 25 000 $ no suelen requerir verificación de crédito, y ofrecemos tarifas competitivas a partir de 100 $. Solo tiene que firmar el certificado de fianza que le proporcionamos."
+        },
+        "step5": {
+          "title": "Envíe los documentos definitivos",
+          "intro": "En un plazo de 30 días desde la recepción de la fianza, envíe lo siguiente a la oficina de impuestos de su condado:",
+          "items": {
+            "notice": "Notificación de determinación (Formulario VTR-130-ND)",
+            "bond": "Certificado de fianza firmado por Texas Premium Insurance Services",
+            "application": "Solicitud de título y/o registro de Texas (Formulario 130-U)",
+            "insurance": "Prueba de seguro de responsabilidad civil",
+            "vin": "Informe de inspección del VIN (si se requiere para vehículos de fuera del estado)",
+            "weight": "Certificado de peso (para vehículos comerciales) o declaración de aduanas (para vehículos importados)"
+          }
+        },
+        "step6": {
+          "title": "Reciba su título garantizado",
+          "description": "Una vez aprobado, el TxDMV emite su título garantizado, válido por tres años. Si no se presenta ninguna reclamación, se emite un título estándar a partir de entonces. Haremos un seguimiento para asegurarnos de que todo vaya bien."
+        },
+        "step7": {
+          "title": "Asistencia continua",
+          "description": "Nuestro equipo está a su disposición para responder a cualquier pregunta durante el periodo de garantía de tres años. Si surge alguna reclamación, le ayudaremos a gestionar el proceso con la compañía de fianzas."
+        }
+      }
+    },
+    "eligibility": {
+      "title": "Requisitos de elegibilidad",
+      "intro": "Para poder optar a un título garantizado de Texas, debe cumplir los siguientes criterios:",
+      "requirements": {
+        "resident": "Ser residente de Texas o personal militar destinado en Texas.",
+        "possess": "Ser propietario legal del vehículo (que no sea abandonado, robado, desguazado o involucrado en un litigio pendiente).",
+        "evidence": "Proporcionar pruebas de la propiedad (por ejemplo, factura de venta, factura, cheque cancelado).",
+        "complete": "Asegurarse de que el vehículo está completo (chasis, motor y carrocería; o chasis y motor en el caso de las motocicletas).",
+        "outOfState": "Para los vehículos de fuera del estado, obtener una inspección del número de identificación del vehículo (VIN) de una estación de inspección de seguridad certificada por Texas o de un investigador de robos de automóviles si nunca se ha matriculado en Texas."
+      },
+      "note": "Nota: Los vehículos siniestrados o irreparables no pueden optar a títulos garantizados según el Código de Transporte de Texas §501.091. Llámenos al",
+      "noteEnd": "para confirmar su elegibilidad."
+    },
+    "costs": {
+      "title": "Costes de un título garantizado de Texas",
+      "intro": "El costo de obtener un título garantizado incluye varias tarifas, pero nos esforzamos por mantener la prima de la garantía asequible:",
+      "items": {
+        "premium": {
+          "title": "Prima de la garantía",
+          "description": "A partir de 100 $, más las tarifas aplicables, dependiendo del importe de la garantía y del valor del vehículo."
+        },
+        "application": {
+          "title": "Tarifa de solicitud",
+          "description": "15 $, pagaderos al TxDMV."
+        },
+        "appraisal": {
+          "title": "Tasa de tasación del vehículo",
+          "description": "50-100 $, si es necesario para vehículos que no figuran en la calculadora del valor presuntivo estándar (SPV) del TxDMV."
+        },
+        "vin": {
+          "title": "Cuota de inspección del VIN",
+          "description": "Entre 20 y 40 dólares, para vehículos de fuera del estado o sin título de propiedad."
+        },
+        "additional": {
+          "title": "Cuotas adicionales",
+          "description": "Varía según el condado (por ejemplo, matriculación, impuesto sobre las ventas)."
+        }
+      },
+      "example": "Ejemplo: para un vehículo valorado en 10 000 $, el importe de la fianza es de 15 000 $ (1,5 veces el valor), con una prima de unos 225 $. Los costes totales, incluidas las tasas, pueden oscilar entre 300 $ y 500 $. Póngase en contacto con nosotros para obtener un presupuesto personalizado en"
+    },
+    "risks": {
+      "title": "Riesgos y limitaciones",
+      "intro": "Aunque un título garantizado permite el uso legal del vehículo, hay que tener en cuenta algunos riesgos:",
+      "items": {
+        "claims": {
+          "title": "Posibles reclamaciones",
+          "description": "Si otra parte demuestra la propiedad en un plazo de tres años, puede presentar una reclamación contra la fianza. La garantía paga al reclamante, pero usted debe reembolsar a la garantía, más los honorarios legales."
+        },
+        "history": {
+          "title": "Sin historial de título claro",
+          "description": "Un título garantizado puede no garantizar un título limpio, lo que podría afectar al valor de reventa."
+        },
+        "lien": {
+          "title": "Restricciones de gravamen",
+          "description": "Si existe un gravamen de menos de 10 años, verificaremos que se haya liberado antes de emitir su fianza."
+        },
+        "eligible": {
+          "title": "Vehículos no elegibles",
+          "description": "Los vehículos desguazados, siniestrados o irreparables no pueden recibir títulos garantizados."
+        }
+      },
+      "conclusion": "Nuestro equipo de Texas Premium Insurance Services le ayudará a evaluar estos riesgos. Llámenos al",
+      "conclusionEnd": "para obtener asesoramiento experto."
+    },
+    "faq": {
+      "title": "Preguntas frecuentes",
+      "questions": {
+        "valid": {
+          "question": "¿Cuánto tiempo es válido un título garantizado en Texas?",
+          "answer": "El título garantizado es válido durante tres años. Si no se presenta ninguna reclamación, el TxDMV emite un título estándar posteriormente."
+        },
+        "credit": {
+          "question": "¿Puedo obtener un título garantizado con mal crédito?",
+          "answer": "Sí, las garantías de hasta 25 000 dólares no suelen requerir verificación de crédito. Para garantías más elevadas, ofrecemos soluciones para solicitantes con problemas de crédito. Llámenos para analizar sus opciones."
+        },
+        "rejected": {
+          "question": "¿Qué pasa si el TxDMV rechaza mi solicitud de fianza?",
+          "answer": "Nos aseguraremos de que su información coincida exactamente con la Notificación de determinación. Si es necesario realizar modificaciones, le ayudaremos con las correcciones a un costo mínimo o sin costo adicional."
+        },
+        "transfer": {
+          "question": "¿Puedo transferir un título garantizado a otro estado?",
+          "answer": "La transferibilidad depende de las políticas del DMV del otro estado. Podemos ayudarle a comprender los requisitos para su situación."
+        }
+      }
+    },
+    "footer": {
+      "callToAction": "Obtenga su título garantizado hoy mismo"
+    }
+  },
+  "Documents": {
+  "pageTitle": "Recuperar mis documentos",
+  "metaDescription": "Recuperar mis documentos de póliza",
+  "heroTitle": "Recuperar mis documentos",
+  "heroSubtitle": "Acceder a sus documentos de póliza y tarjetas de identificación",
+  "inputPlaceholder": "Introduzca el correo electrónico del titular de la póliza",
+  "searchButton": "Buscar",
+  "searching": "Buscando...",
+  "searchingStatus": "Buscando sus documentos...",
+  "noDocuments": "No se han encontrado documentos para este correo electrónico",
+  "noDocumentsDetail": "Asegúrese de que está utilizando la dirección de correo electrónico asociada a su póliza",
+  "initialState": "Introduzca su dirección de correo electrónico para buscar documentos",
+  "loadMore": "Otra póliza o documento de póliza anterior",
+  "loading": "Cargando...",
+  "endOfResults": "— Fin de los documentos —",
+  "backHome": "Volver a la página de inicio",
+  "preview": {
+    "view": "Ver",
+    "download": "Descargar",
+    "close": "Cerrar"
+  }
+},
+"RootLayout": {
+  "nav": {
+    "logoAlt": "Texas Premium Insurance Services",
+    "getInsurance": "Contratar un seguro",
+    "accessDocuments": "Acceder a mis documentos",
+    "aboutUs": "Quiénes somos",
+    "callNow": "📞 Llame ahora al 469-729-5185",
+    "categories": {
+      "vehicle": "Vehículo",
+      "property": "Propiedad",
+      "commercial": "Comercial",
+      "andMore": "Y más"
+    },
+    "insurance": {
+      "auto": "Automóvil",
+      "motorcycle": "Motocicleta",
+      "boats": "Barcos y embarcaciones",
+      "rv": "Autocaravana",
+      "sr22": "SR-22",
+      "homeowners": "Propietarios de viviendas",
+      "renters": "Inquilinos",
+      "mobileHome": "Casas móviles",
+      "commercialAuto": "Autos comerciales",
+      "generalLiability": "Responsabilidad civil general",
+      "mexicoTourist": "Turistas en México",
+      "suretyBond": "Fianza"
+    }
+  },
+  "footer": {
+    "contactUs": "Contáctenos",
+    "hours": "Lunes a sábado | 9 a. m. a 7 p. m. CT",
+    "copyright": "Texas Premium Insurance Services, LLC",
+    "termsLink": "Términos de uso y política de privacidad",
+    "disclaimer": "Texas Premium Insurance Services LLC es una agencia de seguros que obtiene cotizaciones de múltiples aseguradoras para ofrecerle las tarifas más competitivas. Al enviar información a través de nuestro portal o formularios en línea, usted certifica que todos los datos, incluidos los residentes del hogar, accidentes, DUI/DWI, multas y cualquier licencia caducada o suspendida, son exactos y completos según su leal saber y entender. Esto se aplica tanto si recibe una cotización inmediata como si un representante de la agencia se pone en contacto con usted para finalizar su cotización. El hecho de no proporcionar información precisa puede dar lugar a un aumento de las primas, la cancelación de la póliza o la denegación de la cobertura. Las reclamaciones son tramitadas y pagadas por la compañía de seguros seleccionada. Nuestra agencia le ayudará con el proceso de reclamación, pero no se hace responsable de las denegaciones de reclamaciones debidas a falsedad, fraude, ocultación de hechos relevantes, exclusiones de la póliza o cualquier otra razón."
+  }
+},
+  "About": {
+    "title": "Sobre nosotros",
+    "intro": "¡Bienvenido a Texas Premium Insurance Services, donde proteger su mundo es nuestra máxima prioridad! Somos más que una simple agencia de seguros: somos su socio de confianza para encontrar la mejor cobertura a precios que no arruinarán su bolsillo. Con sede en el corazón de Texas, hemos estado ayudando a individuos, familias y empresas a asegurar su tranquilidad durante años, y nos enorgullece servir a nuestra comunidad con soluciones de seguros personalizadas y sin complicaciones.",
+    "mission": "En Texas Premium Insurance Services, entendemos que los seguros pueden parecer un laberinto de letra pequeña y opciones interminables. Por eso, nuestra misión es simplificar el proceso para usted. Ya sea que esté asegurando su automóvil, motocicleta, hogar, apartamento, condominio o propiedad comercial, lo tenemos cubierto. Como agencia independiente, trabajamos con múltiples compañías de primer nivel para comparar cotizaciones y encontrar las tarifas más competitivas adaptadas a sus necesidades únicas. Piense en nosotros como sus compradores personales de seguros: ¡nosotros hacemos el trabajo pesado para que usted no tenga que hacerlo!",
+    "whyChoose": {
+      "title": "¿Por qué elegir Texas Premium Insurance Services?",
+      "intro": "Sabemos que tiene opciones cuando se trata de seguros, así que esto es lo que nos diferencia:",
+      "reasons": {
+        "shopSave": {
+          "title": "Nosotros comparamos, usted ahorra",
+          "description": "Nos asociamos con una amplia red de compañías de seguros confiables para comparar cotizaciones y encontrar la mejor cobertura al precio más asequible. No más búsquedas interminables: ¡permítanos hacer el trabajo por usted!"
+        },
+        "coverage": {
+          "title": "Cobertura para todos",
+          "description": "Desde su primera motocicleta hasta la casa de sus sueños, apartamento de alquiler, condominio o negocio en crecimiento, ofrecemos una gama completa de pólizas para proteger lo que más le importa."
+        },
+        "expert": {
+          "title": "Orientación experta",
+          "description": "Nuestros agentes experimentados están aquí para responder sus preguntas, explicar sus opciones en lenguaje sencillo y guiarlo hacia la póliza adecuada, sin tecnicismos ni presiones."
+        },
+        "allIds": {
+          "title": "Aceptamos todas las identificaciones",
+          "description": "Aceptamos todo tipo de identificación, incluyendo licencias suspendidas, licencias vencidas, identificaciones internacionales/extranjeras o incluso si no tiene identificación o licencia. ¡Encontraremos la mejor opción para su situación, sin importar de dónde venga!"
+        },
+        "customer": {
+          "title": "Enfoque centrado en el cliente",
+          "description": "No estamos contentos a menos que usted lo esté. Nos enorgullecemos de brindar un servicio amable y personalizado que hace que el proceso de seguro sea tan fluido como un atardecer en Texas."
+        },
+        "fast": {
+          "title": "Cotizaciones rápidas y fáciles",
+          "description": "¿Necesita una cotización rápido? Hemos optimizado el proceso para brindarle cotizaciones rápidas y precisas para que pueda volver a lo que ama, ya sea salir a la carretera o hacer crecer su negocio."
+        }
+      }
+    },
+    "journey": {
+      "title": "Un poco sobre nuestra trayectoria",
+      "description": "Texas Premium Insurance Services nació de una idea simple: el seguro debe ser sencillo, asequible y accesible para todos. Nuestros fundadores vieron a demasiadas personas pagando de más por la cobertura o luchando por encontrar pólizas que se ajustaran a sus necesidades. Por eso, nos propusimos cambiar eso. Con los años, nos hemos convertido en la agencia de referencia para los tejanos que buscan proteger sus vehículos, hogares y negocios sin estrés. Hemos ayudado a todos, desde conductores jóvenes que aseguran su primer automóvil hasta dueños de negocios que protegen su sustento, e incluso a aquellos con situaciones de identificación únicas, como visitantes internacionales o personas con licencias suspendidas. ¡Esto es solo el comienzo!"
+    },
+    "funFact": {
+      "title": "Dato curioso: somos más que expertos en seguros",
+      "description": "Cuando no estamos buscando las mejores ofertas de seguros, ¡podría encontrarnos explorando el Estado de la Estrella Solitaria! Nos encanta apoyar los negocios locales, ir a los rodeos y disfrutar de la vibrante cultura que hace que Texas sea tan especial. Nuestro equipo incluso tiene la tradición de celebrar las grandes victorias —como encontrarle a un cliente la póliza perfecta— con una ronda de BBQ tejano. Después de todo, nada dice \"buen trabajo\" como un plato de brisket."
+    },
+    "ready": {
+      "title": "¿Listo para proteger lo que importa?",
+      "description": "En Texas Premium Insurance Services, estamos aquí para hacer que el seguro sea una preocupación menos, independientemente de su estado de identificación. Ya sea que esté viajando en su motocicleta, instalándose en un nuevo apartamento, dirigiendo un negocio próspero o navegando la vida con una licencia suspendida o vencida, encontraremos la cobertura que se adapte a su vida y presupuesto. Comuníquese con nosotros hoy mismo al",
+      "or": "o visítenos en",
+      "closing": "para obtener su cotización gratuita. ¡Estamos ansiosos por ayudarle a encontrar la póliza perfecta!"
+    }
+  },
+  "autopay": {
+    "title": "Configuración del pago automático",
+    "subtitle": "Seguro • Cifrado • Protegido",
+    "tabs": {
+      "card": "Tarjeta",
+      "bank": "Cuenta bancaria"
+    },
+    "card": {
+      "nameOnCard": "Nombre en la tarjeta",
+      "namePlaceholder": "John Doe",
+      "cardNumber": "Número de tarjeta",
+      "cardNumberPlaceholder": "0000 0000 0000 0000",
+      "expiration": "Caducidad",
+      "monthPlaceholder": "MM",
+      "yearPlaceholder": "YYYY",
+      "cvv": "CVV",
+      "cvvPlaceholder": "123",
+      "zipCode": "Código postal de facturación",
+      "zipCodePlaceholder": "12345"
+    },
+    "bank": {
+      "fullName": "Nombre completo en la cuenta",
+      "fullNamePlaceholder": "John Doe",
+      "accountType": "Tipo de cuenta",
+      "checking": "Cuenta corriente",
+      "savings": "Cuenta de ahorros",
+      "holderType": "Tipo de titular",
+      "personal": "Personal",
+      "business": "Empresa",
+      "routingNumber": "Número de ruta",
+      "routingNumberPlaceholder": "123456789",
+      "accountNumber": "Número de cuenta",
+      "confirmAccountNumber": "Confirmar número de cuenta"
+    },
+    "authorization": {
+      "text": "Autorizo a Texas Premium Insurance Services y a mi compañía de seguros a debitar automáticamente este método de pago para futuros pagos de seguros. He leído y acepto los",
+      "termsLink": "términos de autorización"
+    },
+    "submitButton": "Confirmar configuración de pago automático",
+    "security": {
+      "bankLevel": "Conexión segura a nivel bancario",
+      "ssl": "SSL de 256 bits",
+      "pci": "PCI",
+      "compliant": "Conforme",
+      "encrypted": "Cifrado",
+      "description": "Sus datos se cifran mediante protocolos AES-256."
+    },
+    "errors": {
+      "agreeToTerms": "Acepte los términos para continuar",
+      "accountMismatch": "Los números de cuenta no coinciden",
+      "setupFailed": "Error al configurar el pago automático. Vuelva a intentarlo."
+    }
+  },
+  "thankYou": {
+    "loading": "Cargando...",
+    "title": "¡Pago realizado con éxito!",
+    "subtitle": "Gracias por elegir Texas Premium Insurance Services.",
+    "message": "Su transacción ha sido procesada. Se ha enviado un recibo de confirmación a su dirección de correo electrónico. Nuestros agentes comenzarán a revisar su cobertura en breve.",
+    "returnButton": "VOLVER A LA PÁGINA DE INICIO"
+  },
+  "autoquote": {
+    "progressBar": {
+      "step1": "Info",
+      "step2": "Conductores y Vehículos",
+      "step3": "Cobertura y Descuentos",
+      "step4": "Revisión"
+    },
+    "step1": {
+      "title": "Elaboremos un plan que se adapte perfectamente a usted.",
+      "subtitle": "Por favor, complete la siguiente información con la mayor precisión posible para obtener una cotización exacta.",
+      "effectiveDate": "Fecha de vigencia (Haga clic en el calendario para cambiar)",
+      "firstName": "Nombre",
+      "lastName": "Apellido",
+      "address": "Dirección",
+      "dob": "Fecha de nacimiento",
+      "phone": "Número de teléfono",
+      "email": "Correo electrónico",
+      "maritalStatus": "Estado civil",
+      "maritalStatusHelper": "Optimice su precio eligiendo incluir o excluir a su cónyuge.",
+      "residencyType": "Tipo de residencia",
+      "residencyHelper": "Ser propietario de una vivienda puede reducir su tarifa.",
+      "placeholders": {
+        "firstName": "Ingrese su nombre",
+        "lastName": "Ingrese su apellido",
+        "address": "Ingrese la dirección (ej. 123 Main St Apt 1525)",
+        "phone": "Ingrese el número de 10 dígitos",
+        "email": "Ingrese su correo electrónico"
+      },
+      "maritalOptions": {
+        "select": "Seleccionar...",
+        "single": "Soltero(a)",
+        "married": "Casado(a)",
+        "civilUnion": "Unión Civil",
+        "divorced": "Divorciado(a)"
+      },
+      "residencyOptions": {
+        "select": "Seleccionar...",
+        "own": "Propia",
+        "rent": "Renta",
+        "parents": "Vive con sus padres"
+      },
+      "verification": {
+        "sendCode": "Enviar Código",
+        "sending": "Enviando...",
+        "verified": "Verificado",
+        "verificationCode": "Código de verificación",
+        "verifyButton": "Verificar Código",
+        "status": "Estado de verificación:",
+        "notVerified": "No verificado",
+        "enterCode": "Ingrese el código de 6 dígitos"
+      },
+      "errors": {
+        "phone10Digits": "El número de teléfono debe tener exactamente 10 dígitos.",
+        "addressRequired": "Por favor, ingrese y seleccione una dirección válida.",
+        "addressError": "Por favor, corrija el error de dirección antes de continuar.",
+        "phoneVerifyRequired": "Por favor, verifique su número de teléfono antes de continuar.",
+        "invalidCode": "Código de verificación no válido. Inténtelo de nuevo.",
+        "addressApartment": "Esta parece ser la dirección de un apartamento. Por favor, incluya el número de unidad (ej. Apt 1525, Unidad 4B, #202)."
+      },
+      "buttons": {
+        "continue": "Continuar"
+      }
+    },
+    "step2": {
+      "title": "Paso 2: Información de Conductores y Vehículos",
+      "driversLabel": "Cuántos conductores (incluyéndolo a usted)",
+      "vehiclesLabel": "Cuántos vehículos",
+      "driverTitle": "Conductor",
+      "vehicleTitle": "Vehículo",
+      "driver": {
+        "firstName": "Nombre",
+        "lastName": "Apellido",
+        "dob": "Fecha de nacimiento",
+        "relationship": "Relación",
+        "gender": "Género",
+        "idType": "Tipo de Identificación",
+        "dlNumber": "Número de Licencia de Conducir",
+        "idNumber": "Número de Identificación",
+        "state": "Estado",
+        "country": "País",
+        "internationalId": "Número de ID Internacional",
+        "placeholders": {
+          "firstName": "Ingrese el nombre",
+          "lastName": "Ingrese el apellido",
+          "dlNumber": "Ingrese el número de licencia",
+          "idNumber": "Ingrese el número de ID",
+          "state": "Ingrese el estado (ej. TX)",
+          "country": "Ingrese el país (ej. México)",
+          "internationalId": "Ingrese el ID internacional"
+        },
+        "relationships": {
+          "select": "Seleccionar...",
+          "policyholder": "Titular de la Póliza",
+          "spouse": "Cónyuge",
+          "child": "Hijo(a)",
+          "parent": "Padre/Madre",
+          "otherRelative": "Otro pariente",
+          "nonRelative": "No pariente"
+        },
+        "genders": {
+          "select": "Seleccionar...",
+          "male": "Masculino",
+          "female": "Femenino",
+          "other": "Otro"
+        },
+        "idTypes": {
+          "select": "Seleccionar...",
+          "inStateDL": "Licencia de conducir estatal",
+          "inStateID": "ID estatal",
+          "outOfStateDL": "Licencia de conducir de otro estado",
+          "outOfStateID": "ID de otro estado",
+          "international": "ID Internacional / Pasaporte"
+        },
+        "idSubTypes": {
+          "select": "Seleccionar...",
+          "matricular": "Matrícula Consular",
+          "passport": "Pasaporte",
+          "otherForeign": "Otra ID extranjera"
+        },
+        "helpers": {
+          "dlAsShown": "Número de licencia (Ingrese tal como aparece en su licencia)",
+          "dlExactly": "Incluya letras o números exactamente como aparecen (ej. A1234567).",
+          "idAsShown": "Número de ID (Ingrese tal como aparece en su ID estatal)",
+          "idExactly": "Incluya letras o números exactamente como aparecen.",
+          "idTypeLabel": "Tipo de Identificación"
+        },
+        "errors": {
+          "dl8Digits": "La licencia de conducir debe tener exactamente 8 dígitos."
+        }
+      },
+      "vehicle": {
+        "vinNumber": "Número VIN",
+        "make": "Marca",
+        "model": "Modelo",
+        "year": "Año",
+        "coverage": "Opciones de Cobertura",
+        "placeholders": {
+          "vin": "Ingrese el VIN de 17 dígitos",
+          "autoFilled": "Autocompletado desde el VIN"
+        },
+        "coverageHelper": "Pase el cursor sobre los cuadros para ver qué significa cada cobertura.",
+        "coverageTypes": {
+          "liability": "Responsabilidad Civil",
+          "comprehensive": "Cobertura Total / Colisión",
+          "pip": "Protección contra Lesiones (PIP)",
+          "medpay": "Gastos Médicos",
+          "uninsured": "Conductor sin Seguro",
+          "towing": "Remolque",
+          "rental": "Auto de Renta",
+          "roadside": "Asistencia en el Camino"
+        },
+        "coverageDescriptions": {
+          "liability": "La ley de Texas exige una cobertura mínima de 30/60/25: $30,000 por persona, $60,000 por accidente y $25,000 por daños a propiedad.",
+          "comprehensive": "Cubre eventos como robo, clima o vandalismo. Colisión cubre choques con otros vehículos u objetos.",
+          "pip": "Cubre gastos médicos, pérdida de salarios y servicios domésticos, sin importar quién tuvo la culpa.",
+          "medpay": "Cubre facturas médicas para usted y sus pasajeros, independientemente de la culpa.",
+          "uninsured": "Lo protege cuando el conductor culpable no tiene seguro o es insuficiente.",
+          "towing": "Cubre los costos de remolque después de un accidente o avería.",
+          "rental": "Cubre el costo de un auto de renta mientras su vehículo es reparado.",
+          "roadside": "Brinda servicios de emergencia como paso de corriente, cambio de llantas y entrega de combustible."
+        },
+        "liabilityRequired": "*La cobertura de responsabilidad civil es obligatoria y está incluida por defecto.",
+        "searching": "Buscando VIN...",
+        "errors": {
+          "atLeastOne": "Por favor, añada al menos un conductor y un vehículo.",
+          "invalidVin": "Uno o más VIN no son válidos. Por favor, verifique antes de continuar."
+        }
+      },
+      "buttons": {
+        "back": "Atrás",
+        "continue": "Continuar"
+      }
+    },
+    "step3": {
+      "title": "Paso 3: Coberturas y Descuentos",
+      "priorCoverage": "¿Tiene cobertura previa?",
+      "priorCoverageHelper": "(Muchas compañías ofrecen mejores precios si tiene una póliza activa)",
+      "howLong": "¿Cuánto tiempo?",
+      "howLongHelper": "(Meses con la compañía anterior)",
+      "expirationDate": "Fecha de vencimiento",
+      "expirationHelper": "(¿Cuándo terminó su póliza anterior o está activa?)",
+      "membership": "Membresía",
+      "membershipHelper": "(Membresías de Sam's o Costco pueden reducir su tarifa)",
+      "options": {
+        "select": "Seleccionar...",
+        "yes": "Sí",
+        "no": "No",
+        "months6": "6",
+        "months12": "12",
+        "months18": "18",
+        "months24": "24",
+        "samsClub": "Sam's Club",
+        "costco": "Costco",
+        "none": "Ninguna"
+      },
+      "buttons": {
+        "back": "Atrás",
+        "continue": "Continuar"
+      }
+    },
+    "step4": {
+      "title": "Paso 4: Revise su Cotización",
+      "sections": {
+        "personal": "Información Personal",
+        "drivers": "Conductores",
+        "vehicles": "Vehículos",
+        "coverage": "Cobertura y Descuentos"
+      },
+      "fields": {
+        "firstName": "Nombre:",
+        "lastName": "Apellido:",
+        "address": "Dirección:",
+        "dob": "Fecha de nacimiento:",
+        "phone": "Teléfono:",
+        "email": "Correo electrónico:",
+        "maritalStatus": "Estado civil:",
+        "residency": "Tipo de residencia:",
+        "effectiveDate": "Fecha de vigencia:",
+        "name": "Nombre:",
+        "relationship": "Relación:",
+        "gender": "Género:",
+        "idType": "Tipo de ID:",
+        "idNumber": "Número de ID:",
+        "state": "Estado:",
+        "country": "País:",
+        "idSubType": "Subtipo de ID:",
+        "vin": "VIN:",
+        "make": "Marca:",
+        "model": "Modelo:",
+        "year": "Año:",
+        "coverage": "Cobertura:",
+        "priorCoverage": "Cobertura previa:",
+        "priorMonths": "Meses de cobertura:",
+        "expirationDate": "Fecha de vencimiento:",
+        "membership": "Membresía:"
+      },
+      "noData": {
+        "notProvided": "No proporcionado",
+        "drivers": "No se han añadido conductores.",
+        "vehicles": "No se han añadido vehículos.",
+        "coverageDefault": "Responsabilidad Civil (por defecto)"
+      },
+      "buttons": {
+        "back": "Atrás",
+        "submit": "Enviar Cotización",
+        "submitting": "Enviando..."
+      }
+    },
+    "thankYou": {
+      "title": "Gracias por su paciencia 🙏",
+      "reviewing": "Estamos revisando cuidadosamente sus opciones",
+      "working": "y nuestro equipo está trabajando para encontrarle los mejores precios posibles.",
+      "callYou": "Le llamaremos en breve 📞",
+      "needHelp": "¿Necesita ayuda inmediata?",
+      "callNow": "Llámenos ahora al (469) 729-5185",
+      "backHome": "Volver al inicio"
+    },
+    "alerts": {
+      "texasOnly": "Por favor, seleccione una dirección dentro de Texas.",
+      "codeSent": "¡Código de verificación enviado con éxito!",
+      "phoneVerified": "¡Número de teléfono verificado con éxito!",
+      "failedToSend": "Error al enviar la cotización por SMS. Inténtelo de nuevo."
+    }
+  },
+  "motorcyclequote": {
+  "progressBar": {
+    "step1": "Info",
+    "step2": "Motociclistas y Motos",
+    "step3": "Cobertura",
+    "step4": "Revisión"
+  },
+  "step1": {
+    "title": "¡Acelera para obtener la cotización perfecta de seguro para motocicletas!",
+    "subtitle": "Tu moto se merece lo mejor; asegurémonos de que esté protegida.",
+    "description": "Completa los siguientes datos para obtener una cotización rápida, precisa y personalizada para ti y tu moto.",
+    "effectiveDate": "Fecha de vigencia (Por defecto hoy; haz clic en el calendario para cambiar)",
+    "firstName": "Nombre",
+    "lastName": "Apellido",
+    "address": "Dirección",
+    "dob": "Fecha de nacimiento",
+    "phone": "Número de teléfono",
+    "email": "Correo electrónico",
+    "maritalStatus": "Estado civil:",
+    "maritalStatusHelper": "Optimiza tu precio eligiendo incluir o excluir a tu cónyuge.",
+    "residencyType": "Tipo de residencia:",
+    "residencyHelper": "Ser propietario de una vivienda puede reducir tu tarifa.",
+    "placeholders": {
+      "firstName": "Ingresa tu nombre",
+      "lastName": "Ingresa tu apellido",
+      "address": "Ingresa la dirección",
+      "phone": "Ingresa el número de 10 dígitos",
+      "email": "Ingresa tu correo electrónico"
+    },
+    "maritalOptions": {
+      "select": "Seleccionar...",
+      "single": "Soltero(a)",
+      "married": "Casado(a)",
+      "civilUnion": "Unión Civil",
+      "divorced": "Divorciado(a)"
+    },
+    "residencyOptions": {
+      "select": "Seleccionar...",
+      "own": "Propia",
+      "rent": "Renta",
+      "parents": "Vive con sus padres"
+    },
+    "verification": {
+      "sendCode": "Enviar código",
+      "sending": "Enviando...",
+      "verified": "Verificado ✓",
+      "verificationCode": "Código de verificación",
+      "enterCode": "Ingresa el código de 6 dígitos",
+      "verifyButton": "Verificar",
+      "status": "Estado:",
+      "notVerified": "No verificado"
+    },
+    "errors": {
+      "phone10Digits": "El número de teléfono debe tener exactamente 10 dígitos.",
+      "addressRequired": "Selecciona una dirección válida del menú desplegable.",
+      "addressError": "Corrige el error de dirección antes de continuar.",
+      "phoneVerifyRequired": "Verifica tu número de teléfono antes de continuar.",
+      "addressApartment": "Para complejos de apartamentos, por favor incluye el número de unidad (ej. Apt 123, Unidad 4B, #205).",
+      "invalidCode": "Código de verificación no válido. Inténtalo de nuevo."
+    },
+    "buttons": {
+      "continue": "Continuar"
+    }
+  },
+  "step2": {
+    "title": "Paso 2: Información de Motociclista y Moto",
+    "ridersLabel": "Cuántos motociclistas (incluyéndote a ti)",
+    "motorcyclesLabel": "Cuántas motocicletas",
+    "riderTitle": "Motociclista",
+    "motorcycleTitle": "Motocicleta",
+    "rider": {
+      "firstName": "Nombre",
+      "lastName": "Apellido",
+      "dob": "Fecha de nacimiento",
+      "relationship": "Relación",
+      "gender": "Género",
+      "idType": "Tipo de identificación",
+      "dlNumber": "Número de licencia",
+      "idNumber": "Número de identificación",
+      "state": "Estado",
+      "country": "País",
+      "internationalId": "Número de ID internacional",
+      "placeholders": {
+        "firstName": "Ingresa el nombre",
+        "lastName": "Ingresa el apellido",
+        "dlNumber": "Ingresa el número de licencia",
+        "idNumber": "Ingresa el número de ID",
+        "state": "Ingresa el estado (ej. TX)",
+        "country": "Ingresa el país (ej. México)",
+        "internationalId": "Ingresa el ID internacional"
+      },
+      "relationships": {
+        "select": "Seleccionar...",
+        "policyholder": "Titular de la póliza",
+        "spouse": "Cónyuge",
+        "child": "Hijo(a)",
+        "parent": "Padre/Madre",
+        "otherRelative": "Otro pariente",
+        "nonRelative": "No pariente"
+      },
+      "genders": {
+        "select": "Seleccionar...",
+        "male": "Masculino",
+        "female": "Femenino",
+        "other": "Otro"
+      },
+      "idTypes": {
+        "select": "Seleccionar...",
+        "inStateDL": "Licencia de conducir estatal",
+        "inStateID": "ID estatal",
+        "outOfStateDL": "Licencia de conducir de otro estado",
+        "outOfStateID": "ID de otro estado",
+        "international": "ID Internacional / Pasaporte"
+      },
+      "idSubTypes": {
+        "select": "Seleccionar...",
+        "matricular": "Matrícula Consular",
+        "passport": "Pasaporte",
+        "otherForeign": "Otra ID extranjera"
+      },
+      "helpers": {
+        "idTypeLabel": "Tipo de Identificación",
+        "dlAsShown": "Número de licencia",
+        "idAsShown": "Número de ID"
+      },
+      "errors": {
+        "dl8Digits": "La licencia debe tener exactamente 8 dígitos."
+      }
+    },
+    "motorcycle": {
+      "vinNumber": "Número VIN",
+      "make": "Marca",
+      "model": "Modelo",
+      "year": "Año",
+      "coverage": "Opciones de cobertura (Pasa el cursor sobre la opción para ver detalles)",
+      "placeholders": {
+        "vin": "Ingresa el VIN de 17 dígitos",
+        "autoFilled": "Autocompletado desde el VIN"
+      },
+      "searching": "Buscando VIN...",
+      "liabilityRequired": "*La cobertura de responsabilidad civil es obligatoria y se incluye por defecto.",
+      "coverageDescriptions": {
+        "liability": "La ley de Texas exige 30/60/25: $30k por persona/$60k por accidente para lesiones corporales y $25k para daños materiales. Esta cobertura solo paga los daños que causes a terceros. No cubre tus propias lesiones ni daños a tu moto.",
+        "comprehensive": "El seguro Integral cubre robo, clima o vandalismo. Colisión cubre choques con otros vehículos u objetos. Juntos proporcionan 'cobertura total', protegiendo tu moto sin importar la culpa.",
+        "pip": "PIP cubre gastos médicos y salarios perdidos (hasta el 80%) independientemente de la culpa. Brinda cobertura inmediata para ti y tus pasajeros sin esperar a determinar la culpa.",
+        "medpay": "MedPay cubre facturas médicas sin importar la culpa. A diferencia de PIP, solo cubre gastos médicos, lo que la hace una opción más directa y específica.",
+        "uninsured": "Te protege si el conductor culpable no tiene seguro o es insuficiente. Crucial en Texas, donde el 12% de las motos no están aseguradas.",
+        "towing": "Cubre el costo de remolque a un taller tras un accidente o avería. Los límites suelen ser de $50 a $200 por incidente.",
+        "rental": "Cubre el costo de un vehículo de renta mientras tu moto es reparada tras un siniestro cubierto o robo.",
+        "roadside": "Servicios de emergencia 24/7 como paso de corriente, cambio de llantas ponchadas, apertura de moto y entrega de combustible."
+      },
+      "errors": {
+        "atLeastOne": "Por favor, añade al menos una motocicleta y un motociclista.",
+        "invalidVin": "Todas las motocicletas deben tener información VIN válida.",
+        "duplicateVin": "Este VIN ya ha sido añadido a otra motocicleta.",
+        "noInfo": "No se encontró información para ese VIN.",
+        "searchError": "Ocurrió un error al buscar el VIN."
+      }
+    },
+    "buttons": {
+      "back": "Atrás",
+      "continue": "Continuar"
+    }
+  },
+  "step3": {
+    "title": "Paso 3: Cobertura y Descuentos",
+    "priorCoverage": "Cobertura Previa",
+    "howLong": "¿Cuánto tiempo?",
+    "howLongHelper": "(¿Cuántos meses estuvo con la compañía anterior?)",
+    "expirationDate": "Fecha de vencimiento",
+    "expirationHelper": "(¿Cuándo terminó su póliza o sigue activa?)",
+    "membership": "Membresía",
+    "membershipHelper": "(Sam's Club o Costco pueden reducir su tarifa)",
+    "options": {
+      "select": "Seleccionar...",
+      "yes": "Sí",
+      "no": "No",
+      "months6": "6",
+      "months12": "12",
+      "months18": "18",
+      "months24": "24",
+      "samsClub": "Sam's Club",
+      "costco": "Costco",
+      "none": "Ninguna"
+    },
+    "buttons": {
+      "back": "Atrás",
+      "continue": "Continuar"
+    }
+  },
+  "step4": {
+    "title": "Paso 4: Revise su Cotización",
+    "sections": {
+      "personal": "Información Personal",
+      "riders": "Motociclistas",
+      "motorcycles": "Motocicletas",
+      "coverage": "Cobertura y Descuentos"
+    },
+    "fields": {
+      "firstName": "Nombre:",
+      "lastName": "Apellido:",
+      "address": "Dirección:",
+      "dob": "Fecha de nacimiento:",
+      "phone": "Teléfono:",
+      "email": "Correo electrónico:",
+      "maritalStatus": "Estado civil:",
+      "residency": "Tipo de residencia:",
+      "effectiveDate": "Fecha de vigencia:",
+      "relationship": "Relación:",
+      "gender": "Género:",
+      "idType": "Tipo de ID:",
+      "idNumber": "Número de ID:",
+      "state": "Estado:",
+      "country": "País:",
+      "idSubType": "Subtipo de ID:",
+      "vin": "Número VIN:",
+      "make": "Marca:",
+      "model": "Modelo:",
+      "year": "Año:",
+      "coverage": "Cobertura:",
+      "priorCoverage": "Cobertura previa:",
+      "priorMonths": "Meses de cobertura:",
+      "expirationDate": "Fecha de vencimiento:",
+      "membership": "Membresía:"
+    },
+    "noData": {
+      "notProvided": "No proporcionado",
+      "riders": "No se añadieron motociclistas.",
+      "motorcycles": "No se añadieron motocicletas.",
+      "coverageDefault": "Ninguna seleccionada"
+    },
+    "buttons": {
+      "back": "Atrás",
+      "submit": "Obtener Cotización",
+      "submitting": "Enviando..."
+    }
+  },
+  "thankYou": {
+    "title": "¡Gracias por solicitar tu cotización!",
+    "reviewing": "Estamos revisando tu información.",
+    "working": "¡Estamos trabajando para ofrecerte las mejores tarifas de seguro para moto!",
+    "callYou": "Un agente te llamará en breve.",
+    "needHelp": "¿Necesitas ayuda inmediata?",
+    "callNow": "¡Llámanos ahora!",
+    "backHome": "Volver al inicio"
+  },
+  "alerts": {
+    "codeSent": "¡Código de verificación enviado a tu teléfono!",
+    "phoneVerified": "¡Número de teléfono verificado con éxito!",
+    "texasOnly": "Actualmente solo prestamos servicio a direcciones de Texas.",
+    "failedToSend": "Error al enviar la cotización por SMS. Inténtalo de nuevo."
+  }
+},
+"AutopaySuccess": {
+    "title": "¡Configuración de pago automático completada! 🎉",
+    "subtitle": "Tu método de pago automático se ha guardado correctamente.",
+    "cardTitle": "Facturación y protección de la cobertura",
+    "feature1": "Las primas futuras se cobrarán automáticamente en las fechas de vencimiento programadas.",
+    "feature2": "Si se rechaza un pago, se lo notificaremos por mensaje de texto, correo electrónico o correo postal. Es posible que un representante se ponga en contacto con usted para ayudarle a mantener activa su cobertura.",
+    "feature3": "Puede actualizar o <bold>eliminar el pago automático</bold> en cualquier momento. Tenga en cuenta que la eliminación del pago automático puede dar lugar a la pérdida de los descuentos asociados al mismo.",
+    "button": "Volver a la página de inicio",
+    "help": "¿Necesita ayuda?",
+    "callUs": "Llámenos al {phone}"
+  }
+}
+
+
+

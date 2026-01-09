@@ -1,0 +1,2241 @@
+{
+  "Metadata": {
+  "title": "Texas Premium Insurance Services | Savings & Protection",
+  "description": "Affordable auto, home, and commercial insurance in Texas. Your Savings, Our Priority!"
+},
+  "home": {
+    "hero": {
+      "title": "Your Savings, Our Priority!",
+      "subtitle": "Protecting what matters most: Auto, Home, Renters, Business, and More.",
+      "cta": "GET QUOTE"
+    },
+    "personalized": {
+      "title": "Experience the Difference: Personalized Insurance Solutions",
+      "description": "With access to 40+ leading companies and over 10 years of industry expertise, we'll guide you to the right coverage. Don't navigate the insurance maze alone - schedule your free consultation and let us help you find the perfect fit.",
+      "stats": {
+        "companies": {
+          "number": "40+",
+          "label": "COMPANIES"
+        },
+        "experience": {
+          "number": "10+",
+          "label": "YEARS EXPERIENCE"
+        }
+      },
+      "card": {
+        "question": "Not sure what kind of coverage you need?",
+        "description": "Speak with one of our professional agents we'll help you find the best and most affordable insurance option tailored for you.",
+        "cta": "CALL US"
+      }
+    },
+    "insuranceTypes": {
+      "auto": {
+        "title": "Auto",
+        "description": "Protect your Auto",
+        "cta": "Quote Now >>"
+      },
+      "home": {
+        "title": "Home",
+        "description": "Protect your home",
+        "cta": "Quote Now >>"
+      },
+      "rental": {
+        "title": "Rental",
+        "description": "Protect your rental",
+        "cta": "Quote Now >>"
+      },
+      "motorcycle": {
+        "title": "Motorcycle",
+        "description": "Protect your ride",
+        "cta": "Quote Now >>"
+      },
+      "commercial": {
+        "title": "Commercial",
+        "description": "Protect your business",
+        "cta": "Quote Now >>"
+      },
+      "other": {
+        "title": "Other",
+        "description": "Specialty Insurance Options",
+        "cta": "Contact Us >>"
+      }
+    },
+    "contact": {
+      "title": "Ready to start saving?",
+      "subtitle": "Pick a way to connect and get your quote.",
+      "call": {
+        "title": "Call Us",
+        "description": "Talk to an agent in minutes.",
+        "cta": "Call Now"
+      },
+      "text": {
+        "title": "Text Us",
+        "description": "Fast answers on your phone.",
+        "cta": "Send Text"
+      },
+      "chat": {
+        "title": "Chat Live",
+        "description": "Talk to us right here online.",
+        "cta": "Start Chat"
+      }
+    },
+    "testimonials": {
+      "title": "What are customers saying?",
+      "reviews": {
+        "leslie": {
+          "text": "Exceptional service every time from Texas Premium Insurance Services. They made starting a new policy easy and found a great price. Being able to manage everything via text is incredibly convenient. Their efficiency and attention to detail truly stands out!",
+          "name": "Leslie Vance"
+        },
+        "darius": {
+          "text": "The staff at Texas Premium Insurance Services are incredibly personal and always willing to work with you. They take the time to explain coverage, benefits, and costs, and are dedicated to finding the best rates—even for those with driving restrictions.",
+          "name": "Darius Reed"
+        },
+        "maya": {
+          "text": "Outstanding customer service! Texas Premium Insurance Services is truly a one-stop shop for all your insurance needs across the state. No matter where you are in Texas, they've got you covered!",
+          "name": "Maya Chen"
+        }
+      }
+    },
+    "steps": {
+      "title": "Compare and Save in 3 Easy Steps",
+      "subtitle": "Getting the right coverage has never been easier",
+      "step1": {
+        "title": "Tell Us About Yourself",
+        "description": "Share a few details about your insurance needs so we can find the best options for you."
+      },
+      "step2": {
+        "title": "Compare Top Insurers",
+        "description": "We'll search 40+ leading companies to bring you the most competitive rates."
+      },
+      "step3": {
+        "title": "Get Covered & Save",
+        "description": "Choose your plan and start saving with coverage that fits your needs."
+      },
+      "cta": "Start Your Quote"
+    }
+  },
+  "boats": {
+    "header": {
+      "callToAction": "Call to Get a Quote",
+      "title": "Boats and Watercraft Insurance in Texas",
+      "subtitle": "Protect your boating adventures in Texas!",
+      "description": "This guide explains what boats and watercraft insurance is, why you need it, how to get it, and what it covers for Texas boat owners looking to safeguard their vessels and water activities.",
+      "getStarted": "Get Started Now",
+      "imageAlt": "Boat on a Texas lake"
+    },
+    "form": {
+      "title": "Request a Boats and Watercraft Insurance Quote",
+      "nameLabel": "Name",
+      "namePlaceholder": "Your full name",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Your email address",
+      "phoneLabel": "Phone Number",
+      "phonePlaceholder": "Your phone number",
+      "messageLabel": "Message",
+      "messagePlaceholder": "Tell us about your boats and watercraft insurance needs",
+      "submitButton": "Submit Inquiry",
+      "successMessage": "Thank you for your inquiry! An agent will contact you soon.",
+      "errorMessage": "Failed to send inquiry via SMS. Please try again or call (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "What Is Boats and Watercraft Insurance in Texas?",
+      "paragraph1": "Boats and watercraft insurance in Texas is a specialized policy that protects boats, jet skis, yachts, and other watercraft used for recreation or personal use. It covers damage to your vessel, personal belongings, and liability risks, ensuring financial protection during your time on the water. In Texas, while boat insurance isn't always legally required, it's often mandated by lenders or marinas for financed or docked vessels.",
+      "paragraph2": "This insurance safeguards your watercraft and ensures worry-free boating on Texas lakes, rivers, and coastal waters."
+    },
+    "whyNeed": {
+      "title": "Why Do You Need Boats and Watercraft Insurance in Texas?",
+      "intro": "Boats and watercraft insurance is essential for protecting your vessel and covering liability risks while boating in Texas. Common reasons to get this insurance include:",
+      "reasons": {
+        "lender": {
+          "title": "Lender Requirements",
+          "description": "If your boat or watercraft is financed, lenders typically require insurance to protect their investment."
+        },
+        "marina": {
+          "title": "Marina or Storage Requirements",
+          "description": "Many Texas marinas or storage facilities require proof of insurance for docking or storing your vessel."
+        },
+        "vesselProtection": {
+          "title": "Vessel Protection",
+          "description": "Covers repairs or replacement for damage to your boat or watercraft from accidents, theft, vandalism, or natural disasters like storms."
+        },
+        "liability": {
+          "title": "Liability Coverage",
+          "description": "Protects you from financial responsibility if your vessel causes injury or property damage to others while on the water."
+        },
+        "belongings": {
+          "title": "Personal Belongings",
+          "description": "Replaces personal items on your boat, such as fishing gear or electronics, damaged by covered events."
+        },
+        "weather": {
+          "title": "Weather-Related Risks",
+          "description": "Texas's coastal areas and lakes are prone to hurricanes, storms, and flooding, which can damage your vessel."
+        }
+      },
+      "conclusion": "Whether you use your boat for fishing, watersports, or leisure, boats and watercraft insurance is a smart investment to protect your vessel and avoid costly repairs or legal expenses in Texas."
+    },
+    "howItWorks": {
+      "title": "How Does Boats and Watercraft Insurance Work in Texas?",
+      "intro": "Boats and watercraft insurance in Texas provides tailored coverage for vessels of all types, from small jet skis to large yachts. Here's how the process works:",
+      "steps": {
+        "step1": {
+          "title": "Assess Your Needs",
+          "description": "Evaluate the type, value, and usage of your boat or watercraft (e.g., fishing boat, jet ski, or yacht) to determine the coverage amount you need."
+        },
+        "step2": {
+          "title": "Contact Us",
+          "intro": "Reach out to Texas Premium Insurance Services, and we'll help you find the right boats and watercraft insurance policy.",
+          "bullet1": "We'll customize coverage for liability, physical damage, personal belongings, and optional add-ons like salvage coverage or towing.",
+          "bullet2": "We'll ensure the policy meets any lender, marina, or state requirements."
+        },
+        "step3": {
+          "title": "Policy Issuance",
+          "description": "We'll work with top insurers to issue a policy that protects your vessel and complies with Texas regulations."
+        },
+        "step4": {
+          "title": "Premium Payments",
+          "description": "You'll pay premiums (monthly or annually) to maintain coverage. We'll help you find affordable options tailored to your budget."
+        },
+        "step5": {
+          "title": "Claims Process",
+          "description": "If your boat is damaged or you face a liability claim, contact us, and we'll guide you through filing a claim with your insurer for prompt resolution."
+        },
+        "step6": {
+          "title": "Ongoing Support",
+          "description": "We'll monitor your policy to ensure it remains up-to-date and recommend adjustments as your boating needs or vessel usage change."
+        }
+      },
+      "coverage": {
+        "intro": "Standard boats and watercraft insurance typically covers:",
+        "items": {
+          "liability": {
+            "title": "Liability",
+            "description": "Covers bodily injury and property damage caused by your vessel."
+          },
+          "physical": {
+            "title": "Physical Damage",
+            "description": "Repairs or replacement for damage to your boat or watercraft from accidents or other covered events."
+          },
+          "belongings": {
+            "title": "Personal Belongings",
+            "description": "Replacement of items on your vessel, like fishing gear or electronics."
+          },
+          "emergency": {
+            "title": "Emergency Assistance",
+            "description": "Covers towing, fuel delivery, or other on-water assistance if your vessel breaks down."
+          }
+        },
+        "optional": "Optional coverages, such as hurricane haul-out, wreck removal, or uninsured boater coverage, may be added based on your boating needs and location in Texas."
+      }
+    },
+    "footer": {
+      "callToAction": "Get Your Boats and Watercraft Insurance Today"
+    }
+  },
+  "rv": {
+    "header": {
+      "callToAction": "Call to Get a Quote",
+      "title": "RV Insurance in Texas",
+      "subtitle": "Protect your RV adventures in Texas!",
+      "description": "This guide explains what RV insurance is, why you need it, how to get it, and what it covers for Texas RV owners looking to safeguard their recreational vehicles and travel experiences.",
+      "getStarted": "Get Started Now",
+      "imageAlt": "RV parked in a scenic Texas landscape"
+    },
+    "form": {
+      "title": "Request an RV Insurance Quote",
+      "nameLabel": "Name",
+      "namePlaceholder": "Your full name",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Your email address",
+      "phoneLabel": "Phone Number",
+      "phonePlaceholder": "Your phone number",
+      "messageLabel": "Message",
+      "messagePlaceholder": "Tell us about your RV insurance needs",
+      "submitButton": "Submit Inquiry",
+      "successMessage": "Thank you for your inquiry! An agent will contact you soon.",
+      "errorMessage": "Failed to send inquiry via SMS. Please try again or call (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "What Is RV Insurance in Texas?",
+      "paragraph1": "RV insurance in Texas is a specialized policy that protects recreational vehicles, such as motorhomes, travel trailers, and campers, used for travel, camping, or full-time living. It covers damage to your RV, personal belongings, and liability risks, ensuring financial protection during your adventures. In Texas, RV insurance is often required if your RV is motorized or financed, or if you use it as a primary residence.",
+      "paragraph2": "This insurance safeguards your RV and ensures compliance with Texas regulations, allowing you to enjoy your travels with peace of mind."
+    },
+    "whyNeed": {
+      "title": "Why Do You Need RV Insurance in Texas?",
+      "intro": "RV insurance is essential for protecting your recreational vehicle and covering liability risks while traveling or camping in Texas. Common reasons to get RV insurance include:",
+      "reasons": {
+        "legal": {
+          "title": "Legal Requirements",
+          "description": "Motorized RVs in Texas must carry minimum liability coverage (30/60/25) to cover bodily injury and property damage, similar to auto insurance."
+        },
+        "lender": {
+          "title": "Lender Requirements",
+          "description": "If your RV is financed, lenders typically require insurance to protect their investment."
+        },
+        "property": {
+          "title": "Property Protection",
+          "description": "Covers repairs or replacement for damage to your RV from accidents, theft, vandalism, or natural disasters like storms."
+        },
+        "liability": {
+          "title": "Liability Coverage",
+          "description": "Protects you from financial responsibility if your RV causes injury or property damage to others while on the road or at a campsite."
+        },
+        "belongings": {
+          "title": "Personal Belongings",
+          "description": "Replaces personal items inside your RV, such as electronics or camping gear, damaged by covered events."
+        },
+        "fullTime": {
+          "title": "Full-Time RV Living",
+          "description": "If you live in your RV full-time, specialized coverage can protect it as your primary residence, similar to homeowners insurance."
+        }
+      },
+      "conclusion": "Whether you use your RV for weekend getaways or full-time living, RV insurance is a smart investment to protect your vehicle and avoid costly repairs or legal expenses in Texas."
+    },
+    "howItWorks": {
+      "title": "How Does RV Insurance Work in Texas?",
+      "intro": "RV insurance in Texas provides tailored coverage for recreational vehicles, whether motorized or towable. Here's how the process works:",
+      "steps": {
+        "step1": {
+          "title": "Assess Your Needs",
+          "description": "Evaluate the type, value, and usage of your RV (e.g., motorhome, travel trailer, or camper) to determine the coverage amount you need."
+        },
+        "step2": {
+          "title": "Contact Us",
+          "intro": "Reach out to Texas Premium Insurance Services, and we'll help you find the right RV insurance policy.",
+          "bullet1": "We'll customize coverage for liability, physical damage, personal belongings, and optional add-ons like roadside assistance or full-timer coverage.",
+          "bullet2": "We'll ensure the policy meets any lender or state requirements."
+        },
+        "step3": {
+          "title": "Policy Issuance",
+          "description": "We'll work with top insurers to issue a policy that protects your RV and complies with Texas regulations."
+        },
+        "step4": {
+          "title": "Premium Payments",
+          "description": "You'll pay premiums (monthly or annually) to maintain coverage. We'll help you find affordable options tailored to your budget."
+        },
+        "step5": {
+          "title": "Claims Process",
+          "description": "If your RV is damaged or you face a liability claim, contact us, and we'll guide you through filing a claim with your insurer for prompt resolution."
+        },
+        "step6": {
+          "title": "Ongoing Support",
+          "description": "We'll monitor your policy to ensure it remains up-to-date and recommend adjustments as your RV usage or needs change."
+        }
+      },
+      "coverage": {
+        "intro": "Standard RV insurance typically covers:",
+        "items": {
+          "liability": {
+            "title": "Liability",
+            "description": "Covers bodily injury and property damage caused by your RV."
+          },
+          "physical": {
+            "title": "Physical Damage",
+            "description": "Repairs or replacement for damage to your RV from accidents or other covered events."
+          },
+          "belongings": {
+            "title": "Personal Belongings",
+            "description": "Replacement of items inside your RV, like camping gear or electronics."
+          },
+          "emergency": {
+            "title": "Emergency Expenses",
+            "description": "Covers temporary lodging or travel costs if your RV is uninhabitable due to a covered event."
+          }
+        },
+        "optional": "Optional coverages, such as roadside assistance, full-timer liability, or vacation liability, may be added based on your RV usage and location in Texas."
+      }
+    },
+    "footer": {
+      "callToAction": "Get Your RV Insurance Today"
+    }
+  },
+  "sr22": {
+    "header": {
+      "callToAction": "Call to Get a Quote",
+      "title": "SR-22 Insurance in Texas",
+      "subtitle": "Need an SR-22 in Texas?",
+      "description": "This guide explains what an SR-22 is, why you might need it, how to get it, and what it means for Texas drivers looking to reinstate their driving privileges.",
+      "getStarted": "Get Started Now",
+      "imageAlt": "Business professional in a modern office"
+    },
+    "form": {
+      "title": "Request a SR-22 Insurance Quote",
+      "nameLabel": "Name",
+      "namePlaceholder": "Your full name",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Your email address",
+      "phoneLabel": "Phone Number",
+      "phonePlaceholder": "Your phone number",
+      "messageLabel": "Message",
+      "messagePlaceholder": "Tell us about your SR-22 needs or driving situation",
+      "submitButton": "Submit Inquiry",
+      "successMessage": "Thank you for your inquiry! An agent will contact you soon.",
+      "errorMessage": "Failed to send inquiry via SMS. Please try again or call (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "What Is SR-22 Insurance in Texas?",
+      "paragraph1": "In Texas, an SR-22 is a Certificate of Financial Responsibility filed by your auto insurance company with the Texas Department of Public Safety (DPS) to prove you carry the state's minimum liability insurance coverage. It's not a type of insurance but a document verifying that you meet Texas's financial responsibility requirements, typically required for high-risk drivers after serious driving violations or license suspensions.",
+      "paragraph2": "The SR-22 ensures you maintain continuous insurance coverage for a specified period, allowing you to regain or maintain your driving privileges in Texas."
+    },
+    "whyNeed": {
+      "title": "Why Might You Need an SR-22 in Texas?",
+      "intro": "In Texas, an SR-22 is required for drivers who have committed certain violations or had their license suspended. Common reasons include:",
+      "reasons": {
+        "dwi": {
+          "title": "DWI or DUI convictions",
+          "description": "Driving while intoxicated or under the influence is a common trigger for an SR-22 requirement."
+        },
+        "noInsurance": {
+          "title": "Driving without insurance",
+          "description": "Operating a vehicle without valid liability insurance violates Texas law and often requires an SR-22."
+        },
+        "suspended": {
+          "title": "Driving with a suspended or revoked license",
+          "description": "If caught driving while your license is suspended, you may need an SR-22 to reinstate it."
+        },
+        "violations": {
+          "title": "Serious traffic violations",
+          "description": "Offenses like reckless driving or accumulating too many points on your driving record can lead to an SR-22 mandate."
+        },
+        "accidents": {
+          "title": "At-fault accidents without insurance",
+          "description": "Causing an accident while uninsured often requires an SR-22 to prove future financial responsibility."
+        },
+        "judgments": {
+          "title": "Failure to pay judgments",
+          "description": "Unresolved traffic-related judgments may necessitate an SR-22 filing."
+        }
+      },
+      "conclusion": "The Texas DPS or a court will notify you if an SR-22 is required, typically through a court order or a letter from the DPS."
+    },
+    "howItWorks": {
+      "title": "How Does SR-22 Insurance Work in Texas?",
+      "intro": "An SR-22 in Texas is a form your insurance provider files with the Texas DPS to confirm you have at least the state's minimum liability insurance, which is 30/60/25 coverage ($30,000 per person, $60,000 per accident for bodily injury, and $25,000 for property damage). Here's how the process works:",
+      "steps": {
+        "step1": {
+          "title": "Notification",
+          "description": "You receive a court order or a letter from the Texas Department of Public Safety (DPS) stating that you're required to file an SR-22."
+        },
+        "step2": {
+          "title": "Contact Us",
+          "intro": "Reach out to Texas Premium Insurance Services, and we'll handle the SR-22 process for you—making it simple and stress-free.",
+          "bullet1": "If you own a vehicle, we can provide you with an auto insurance policy that includes the SR-22 filing.",
+          "bullet2": "If you don't own a car, we'll help you obtain a non-owner SR-22 policy that meets Texas requirements."
+        },
+        "step3": {
+          "title": "Filing the SR-22",
+          "description": "Once your policy is in place, we'll have your insurer electronically file the SR-22 with the Texas DPS. Most companies charge a small filing fee."
+        },
+        "step4": {
+          "title": "Submit to DPS",
+          "description": "In addition to the electronic filing, you are also required to submit your SR-22 documentation to the Texas DPS. You can send it using any of the following methods:",
+          "mailingAddress": {
+            "title": "Mailing Address",
+            "line1": "Texas Department of Public Safety",
+            "line2": "Enforcement and Compliance Service",
+            "line3": "P.O. Box 4087",
+            "line4": "Austin, TX 78773-0320"
+          },
+          "fax": {
+            "title": "Fax",
+            "number": "(512) 424-2848"
+          },
+          "email": {
+            "title": "Email",
+            "address": "driver.improvement@dps.texas.gov"
+          }
+        },
+        "step5": {
+          "title": "Maintain Coverage",
+          "description": "You must maintain continuous insurance coverage for the duration of the SR-22 requirement, typically 2 years in Texas. A lapse in coverage will result in penalties."
+        },
+        "step6": {
+          "title": "DPS Monitoring",
+          "description": "The Texas DPS actively monitors your insurance status. If your policy lapses or is canceled, your insurer will file an SR-26 form, which can result in license suspension or other consequences."
+        },
+        "step7": {
+          "title": "Completion",
+          "description": "After the SR-22 period ends, you can request to end the filing, and we will coordinate with your insurer to stop the SR-22 submission, which may lower your premiums."
+        }
+      }
+    },
+    "footer": {
+      "callToAction": "Get Your SR-22 Insurance Today"
+    }
+  },
+  "homeowners": {
+    "header": {
+      "callToAction": "Call to Get a Quote",
+      "title": "Homeowners Insurance in Texas",
+      "subtitle": "Protect your home in Texas!",
+      "description": "This guide explains what homeowners insurance is, why you need it, how to get it, and what it covers for Texas homeowners looking to safeguard their property and belongings.",
+      "getStarted": "Get Started Now",
+      "imageAlt": "Modern Texas home exterior"
+    },
+    "form": {
+      "title": "Request a Homeowners Insurance Quote",
+      "nameLabel": "Name",
+      "namePlaceholder": "Your full name",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Your email address",
+      "phoneLabel": "Phone Number",
+      "phonePlaceholder": "Your phone number",
+      "messageLabel": "Message",
+      "messagePlaceholder": "Tell us about your homeowners insurance needs",
+      "submitButton": "Submit Inquiry",
+      "successMessage": "Thank you for your inquiry! An agent will contact you soon.",
+      "errorMessage": "Failed to send inquiry via SMS. Please try again or call (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "What Is Homeowners Insurance in Texas?",
+      "paragraph1": "Homeowners insurance in Texas is a policy that protects your home, personal belongings, and liability risks from events like fire, theft, storms, or injuries on your property. It provides financial coverage for repairs, replacements, and legal expenses, ensuring your investment and peace of mind are secure. In Texas, homeowners insurance is often required by mortgage lenders to protect their financial interest in your property.",
+      "paragraph2": "This insurance is essential for Texas homeowners due to the state's unique risks, such as hurricanes, hailstorms, and flooding, which can cause significant property damage."
+    },
+    "whyNeed": {
+      "title": "Why Do You Need Homeowners Insurance in Texas?",
+      "intro": "Homeowners insurance is critical for protecting your home and financial stability in Texas. Common reasons to get homeowners insurance include:",
+      "reasons": {
+        "mortgage": {
+          "title": "Mortgage Requirements",
+          "description": "Most lenders require homeowners insurance as a condition of your mortgage to protect their investment in your property."
+        },
+        "property": {
+          "title": "Property Protection",
+          "description": "Covers repairs or rebuilding costs if your home is damaged by covered events like fire, windstorms, or vandalism."
+        },
+        "belongings": {
+          "title": "Personal Belongings",
+          "description": "Replaces personal items like furniture, electronics, or clothing damaged by covered events such as theft or natural disasters."
+        },
+        "liability": {
+          "title": "Liability Coverage",
+          "description": "Protects you from financial responsibility if someone is injured on your property or if you accidentally damage someone else's property."
+        },
+        "weather": {
+          "title": "Weather-Related Risks",
+          "description": "Texas is prone to hurricanes, tornadoes, hailstorms, and flooding, which can cause extensive damage to your home and belongings."
+        },
+        "peace": {
+          "title": "Peace of Mind",
+          "description": "Ensures you're financially protected against unexpected events, allowing you to focus on enjoying your home."
+        }
+      },
+      "conclusion": "Even if you own your home outright, homeowners insurance is a smart investment to safeguard your property and avoid costly repairs or legal expenses in Texas's unpredictable environment."
+    },
+    "howItWorks": {
+      "title": "How Does Homeowners Insurance Work in Texas?",
+      "intro": "Homeowners insurance in Texas provides comprehensive coverage tailored to your home's needs. Here's how the process works:",
+      "steps": {
+        "step1": {
+          "title": "Assess Your Needs",
+          "description": "Evaluate the value of your home, personal belongings, and potential liability risks to determine the coverage amount you need."
+        },
+        "step2": {
+          "title": "Contact Us",
+          "intro": "Reach out to Texas Premium Insurance Services, and we'll help you find the right homeowners insurance policy.",
+          "bullet1": "We'll customize coverage for dwelling, personal property, liability, and optional add-ons like flood or windstorm insurance.",
+          "bullet2": "We'll ensure the policy meets any lender requirements or your specific needs."
+        },
+        "step3": {
+          "title": "Policy Issuance",
+          "description": "We'll work with top insurers to issue a policy that protects your home and meets Texas regulations."
+        },
+        "step4": {
+          "title": "Premium Payments",
+          "description": "You'll pay premiums (monthly or annually) to maintain coverage. We'll help you find budget-friendly options tailored to your needs."
+        },
+        "step5": {
+          "title": "Claims Process",
+          "description": "If your home or belongings are damaged, or you face a liability claim, contact us, and we'll guide you through filing a claim with your insurer for prompt resolution."
+        },
+        "step6": {
+          "title": "Ongoing Support",
+          "description": "We'll monitor your policy to ensure it remains up-to-date and recommend adjustments as your needs change or if you renovate or move."
+        }
+      },
+      "coverage": {
+        "intro": "Standard homeowners insurance typically covers:",
+        "items": {
+          "dwelling": {
+            "title": "Dwelling",
+            "description": "Repairs or rebuilding costs for your home's structure."
+          },
+          "personal": {
+            "title": "Personal Property",
+            "description": "Replacement of belongings like furniture, electronics, or clothing."
+          },
+          "liability": {
+            "title": "Liability",
+            "description": "Protection against lawsuits or medical costs if someone is injured on your property."
+          },
+          "living": {
+            "title": "Additional Living Expenses",
+            "description": "Temporary housing costs if your home is uninhabitable due to a covered event."
+          }
+        },
+        "optional": "Optional coverages, such as flood insurance or coverage for high-value items, may be added based on your needs and location in Texas."
+      }
+    },
+    "footer": {
+      "callToAction": "Get Your Homeowners Insurance Today"
+    }
+  },
+  "renters": {
+    "header": {
+      "callToAction": "Call to Get a Quote",
+      "title": "Renters Insurance in Texas",
+      "subtitle": "Protect your belongings as a renter in Texas!",
+      "description": "This guide explains what renters insurance is, why you need it, how to get it, and what it covers for Texas renters looking to safeguard their personal property and liability.",
+      "getStarted": "Get Started Now",
+      "imageAlt": "Cozy apartment interior in Texas"
+    },
+    "form": {
+      "title": "Request a Renters Insurance Quote",
+      "nameLabel": "Name",
+      "namePlaceholder": "Your full name",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Your email address",
+      "phoneLabel": "Phone Number",
+      "phonePlaceholder": "Your phone number",
+      "messageLabel": "Message",
+      "messagePlaceholder": "Tell us about your renters insurance needs",
+      "submitButton": "Submit Inquiry",
+      "successMessage": "Thank you for your inquiry! An agent will contact you soon.",
+      "errorMessage": "Failed to send inquiry via SMS. Please try again or call (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "What Is Renters Insurance in Texas?",
+      "paragraph1": "Renters insurance in Texas is a policy designed to protect tenants by covering personal belongings, liability, and additional living expenses in case of unexpected events like theft, fire, or natural disasters. Unlike homeowners insurance, it focuses on the renter's possessions and liability, not the building itself, which is typically covered by the landlord's insurance.",
+      "paragraph2": "This insurance provides peace of mind for Texas renters, ensuring financial protection for their belongings and liability risks in apartments, condos, or rented houses."
+    },
+    "whyNeed": {
+      "title": "Why Do You Need Renters Insurance in Texas?",
+      "intro": "Renters insurance is essential for protecting your personal property and covering liability risks while renting in Texas. Common reasons to get renters insurance include:",
+      "reasons": {
+        "landlord": {
+          "title": "Landlord Requirements",
+          "description": "Many Texas landlords or property management companies require renters insurance as a condition of the lease."
+        },
+        "property": {
+          "title": "Personal Property Protection",
+          "description": "Covers the cost of replacing personal items like electronics, furniture, or clothing damaged by covered events like fire or theft."
+        },
+        "liability": {
+          "title": "Liability Coverage",
+          "description": "Protects you from financial responsibility if someone is injured in your rental or if you accidentally damage someone else's property."
+        },
+        "weather": {
+          "title": "Weather-Related Risks",
+          "description": "Texas is prone to hurricanes, tornadoes, and flooding, which can damage your belongings; renters insurance helps cover these losses."
+        },
+        "living": {
+          "title": "Additional Living Expenses",
+          "description": "Pays for temporary housing or other expenses if your rental becomes uninhabitable due to a covered event."
+        },
+        "affordable": {
+          "title": "Affordable Protection",
+          "description": "Renters insurance is cost-effective, often costing less than $20/month, making it a smart investment for financial security."
+        }
+      },
+      "conclusion": "Even if not required by your landlord, renters insurance is a wise choice to protect your belongings and avoid unexpected costs in Texas's unpredictable environment."
+    },
+    "howItWorks": {
+      "title": "How Does Renters Insurance Work in Texas?",
+      "intro": "Renters insurance in Texas provides tailored coverage for tenants' needs. Here's how the process works:",
+      "steps": {
+        "step1": {
+          "title": "Assess Your Needs",
+          "description": "Evaluate the value of your personal belongings and potential liability risks to determine the coverage amount you need."
+        },
+        "step2": {
+          "title": "Contact Us",
+          "intro": "Reach out to Texas Premium Insurance Services, and we'll help you find the right renters insurance policy.",
+          "bullet1": "We'll customize coverage for personal property, liability, additional living expenses, and optional add-ons like flood or jewelry coverage.",
+          "bullet2": "We'll ensure the policy meets any landlord or lease requirements."
+        },
+        "step3": {
+          "title": "Policy Issuance",
+          "description": "We'll work with top insurers to issue a policy that protects your belongings and meets Texas regulations."
+        },
+        "step4": {
+          "title": "Premium Payments",
+          "description": "You'll pay affordable premiums (monthly or annually) to maintain coverage. We'll help you find budget-friendly options."
+        },
+        "step5": {
+          "title": "Claims Process",
+          "description": "If your belongings are damaged or you face a liability claim, contact us, and we'll guide you through filing a claim with your insurer for prompt resolution."
+        },
+        "step6": {
+          "title": "Ongoing Support",
+          "description": "We'll monitor your policy to ensure it remains up-to-date and recommend adjustments as your needs change or if you move to a new rental."
+        }
+      },
+      "coverage": {
+        "intro": "Standard renters insurance typically covers:",
+        "items": {
+          "personal": {
+            "title": "Personal Property",
+            "description": "Replacement or repair of belongings like furniture, electronics, or clothing."
+          },
+          "liability": {
+            "title": "Liability",
+            "description": "Protection against lawsuits or medical costs if someone is injured in your rental."
+          },
+          "living": {
+            "title": "Additional Living Expenses",
+            "description": "Temporary housing costs if your rental is uninhabitable."
+          },
+          "medical": {
+            "title": "Guest Medical Protection",
+            "description": "Covers medical expenses for guests injured in your rental."
+          }
+        },
+        "optional": "Optional coverages, such as flood insurance or high-value item protection, may be added based on your needs and location in Texas."
+      }
+    },
+    "footer": {
+      "callToAction": "Get Your Renters Insurance Today"
+    }
+  },
+  "mobileHome": {
+    "header": {
+      "callToAction": "Call to Get a Quote",
+      "title": "Mobile Home Insurance in Texas",
+      "subtitle": "Protect your mobile home in Texas!",
+      "description": "This guide explains what mobile home insurance is, why you need it, how to get it, and what it covers for Texas residents looking to safeguard their home and belongings.",
+      "getStarted": "Get Started Now",
+      "imageAlt": "Mobile home in a scenic Texas landscape"
+    },
+    "form": {
+      "title": "Request a Mobile Home Insurance Quote",
+      "nameLabel": "Name",
+      "namePlaceholder": "Your full name",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Your email address",
+      "phoneLabel": "Phone Number",
+      "phonePlaceholder": "Your phone number",
+      "messageLabel": "Message",
+      "messagePlaceholder": "Tell us about your mobile home insurance needs",
+      "submitButton": "Submit Inquiry",
+      "successMessage": "Thank you for your inquiry! An agent will contact you soon.",
+      "errorMessage": "Failed to send inquiry via SMS. Please try again or call (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "What Is Mobile Home Insurance in Texas?",
+      "paragraph1": "Mobile home insurance in Texas is a specialized policy designed to protect manufactured or mobile homes, which differ from traditional site-built homes. It provides financial protection against damage to your home, personal belongings, and liability risks. In Texas, mobile home insurance is often required by lenders if you have a loan on your home or if you live in a mobile home park.",
+      "paragraph2": "This insurance ensures that your investment is safeguarded against common risks like storms, fire, or theft, giving you peace of mind as a mobile homeowner in Texas."
+    },
+    "whyNeed": {
+      "title": "Why Do You Need Mobile Home Insurance in Texas?",
+      "intro": "Mobile homes face unique risks due to their construction and location, making insurance essential. Common reasons to get mobile home insurance in Texas include:",
+      "reasons": {
+        "lender": {
+          "title": "Lender Requirements",
+          "description": "If you have a mortgage or loan on your mobile home, your lender will likely require insurance to protect their investment."
+        },
+        "park": {
+          "title": "Mobile Home Park Rules",
+          "description": "Many Texas mobile home communities require residents to carry insurance as a condition of residency."
+        },
+        "weather": {
+          "title": "Weather-Related Risks",
+          "description": "Texas is prone to hurricanes, tornadoes, and hailstorms, which can cause significant damage to mobile homes."
+        },
+        "theft": {
+          "title": "Theft or Vandalism",
+          "description": "Mobile homes may be vulnerable to theft or vandalism, and insurance can cover losses to your property or belongings."
+        },
+        "liability": {
+          "title": "Liability Protection",
+          "description": "If someone is injured on your property, liability coverage can protect you from legal and medical expenses."
+        },
+        "peace": {
+          "title": "Peace of Mind",
+          "description": "Insurance ensures you're financially protected against unexpected events, preserving your home and lifestyle."
+        }
+      },
+      "conclusion": "Even if not required, mobile home insurance is a smart investment to protect your home and belongings in Texas's unpredictable environment."
+    },
+    "howItWorks": {
+      "title": "How Does Mobile Home Insurance Work in Texas?",
+      "intro": "Mobile home insurance in Texas provides coverage tailored to the unique needs of manufactured homes. Here's how the process works:",
+      "steps": {
+        "step1": {
+          "title": "Assess Your Needs",
+          "description": "Determine the value of your mobile home, personal belongings, and any additional structures (like sheds or porches) to ensure adequate coverage."
+        },
+        "step2": {
+          "title": "Contact Us",
+          "intro": "Reach out to Texas Premium Insurance Services, and we'll guide you through finding the right mobile home insurance policy.",
+          "bullet1": "We'll help you choose coverage for your home structure, personal property, liability, and optional add-ons like flood or windstorm coverage.",
+          "bullet2": "If you rent your mobile home, we can provide a policy tailored for renters' needs."
+        },
+        "step3": {
+          "title": "Policy Issuance",
+          "description": "Once you select a policy, we'll work with top insurers to issue your coverage, ensuring all requirements (like lender or park rules) are met."
+        },
+        "step4": {
+          "title": "Premium Payments",
+          "description": "You'll pay premiums (monthly or annually) to maintain coverage. We'll help you find affordable options that fit your budget."
+        },
+        "step5": {
+          "title": "Claims Process",
+          "description": "If your home is damaged or you face a liability claim, contact us, and we'll assist you in filing a claim with your insurer for prompt resolution."
+        },
+        "step6": {
+          "title": "Ongoing Support",
+          "description": "We'll monitor your policy to ensure it remains up-to-date and recommend adjustments as your needs change or if you relocate your mobile home."
+        }
+      },
+      "coverage": {
+        "intro": "Standard mobile home insurance typically covers:",
+        "items": {
+          "dwelling": {
+            "title": "Dwelling",
+            "description": "Repairs or replacement of your mobile home's structure."
+          },
+          "personal": {
+            "title": "Personal Property",
+            "description": "Replacement of belongings like furniture or electronics."
+          },
+          "liability": {
+            "title": "Liability",
+            "description": "Protection against lawsuits or medical costs if someone is injured."
+          },
+          "living": {
+            "title": "Additional Living Expenses",
+            "description": "Temporary housing costs if your home is uninhabitable."
+          }
+        },
+        "optional": "Optional coverages, like flood or earthquake insurance, may be recommended based on your location in Texas."
+      }
+    },
+    "footer": {
+      "callToAction": "Get Your Mobile Home Insurance Today"
+    }
+  },
+  "commercialAuto": {
+    "header": {
+      "callToAction": "Call to Get a Quote",
+      "title": "Commercial Auto Insurance in Texas",
+      "subtitle": "Protect your business vehicles in Texas!",
+      "description": "This guide explains what commercial auto insurance is, why your business needs it, how to get it, and what it covers for Texas businesses relying on vehicles for operations.",
+      "getStarted": "Get Started Now",
+      "imageAlt": "Commercial vehicle in a Texas business setting"
+    },
+    "form": {
+      "title": "Request a Commercial Auto Insurance Quote",
+      "nameLabel": "Name",
+      "namePlaceholder": "Your full name",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Your business email address",
+      "phoneLabel": "Phone Number",
+      "phonePlaceholder": "Your phone number",
+      "messageLabel": "Message",
+      "messagePlaceholder": "Tell us about your commercial auto insurance needs",
+      "submitButton": "Submit Inquiry",
+      "successMessage": "Thank you for your inquiry! An agent will contact you soon.",
+      "errorMessage": "Failed to send inquiry via SMS. Please try again or call (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "What Is Commercial Auto Insurance in Texas?",
+      "paragraph1": "Commercial auto insurance in Texas is a policy designed to protect vehicles used for business purposes, such as delivery vans, company cars, or service trucks. Unlike personal auto insurance, it covers unique risks associated with business operations, including liability, vehicle damage, and employee-related incidents. In Texas, commercial auto insurance is often required to meet state regulations and protect your business assets.",
+      "paragraph2": "This insurance ensures your business can operate smoothly, even after accidents, theft, or other incidents involving your commercial vehicles."
+    },
+    "whyNeed": {
+      "title": "Why Do You Need Commercial Auto Insurance in Texas?",
+      "intro": "Businesses that rely on vehicles need commercial auto insurance to protect against financial losses and comply with Texas laws. Common reasons to get commercial auto insurance include:",
+      "reasons": {
+        "legal": {
+          "title": "Legal Requirements",
+          "description": "Texas requires businesses to carry minimum liability coverage (30/60/25) for vehicles used commercially to cover bodily injury and property damage."
+        },
+        "asset": {
+          "title": "Business Asset Protection",
+          "description": "Protects your investment in vehicles, which are critical to your operations, from damage, theft, or vandalism."
+        },
+        "employee": {
+          "title": "Employee Safety",
+          "description": "Covers accidents involving employees driving company vehicles, including medical expenses or liability claims."
+        },
+        "client": {
+          "title": "Client or Contract Requirements",
+          "description": "Many clients or contracts require proof of commercial auto insurance before doing business."
+        },
+        "liability": {
+          "title": "Liability Risks",
+          "description": "Protects your business from lawsuits if a company vehicle causes injury or property damage to others."
+        },
+        "continuity": {
+          "title": "Business Continuity",
+          "description": "Ensures your business can recover quickly from vehicle-related incidents without significant financial strain."
+        }
+      },
+      "conclusion": "Even if not legally required, commercial auto insurance is essential for businesses to mitigate risks and maintain operational stability."
+    },
+    "howItWorks": {
+      "title": "How Does Commercial Auto Insurance Work in Texas?",
+      "intro": "Commercial auto insurance in Texas provides tailored coverage for vehicles used in business operations. Here's how the process works:",
+      "steps": {
+        "step1": {
+          "title": "Assess Your Needs",
+          "description": "Evaluate the types of vehicles your business uses (e.g., vans, trucks, or fleets), their value, and the risks associated with your operations."
+        },
+        "step2": {
+          "title": "Contact Us",
+          "intro": "Reach out to Texas Premium Insurance Services, and we'll help you find the right commercial auto insurance policy.",
+          "bullet1": "We'll customize coverage for liability, physical damage, uninsured/underinsured motorists, and optional add-ons like roadside assistance.",
+          "bullet2": "If you have employees driving, we'll ensure coverage for hired and non-owned auto liability."
+        },
+        "step3": {
+          "title": "Policy Issuance",
+          "description": "We'll work with top insurers to issue a policy that meets Texas requirements and your business needs, including any client-specific coverage demands."
+        },
+        "step4": {
+          "title": "Premium Payments",
+          "description": "You'll pay premiums (monthly or annually) to maintain coverage. We'll help you find cost-effective options tailored to your budget."
+        },
+        "step5": {
+          "title": "Claims Process",
+          "description": "If an accident or loss occurs, contact us, and we'll guide you through filing a claim with your insurer for prompt resolution."
+        },
+        "step6": {
+          "title": "Ongoing Support",
+          "description": "We'll monitor your policy to ensure it remains compliant and recommend updates as your business grows or adds vehicles."
+        }
+      },
+      "coverage": {
+        "intro": "Standard commercial auto insurance typically covers:",
+        "items": {
+          "liability": {
+            "title": "Liability",
+            "description": "Covers bodily injury and property damage caused by your vehicles."
+          },
+          "physical": {
+            "title": "Physical Damage",
+            "description": "Repairs or replacement for damage to your business vehicles."
+          },
+          "uninsured": {
+            "title": "Uninsured/Underinsured Motorist",
+            "description": "Protection if another driver lacks adequate insurance."
+          },
+          "medical": {
+            "title": "Medical Payments",
+            "description": "Covers medical expenses for injuries sustained in an accident."
+          }
+        },
+        "optional": "Optional coverages, such as cargo protection or towing, may be added based on your business needs."
+      }
+    },
+    "footer": {
+      "callToAction": "Get Your Commercial Auto Insurance Today"
+    }
+  },
+  "cgl": {
+    "header": {
+      "callToAction": "Call to Get a Quote",
+      "title": "Commercial General Liability Insurance",
+      "subtitle": "Protect your Texas business?",
+      "description": "This guide explains what Commercial General Liability (CGL) insurance is, why you need it, how to get it, and how Texas Premium Insurance Services keeps your business safe.",
+      "getStarted": "Get Started Now",
+      "imageAlt": "Business professional in a modern office"
+    },
+    "form": {
+      "title": "Request a CGL Insurance Quote",
+      "nameLabel": "Name",
+      "namePlaceholder": "Your full name",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Your email address",
+      "phoneLabel": "Phone Number",
+      "phonePlaceholder": "Your phone number",
+      "messageLabel": "Message",
+      "messagePlaceholder": "Tell us about your business or coverage needs",
+      "submitButton": "Submit Inquiry",
+      "successMessage": "Thank you for your inquiry! We'll contact you soon."
+    },
+    "whatIs": {
+      "title": "What is Commercial General Liability Insurance?",
+      "paragraph1": "Commercial General Liability (CGL) Insurance is a critical policy for Texas businesses, protecting against common risks like bodily injury, property damage, and advertising injuries caused by your operations, products, or premises. It covers legal fees, settlements, and medical costs if a third party (e.g., a customer or vendor) sues your business.",
+      "paragraph2": "CGL is essential for businesses like contractors, retailers, restaurants, and offices. At Texas Premium Insurance Services, we offer tailored CGL policies to safeguard your Texas business from unexpected liabilities. Call us at",
+      "paragraph2End": "to learn more."
+    },
+    "whyNeed": {
+      "title": "Why Do You Need CGL Insurance?",
+      "intro": "CGL insurance is vital for Texas businesses to avoid financial ruin from lawsuits or claims. Reasons you need it include:",
+      "reasons": {
+        "legal": {
+          "title": "Legal Protection",
+          "description": "Covers legal costs if a customer slips and falls at your store or a product causes harm."
+        },
+        "contract": {
+          "title": "Contract Requirements",
+          "description": "Many clients, landlords, or vendors require CGL coverage before signing contracts."
+        },
+        "financial": {
+          "title": "Financial Security",
+          "description": "Pays for damages or medical bills, preventing out-of-pocket expenses that could bankrupt your business."
+        },
+        "reputation": {
+          "title": "Reputation",
+          "description": "Demonstrates professionalism and responsibility to clients and partners."
+        },
+        "compliance": {
+          "title": "Regulatory Compliance",
+          "description": "Some Texas industries require CGL to meet licensing or regulatory standards (check with"
+        }
+      },
+      "conclusion": "Protect your business today. Call Texas Premium Insurance Services at"
+    },
+    "howItWorks": {
+      "title": "How Does CGL Insurance Work?",
+      "intro": "Getting CGL insurance for your Texas business is straightforward with Texas Premium Insurance Services. Here's the process:",
+      "steps": {
+        "step1": {
+          "title": "Assess Your Needs",
+          "description": "Identify your business type, size, and risks (e.g., construction, retail, or professional services). Review industry regulations at"
+        },
+        "step2": {
+          "title": "Contact Us",
+          "intro": "Call",
+          "description": "to speak with our team. We'll gather details about your business, including:",
+          "items": {
+            "type": "Business type and size",
+            "revenue": "Annual revenue and payroll",
+            "location": "Location and operations",
+            "claims": "Claims history"
+          }
+        },
+        "step3": {
+          "title": "Choose Your Coverage",
+          "intro": "We offer customizable CGL policies:",
+          "items": {
+            "bodily": {
+              "title": "Bodily Injury",
+              "description": "Covers injuries to third parties (e.g., a customer tripping at your store)."
+            },
+            "property": {
+              "title": "Property Damage",
+              "description": "Covers damage to others' property caused by your business."
+            },
+            "advertising": {
+              "title": "Personal and Advertising Injury",
+              "description": "Covers claims like slander or copyright infringement."
+            },
+            "products": {
+              "title": "Products-Completed Operations",
+              "description": "Covers damages from products or services after completion."
+            }
+          }
+        },
+        "step4": {
+          "title": "Purchase Your Policy",
+          "description": "We'll provide a quote starting from a low cost, plus applicable fees. Pay securely online or over the phone, and receive your policy documents instantly."
+        },
+        "step5": {
+          "title": "Certificate of Insurance",
+          "description": "We'll issue a Certificate of Insurance (COI) to share with clients or landlords as proof of coverage."
+        },
+        "step6": {
+          "title": "File Claims Easily",
+          "description": "If a claim arises, contact us for guidance. We'll help you file with the insurer for quick resolution."
+        },
+        "step7": {
+          "title": "Ongoing Support",
+          "description": "Our team is here to adjust coverage, renew policies, or answer questions. Call"
+        }
+      }
+    },
+    "coverage": {
+      "title": "Coverage Options",
+      "intro": "CGL insurance policies are tailored to your Texas business needs. Common coverages include:",
+      "items": {
+        "bodily": {
+          "title": "Bodily Injury",
+          "description": "Medical costs for third-party injuries caused by your business operations."
+        },
+        "property": {
+          "title": "Property Damage",
+          "description": "Repairs for damage to others' property (e.g., a contractor damaging a client's floor)."
+        },
+        "advertising": {
+          "title": "Personal and Advertising Injury",
+          "description": "Legal fees for claims like defamation or false advertising."
+        },
+        "products": {
+          "title": "Products-Completed Operations",
+          "description": "Liability for damages from products or services after delivery."
+        },
+        "medical": {
+          "title": "Medical Payments",
+          "description": "Covers minor medical expenses for third parties, regardless of fault."
+        },
+        "addons": {
+          "title": "Add-Ons",
+          "description": "Umbrella coverage, cyber liability, or professional liability for enhanced protection."
+        }
+      },
+      "help": "Need help choosing? Call us at"
+    },
+    "costs": {
+      "title": "Costs of CGL Insurance",
+      "intro": "The cost of CGL insurance varies based on your business type, size, and risks. With Texas Premium Insurance Services, you get competitive rates:",
+      "items": {
+        "starting": {
+          "title": "Starting Point",
+          "description": "Coverage starts from a low cost, plus applicable fees, depending on your policy."
+        },
+        "factors": {
+          "title": "Factors Affecting Cost",
+          "description": "Business type (e.g., construction vs. retail), annual revenue, number of employees, location, and claims history."
+        },
+        "affordable": {
+          "title": "Affordable Options",
+          "description": "Small businesses may qualify for low-premium policies, while high-risk industries may need higher limits."
+        },
+        "noHidden": {
+          "title": "No Hidden Fees",
+          "description": "Transparent quotes with all fees included upfront."
+        }
+      },
+      "example": "Example: A small retail store may start at a low cost, while a construction firm may pay more due to higher risks. Get a personalized quote by calling"
+    },
+    "risks": {
+      "title": "Risks of Operating Without CGL Insurance",
+      "intro": "Operating a Texas business without CGL insurance exposes you to significant risks:",
+      "items": {
+        "lawsuits": {
+          "title": "Lawsuits",
+          "description": "Pay legal fees and settlements out-of-pocket for claims like customer injuries or property damage."
+        },
+        "financial": {
+          "title": "Financial Loss",
+          "description": "A single claim could cost $100,000+ in damages, threatening your business's survival."
+        },
+        "contracts": {
+          "title": "Contract Violations",
+          "description": "Lose contracts if clients require CGL coverage you can't provide."
+        },
+        "reputation": {
+          "title": "Reputational Damage",
+          "description": "Lack of insurance may signal unprofessionalism to clients or partners."
+        }
+      },
+      "conclusion": "Avoid these risks with Texas Premium Insurance Services. Call"
+    },
+    "faq": {
+      "title": "Frequently Asked Questions",
+      "questions": {
+        "required": {
+          "question": "Is CGL insurance required in Texas?",
+          "answer": "It's not state-mandated for most businesses, but many clients, landlords, or industries require it. Check with"
+        },
+        "businesses": {
+          "question": "What businesses need CGL insurance?",
+          "answer": "Any business with public interactions, like contractors, retailers, or restaurants, benefits from CGL. We can assess your needs—call us."
+        },
+        "employees": {
+          "question": "Does CGL cover employee injuries?",
+          "answer": "No, employee injuries are covered by workers' compensation insurance. We offer both—contact us for a bundle."
+        },
+        "claim": {
+          "question": "How do I file a CGL claim?",
+          "answer": "Contact us at (469) 729-5185, and we'll guide you through filing a claim with your insurer for fast resolution."
+        }
+      }
+    },
+    "footer": {
+      "callToAction": "Get Your CGL Insurance Today"
+    }
+  },
+  "mexico": {
+    "header": {
+      "callToAction": "Call to Get a Quote",
+      "title": "Mexico Tourist Auto Insurance",
+      "subtitle": "Driving to Mexico from Texas?",
+      "description": "This guide explains why you need Mexico tourist auto insurance, what it covers, how to get it, and how Texas Premium Insurance Services makes it easy for Texas drivers.",
+      "getStarted": "Get Started Now",
+      "imageAlt": "Business professional in a modern office"
+    },
+    "form": {
+      "title": "Request a Mexico Tourist Auto Insurance Quote",
+      "nameLabel": "Name",
+      "namePlaceholder": "Your full name",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Your email address",
+      "phoneLabel": "Phone Number",
+      "phonePlaceholder": "Your phone number",
+      "messageLabel": "Message",
+      "messagePlaceholder": "Tell us about your trip to Mexico or insurance needs",
+      "submitButton": "Submit Inquiry",
+      "successMessage": "Thank you for your inquiry! An agent will contact you soon.",
+      "errorMessage": "Failed to send inquiry via SMS. Please try again or call (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "What is Mexico Tourist Auto Insurance?",
+      "paragraph1": "Mexico Tourist Auto Insurance is a mandatory policy required for Texas drivers traveling in Mexico. Your U.S. auto insurance is not valid in Mexico, so this coverage ensures you meet Mexican legal requirements for liability insurance. It protects you, your passengers, and others in case of an accident, providing compliance and peace of mind while driving south of the border.",
+      "paragraph2": "Issued by licensed Mexican insurers, these policies offer short-term options tailored for Texas tourists, covering vehicles with U.S. plates, including cars, RVs, motorcycles, and towed units. At Texas Premium Insurance Services, we partner with top-rated Mexican insurers to provide affordable, reliable coverage for your trip."
+    },
+    "whyNeed": {
+      "title": "Why Do You Need Mexico Tourist Auto Insurance?",
+      "intro": "Mexican law requires all drivers on federal roads to carry liability insurance from a Mexican-licensed insurer. Driving without it is illegal and risky. Here's why Texas drivers need this coverage:",
+      "reasons": {
+        "legal": {
+          "title": "Legal Compliance",
+          "description": "Without valid Mexican insurance, you face fines, vehicle impoundment, or jail time if involved in an accident."
+        },
+        "financial": {
+          "title": "Financial Protection",
+          "description": "You're personally liable for damages or injuries caused in an at-fault accident, which can cost hundreds of thousands of dollars."
+        },
+        "usPolicy": {
+          "title": "U.S. Policies Don't Apply",
+          "description": "Your Texas auto insurance is not recognized in Mexico, leaving you unprotected."
+        },
+        "finance": {
+          "title": "Finance Requirements",
+          "description": "If your vehicle is financed, your lender may require a Mexico-specific policy to issue a letter of permission for cross-border travel."
+        },
+        "peace": {
+          "title": "Peace of Mind",
+          "description": "Coverage ensures you're protected against accidents, theft, or roadside emergencies while exploring Mexico."
+        }
+      },
+      "conclusion": "Drive confidently in Mexico. Call Texas Premium Insurance Services at",
+      "conclusionEnd": "to get started."
+    },
+    "howItWorks": {
+      "title": "How Does Mexico Tourist Auto Insurance Work?",
+      "intro": "Obtaining Mexico tourist auto insurance is quick and simple with Texas Premium Insurance Services. Here's the process for Texas drivers to get covered before your trip:",
+      "steps": {
+        "step1": {
+          "title": "Plan Your Trip",
+          "description": "Determine your travel dates, vehicle type (car, RV, motorcycle, etc.), and destinations in Mexico. Check travel advisories at",
+          "descriptionEnd": "to stay informed."
+        },
+        "step2": {
+          "title": "Contact Us",
+          "intro": "Call",
+          "description": "to speak with our team. We'll collect details about your trip and vehicle, including:",
+          "items": {
+            "license": "U.S. or Mexican driver's license",
+            "registration": "Vehicle registration",
+            "insurance": "Texas insurance details",
+            "travel": "Travel dates and coverage needs (liability-only or full coverage)"
+          }
+        },
+        "step3": {
+          "title": "Choose Your Coverage",
+          "intro": "We offer flexible options to suit your needs:",
+          "items": {
+            "liability": {
+              "title": "Liability-Only",
+              "description": "Meets Mexico's minimum requirements, covering damages or injuries you cause to others."
+            },
+            "full": {
+              "title": "Full Coverage",
+              "description": "Includes liability, physical damage, theft, vandalism, medical payments, and roadside assistance."
+            },
+            "addons": {
+              "title": "Add-Ons",
+              "description": "Legal assistance, travel assistance, or coverage for towed units."
+            }
+          }
+        },
+        "step4": {
+          "title": "Purchase Your Policy",
+          "description": "We'll provide a quote starting from a low cost, plus applicable fees. Pay securely online or over the phone, and receive your policy instantly via email."
+        },
+        "step5": {
+          "title": "Carry Proof of Insurance",
+          "description": "Print your policy documents and keep them in your vehicle at all times. Mexican authorities may request proof during traffic stops or accidents."
+        },
+        "step6": {
+          "title": "Travel with Confidence",
+          "description": "Drive legally and safely in Mexico, knowing you're covered. If an accident occurs, call the number on your policy for immediate claims support."
+        },
+        "step7": {
+          "title": "Ongoing Support",
+          "description": "Our team is available to answer questions, extend coverage, or assist with claims during your trip. Call us at"
+        }
+      }
+    },
+    "coverage": {
+      "title": "Coverage Options",
+      "intro": "Mexico tourist auto insurance policies are customizable for Texas drivers. Common coverage types include:",
+      "items": {
+        "liability": {
+          "title": "Liability Insurance",
+          "description": "Mandatory coverage for bodily injury and property damage caused to others, with limits up to $1,000,000."
+        },
+        "physical": {
+          "title": "Physical Damage",
+          "description": "Covers damage to your vehicle from accidents, collisions, or rollovers."
+        },
+        "theft": {
+          "title": "Theft and Vandalism",
+          "description": "Protects against total or partial theft and intentional damage to your vehicle."
+        },
+        "medical": {
+          "title": "Medical Payments",
+          "description": "Covers medical expenses for you and your passengers, up to policy limits."
+        },
+        "roadside": {
+          "title": "Roadside Assistance",
+          "description": "Includes towing, fuel delivery, tire changes, and other emergency services."
+        },
+        "legal": {
+          "title": "Legal Assistance",
+          "description": "Provides legal support and bail bond coverage if you face legal issues after an accident."
+        },
+        "travel": {
+          "title": "Travel Assistance",
+          "description": "Helps with lost passports, emergency travel arrangements, or roadside emergencies."
+        }
+      },
+      "help": "Unsure which coverage is right for you? Call us at",
+      "helpEnd": "for personalized advice."
+    },
+    "costs": {
+      "title": "Costs of Mexico Tourist Auto Insurance",
+      "intro": "The cost of Mexico tourist auto insurance varies based on your vehicle, trip duration, and coverage level. With Texas Premium Insurance Services, you get competitive rates tailored to Texas drivers:",
+      "items": {
+        "starting": {
+          "title": "Starting Point",
+          "description": "Coverage starts from a low cost, plus applicable fees, depending on your policy."
+        },
+        "factors": {
+          "title": "Factors Affecting Cost",
+          "description": "Vehicle type (car, RV, motorcycle), trip length (daily, weekly, or annual), coverage type (liability-only or full), and driver profile."
+        },
+        "affordable": {
+          "title": "Affordable Options",
+          "description": "Daily policies are budget-friendly for short trips, while annual policies offer savings for frequent travelers."
+        },
+        "noHidden": {
+          "title": "No Hidden Fees",
+          "description": "We provide transparent quotes with all fees included upfront."
+        }
+      },
+      "example": "Example: A week-long trip with liability-only coverage for a standard car may start at a low cost, while full coverage for an RV may cost more. Get a personalized quote by calling"
+    },
+    "risks": {
+      "title": "Risks of Driving Without Coverage",
+      "intro": "Driving in Mexico without proper insurance can lead to serious consequences for Texas drivers:",
+      "items": {
+        "legal": {
+          "title": "Legal Penalties",
+          "description": "Fines, vehicle impoundment, or detention if you can't prove financial responsibility after an accident."
+        },
+        "financial": {
+          "title": "Financial Liability",
+          "description": "You're responsible for paying out-of-pocket for damages or injuries, which can exceed $300,000 in severe cases."
+        },
+        "noProtection": {
+          "title": "No Protection",
+          "description": "Without coverage, you're unprotected against theft, damage, or medical expenses."
+        },
+        "border": {
+          "title": "Border Issues",
+          "description": "Some border checkpoints may require proof of insurance before allowing entry."
+        }
+      },
+      "conclusion": "Avoid these risks with a policy from Texas Premium Insurance Services. Call",
+      "conclusionEnd": "to get covered today."
+    },
+    "faq": {
+      "title": "Frequently Asked Questions",
+      "questions": {
+        "mandatory": {
+          "question": "Is Mexico tourist auto insurance mandatory?",
+          "answer": "Yes, Mexican law requires all drivers to carry liability insurance from a Mexican insurer. Your Texas policy is not valid."
+        },
+        "license": {
+          "question": "Can I use a U.S. or Mexican driver's license?",
+          "answer": "Yes, a valid U.S. driver's license (from Texas) or a Mexican driver's license is accepted to purchase Mexico tourist auto insurance."
+        },
+        "border": {
+          "question": "Can I buy insurance at the border?",
+          "answer": "Yes, but it's risky to drive uninsured until you purchase a policy. We recommend buying coverage in advance through us for instant protection."
+        },
+        "accident": {
+          "question": "What if I have an accident in Mexico?",
+          "answer": "Contact your insurer's claims number immediately (listed on your policy). Our team can assist with the process—just call us at (469) 729-5185."
+        }
+      }
+    },
+    "footer": {
+      "callToAction": "Get Your Mexico Coverage Today"
+    }
+  },
+  "bondedTitle": {
+    "header": {
+      "callToAction": "Call to Get a Quote",
+      "title": "Texas Certificate of Title Surety Bond",
+      "subtitle": "Need a bonded title in Texas?",
+      "description": "This guide explains what a Certificate of Title Surety Bond is, why you might need it, how to get it, and what it means for Texas vehicle owners looking to register their vehicle without a title.",
+      "getStarted": "Get Started Now",
+      "imageAlt": "Business professional in a modern office"
+    },
+    "form": {
+      "title": "Request a Surety Bond Quote",
+      "nameLabel": "Name",
+      "namePlaceholder": "Your full name",
+      "emailLabel": "Email",
+      "emailPlaceholder": "Your email address",
+      "phoneLabel": "Phone Number",
+      "phonePlaceholder": "Your phone number",
+      "messageLabel": "Message",
+      "messagePlaceholder": "Tell us about your bonded title needs or vehicle situation",
+      "submitButton": "Submit Inquiry",
+      "successMessage": "Thank you for your inquiry! An agent will contact you soon.",
+      "errorMessage": "Failed to send inquiry via SMS. Please try again or call (469) 729-5185."
+    },
+    "whatIs": {
+      "title": "What is a Texas Bonded Title?",
+      "paragraph1": "A Texas Certificate of Title Surety Bond, also known as a bonded title or lost title bond, is a document issued by the Texas Department of Motor Vehicles (TxDMV) to establish vehicle ownership when the original title is lost, damaged, incorrectly assigned, or unavailable. Required under Texas Transportation Code §501.053, the bond serves as a financial guarantee to protect previous owners, lienholders, and future owners against fraudulent ownership claims. It remains active for three years, after which a standard title is issued if no claims are filed.",
+      "paragraph2": "A bonded title allows you to legally register, insure, sell, or transfer ownership of a vehicle in Texas. It's often needed in situations like purchasing a vehicle without a title, recovering a stolen vehicle, or resolving incomplete transactions. At Texas Premium Insurance Services, we make obtaining your surety bond fast and hassle-free."
+    },
+    "whyNeed": {
+      "title": "Why Do You Need a Bonded Title?",
+      "intro": "The TxDMV requires a bonded title when you cannot provide sufficient proof of ownership. Common scenarios include:",
+      "reasons": {
+        "lost": "Lost or stolen original title.",
+        "never": "Title never received from the seller.",
+        "damaged": "Damaged or illegible title.",
+        "improperly": "Improperly assigned title (e.g., missing signatures).",
+        "purchased": "Vehicle purchased without a title in a private sale.",
+        "gifted": "Vehicle gifted without a title transfer."
+      },
+      "conclusion": "The surety bond ensures compensation if someone else proves rightful ownership during the bond's three-year term. Let us help you navigate this process with ease."
+    },
+    "howItWorks": {
+      "title": "How Does a Bonded Title Work in Texas?",
+      "intro": "A Texas Certificate of Title Surety Bond is a straightforward way to register your vehicle when a title is missing. Here's how the process works with Texas Premium Insurance Services:",
+      "steps": {
+        "step1": {
+          "title": "Determine Need",
+          "description": "Confirm with the TxDMV that a bonded title is required for your vehicle. You can check requirements or download forms at"
+        },
+        "step2": {
+          "title": "Contact Us",
+          "intro": "Reach out to Texas Premium Insurance Services by calling",
+          "description": "We'll guide you through the bonded title process, making it simple and stress-free.",
+          "items": {
+            "provide": "Provide vehicle details (year, make, model, VIN) and proof of ownership (e.g., bill of sale).",
+            "gather": "We'll help you gather necessary TxDMV forms, such as Form VTR-275 (Request for Motor Vehicle Information) and Form VTR-130-SOF (Statement of Fact for Bonded Title)."
+          }
+        },
+        "step3": {
+          "title": "Submit Initial Application",
+          "description": "Submit your documents and a $15 application fee to your nearest TxDMV Regional Service Center. The TxDMV will issue a Notice of Determination for Bonded Title (Form VTR-130-ND), specifying the bond amount (typically 1.5 times the vehicle's value)."
+        },
+        "step4": {
+          "title": "Purchase Your Surety Bond",
+          "description": "We'll provide you with a surety bond tailored to the TxDMV's requirements. Bonds up to $25,000 usually require no credit check, and we offer competitive rates starting at $100. Simply sign the bond certificate we provide."
+        },
+        "step5": {
+          "title": "Submit Final Documents",
+          "intro": "Within 30 days of receiving the bond, submit the following to your county tax office:",
+          "items": {
+            "notice": "Notice of Determination (Form VTR-130-ND)",
+            "bond": "Signed surety bond certificate from Texas Premium Insurance Services",
+            "application": "Application for Texas Title and/or Registration (Form 130-U)",
+            "insurance": "Proof of liability insurance",
+            "vin": "VIN inspection report (if required for out-of-state vehicles)",
+            "weight": "Weight certificate (for commercial vehicles) or customs declaration (for imported vehicles)"
+          }
+        },
+        "step6": {
+          "title": "Receive Your Bonded Title",
+          "description": "Upon approval, the TxDMV issues your bonded title, valid for three years. If no claims are filed, a standard title is issued thereafter. We'll follow up to ensure everything goes smoothly."
+        },
+        "step7": {
+          "title": "Ongoing Support",
+          "description": "Our team is here to answer any questions during the three-year bond period. If a claim arises, we'll assist you in navigating the process with the surety company."
+        }
+      }
+    },
+    "eligibility": {
+      "title": "Eligibility Requirements",
+      "intro": "To qualify for a Texas bonded title, you must meet the following criteria:",
+      "requirements": {
+        "resident": "Be a Texas resident or military personnel stationed in Texas.",
+        "possess": "Legally possess the vehicle (not abandoned, stolen, junked, or involved in pending litigation).",
+        "evidence": "Provide evidence of ownership (e.g., bill of sale, invoice, canceled check).",
+        "complete": "Ensure the vehicle is complete (frame, motor, and body; or frame and motor for motorcycles).",
+        "outOfState": "For out-of-state vehicles, obtain a VIN inspection from a Texas-certified Safety Inspection Station or an auto theft investigator if never titled in Texas."
+      },
+      "note": "Note: Salvage or non-repairable vehicles are ineligible for bonded titles under Texas Transportation Code §501.091. Call us at",
+      "noteEnd": "to confirm your eligibility."
+    },
+    "costs": {
+      "title": "Costs of a Texas Bonded Title",
+      "intro": "The cost of obtaining a bonded title includes several fees, but we strive to keep your bond premium affordable:",
+      "items": {
+        "premium": {
+          "title": "Surety Bond Premium",
+          "description": "Starting from $100, plus applicable fees, depending on the bond amount and vehicle value."
+        },
+        "application": {
+          "title": "Application Fee",
+          "description": "$15, paid to the TxDMV."
+        },
+        "appraisal": {
+          "title": "Vehicle Appraisal Fee",
+          "description": "$50–$100, if required for vehicles not listed in the TxDMV's Standard Presumptive Value (SPV) calculator."
+        },
+        "vin": {
+          "title": "VIN Inspection Fee",
+          "description": "$20–$40, for out-of-state or untitled vehicles."
+        },
+        "additional": {
+          "title": "Additional Fees",
+          "description": "Vary by county (e.g., registration, sales tax)."
+        }
+      },
+      "example": "Example: For a vehicle valued at $10,000, the bond amount is $15,000 (1.5x value), with a premium of about $225. Total costs, including fees, may range from $300–$500. Contact us for a personalized quote at"
+    },
+    "risks": {
+      "title": "Risks and Limitations",
+      "intro": "While a bonded title enables legal vehicle use, there are risks to understand:",
+      "items": {
+        "claims": {
+          "title": "Potential Claims",
+          "description": "If another party proves ownership within three years, they can file a claim against the bond. The surety pays the claimant, but you must reimburse the surety, plus legal fees."
+        },
+        "history": {
+          "title": "No Clear Title History",
+          "description": "A bonded title may not guarantee a clean title, potentially affecting resale value."
+        },
+        "lien": {
+          "title": "Lien Restrictions",
+          "description": "If a lien less than 10 years old exists, we'll verify it's released before issuing your bond."
+        },
+        "eligible": {
+          "title": "Non-Eligible Vehicles",
+          "description": "Junked, salvage, or non-repairable vehicles cannot receive bonded titles."
+        }
+      },
+      "conclusion": "Our team at Texas Premium Insurance Services will help you assess these risks. Call us at",
+      "conclusionEnd": "for expert guidance."
+    },
+    "faq": {
+      "title": "Frequently Asked Questions",
+      "questions": {
+        "valid": {
+          "question": "How long is a Texas bonded title valid?",
+          "answer": "The bonded title is valid for three years. If no claims are filed, the TxDMV issues a standard title afterward."
+        },
+        "credit": {
+          "question": "Can I get a bonded title with bad credit?",
+          "answer": "Yes, bonds up to $25,000 typically require no credit check. For larger bonds, we offer solutions for applicants with credit challenges. Call us to discuss your options."
+        },
+        "rejected": {
+          "question": "What if my bond application is rejected by the TxDMV?",
+          "answer": "We'll ensure your information matches the Notice of Determination exactly. If amendments are needed, we'll assist with corrections at minimal or no additional cost."
+        },
+        "transfer": {
+          "question": "Can I transfer a bonded title to another state?",
+          "answer": "Transferability depends on the other state's DMV policies. We can help you understand the requirements for your situation."
+        }
+      }
+    },
+    "footer": {
+      "callToAction": "Get Your Bonded Title Today"
+    }
+  },
+  "Documents": {
+    "pageTitle": "Retrieve My Documents",
+    "metaDescription": "Retrieve My Policy Documents",
+    "heroTitle": "Retrieve My Documents",
+    "heroSubtitle": "Access your policy documents and ID cards",
+    "inputPlaceholder": "Enter Policyholder email",
+    "searchButton": "Search",
+    "searching": "Searching...",
+    "searchingStatus": "Searching for your documents...",
+    "noDocuments": "No documents found for this email",
+    "noDocumentsDetail": "Make sure you're using the email address associated with your policy",
+    "initialState": "Enter your email address to search for documents",
+    "loadMore": "Another Policy or Prior Policy Document",
+    "loading": "Loading...",
+    "endOfResults": "— End of documents —",
+    "backHome": "Back to Homepage",
+    "preview": {
+      "view": "View",
+      "download": "Download",
+      "close": "Close"
+    }
+  },
+  "RootLayout": {
+  "nav": {
+    "logoAlt": "Texas Premium Insurance Services",
+    "getInsurance": "Get Insurance",
+    "accessDocuments": "Access My Documents",
+    "aboutUs": "About Us",
+    "callNow": "📞 Call Now 469-729-5185",
+    "categories": {
+      "vehicle": "Vehicle",
+      "property": "Property",
+      "commercial": "Commercial",
+      "andMore": "And More"
+    },
+    "insurance": {
+      "auto": "Auto",
+      "motorcycle": "Motorcycle",
+      "boats": "Boats & Watercraft",
+      "rv": "RV",
+      "sr22": "SR-22",
+      "homeowners": "Homeowners",
+      "renters": "Renters",
+      "mobileHome": "Mobile Home",
+      "commercialAuto": "Commercial Auto",
+      "generalLiability": "General Liability",
+      "mexicoTourist": "Mexico Tourist",
+      "suretyBond": "Surety Bond"
+    }
+  },
+  "footer": {
+    "contactUs": "Contact Us",
+    "hours": "Mon - Sat | 9 a.m. - 7 p.m. CT",
+    "copyright": "Texas Premium Insurance Services, LLC",
+    "termsLink": "Terms of Use and Privacy Policy",
+    "disclaimer": "Texas Premium Insurance Services LLC is an insurance agency that sources quotes from multiple carriers to provide you with the most competitive rates. By submitting information through our online portal or forms, you certify that all details, including household residents, accidents, DUIs/DWIs, tickets, and any expired or suspended licenses, are accurate and complete to the best of your knowledge. This applies whether you receive an immediate quote or are contacted by an agency representative to finalize your quote. Failure to provide accurate information may result in increased premiums, policy cancellation, or denial of coverage. Claims are processed and paid by the selected insurance carrier. Our agency will assist you with the claims process but is not responsible for claim denials due to misrepresentation, fraud, non-disclosure of material facts, policy exclusions, or any other reason."
+  }
+},
+"About": {
+  "title": "About Us",
+  "intro": "Welcome to Texas Premium Insurance Services, where protecting your world is our top priority! We're more than just an insurance agency—we're your trusted partner in finding the best coverage at prices that won't break the bank. Based in the heart of Texas, we've been helping individuals, families, and businesses secure peace of mind for years, and we're proud to serve our community with personalized, hassle-free insurance solutions.",
+  "mission": "At Texas Premium Insurance Services, we understand that insurance can feel like a maze of fine print and endless options. That's why we've made it our mission to simplify the process for you. Whether you're insuring your car, motorcycle, home, apartment, condominium, or commercial property, we've got you covered. As an independent agency, we work with multiple top-rated carriers to run quotes and find the most competitive rates tailored to your unique needs. Think of us as your personal insurance shoppers—we do the heavy lifting so you don't have to!",
+  "whyChoose": {
+    "title": "Why Choose Texas Premium Insurance Services?",
+    "intro": "We know you have options when it comes to insurance, so here's what sets us apart:",
+    "reasons": {
+      "shopSave": {
+        "title": "We Shop, You Save",
+        "description": "We partner with a wide network of trusted insurance carriers to compare quotes and find the best coverage at the most affordable price. No more endless searching—let us do the work for you!"
+      },
+      "coverage": {
+        "title": "Coverage for Everyone",
+        "description": "From your first motorcycle to your dream home, rental apartment, condo, or growing business, we offer a full range of policies to protect what matters most to you."
+      },
+      "expert": {
+        "title": "Expert Guidance",
+        "description": "Our experienced agents are here to answer your questions, explain your options in plain language, and guide you to the right policy—no jargon, no pressure."
+      },
+      "allIds": {
+        "title": "All IDs Welcome",
+        "description": "We accept all kinds of IDs, including suspended licenses, expired licenses, international/foreign IDs, or even no ID/no license at all. We'll find the best fit for your situation, no matter where you're coming from!"
+      },
+      "customer": {
+        "title": "Customer-First Approach",
+        "description": "We're not happy unless you are. We pride ourselves on providing friendly, personalized service that makes the insurance process as smooth as a Texas sunset."
+      },
+      "fast": {
+        "title": "Fast and Easy Quotes",
+        "description": "Need a quote in a hurry? We've streamlined the process to get you fast, accurate quotes so you can get back to what you love—whether that's hitting the open road or growing your business."
+      }
+    }
+  },
+  "journey": {
+    "title": "A Little About Our Journey",
+    "description": "Texas Premium Insurance Services was born out of a simple idea: insurance should be straightforward, affordable, and accessible for everyone. Our founders saw too many people overpaying for coverage or struggling to find policies that fit their needs. So, we set out to change that. Over the years, we've grown into a go-to agency for Texans looking to protect their vehicles, homes, and businesses without the stress. We've helped everyone from young drivers insuring their first car to business owners safeguarding their livelihood—and even those with unique ID situations, like international visitors or folks with suspended licenses. We're just getting started!"
+  },
+  "funFact": {
+    "title": "Fun Fact: We're More Than Just Insurance Experts",
+    "description": "When we're not hunting down the best insurance deals, you might find us exploring the Lone Star State! We love supporting local businesses, cheering at rodeos, and enjoying the vibrant culture that makes Texas so special. Our team even has a tradition of celebrating big wins—like finding a client the perfect policy—with a round of Texas BBQ. After all, nothing says \"job well done\" like a plate of brisket!"
+  },
+  "ready": {
+    "title": "Ready to Protect What Matters?",
+    "description": "At Texas Premium Insurance Services, we're here to make insurance one less thing you have to worry about—regardless of your ID status. Whether you're cruising on your motorcycle, settling into a new apartment, running a thriving business, or navigating life with a suspended or expired license, we'll find the coverage that fits your life and budget. Reach out to us today at",
+    "or": "or visit us at",
+    "closing": "to get your free quote. We can't wait to help you find the perfect policy!"
+  }
+},
+"autopay": {
+    "title": "Automatic Payment Setup",
+    "subtitle": "Safe • Encrypted • Secure",
+    "tabs": {
+      "card": "Card",
+      "bank": "Bank Account"
+    },
+    "card": {
+      "nameOnCard": "Name on Card",
+      "namePlaceholder": "John Doe",
+      "cardNumber": "Card Number",
+      "cardNumberPlaceholder": "0000 0000 0000 0000",
+      "expiration": "Expiration",
+      "monthPlaceholder": "MM",
+      "yearPlaceholder": "YYYY",
+      "cvv": "CVV",
+      "cvvPlaceholder": "123",
+      "zipCode": "Billing ZIP Code",
+      "zipCodePlaceholder": "12345"
+    },
+    "bank": {
+      "fullName": "Full Name on Account",
+      "fullNamePlaceholder": "John Doe",
+      "accountType": "Account Type",
+      "checking": "Checking",
+      "savings": "Savings",
+      "holderType": "Holder Type",
+      "personal": "Personal",
+      "business": "Business",
+      "routingNumber": "Routing Number",
+      "routingNumberPlaceholder": "123456789",
+      "accountNumber": "Account Number",
+      "confirmAccountNumber": "Confirm Account Number"
+    },
+    "authorization": {
+      "text": "I authorize Texas Premium Insurance Services and my insurance carrier to automatically debit this payment method for future insurance payments. I have read and agree to the",
+      "termsLink": "terms of authorization"
+    },
+    "submitButton": "Confirm Autopay Setup",
+    "security": {
+      "bankLevel": "Bank-Level Secured Connection",
+      "ssl": "256-BIT SSL",
+      "pci": "PCI",
+      "compliant": "Compliant",
+      "encrypted": "Encrypted",
+      "description": "Your details are encrypted using AES-256 protocols."
+    },
+    "errors": {
+      "agreeToTerms": "Please agree to the terms to continue",
+      "accountMismatch": "Account numbers do not match",
+      "setupFailed": "Failed to set up autopay. Please try again."
+    }
+  },
+  "thankYou": {
+    "loading": "Loading...",
+    "title": "Payment Successful!",
+    "subtitle": "Thank you for choosing Texas Premium Insurance Services.",
+    "message": "Your transaction has been processed. A confirmation receipt has been sent to your email address. Our agents will begin reviewing your coverage shortly.",
+    "returnButton": "RETURN TO HOME"
+  },
+  "autoquote": {
+    "progressBar": {
+      "step1": "Info",
+      "step2": "Drivers & Vehicles",
+      "step3": "Coverage & Discounts",
+      "step4": "Review"
+    },
+    "step1": {
+      "title": "Let's put together a plan that fits you perfectly.",
+      "subtitle": "Please fill out the information below as accurately as possible for a precise quote.",
+      "effectiveDate": "Effective Date (Click calendar to change)",
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "address": "Address",
+      "dob": "Date of Birth",
+      "phone": "Phone Number",
+      "email": "Email Address",
+      "maritalStatus": "Marital Status",
+      "maritalStatusHelper": "Optimize your price by choosing to include or exclude your spouse.",
+      "residencyType": "Residency Type",
+      "residencyHelper": "Homeownership may lower your rate.",
+      "placeholders": {
+        "firstName": "Enter First Name",
+        "lastName": "Enter Last Name",
+        "address": "Enter Address (e.g., 123 Main St Apt 1525)",
+        "phone": "Enter 10-digit phone number",
+        "email": "Enter Email Address"
+      },
+      "maritalOptions": {
+        "select": "Select...",
+        "single": "Single",
+        "married": "Married",
+        "civilUnion": "Civil Union",
+        "divorced": "Divorced"
+      },
+      "residencyOptions": {
+        "select": "Select...",
+        "own": "Own",
+        "rent": "Rent",
+        "parents": "Live with Parents"
+      },
+      "verification": {
+        "sendCode": "Send Code",
+        "sending": "Sending...",
+        "verified": "Verified",
+        "verificationCode": "Verification Code",
+        "verifyButton": "Verify Code",
+        "status": "Verification Status:",
+        "notVerified": "Not Verified",
+        "enterCode": "Enter 6-digit code"
+      },
+      "errors": {
+        "phone10Digits": "Phone number must be exactly 10 digits.",
+        "addressRequired": "Please enter and select a valid address.",
+        "addressError": "Please correct the address error before continuing.",
+        "phoneVerifyRequired": "Please verify your phone number before continuing.",
+        "invalidCode": "Invalid verification code. Please try again.",
+        "addressApartment": "This appears to be an apartment address. Please include the apartment/unit number (e.g., Apt 1525, Unit 4B, #202)."
+      },
+      "buttons": {
+        "continue": "Continue"
+      }
+    },
+    "step2": {
+      "title": "Step 2: Driver & Vehicle Information",
+      "driversLabel": "How many Drivers (including you)",
+      "vehiclesLabel": "How many Vehicles",
+      "driverTitle": "Driver",
+      "vehicleTitle": "Vehicle",
+      "driver": {
+        "firstName": "First Name",
+        "lastName": "Last Name",
+        "dob": "Date of Birth",
+        "relationship": "Relationship",
+        "gender": "Gender",
+        "idType": "ID Type",
+        "dlNumber": "Driver's License Number",
+        "idNumber": "ID Number",
+        "state": "State",
+        "country": "Country",
+        "internationalId": "International ID Number",
+        "placeholders": {
+          "firstName": "Enter First Name",
+          "lastName": "Enter Last Name",
+          "dlNumber": "Enter Drivers License Number",
+          "idNumber": "Enter ID Number",
+          "state": "Enter State (e.g., TX)",
+          "country": "Enter Country (e.g., Mexico)",
+          "internationalId": "Enter International ID Number"
+        },
+        "relationships": {
+          "select": "Select...",
+          "policyholder": "Policyholder",
+          "spouse": "Spouse",
+          "child": "Child",
+          "parent": "Parent",
+          "otherRelative": "Other Relative",
+          "nonRelative": "Non-Relative"
+        },
+        "genders": {
+          "select": "Select...",
+          "male": "Male",
+          "female": "Female",
+          "other": "Other"
+        },
+        "idTypes": {
+          "select": "Select...",
+          "inStateDL": "In-State Driver's License",
+          "inStateID": "In-State ID",
+          "outOfStateDL": "Out-of-State Driver's License",
+          "outOfStateID": "Out-of-State ID",
+          "international": "International/Foreign ID/Passport"
+        },
+        "idSubTypes": {
+          "select": "Select...",
+          "matricular": "Matricular Consular",
+          "passport": "Passport",
+          "otherForeign": "Other Foreign ID"
+        },
+        "helpers": {
+          "dlAsShown": "Driver's License Number (Enter as shown on your license)",
+          "dlExactly": "Include any letters or numbers exactly as they appear (e.g., A1234567 or X123-4A56).",
+          "idAsShown": "ID Number (Enter as shown on your State ID)",
+          "idExactly": "Include any letters or numbers exactly as they appear (e.g., A1234567 or X123-4A56).",
+          "idTypeLabel": "ID Type"
+        },
+        "errors": {
+          "dl8Digits": "Driver's License must be exactly 8 digits."
+        }
+      },
+      "vehicle": {
+        "vinNumber": "VIN Number",
+        "make": "Make",
+        "model": "Model",
+        "year": "Year",
+        "coverage": "Coverage Options",
+        "placeholders": {
+          "vin": "Enter 17-digit VIN",
+          "autoFilled": "Auto-filled from VIN"
+        },
+        "coverageHelper": "Hover over the boxes below to see what each coverage means.",
+        "coverageTypes": {
+          "liability": "Liability",
+          "comprehensive": "Comprehensive/Collision",
+          "pip": "Personal Injury Protection",
+          "medpay": "Medical Payments",
+          "uninsured": "Uninsured Motorist",
+          "towing": "Towing",
+          "rental": "Rental",
+          "roadside": "Roadside Assistance"
+        },
+        "coverageDescriptions": {
+          "liability": "Texas law requires minimum liability coverage of 30/60/25: $30,000 per person for bodily injury, $60,000 total per accident for bodily injury, and $25,000 for property damage.",
+          "comprehensive": "Comprehensive covers non-collision events like theft, weather, vandalism. Collision covers crashes with vehicles or objects.",
+          "pip": "PIP covers medical expenses, lost wages, and household services regardless of fault.",
+          "medpay": "MedPay covers medical bills for you and passengers, regardless of fault.",
+          "uninsured": "Protects you when the at-fault driver has no or insufficient insurance.",
+          "towing": "Covers towing costs after an accident or breakdown.",
+          "rental": "Covers rental car costs while your vehicle is repaired.",
+          "roadside": "Provides emergency services like jump-starts, tire changes, and fuel delivery."
+        },
+        "liabilityRequired": "*Liability coverage is mandatory and included by default.",
+        "searching": "Searching VIN...",
+        "errors": {
+          "atLeastOne": "Please add at least one driver and one vehicle.",
+          "invalidVin": "One or more VINs are invalid or missing vehicle information. Please verify all VINs before continuing."
+        }
+      },
+      "buttons": {
+        "back": "Back",
+        "continue": "Continue"
+      }
+    },
+    "step3": {
+      "title": "Step 3: Coverage & Discounts",
+      "priorCoverage": "Prior Coverage",
+      "priorCoverageHelper": "(Many companies offer a better price if you have an active policy)",
+      "howLong": "How long",
+      "howLongHelper": "(Months with the previous company)",
+      "expirationDate": "Expiration Date",
+      "expirationHelper": "(When did the old policy end or is it active)",
+      "membership": "Membership",
+      "membershipHelper": "(Sam's or Costco membership may lower your rate)",
+      "options": {
+        "select": "Select...",
+        "yes": "Yes",
+        "no": "No",
+        "months6": "6",
+        "months12": "12",
+        "months18": "18",
+        "months24": "24",
+        "samsClub": "Sam's Club",
+        "costco": "Costco",
+        "none": "None"
+      },
+      "buttons": {
+        "back": "Back",
+        "continue": "Continue"
+      }
+    },
+    "step4": {
+      "title": "Step 4: Review Your Quote",
+      "sections": {
+        "personal": "Personal Information",
+        "drivers": "Drivers",
+        "vehicles": "Vehicles",
+        "coverage": "Coverage & Discounts"
+      },
+      "fields": {
+        "firstName": "First Name:",
+        "lastName": "Last Name:",
+        "address": "Address:",
+        "dob": "Date of Birth:",
+        "phone": "Phone Number:",
+        "email": "Email Address:",
+        "maritalStatus": "Marital Status:",
+        "residency": "Residency Type:",
+        "effectiveDate": "Effective Date:",
+        "name": "Name:",
+        "relationship": "Relationship:",
+        "gender": "Gender:",
+        "idType": "ID Type:",
+        "idNumber": "ID Number:",
+        "state": "State:",
+        "country": "Country:",
+        "idSubType": "ID Sub-Type:",
+        "vin": "VIN:",
+        "make": "Make:",
+        "model": "Model:",
+        "year": "Year:",
+        "coverage": "Coverage:",
+        "priorCoverage": "Prior Coverage:",
+        "priorMonths": "Months of Prior Coverage:",
+        "expirationDate": "Expiration Date:",
+        "membership": "Membership:"
+      },
+      "noData": {
+        "notProvided": "Not provided",
+        "drivers": "No drivers added.",
+        "vehicles": "No vehicles added.",
+        "coverageDefault": "Liability (default)"
+      },
+      "buttons": {
+        "back": "Back",
+        "submit": "Submit Quote",
+        "submitting": "Submitting..."
+      }
+    },
+    "thankYou": {
+      "title": "Thank you for your patience 🙏",
+      "reviewing": "We're carefully reviewing your options",
+      "working": "and our team is working behind the scenes to find you the best possible prices.",
+      "callYou": "We'll call you shortly 📞",
+      "needHelp": "Need immediate assistance?",
+      "callNow": "Call us now at (469) 729-5185",
+      "backHome": "Back to Homepage"
+    },
+    "alerts": {
+      "texasOnly": "Please select an address within Texas.",
+      "codeSent": "Verification code sent successfully!",
+      "phoneVerified": "Phone number verified successfully!",
+      "failedToSend": "Failed to send quote via SMS. Please try again."
+    }
+  },
+  "motorcyclequote": {
+  "progressBar": {
+    "step1": "Info",
+    "step2": "Riders & Motorcycles",
+    "step3": "Coverage",
+    "step4": "Review"
+  },
+  "step1": {
+    "title": "Rev Up for the Perfect Motorcycle Insurance Quote!",
+    "subtitle": "Your ride deserves the best—let's make sure it's protected.",
+    "description": "Fill out the details below to get a fast, accurate quote tailored just for you and your bike.",
+    "effectiveDate": "Effective Date (Default to Today's Date, click on Calendar to change it)",
+    "firstName": "First Name",
+    "lastName": "Last Name",
+    "address": "Address",
+    "dob": "Date of Birth",
+    "phone": "Phone Number",
+    "email": "Email address",
+    "maritalStatus": "Marital Status:",
+    "maritalStatusHelper": "Optimize your price by choosing to include or exclude your spouse.",
+    "residencyType": "Residency Type:",
+    "residencyHelper": "Homeownership may lower your rate.",
+    "placeholders": {
+      "firstName": "Enter First Name",
+      "lastName": "Enter Last Name",
+      "address": "Enter Address",
+      "phone": "Enter 10-digit phone number",
+      "email": "Enter Email Address"
+    },
+    "maritalOptions": {
+      "select": "Select...",
+      "single": "Single",
+      "married": "Married",
+      "civilUnion": "Civil Union",
+      "divorced": "Divorced"
+    },
+    "residencyOptions": {
+      "select": "Select...",
+      "own": "Own",
+      "rent": "Rent",
+      "parents": "Live with Parents"
+    },
+    "verification": {
+      "sendCode": "Send Code",
+      "sending": "Sending...",
+      "verified": "Verified ✓",
+      "verificationCode": "Verification Code",
+      "enterCode": "Enter 6-digit code",
+      "verifyButton": "Verify",
+      "status": "Status:",
+      "notVerified": "Not Verified"
+    },
+    "errors": {
+      "phone10Digits": "Phone number must be exactly 10 digits.",
+      "addressRequired": "Please select a valid address from the dropdown.",
+      "addressError": "Please correct the address error before continuing.",
+      "phoneVerifyRequired": "Please verify your phone number before continuing.",
+      "addressApartment": "For apartment complexes, please include your unit number (e.g., Apt 123, Unit 4B, #205).",
+      "invalidCode": "Invalid verification code. Please try again."
+    },
+    "buttons": {
+      "continue": "Continue"
+    }
+  },
+  "step2": {
+    "title": "Step 2: Rider & Motorcycle Information",
+    "ridersLabel": "How many Riders (including you)",
+    "motorcyclesLabel": "How many Motorcycles",
+    "riderTitle": "Rider",
+    "motorcycleTitle": "Motorcycle",
+    "rider": {
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "dob": "Date of Birth",
+      "relationship": "Relationship",
+      "gender": "Gender",
+      "idType": "ID Type",
+      "dlNumber": "Driver's License Number",
+      "idNumber": "ID Number",
+      "state": "State",
+      "country": "Country",
+      "internationalId": "International ID Number",
+      "placeholders": {
+        "firstName": "Enter First Name",
+        "lastName": "Enter Last Name",
+        "dlNumber": "Enter Drivers License Number",
+        "idNumber": "Enter ID Number",
+        "state": "Enter State (e.g., TX)",
+        "country": "Enter Country (e.g., Mexico)",
+        "internationalId": "Enter International ID Number"
+      },
+      "relationships": {
+        "select": "Select...",
+        "policyholder": "Policyholder",
+        "spouse": "Spouse",
+        "child": "Child",
+        "parent": "Parent",
+        "otherRelative": "Other Relative",
+        "nonRelative": "Non-Relative"
+      },
+      "genders": {
+        "select": "Select...",
+        "male": "Male",
+        "female": "Female",
+        "other": "Other"
+      },
+      "idTypes": {
+        "select": "Select...",
+        "inStateDL": "In-State Driver's License",
+        "inStateID": "In-State ID",
+        "outOfStateDL": "Out-of-State Driver's License",
+        "outOfStateID": "Out-of-State ID",
+        "international": "International/Foreign ID/Passport"
+      },
+      "idSubTypes": {
+        "select": "Select...",
+        "matricular": "Matricular Consular",
+        "passport": "Passport",
+        "otherForeign": "Other Foreign ID"
+      },
+      "helpers": {
+        "idTypeLabel": "ID Type",
+        "dlAsShown": "Driver's License Number",
+        "idAsShown": "ID Number"
+      },
+      "errors": {
+        "dl8Digits": "Driver's License must be exactly 8 digits."
+      }
+    },
+    "motorcycle": {
+      "vinNumber": "VIN Number",
+      "make": "Make",
+      "model": "Model",
+      "year": "Year",
+      "coverage": "Coverage Options (Hover over Coverage to see what exactly it covers)",
+      "placeholders": {
+        "vin": "Enter 17-digit VIN",
+        "autoFilled": "Auto-filled from VIN"
+      },
+      "searching": "Searching VIN...",
+      "liabilityRequired": "*Liability coverage is mandatory and included by default.",
+      "coverageDescriptions": {
+        "liability": "Texas law requires minimum liability coverage of 30/60/25: $30,000 per person for bodily injury, $60,000 total per accident for bodily injury, and $25,000 for property damage. This coverage only pays for damages and injuries you cause to others in an at-fault accident. Liability insurance does not cover your own injuries or Motorcycle damage - you need additional coverage like collision or comprehensive for that protection.",
+        "comprehensive": "Comprehensive covers damage to your Motorcycle from non-collision events like theft, weather, vandalism, or animal strikes. Collision covers damage to your Motorcycle from crashes with other Motorcycles or objects. Both are optional in Texas but typically required if you have a car loan or lease - together they provide 'full coverage' protecting your own Motorcycle regardless of fault.",
+        "pip": "PIP covers your medical expenses, lost wages (up to 80%), and household services regardless of who caused the accident. Texas requires insurance companies to offer at least $2,500 of PIP coverage, though it's optional to purchase. PIP is not mandatory in Texas but provides immediate coverage for you and your passengers without waiting to determine fault in an accident.",
+        "medpay": "MedPay covers medical bills for you and your passengers after an accident, regardless of who's at fault. It's optional in Texas and typically offers coverage in amounts like $1,000, $2,500, or $5,000. Unlike PIP, MedPay only covers medical expenses - no lost wages or household services - making it a simpler, more focused coverage option.",
+        "uninsured": "Protects you when the at-fault Rider has no insurance or insufficient coverage to pay for your injuries and damages. With 12% of Texas registered Motorcycles unmatched to insurance policies, this optional coverage is crucial. It also pays if you're in a hit-and-run accident. Texas insurers must offer this coverage, but you can reject it in writing.",
+        "towing": "Covers the cost of towing your Motorcycle to a repair shop or safe location after an accident, breakdown, or if your car becomes disabled. This is specifically for towing services only, not other roadside assistance like jump-starts or tire changes. Coverage limits typically range from $50-$200 per towing incident, and it's an optional add-on that helps with unexpected towing expenses.",
+        "rental": "Covers the cost of a rental car while your Motorcycle is being repaired after a covered claim or if it's stolen. Typically pays a daily amount (like $30-$50 per day) for a specified number of days (usually 30 days maximum). This optional coverage ensures you stay mobile while your car is out of commission, helping you maintain your daily routine during the repair process.",
+        "roadside": "Provides emergency services when your Motorcycle breaks down or you're stranded, including jump-starts for dead batteries, flat tire changes, lockout assistance, and emergency fuel delivery. Available 24/7 regardless of where the breakdown occurs, this optional coverage. It's separate from towing coverage and focuses on getting you back on the road quickly for minor issues."
+      },
+      "errors": {
+        "atLeastOne": "Please add at least one motorcycle and one rider.",
+        "invalidVin": "All motorcycles must have valid VIN information.",
+        "duplicateVin": "This VIN has already been added to another Motorcycle.",
+        "noInfo": "No Motorcycle info found for that VIN.",
+        "searchError": "Something went wrong while searching VIN."
+      }
+    },
+    "buttons": {
+      "back": "Back",
+      "continue": "Continue"
+    }
+  },
+  "step3": {
+    "title": "Step 3: Coverage & Discounts",
+    "priorCoverage": "Prior Coverage",
+    "howLong": "How long",
+    "howLongHelper": "(How many months were you with the older company)",
+    "expirationDate": "Expiration Date",
+    "expirationHelper": "(When did the old policy get cancelled or is it still active)",
+    "membership": "Membership",
+    "membershipHelper": "(Many companies offer a better price if you have a Membership with Sam's or Costco)",
+    "options": {
+      "select": "Select...",
+      "yes": "Yes",
+      "no": "No",
+      "months6": "6",
+      "months12": "12",
+      "months18": "18",
+      "months24": "24",
+      "samsClub": "Sam's Club",
+      "costco": "Costco",
+      "none": "None"
+    },
+    "buttons": {
+      "back": "Back",
+      "continue": "Continue"
+    }
+  },
+  "step4": {
+    "title": "Step 4: Review Your Quote",
+    "sections": {
+      "personal": "Personal Information",
+      "riders": "Riders",
+      "motorcycles": "Motorcycles",
+      "coverage": "Coverage & Discounts"
+    },
+    "fields": {
+      "firstName": "First Name:",
+      "lastName": "Last Name:",
+      "address": "Address:",
+      "dob": "Date of Birth:",
+      "phone": "Phone Number:",
+      "email": "Email Address:",
+      "maritalStatus": "Marital Status:",
+      "residency": "Residency Type:",
+      "effectiveDate": "Effective Date:",
+      "relationship": "Relationship:",
+      "gender": "Gender:",
+      "idType": "ID Type:",
+      "idNumber": "ID Number:",
+      "state": "State:",
+      "country": "Country:",
+      "idSubType": "ID Sub-Type:",
+      "vin": "VIN Number:",
+      "make": "Make:",
+      "model": "Model:",
+      "year": "Year:",
+      "coverage": "Coverage:",
+      "priorCoverage": "Prior Coverage:",
+      "priorMonths": "Prior Coverage Months:",
+      "expirationDate": "Expiration Date:",
+      "membership": "Membership:"
+    },
+    "noData": {
+      "notProvided": "Not provided",
+      "riders": "No Riders added.",
+      "motorcycles": "No Motorcycles added.",
+      "coverageDefault": "None selected"
+    },
+    "buttons": {
+      "back": "Back",
+      "submit": "Get Quote",
+      "submitting": "Submitting..."
+    }
+  },
+  "thankYou": {
+    "title": "Thank You for Your Quote Request!",
+    "reviewing": "We're reviewing your information.",
+    "working": "We're working hard to get you the best motorcycle insurance rates!",
+    "callYou": "An agent will call you soon.",
+    "needHelp": "Need immediate assistance?",
+    "callNow": "Call us now!",
+    "backHome": "Back to Homepage"
+  },
+  "alerts": {
+    "codeSent": "Verification code sent to your phone!",
+    "phoneVerified": "Phone number verified successfully!",
+    "texasOnly": "We currently only serve Texas addresses.",
+    "failedToSend": "Failed to send quote via SMS. Please try again."
+  }
+},
+"AutopaySuccess": {
+    "title": "AutoPay Setup Complete! 🎉",
+    "subtitle": "Your automatic payment method has been successfully saved.",
+    "cardTitle": "Billing & Coverage Protection",
+    "feature1": "Future premiums will be charged automatically on your scheduled due dates.",
+    "feature2": "If a payment is declined, we will notify you via text, email, or mail. A representative may also contact you to help keep your coverage active.",
+    "feature3": "You may update or <bold>remove AutoPay</bold> at any time. Please note that the removal of AutoPay may result in the loss of any associated AutoPay discounts.",
+    "button": "Return to Homepage",
+    "help": "Need help?",
+    "callUs": "Call us at {phone}"
+  }
+}
