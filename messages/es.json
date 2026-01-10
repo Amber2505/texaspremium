@@ -384,7 +384,7 @@
           "title": "Condenas por conducir bajo los efectos del alcohol o las drogas",
           "description": "Conducir en estado de embriaguez o bajo los efectos del alcohol o las drogas es un motivo habitual para que se exija un SR-22."
         },
-        "uninsured": {
+        "noInsurance": {
           "title": "Conducir sin seguro",
           "description": "Conducir un vehículo sin un seguro de responsabilidad civil válido infringe la ley de Texas y a menudo requiere un SR-22."
         },

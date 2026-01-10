@@ -5,9 +5,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
+import { useParams } from "next/navigation"; // ✅ ADD THIS IMPORT
 
 export default function HomePage() {
   const t = useTranslations("home");
+  const params = useParams(); // ✅ ADD THIS
+  const locale = params.locale as string; // ✅ ADD THIS
 
   const images = [
     { src: "/car.png", alt: "Car" },
@@ -55,7 +58,7 @@ export default function HomePage() {
             </h1>
             <p className="text-xl text-gray-700 mb-6">{t("hero.subtitle")}</p>
             <Link
-              href="/auto"
+              href={`/${locale}/auto`} // ✅ FIXED: Added locale
               className="inline-block bg-[#A0103D] text-white font-semibold py-3 px-6 rounded-md hover:bg-[#102a56]"
             >
               {t("hero.cta")}
@@ -130,12 +133,12 @@ export default function HomePage() {
                 <p className="text-3xl">{t("personalized.card.question")}</p>{" "}
                 {t("personalized.card.description")}
               </div>
-              <a
+              <Link
                 href="tel:+14697295185"
                 className="inline-block bg-[#a0103d] text-white font-semibold py-2 px-4 rounded-md hover:bg-[#102a56] transition text-center mt-4"
               >
                 {t("personalized.card.cta")}
-              </a>
+              </Link>
             </div>
           </div>
         </div>
@@ -147,7 +150,7 @@ export default function HomePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
             {/* Auto Card */}
             <Link
-              href="/auto"
+              href={`/${locale}/auto`} // ✅ FIXED: Added locale
               className="group bg-white rounded-2xl shadow-md p-6 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
             >
               <div className="relative mb-6">
@@ -173,7 +176,7 @@ export default function HomePage() {
 
             {/* Home Card */}
             <Link
-              href="/homeowners"
+              href={`/${locale}/homeowners`} // ✅ FIXED: Added locale
               className="group bg-white rounded-2xl shadow-md p-6 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
             >
               <div className="relative mb-6">
@@ -199,7 +202,7 @@ export default function HomePage() {
 
             {/* Rental Card */}
             <Link
-              href="/renters"
+              href={`/${locale}/renters`} // ✅ FIXED: Added locale
               className="group bg-white rounded-2xl shadow-md p-6 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
             >
               <div className="relative mb-6">
@@ -225,7 +228,7 @@ export default function HomePage() {
 
             {/* Motorcycle Card */}
             <Link
-              href="/motorcycle"
+              href={`/${locale}/motorcycle`} // ✅ FIXED: Added locale
               className="group bg-white rounded-2xl shadow-md p-6 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
             >
               <div className="relative mb-6">
@@ -251,7 +254,7 @@ export default function HomePage() {
 
             {/* Commercial Card */}
             <Link
-              href="/general-liability"
+              href={`/${locale}/general-liability`} // ✅ FIXED: Added locale
               className="group bg-white rounded-2xl shadow-md p-6 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
             >
               <div className="relative mb-6">
@@ -275,8 +278,8 @@ export default function HomePage() {
               </div>
             </Link>
 
-            {/* Other Card */}
-            <a
+            {/* Other Card - KEEP AS IS (phone link) */}
+            <Link
               href="tel:+14697295185"
               className="group bg-white rounded-2xl shadow-md p-6 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
             >
@@ -299,7 +302,7 @@ export default function HomePage() {
               <div className="inline-block bg-[#a0103d] text-white font-semibold py-2 px-6 rounded-md group-hover:bg-[#102a56] transition-colors">
                 {t("insuranceTypes.other.cta")}
               </div>
-            </a>
+            </Link>
           </div>
         </div>
       </div>
@@ -315,8 +318,8 @@ export default function HomePage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-            {/* Box 1: Call */}
-            <a
+            {/* Box 1: Call - KEEP AS IS (phone link) */}
+            <Link
               href="tel:+14697295185"
               className="group bg-white rounded-2xl shadow-lg p-10 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
             >
@@ -347,10 +350,10 @@ export default function HomePage() {
               <div className="w-full bg-[#A0103D] text-white font-bold py-3 rounded-md group-hover:bg-[#102a56] transition-colors text-center uppercase tracking-wider">
                 {t("contact.call.cta")}
               </div>
-            </a>
+            </Link>
 
-            {/* Box 2: Text */}
-            <a
+            {/* Box 2: Text - KEEP AS IS (SMS link) */}
+            <Link
               href="sms:+14697295185"
               className="group bg-white rounded-2xl shadow-lg p-10 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
             >
@@ -381,7 +384,7 @@ export default function HomePage() {
               <div className="w-full bg-[#A0103D] text-white font-bold py-3 rounded-md group-hover:bg-[#102a56] transition-colors text-center uppercase tracking-wider">
                 {t("contact.text.cta")}
               </div>
-            </a>
+            </Link>
 
             {/* Box 3: Chat Live */}
             <button
@@ -622,7 +625,7 @@ export default function HomePage() {
           {/* Final CTA Button */}
           <div className="text-center mt-12">
             <Link
-              href="/auto"
+              href={`/${locale}/auto`} // ✅ FIXED: Added locale
               className="inline-block bg-[#A0103D] text-white font-semibold py-3 px-8 rounded-full hover:bg-[#102a56] transition"
             >
               {t("steps.cta")}

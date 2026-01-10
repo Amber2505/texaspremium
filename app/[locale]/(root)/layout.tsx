@@ -81,11 +81,11 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
   const switchLanguage = (newLocale: string) => {
     const pathWithoutLocale = pathname.replace(`/${locale}`, "");
 
-    // 🔥 NEW: Get query parameters
+    // Get query parameters
     const searchParams = new URLSearchParams(window.location.search);
     const queryString = searchParams.toString();
 
-    // 🔥 NEW: Build URL with query params preserved
+    // Build URL with query params preserved
     const newUrl = `/${newLocale}${pathWithoutLocale}${
       queryString ? `?${queryString}` : ""
     }`;
@@ -97,7 +97,12 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
     <div>
       <nav className="bg-[#E5E5E5] text-gray-900 p-5 flex justify-between items-center">
         <div className="flex items-center gap-4">
-          <Link href="/" onClick={handleNavClick} className="flex items-center">
+          {/* ✅ FIXED: Added locale to logo link */}
+          <Link
+            href={`/${locale}`}
+            onClick={handleNavClick}
+            className="flex items-center"
+          >
             <Image
               src="/logo.png"
               alt={t("nav.logoAlt")}
@@ -244,6 +249,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                           : "grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6"
                       }`}
                     >
+                      {/* Vehicle Insurance */}
                       <div>
                         <h3 className="text-sm md:text-lg font-semibold text-gray-800 mb-2">
                           {t("nav.categories.vehicle")}
@@ -263,18 +269,21 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                             { href: "/sr22", label: t("nav.insurance.sr22") },
                           ].map((item) => (
                             <li key={item.href}>
-                              <a
+                              {/* ✅ FIXED: Changed from <a> to <Link> */}
+                              <Link
                                 href={`/${locale}${item.href}`}
                                 className="block py-1 text-gray-700 hover:text-[#a0103d] text-sm md:text-base"
                                 role="menuitem"
                                 onClick={handleNavClick}
                               >
                                 {item.label}
-                              </a>
+                              </Link>
                             </li>
                           ))}
                         </ul>
                       </div>
+
+                      {/* Property Insurance */}
                       <div>
                         <h3 className="text-sm md:text-lg font-semibold text-gray-800 mb-2">
                           {t("nav.categories.property")}
@@ -295,18 +304,21 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                             },
                           ].map((item) => (
                             <li key={item.href}>
-                              <a
+                              {/* ✅ FIXED: Changed from <a> to <Link> */}
+                              <Link
                                 href={`/${locale}${item.href}`}
                                 className="block py-1 text-gray-700 hover:text-[#a0103d] text-sm md:text-base"
                                 role="menuitem"
                                 onClick={handleNavClick}
                               >
                                 {item.label}
-                              </a>
+                              </Link>
                             </li>
                           ))}
                         </ul>
                       </div>
+
+                      {/* Commercial Insurance */}
                       <div>
                         <h3 className="text-sm md:text-lg font-semibold text-gray-800 mb-2">
                           {t("nav.categories.commercial")}
@@ -323,18 +335,21 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                             },
                           ].map((item) => (
                             <li key={item.href}>
-                              <a
+                              {/* ✅ FIXED: Changed from <a> to <Link> */}
+                              <Link
                                 href={`/${locale}${item.href}`}
                                 className="block py-1 text-gray-700 hover:text-[#a0103d] text-sm md:text-base"
                                 role="menuitem"
                                 onClick={handleNavClick}
                               >
                                 {item.label}
-                              </a>
+                              </Link>
                             </li>
                           ))}
                         </ul>
                       </div>
+
+                      {/* Other Insurance */}
                       <div>
                         <h3 className="text-sm md:text-lg font-semibold text-gray-800 mb-2">
                           {t("nav.categories.andMore")}
@@ -351,14 +366,15 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                             },
                           ].map((item) => (
                             <li key={item.href}>
-                              <a
+                              {/* ✅ FIXED: Changed from <a> to <Link> */}
+                              <Link
                                 href={`/${locale}${item.href}`}
                                 className="block py-1 text-gray-700 hover:text-[#a0103d] text-sm md:text-base"
                                 role="menuitem"
                                 onClick={handleNavClick}
                               >
                                 {item.label}
-                              </a>
+                              </Link>
                             </li>
                           ))}
                         </ul>
@@ -368,16 +384,18 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                 )}
               </div>
 
+              {/* ✅ FIXED: Added locale to View Documents link */}
               <Link
-                href="/view_documents"
+                href={`/${locale}/view_documents`}
                 onClick={handleNavClick}
                 className="block text-base md:text-lg font-medium hover:text-[#a0103d] transition-colors duration-200"
               >
                 <b>{t("nav.accessDocuments")}</b>
               </Link>
 
+              {/* ✅ FIXED: Added locale to About link */}
               <Link
-                href="/about"
+                href={`/${locale}/about`}
                 onClick={handleNavClick}
                 className="block text-base md:text-lg font-medium hover:text-[#a0103d] transition-colors duration-200"
               >
@@ -486,8 +504,9 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                 © {currentYear} {t("footer.copyright")}
               </p>
               <p className="mt-2">
+                {/* ✅ FIXED: Added locale to Terms link */}
                 <Link
-                  href="/terms"
+                  href={`/${locale}/terms`}
                   className="underline text-white hover:text-blue-400"
                 >
                   {t("footer.termsLink")}
