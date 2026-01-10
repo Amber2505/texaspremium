@@ -264,7 +264,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                           ].map((item) => (
                             <li key={item.href}>
                               <a
-                                href={item.href}
+                                href={`/${locale}${item.href}`}
                                 className="block py-1 text-gray-700 hover:text-[#a0103d] text-sm md:text-base"
                                 role="menuitem"
                                 onClick={handleNavClick}
@@ -296,7 +296,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                           ].map((item) => (
                             <li key={item.href}>
                               <a
-                                href={item.href}
+                                href={`/${locale}${item.href}`}
                                 className="block py-1 text-gray-700 hover:text-[#a0103d] text-sm md:text-base"
                                 role="menuitem"
                                 onClick={handleNavClick}
@@ -324,7 +324,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                           ].map((item) => (
                             <li key={item.href}>
                               <a
-                                href={item.href}
+                                href={`/${locale}${item.href}`}
                                 className="block py-1 text-gray-700 hover:text-[#a0103d] text-sm md:text-base"
                                 role="menuitem"
                                 onClick={handleNavClick}
@@ -352,7 +352,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                           ].map((item) => (
                             <li key={item.href}>
                               <a
-                                href={item.href}
+                                href={`/${locale}${item.href}`}
                                 className="block py-1 text-gray-700 hover:text-[#a0103d] text-sm md:text-base"
                                 role="menuitem"
                                 onClick={handleNavClick}
