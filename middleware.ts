@@ -12,12 +12,23 @@ const intlMiddleware = createMiddleware({
 });
 
 export default function middleware(request: NextRequest) {
-  // Run next-intl middleware
+  const { pathname } = request.nextUrl;
+
+  // ✅ 1. Handle the /quote redirect based on browser language
+  if (pathname === '/quote') {
+    // Detect language from headers or default to English
+    const acceptLanguage = request.headers.get('accept-language');
+    const locale = acceptLanguage?.toLowerCase().includes('es') ? 'es' : 'en';
+    
+    // Redirect to the appropriate /locale/auto
+    return NextResponse.redirect(new URL(`/${locale}/auto`, request.url));
+  }
+
+  // 2. Run next-intl middleware for all other requests
   const response = intlMiddleware(request);
   
-  // 🔥 NEW: Add pathname to headers for dynamic hreflang generation
-  // This allows your layout metadata to know the current path
-  const pathname = request.nextUrl.pathname;
+  // 3. Add pathname to headers for dynamic hreflang generation
+  // Use pathname from request to ensure headers reflect the intended path
   response.headers.set('x-pathname', pathname);
   
   return response;
@@ -25,5 +36,6 @@ export default function middleware(request: NextRequest) {
 
 export const config = {
   // Matcher ignoring internal Next.js files and static assets
-  matcher: ['/((?!api|_next|_vercel|.*\\..*).*)']
+  // Added '/quote' specifically to ensure it's picked up by the matcher
+  matcher: ['/((?!api|_next|_vercel|.*\\..*).*)', '/quote']
 };
