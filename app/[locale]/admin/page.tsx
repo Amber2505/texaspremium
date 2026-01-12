@@ -1,3 +1,4 @@
+// app/admin/page.tsx - REPLACE ENTIRE FILE
 "use client";
 import { useState, useEffect } from "react";
 import {
@@ -8,6 +9,7 @@ import {
   Shield,
   MessageSquare,
   CreditCard,
+  Building2,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -117,7 +119,6 @@ export default function AdminLoginPage() {
       <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50 p-4">
         <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
           <div className="text-center mb-6">
-            {/* Company Logo */}
             <div className="flex justify-center mb-4">
               <Image
                 src="/logo1.png"
@@ -207,7 +208,6 @@ export default function AdminLoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-6">
       <div className="max-w-6xl mx-auto">
-        {/* Header with Logo */}
         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -237,7 +237,6 @@ export default function AdminLoginPage() {
           </div>
         </div>
 
-        {/* Dashboard Cards - 3 columns on desktop */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Live Chat Card */}
           <button
@@ -332,6 +331,29 @@ export default function AdminLoginPage() {
             </p>
             <div className="mt-4 flex items-center text-red-600 font-medium group-hover:translate-x-2 transition-transform">
               Open Autopay Portal →
+            </div>
+          </button>
+
+          {/* ✅ NEW: Companies Link Card */}
+          <button
+            onClick={() => navigateTo("/admin/companies-link")}
+            className="group bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 p-8 text-left border-2 border-transparent hover:border-indigo-500"
+          >
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-16 h-16 bg-gradient-to-r from-indigo-600 to-indigo-800 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Building2 className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Companies</h2>
+                <p className="text-gray-600 text-sm">Manage company database</p>
+              </div>
+            </div>
+            <p className="text-gray-600">
+              Add, edit, and sync insurance company information. Manage payment
+              links, claim links, and contact details.
+            </p>
+            <div className="mt-4 flex items-center text-indigo-600 font-medium group-hover:translate-x-2 transition-transform">
+              Open Companies →
             </div>
           </button>
         </div>
