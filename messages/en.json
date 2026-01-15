@@ -1572,6 +1572,12 @@
     "accessDocuments": "Access My Documents",
     "aboutUs": "About Us",
     "callNow": "📞 Call Now 469-729-5185",
+    "managePolicy": "Manage Policy",
+    "policyActions": {
+      "title": "Policy Actions",
+      "makePayment": "Make a Payment",
+      "fileClaim": "File a Claim",
+      "accessDocuments": "Access My Documents"},
     "categories": {
       "vehicle": "Vehicle",
       "property": "Property",

@@ -1572,6 +1572,13 @@
     "accessDocuments": "Acceder a mis documentos",
     "aboutUs": "Quiénes somos",
     "callNow": "📞 Llame ahora al 469-729-5185",
+    "managePolicy": "Gestionar póliza",
+    "policyActions": {
+      "title": "Acciones de la póliza",
+      "makePayment": "Realizar un pago",
+      "fileClaim": "Presentar una reclamación",
+      "accessDocuments": "Acceder a mis documentos"
+    },
     "categories": {
       "vehicle": "Vehículo",
       "property": "Propiedad",

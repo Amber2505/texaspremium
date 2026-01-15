@@ -1,4 +1,4 @@
-// app/[locale]/(root)/layout.tsx
+// app/[locale]/(root)/layout.tsx - REPLACE ENTIRE FILE
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
@@ -15,9 +15,12 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
   const pathname = usePathname();
 
   const [isGetInsuranceOpen, setIsGetInsuranceOpen] = useState(false);
+  const [isPolicyServicesOpen, setIsPolicyServicesOpen] = useState(false); // ✅ NEW
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const getInsuranceRef = useRef<HTMLDivElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const policyServicesRef = useRef<HTMLDivElement>(null); // ✅ NEW
+  const insuranceDropdownRef = useRef<HTMLDivElement>(null);
+  const policyDropdownRef = useRef<HTMLDivElement>(null); // ✅ NEW
 
   const currentYear = new Date().getFullYear();
 
@@ -29,23 +32,55 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
       ) {
         setIsGetInsuranceOpen(false);
       }
+      // ✅ NEW: Handle policy services dropdown
       if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
+        policyServicesRef.current &&
+        !policyServicesRef.current.contains(event.target as Node)
+      ) {
+        setIsPolicyServicesOpen(false);
+      }
+      if (
+        insuranceDropdownRef.current &&
+        !insuranceDropdownRef.current.contains(event.target as Node) &&
+        policyDropdownRef.current &&
+        !policyDropdownRef.current.contains(event.target as Node)
       ) {
         setIsMobileMenuOpen(false);
       }
     };
 
     const handleResize = () => {
+      // Get Insurance dropdown resize
       if (
         isGetInsuranceOpen &&
-        dropdownRef.current &&
+        insuranceDropdownRef.current &&
         getInsuranceRef.current &&
         !isMobileMenuOpen
       ) {
-        const dropdown = dropdownRef.current;
+        const dropdown = insuranceDropdownRef.current;
         const button = getInsuranceRef.current;
+        const rect = button.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const dropdownWidth = dropdown.offsetWidth;
+        if (rect.right + dropdownWidth > viewportWidth) {
+          dropdown.style.left = `${
+            viewportWidth - rect.right - dropdownWidth
+          }px`;
+          dropdown.style.right = "auto";
+        } else {
+          dropdown.style.left = "0";
+          dropdown.style.right = "auto";
+        }
+      }
+      // ✅ NEW: Policy Services dropdown resize
+      if (
+        isPolicyServicesOpen &&
+        policyDropdownRef.current &&
+        policyServicesRef.current &&
+        !isMobileMenuOpen
+      ) {
+        const dropdown = policyDropdownRef.current;
+        const button = policyServicesRef.current;
         const rect = button.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
         const dropdownWidth = dropdown.offsetWidth;
@@ -61,7 +96,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
       }
     };
 
-    if (isGetInsuranceOpen || isMobileMenuOpen) {
+    if (isGetInsuranceOpen || isPolicyServicesOpen || isMobileMenuOpen) {
       document.addEventListener("mousedown", handleClickOutside);
       window.addEventListener("resize", handleResize);
       handleResize();
@@ -71,33 +106,36 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
       document.removeEventListener("mousedown", handleClickOutside);
       window.removeEventListener("resize", handleResize);
     };
-  }, [isGetInsuranceOpen, isMobileMenuOpen]);
+  }, [isGetInsuranceOpen, isPolicyServicesOpen, isMobileMenuOpen]);
 
   const handleNavClick = () => {
     setIsMobileMenuOpen(false);
     setIsGetInsuranceOpen(false);
+    setIsPolicyServicesOpen(false); // ✅ NEW
   };
 
   const switchLanguage = (newLocale: string) => {
     const pathWithoutLocale = pathname.replace(`/${locale}`, "");
-
-    // Get query parameters
     const searchParams = new URLSearchParams(window.location.search);
     const queryString = searchParams.toString();
-
-    // Build URL with query params preserved
     const newUrl = `/${newLocale}${pathWithoutLocale}${
       queryString ? `?${queryString}` : ""
     }`;
-
     router.push(newUrl);
+  };
+
+  // ✅ NEW: Open chat with pre-filled message
+  const openChatWithMessage = (message: string) => {
+    sessionStorage.setItem("openChatWithMessage", message);
+    window.dispatchEvent(
+      new CustomEvent("openChatWithMessage", { detail: message })
+    );
   };
 
   return (
     <div>
       <nav className="bg-[#E5E5E5] text-gray-900 p-5 flex justify-between items-center">
         <div className="flex items-center gap-4">
-          {/* ✅ FIXED: Added locale to logo link */}
           <Link
             href={`/${locale}`}
             onClick={handleNavClick}
@@ -206,6 +244,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
             </div>
 
             <div className="md:flex md:items-center md:justify-between md:gap-8 md:flex-grow space-y-2 md:space-y-0">
+              {/* Get Insurance Dropdown */}
               <div className="relative" ref={getInsuranceRef}>
                 <button
                   onClick={() => setIsGetInsuranceOpen(!isGetInsuranceOpen)}
@@ -233,7 +272,7 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
 
                 {isGetInsuranceOpen && (
                   <div
-                    ref={dropdownRef}
+                    ref={insuranceDropdownRef}
                     id="get-insurance-menu"
                     className={`${
                       isMobileMenuOpen
@@ -269,7 +308,6 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                             { href: "/sr22", label: t("nav.insurance.sr22") },
                           ].map((item) => (
                             <li key={item.href}>
-                              {/* ✅ FIXED: Changed from <a> to <Link> */}
                               <Link
                                 href={`/${locale}${item.href}`}
                                 className="block py-1 text-gray-700 hover:text-[#a0103d] text-sm md:text-base"
@@ -304,7 +342,6 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                             },
                           ].map((item) => (
                             <li key={item.href}>
-                              {/* ✅ FIXED: Changed from <a> to <Link> */}
                               <Link
                                 href={`/${locale}${item.href}`}
                                 className="block py-1 text-gray-700 hover:text-[#a0103d] text-sm md:text-base"
@@ -335,7 +372,6 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                             },
                           ].map((item) => (
                             <li key={item.href}>
-                              {/* ✅ FIXED: Changed from <a> to <Link> */}
                               <Link
                                 href={`/${locale}${item.href}`}
                                 className="block py-1 text-gray-700 hover:text-[#a0103d] text-sm md:text-base"
@@ -366,7 +402,6 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                             },
                           ].map((item) => (
                             <li key={item.href}>
-                              {/* ✅ FIXED: Changed from <a> to <Link> */}
                               <Link
                                 href={`/${locale}${item.href}`}
                                 className="block py-1 text-gray-700 hover:text-[#a0103d] text-sm md:text-base"
@@ -384,16 +419,88 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                 )}
               </div>
 
-              {/* ✅ FIXED: Added locale to View Documents link */}
-              <Link
-                href={`/${locale}/view_documents`}
-                onClick={handleNavClick}
-                className="block text-base md:text-lg font-medium hover:text-[#a0103d] transition-colors duration-200"
-              >
-                <b>{t("nav.accessDocuments")}</b>
-              </Link>
+              {/* ✅ Manage Policy Dropdown */}
+              <div className="relative" ref={policyServicesRef}>
+                <button
+                  onClick={() => setIsPolicyServicesOpen(!isPolicyServicesOpen)}
+                  className="w-full md:w-auto text-left md:text-center text-base md:text-lg font-medium hover:text-[#a0103d] transition-colors duration-200 flex justify-between md:justify-center items-center"
+                  aria-expanded={isPolicyServicesOpen}
+                  aria-controls="policy-services-menu"
+                >
+                  <b>{t("nav.managePolicy")}</b>
+                  <svg
+                    className={`md:ml-1 h-4 w-4 transition-transform ${
+                      isPolicyServicesOpen ? "rotate-180" : ""
+                    } md:inline-block`}
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </button>
 
-              {/* ✅ FIXED: Added locale to About link */}
+                {isPolicyServicesOpen && (
+                  <div
+                    ref={policyDropdownRef}
+                    id="policy-services-menu"
+                    className={`${
+                      isMobileMenuOpen
+                        ? "pl-4 space-y-2"
+                        : "absolute top-full mt-2 w-[220px] bg-white rounded-md py-4 px-6 shadow-lg"
+                    } z-10 transition-all duration-300 ease-in-out`}
+                    role="menu"
+                  >
+                    <div>
+                      <h3 className="text-sm md:text-lg font-semibold text-gray-800 mb-2">
+                        {t("nav.policyActions.title")}
+                      </h3>
+                      <ul>
+                        <li>
+                          <button
+                            onClick={() => {
+                              handleNavClick();
+                              openChatWithMessage("payment link");
+                            }}
+                            className="block py-1 text-gray-700 hover:text-[#a0103d] text-sm md:text-base text-left w-full"
+                            role="menuitem"
+                          >
+                            {t("nav.policyActions.makePayment")}
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            onClick={() => {
+                              handleNavClick();
+                              openChatWithMessage("open a claim");
+                            }}
+                            className="block py-1 text-gray-700 hover:text-[#a0103d] text-sm md:text-base text-left w-full"
+                            role="menuitem"
+                          >
+                            {t("nav.policyActions.fileClaim")}
+                          </button>
+                        </li>
+                        <li>
+                          <Link
+                            href={`/${locale}/view_documents`}
+                            className="block py-1 text-gray-700 hover:text-[#a0103d] text-sm md:text-base"
+                            role="menuitem"
+                            onClick={handleNavClick}
+                          >
+                            {t("nav.policyActions.accessDocuments")}
+                          </Link>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <Link
                 href={`/${locale}/about`}
                 onClick={handleNavClick}
@@ -504,7 +611,6 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
                 © {currentYear} {t("footer.copyright")}
               </p>
               <p className="mt-2">
-                {/* ✅ FIXED: Added locale to Terms link */}
                 <Link
                   href={`/${locale}/terms`}
                   className="underline text-white hover:text-blue-400"

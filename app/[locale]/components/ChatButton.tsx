@@ -903,7 +903,222 @@ export default function ChatButton() {
     return () => {
       window.removeEventListener("openLiveAgentChat", handleOpenLiveAgent);
     };
-  }, []);
+  }, [messages, isVerified, customerData, companyDatabase]);
+
+  useEffect(() => {
+    const handleOpenChatWithMessage = (event?: CustomEvent<string>) => {
+      const message =
+        event?.detail || sessionStorage.getItem("openChatWithMessage");
+
+      if (message) {
+        console.log(`🎯 Opening chat with message: ${message}`);
+
+        // Open chat
+        setOpen(true);
+
+        // Wait for chat to open and UI to render
+        setTimeout(() => {
+          const newMessage: Message = { role: "user", content: message };
+
+          // ✅ Keep existing messages
+          setMessages((prev) => [...prev, newMessage]);
+
+          // Clear the flag
+          sessionStorage.removeItem("openChatWithMessage");
+
+          setLoading(true);
+
+          const lowerMessage = message.toLowerCase().trim();
+
+          // Detect payment/claim requests
+          const isPaymentRequest =
+            lowerMessage === "payment" ||
+            lowerMessage === "payment link" ||
+            lowerMessage.includes("make a payment") ||
+            lowerMessage.includes("pay");
+
+          const isClaimRequest =
+            lowerMessage === "claim" ||
+            lowerMessage === "open a claim" ||
+            lowerMessage.includes("file a claim") ||
+            lowerMessage.includes("file claim");
+
+          // ✅ CHECK VERIFICATION STATUS (using refs for current values)
+          if (
+            isVerifiedRef.current &&
+            customerDataRef.current?.allPolicies &&
+            (isPaymentRequest || isClaimRequest)
+          ) {
+            console.log(
+              "✅ Already verified! Showing service buttons immediately"
+            );
+
+            const serviceType: "claim" | "payment" = isClaimRequest
+              ? "claim"
+              : "payment";
+
+            const companiesWithInfo = customerDataRef.current.allPolicies.map(
+              (policy) => {
+                let bestMatch = null;
+                let highestSimilarity = 0;
+                const SIMILARITY_THRESHOLD = 0.3;
+
+                for (const companyName of Object.keys(companyDatabase)) {
+                  const similarity = getStringSimilarity(
+                    policy.company_name,
+                    companyName
+                  );
+                  if (
+                    similarity > highestSimilarity &&
+                    similarity >= SIMILARITY_THRESHOLD
+                  ) {
+                    highestSimilarity = similarity;
+                    bestMatch = companyName;
+                  }
+                }
+
+                const companyInfo = bestMatch
+                  ? companyDatabase[bestMatch]
+                  : {
+                      name: policy.company_name,
+                      claimPhone: "Contact your agent",
+                      claimLink: "Contact your agent",
+                      paymentLink: "Contact your agent",
+                    };
+
+                return {
+                  name: policy.company_name,
+                  policyNo: policy.policy_number,
+                  claimPhone: companyInfo.claimPhone,
+                  claimLink: companyInfo.claimLink,
+                  paymentLink: companyInfo.paymentLink,
+                };
+              }
+            );
+
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content:
+                  serviceType === "claim"
+                    ? "Here are your claim options:"
+                    : "Here are your payment options:",
+                extra: {
+                  showServiceButtons: {
+                    type: serviceType,
+                    companies: companiesWithInfo,
+                  },
+                },
+              },
+            ]);
+            setLoading(false);
+            setCurrentPolicyIndex(0); // Reset to first policy
+            return; // ✅ STOP HERE - Don't call getAIResponse!
+          }
+
+          // ✅ NOT VERIFIED - Show verification prompt
+          if (!isVerifiedRef.current && (isPaymentRequest || isClaimRequest)) {
+            console.log("❌ Not verified - showing verification form");
+
+            const serviceType = isClaimRequest ? "claim" : "payment";
+
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content:
+                  serviceType === "claim"
+                    ? "I can help you file a claim! To get started, I need to verify your identity for security purposes."
+                    : "I can help you make a payment! To get started, I need to verify your identity for security purposes.",
+                extra: {
+                  showPhoneVerification: true,
+                  verificationType: serviceType,
+                },
+              },
+            ]);
+            setLoading(false);
+            return; // ✅ STOP HERE - Don't call getAIResponse or API!
+          }
+
+          // For other messages, use getAIResponse and API as normal
+          const aiResponse = getAIResponse(message);
+
+          if (aiResponse.content && !aiResponse.shouldDeferToAPI) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "assistant",
+                content: aiResponse.content,
+                extra: aiResponse.extra,
+              },
+            ]);
+            setLoading(false);
+            return;
+          }
+
+          // Go to API for other messages
+          const currentMessages = messagesRef.current;
+          fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              messages: [...currentMessages, newMessage],
+            }),
+          })
+            .then((res) => res.json())
+            .then((data) => {
+              const reply =
+                data.choices?.[0]?.message?.content ||
+                "Sorry, something went wrong.";
+
+              setMessages((prev) => [
+                ...prev,
+                {
+                  role: "assistant",
+                  content: reply,
+                  extra: null,
+                },
+              ]);
+            })
+            .catch((err) => {
+              console.error("Chat API error:", err);
+              setMessages((prev) => [
+                ...prev,
+                {
+                  role: "assistant",
+                  content:
+                    "I'm having trouble connecting right now. Please call us at (469) 729-5185 for immediate assistance.",
+                  extra: null,
+                },
+              ]);
+            })
+            .finally(() => {
+              setLoading(false);
+            });
+        }, 300);
+      }
+    };
+
+    // Check for flag on mount
+    if (sessionStorage.getItem("openChatWithMessage")) {
+      console.log("📌 Chat message flag found in sessionStorage");
+      handleOpenChatWithMessage();
+    }
+
+    // Listen for custom event
+    window.addEventListener(
+      "openChatWithMessage",
+      handleOpenChatWithMessage as EventListener
+    );
+
+    return () => {
+      window.removeEventListener(
+        "openChatWithMessage",
+        handleOpenChatWithMessage as EventListener
+      );
+    };
+  }, [companyDatabase]); // ✅ Add companyDatabase as dependency
 
   // Restore chat session on mount
   useEffect(() => {
@@ -1282,6 +1497,34 @@ export default function ChatButton() {
   } => {
     const lowerMessage = userMessage.toLowerCase().trim();
 
+    // ✅ EXPLICIT CHECK FOR SINGLE WORDS FIRST
+    if (lowerMessage === "payment" || lowerMessage === "pay") {
+      if (!isVerified) {
+        return {
+          content:
+            "I can help you make a payment! To get started, I need to verify your identity for security purposes.",
+          extra: {
+            showPhoneVerification: true,
+            verificationType: "payment",
+          },
+        };
+      }
+    }
+
+    // ✅ EXPLICIT CHECK FOR CLAIM
+    if (lowerMessage === "claim" || lowerMessage === "file claim") {
+      if (!isVerified) {
+        return {
+          content:
+            "I can help you file a claim! To get started, I need to verify your identity for security purposes.",
+          extra: {
+            showPhoneVerification: true,
+            verificationType: "claim",
+          },
+        };
+      }
+    }
+
     // Check for filing claims - MORE COMPREHENSIVE
     const isActuallyFiling =
       lowerMessage.includes("file a claim") ||
@@ -1297,7 +1540,6 @@ export default function ChatButton() {
       lowerMessage.includes("how to file") ||
       lowerMessage.includes("filing a claim") ||
       lowerMessage === "file" ||
-      lowerMessage === "claim" ||
       (lowerMessage.includes("claim") &&
         (lowerMessage.includes("start") ||
           lowerMessage.includes("open") ||
@@ -1320,8 +1562,6 @@ export default function ChatButton() {
       lowerMessage.includes("making a payment") ||
       (lowerMessage.includes("pay") && lowerMessage.includes("bill")) ||
       (lowerMessage.includes("pay") && lowerMessage.includes("policy")) ||
-      lowerMessage === "pay" ||
-      lowerMessage === "payment" ||
       (lowerMessage.includes("can i") && lowerMessage.includes("pay")) ||
       (lowerMessage.includes("i want to") && lowerMessage.includes("pay")) ||
       (lowerMessage.includes("need to") && lowerMessage.includes("pay"));
