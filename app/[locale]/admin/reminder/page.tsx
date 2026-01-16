@@ -105,7 +105,12 @@ const isSameDay = (date1: Date, date2: Date): boolean => {
   );
 };
 
-const formatDate = (date: Date, formatStr: string): string => {
+const formatDate = (date: Date | undefined, formatStr: string): string => {
+  // ✅ ADD THIS SAFETY CHECK
+  if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+    return "Invalid Date";
+  }
+
   const months = [
     "Jan",
     "Feb",
@@ -427,43 +432,50 @@ export default function InsuranceReminderDashboard() {
       const data = await response.json();
       const customersWithDates = (data as Array<Record<string, unknown>>).map(
         (c) => {
-          const parseDate = (dateStr: string | undefined) => {
+          const parseDate = (dateStr: string | undefined): Date | undefined => {
             if (!dateStr) return undefined;
-            const date = new Date(dateStr as string);
-            return new Date(
-              date.getUTCFullYear(),
-              date.getUTCMonth(),
-              date.getUTCDate()
-            );
+            try {
+              const date = new Date(dateStr as string);
+              if (isNaN(date.getTime())) return undefined;
+              return new Date(
+                date.getUTCFullYear(),
+                date.getUTCMonth(),
+                date.getUTCDate()
+              );
+            } catch {
+              return undefined;
+            }
           };
+
+          const parsedDueDate =
+            parseDate(c.dueDate as string | undefined) || new Date();
+          const parsedFollowUps = Array.isArray(c.followUps)
+            ? (c.followUps as Array<Record<string, unknown>>).map((f) => ({
+                ...(f as Omit<FollowUp, "date">),
+                date: parseDate(f.date as string | undefined) || new Date(),
+              }))
+            : [];
 
           return {
             ...(c as Omit<
               Customer,
-              "dueDate" | "followUps" | "effectiveDate" | "expirationDate"
+              | "dueDate"
+              | "followUps"
+              | "effectiveDate"
+              | "expirationDate"
+              | "cancellationDate"
+              | "winBackDate"
+              | "lastContact"
             >),
-            dueDate: parseDate(c.dueDate as string | undefined)!,
-            effectiveDate: c.effectiveDate // ✅ ADD THIS
-              ? parseDate(c.effectiveDate as string | undefined)
-              : undefined,
-            expirationDate: c.expirationDate // ✅ ADD THIS
-              ? parseDate(c.expirationDate as string | undefined)
-              : undefined,
-            cancellationDate: c.cancellationDate
-              ? parseDate(c.cancellationDate as string | undefined)
-              : undefined,
-            winBackDate: c.winBackDate
-              ? parseDate(c.winBackDate as string | undefined)
-              : undefined,
-            lastContact: c.lastContact
-              ? parseDate(c.lastContact as string | undefined)
-              : undefined,
-            followUps: (c.followUps as Array<Record<string, unknown>>).map(
-              (f) => ({
-                ...(f as Omit<FollowUp, "date">),
-                date: parseDate(f.date as string | undefined)!,
-              })
+            dueDate: parsedDueDate,
+            followUps: parsedFollowUps,
+            effectiveDate: parseDate(c.effectiveDate as string | undefined),
+            expirationDate: parseDate(c.expirationDate as string | undefined),
+            cancellationDate: parseDate(
+              c.cancellationDate as string | undefined
             ),
+            winBackDate: parseDate(c.winBackDate as string | undefined),
+            lastContact: parseDate(c.lastContact as string | undefined),
           } as Customer;
         }
       );
