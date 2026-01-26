@@ -1,4 +1,4 @@
-// app/[locale]/(root)/layout.tsx - REPLACE ENTIRE FILE
+// app/[locale]/(root)/layout.tsx
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";

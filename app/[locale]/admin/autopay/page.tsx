@@ -55,6 +55,11 @@ export default function AdminAutopayDashboard() {
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  const normalizePhoneNumber = (phone: string): string => {
+    // Strip all non-digit characters
+    return phone.replace(/\D/g, "");
+  };
+
   // Authentication check
   useEffect(() => {
     const checkAuth = () => {
@@ -202,11 +207,19 @@ export default function AdminAutopayDashboard() {
   };
 
   // Filter customers based on search input (name or phone)
-  const filteredCustomers = customers.filter(
-    (c) =>
-      c.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.customerPhone.includes(searchQuery)
-  );
+  const filteredCustomers = customers.filter((c) => {
+    const searchLower = searchQuery.toLowerCase();
+    const normalizedSearchPhone = normalizePhoneNumber(searchQuery);
+    const normalizedCustomerPhone = normalizePhoneNumber(c.customerPhone);
+
+    // Check name match
+    const nameMatch = c.customerName.toLowerCase().includes(searchLower);
+
+    // Check phone match (normalized - digits only)
+    const phoneMatch = normalizedCustomerPhone.includes(normalizedSearchPhone);
+
+    return nameMatch || phoneMatch;
+  });
 
   if (isCheckingAuth) {
     return (

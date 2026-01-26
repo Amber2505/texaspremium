@@ -10,6 +10,7 @@ import {
   MessageSquare,
   CreditCard,
   Building2,
+  Link2,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -354,6 +355,32 @@ export default function AdminLoginPage() {
             </p>
             <div className="mt-4 flex items-center text-indigo-600 font-medium group-hover:translate-x-2 transition-transform">
               Open Companies →
+            </div>
+          </button>
+          {/* ✅ Create Payment Link Card */}
+          <button
+            onClick={() => navigateTo("/admin/create-payment-link")}
+            className="group bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 p-8 text-left border-2 border-transparent hover:border-orange-500"
+          >
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-16 h-16 bg-gradient-to-r from-orange-600 to-orange-800 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Link2 className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Payment Links
+                </h2>
+                <p className="text-gray-600 text-sm">
+                  Create payment & autopay links
+                </p>
+              </div>
+            </div>
+            <p className="text-gray-600">
+              Generate Square payment links or autopay setup links for
+              customers. Support for card, bank, and direct billing.
+            </p>
+            <div className="mt-4 flex items-center text-orange-600 font-medium group-hover:translate-x-2 transition-transform">
+              Create Links →
             </div>
           </button>
         </div>
