@@ -1,10 +1,11 @@
+// app/api/create-payment-link/route.ts
 import { NextRequest, NextResponse } from "next/server";
-// Import SquareError along with the other members
+// ✅ New names for v44
 import { SquareClient, SquareEnvironment, SquareError } from "square";
 
 const client = new SquareClient({
-  token: process.env.SQUARE_ACCESS_TOKEN!,
-  environment: SquareEnvironment.Production, 
+  token: process.env.SQUARE_ACCESS_TOKEN!, // ✅ 'accessToken' is now 'token'
+  environment: SquareEnvironment.Production, // ✅ 'Environment' is now 'SquareEnvironment'
 });
 
 export async function POST(request: NextRequest) {
@@ -22,12 +23,10 @@ export async function POST(request: NextRequest) {
     const locationId = process.env.SQUARE_LOCATION_ID!;
     const amountInCents = BigInt(Math.round(amount));
 
+    // ✅ v44 Path: client.checkout.paymentLinks.create
+    // Note: The '.result' wrapper is gone in v44
     const response = await client.checkout.paymentLinks.create({
       idempotencyKey: crypto.randomUUID(),
-      checkoutOptions: {
-        redirectUrl: `https://www.texaspremiumins.com/${language}/setup-autopay?method=${paymentMethod}&phone=${customerPhone}&redirect=payment`,
-        askForShippingAddress: false,
-      },
       quickPay: {
         name: description,
         priceMoney: {
@@ -36,8 +35,13 @@ export async function POST(request: NextRequest) {
         },
         locationId: locationId,
       },
+      checkoutOptions: {
+        redirectUrl: `https://www.texaspremiumins.com/${language}/setup-autopay?method=${paymentMethod}&phone=${customerPhone}&redirect=payment`,
+        askForShippingAddress: false,
+      },
     });
 
+    // ✅ In v44, access properties directly on the response
     const paymentLinkUrl = response.paymentLink?.url;
 
     if (paymentLinkUrl) {
@@ -51,17 +55,15 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-  } catch (error: unknown) { // Use 'unknown' instead of 'any'
+  } catch (error: unknown) {
     console.error("Square API Error:", error);
     
     let detail = "An unknown error occurred";
 
-    // Type guard to check if the error is a Square-specific error
+    // ✅ Proper type checking for SquareError in v44
     if (error instanceof SquareError) {
-      // SquareError has an 'errors' array with detailed information
-      detail = error.errors?.[0]?.detail ?? error.message;
+      detail = error.errors?.[0]?.detail ?? "Square API error";
     } else if (error instanceof Error) {
-      // Standard JavaScript error fallback
       detail = error.message;
     }
 
