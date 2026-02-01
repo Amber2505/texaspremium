@@ -1,77 +1,75 @@
-// app/api/create-payment-link/route.ts
 import { NextRequest, NextResponse } from "next/server";
+// Import SquareError along with the other members
+import { SquareClient, SquareEnvironment, SquareError } from "square";
+
+const client = new SquareClient({
+  token: process.env.SQUARE_ACCESS_TOKEN!,
+  environment: SquareEnvironment.Production, 
+});
 
 export async function POST(request: NextRequest) {
   try {
-    const { amount, description, customerPhone, paymentMethod, language } = await request.json();
+    const body = await request.json();
+    const { amount, description, customerPhone, paymentMethod, language } = body;
 
-    if (!amount || !description || !customerPhone || !paymentMethod) {
+    if (!amount || !description || !customerPhone) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    const lang = language || "en";
+    const locationId = process.env.SQUARE_LOCATION_ID!;
+    const amountInCents = BigInt(Math.round(amount));
 
-    // Create the redirect URL
-    let redirectUrl: string;
-    if (paymentMethod === "direct-bill") {
-      redirectUrl = `https://www.texaspremiumins.com/${lang}/payment-thankyou`;
-    } else {
-      redirectUrl = `https://www.texaspremiumins.com/${lang}/setup-autopay?${paymentMethod}&phone=${customerPhone}&redirect=payment`;
-    }
-
-    // ✅ Call Square API directly with fetch
-    const squareResponse = await fetch(
-      process.env.SQUARE_ENVIRONMENT === "production"
-        ? "https://connect.squareup.com/v2/online-checkout/payment-links"
-        : "https://connect.squareupsandbox.com/v2/online-checkout/payment-links",
-      {
-        method: "POST",
-        headers: {
-          "Square-Version": "2024-01-18",
-          "Authorization": `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
-          "Content-Type": "application/json",
+    const response = await client.checkout.paymentLinks.create({
+      idempotencyKey: crypto.randomUUID(),
+      checkoutOptions: {
+        redirectUrl: `https://www.texaspremiumins.com/${language}/setup-autopay?method=${paymentMethod}&phone=${customerPhone}&redirect=payment`,
+        askForShippingAddress: false,
+      },
+      quickPay: {
+        name: description,
+        priceMoney: {
+          amount: amountInCents,
+          currency: "USD",
         },
-        body: JSON.stringify({
-          idempotency_key: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          quick_pay: {
-            name: description,
-            price_money: {
-              amount: amount,
-              currency: "USD",
-            },
-            location_id: process.env.SQUARE_LOCATION_ID,
-          },
-          checkout_options: {
-            redirect_url: redirectUrl,
-            ask_for_shipping_address: false,
-          },
-        }),
-      }
-    );
+        locationId: locationId,
+      },
+    });
 
-    if (!squareResponse.ok) {
-      const errorData = await squareResponse.json();
-      console.error("Square API Error:", errorData);
+    const paymentLinkUrl = response.paymentLink?.url;
+
+    if (paymentLinkUrl) {
+      return NextResponse.json({
+        success: true,
+        paymentLink: paymentLinkUrl,
+      });
+    } else {
       return NextResponse.json(
-        { error: errorData.errors?.[0]?.detail || "Failed to create payment link" },
-        { status: squareResponse.status }
+        { error: "Square API did not return a URL" },
+        { status: 500 }
       );
     }
+  } catch (error: unknown) { // Use 'unknown' instead of 'any'
+    console.error("Square API Error:", error);
+    
+    let detail = "An unknown error occurred";
 
-    const data = await squareResponse.json();
+    // Type guard to check if the error is a Square-specific error
+    if (error instanceof SquareError) {
+      // SquareError has an 'errors' array with detailed information
+      detail = error.errors?.[0]?.detail ?? error.message;
+    } else if (error instanceof Error) {
+      // Standard JavaScript error fallback
+      detail = error.message;
+    }
 
-    return NextResponse.json({
-      paymentLink: data.payment_link?.url,
-      orderId: data.payment_link?.order_id,
-      redirectUrl: redirectUrl,
-    });
-  } catch (error) {
-    console.error("Square API error:", error);
     return NextResponse.json(
-      { error: "Failed to create payment link" },
+      {
+        error: "Failed to create payment link",
+        details: detail,
+      },
       { status: 500 }
     );
   }
