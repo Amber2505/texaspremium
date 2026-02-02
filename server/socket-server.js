@@ -244,6 +244,112 @@ async function connectMongoDB() {
 }
 
 // ================================================
+// PAYMENT LINK AUTO-DISABLE SYSTEM
+// Disables all payment links created TODAY at 10 PM CST
+// ================================================
+
+let paymentLinksDb;
+let paymentLinksCollection;
+
+async function connectPaymentLinksDB() {
+  try {
+    if (!process.env.MONGODB_URI) {
+      console.error('❌ MONGODB_URI not found for payment links');
+      return false;
+    }
+    paymentLinksDb = mongoClient.db('db');
+    paymentLinksCollection = paymentLinksDb.collection('payment_link_generated');
+    console.log('✅ Payment links database connected');
+    return true;
+  } catch (error) {
+    console.error('❌ Payment links DB connection error:', error.message);
+    return false;
+  }
+}
+
+async function disableTodaysPaymentLinks() {
+  try {
+    if (!paymentLinksCollection) {
+      return { success: false, error: 'Database not connected' };
+    }
+
+    const now = new Date();
+    const cstTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+    
+    const startOfToday = new Date(cstTime);
+    startOfToday.setHours(0, 0, 0, 0);
+    
+    const endOfToday = new Date(cstTime);
+    endOfToday.setHours(23, 59, 59, 999);
+
+    console.log(`🔍 Searching for payment links created today (CST)`);
+
+    const query = {
+      linkType: 'payment',
+      disabled: { $ne: true },
+      createdAt: { $gte: startOfToday, $lte: endOfToday }
+    };
+
+    const linksToDisable = await paymentLinksCollection.find(query).toArray();
+
+    if (linksToDisable.length === 0) {
+      console.log('ℹ️  No payment links created today to disable');
+      return { success: true, disabled: 0, message: 'No links to disable' };
+    }
+
+    const result = await paymentLinksCollection.updateMany(
+      query,
+      {
+        $set: {
+          disabled: true,
+          disabledAt: new Date().toISOString(),
+          disabledReason: 'Auto-disabled at 10 PM CST',
+          autoDisabled: true
+        }
+      }
+    );
+
+    console.log(`✅ Disabled ${result.modifiedCount} payment links created today`);
+    
+    linksToDisable.forEach(link => {
+      console.log(`   📌 Disabled: ${link.generatedLink}`);
+    });
+
+    return {
+      success: true,
+      disabled: result.modifiedCount,
+      date: cstTime.toLocaleDateString(),
+      time: cstTime.toLocaleTimeString()
+    };
+
+  } catch (error) {
+    console.error('❌ Error disabling payment links:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
+function scheduleDailyDisable() {
+  setInterval(async () => {
+    const now = new Date();
+    const cstTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+    
+    const hour = cstTime.getHours();
+    const minute = cstTime.getMinutes();
+    
+    if (hour === 22 && minute === 0) {
+      console.log('🕙 10 PM CST - Running payment link auto-disable...');
+      const result = await disableTodaysPaymentLinks();
+      
+      if (result.success) {
+        console.log(`✅ Auto-disable complete: ${result.disabled} links disabled`);
+      }
+    }
+  }, 60000);
+  
+  console.log('⏰ Payment link auto-disable scheduled for 10 PM CST daily');
+}
+
+// ================================================
 // RINGCENTRAL SYNC FUNCTION (WITH FIXED DUPLICATE PREVENTION)
 // ================================================
 let lastSyncTime = null;
@@ -747,6 +853,11 @@ async function syncReadStatus(platform) {
 // ================================================
 async function startServer() {
   const dbConnected = await connectMongoDB();
+
+  if (dbConnected) {
+    await connectPaymentLinksDB();
+    scheduleDailyDisable();
+  }
   
   if (!dbConnected) {
     console.error('Server starting WITHOUT database connection');
@@ -853,6 +964,55 @@ async function loadChatHistory(userId) {
     return null;
   }
 }
+
+app.post('/disable-todays-links', async (req, res) => {
+  try {
+    console.log('📱 Manual disable triggered');
+    const result = await disableTodaysPaymentLinks();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/check-links-to-disable', async (req, res) => {
+  try {
+    if (!paymentLinksCollection) {
+      return res.status(500).json({ error: 'Database not connected' });
+    }
+
+    const now = new Date();
+    const cstTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+    
+    const startOfToday = new Date(cstTime);
+    startOfToday.setHours(0, 0, 0, 0);
+    
+    const endOfToday = new Date(cstTime);
+    endOfToday.setHours(23, 59, 59, 999);
+
+    const linksToDisable = await paymentLinksCollection.find({
+      linkType: 'payment',
+      disabled: { $ne: true },
+      createdAt: { $gte: startOfToday, $lte: endOfToday }
+    }).toArray();
+
+    res.json({
+      count: linksToDisable.length,
+      date: cstTime.toLocaleDateString(),
+      time: cstTime.toLocaleTimeString(),
+      links: linksToDisable.map(l => ({
+        id: l._id.toString(),
+        amount: (l.amount / 100).toFixed(2),
+        phone: l.customerPhone,
+        description: l.description,
+        link: l.generatedLink,
+        createdAt: l.createdAt
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id, 'at', new Date().toISOString());
@@ -1391,4 +1551,6 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`Manual sync trigger: POST /trigger-sync`);
   console.log(`🧹 Cleanup endpoint: POST /cleanup-duplicates`);
   console.log(`Server ready at ${new Date().toISOString()}`);
+  console.log(`Manual disable links: POST /disable-todays-links`);
+  console.log(`Check links status: GET /check-links-to-disable`);
 });
