@@ -11,6 +11,7 @@ import {
   CreditCard,
   Building2,
   Link2,
+  FileText,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -335,7 +336,7 @@ export default function AdminLoginPage() {
             </div>
           </button>
 
-          {/* ✅ NEW: Companies Link Card */}
+          {/* Companies Link Card */}
           <button
             onClick={() => navigateTo("/admin/companies-link")}
             className="group bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 p-8 text-left border-2 border-transparent hover:border-indigo-500"
@@ -357,7 +358,8 @@ export default function AdminLoginPage() {
               Open Companies →
             </div>
           </button>
-          {/* ✅ Create Payment Link Card */}
+
+          {/* Create Payment Link Card */}
           <button
             onClick={() => navigateTo("/admin/create-payment-link")}
             className="group bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 p-8 text-left border-2 border-transparent hover:border-orange-500"
@@ -381,6 +383,31 @@ export default function AdminLoginPage() {
             </p>
             <div className="mt-4 flex items-center text-orange-600 font-medium group-hover:translate-x-2 transition-transform">
               Create Links →
+            </div>
+          </button>
+
+          {/* ✅ NEW: Quote Generator Card */}
+          <button
+            onClick={() => navigateTo("/admin/create-quote-proposal")}
+            className="group bg-white rounded-xl shadow-sm hover:shadow-xl transition-all duration-300 p-8 text-left border-2 border-transparent hover:border-teal-500"
+          >
+            <div className="flex items-center gap-4 mb-4">
+              <div className="w-16 h-16 bg-gradient-to-r from-teal-600 to-teal-800 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
+                <FileText className="w-8 h-8 text-white" />
+              </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Quote Generator
+                </h2>
+                <p className="text-gray-600 text-sm">Create insurance quotes</p>
+              </div>
+            </div>
+            <p className="text-gray-600">
+              Generate professional auto insurance quote proposals with coverage
+              details, pricing options, and payment plans.
+            </p>
+            <div className="mt-4 flex items-center text-teal-600 font-medium group-hover:translate-x-2 transition-transform">
+              Create Quote →
             </div>
           </button>
         </div>
