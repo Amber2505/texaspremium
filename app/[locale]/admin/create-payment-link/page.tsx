@@ -225,7 +225,7 @@ export default function CreatePaymentLink() {
         });
 
         // Generate our proxy link with the actual ID
-        const proxyLink = `https://www.texaspremiumins.com/pay/${linkId}`;
+        const proxyLink = `https://www.texaspremiumins.com/${language}/pay/${linkId}`;
 
         // Update the document with the correct proxy link
         if (linkId) {

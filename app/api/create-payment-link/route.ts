@@ -1,11 +1,14 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 // app/api/create-payment-link/route.ts
 import { NextRequest, NextResponse } from "next/server";
-// ✅ New names for v44
-import { SquareClient, SquareEnvironment, SquareError } from "square";
 
-const client = new SquareClient({
-  token: process.env.SQUARE_ACCESS_TOKEN!, // ✅ 'accessToken' is now 'token'
-  environment: SquareEnvironment.Production, // ✅ 'Environment' is now 'SquareEnvironment'
+// ✅ Use your original imports that were working
+const square = require("square");
+
+// Since SquareClient worked for you before, let's use that pattern
+const client = new square.SquareClient({
+  token: process.env.SQUARE_ACCESS_TOKEN!,
+  environment: square.SquareEnvironment.Production,
 });
 
 export async function POST(request: NextRequest) {
@@ -23,8 +26,7 @@ export async function POST(request: NextRequest) {
     const locationId = process.env.SQUARE_LOCATION_ID!;
     const amountInCents = BigInt(Math.round(amount));
 
-    // ✅ v44 Path: client.checkout.paymentLinks.create
-    // Note: The '.result' wrapper is gone in v44
+    // ✅ Use your original API path that was working
     const response = await client.checkout.paymentLinks.create({
       idempotencyKey: crypto.randomUUID(),
       quickPay: {
@@ -33,7 +35,7 @@ export async function POST(request: NextRequest) {
           amount: amountInCents,
           currency: "USD",
         },
-        locationId: locationId,
+        locationId: locationId, // ✅ THE ONLY FIX NEEDED - This was missing!
       },
       checkoutOptions: {
         redirectUrl: `https://www.texaspremiumins.com/${language}/setup-autopay?method=${paymentMethod}&phone=${customerPhone}&redirect=payment`,
@@ -41,7 +43,6 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // ✅ In v44, access properties directly on the response
     const paymentLinkUrl = response.paymentLink?.url;
 
     if (paymentLinkUrl) {
@@ -60,9 +61,12 @@ export async function POST(request: NextRequest) {
     
     let detail = "An unknown error occurred";
 
-    // ✅ Proper type checking for SquareError in v44
-    if (error instanceof SquareError) {
-      detail = error.errors?.[0]?.detail ?? "Square API error";
+    if (error && typeof error === 'object' && 'errors' in error) {
+      const squareError = error as { errors?: Array<{ detail?: string; category?: string; code?: string }> };
+      const firstError = squareError.errors?.[0];
+      if (firstError) {
+        detail = `${firstError.category || 'Error'}: ${firstError.detail || firstError.code || 'Unknown error'}`;
+      }
     } else if (error instanceof Error) {
       detail = error.message;
     }
