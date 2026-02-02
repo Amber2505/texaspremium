@@ -2243,5 +2243,23 @@
     "button": "Return to Homepage",
     "help": "Need help?",
     "callUs": "Call us at {phone}"
+  },
+  "paymentLinkValidator": {
+    "checking": {
+      "title": "Validating Payment Link...",
+      "message": "Please wait while we verify your link"
+    },
+    "disabled": {
+      "title": "Link Disabled",
+      "message": "This payment link has been disabled and is no longer available for use.",
+      "assistanceTitle": "Need assistance?",
+      "assistanceMessage": "Please contact Texas Premium Insurance Services to receive a new payment link."
+    },
+    "error": {
+      "title": "Invalid Link",
+      "message": "This payment link is invalid or has expired.",
+      "assistanceTitle": "Need assistance?",
+      "assistanceMessage": "Please contact Texas Premium Insurance Services for a valid payment link."
+    }
   }
 }

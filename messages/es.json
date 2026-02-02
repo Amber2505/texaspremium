@@ -2244,6 +2244,24 @@
     "button": "Volver a la página de inicio",
     "help": "¿Necesita ayuda?",
     "callUs": "Llámenos al {phone}"
+  },
+  "paymentLinkValidator": {
+    "checking": {
+      "title": "Validando Enlace de Pago...",
+      "message": "Por favor espere mientras verificamos su enlace"
+    },
+    "disabled": {
+      "title": "Enlace Deshabilitado",
+      "message": "Este enlace de pago ha sido deshabilitado y ya no está disponible para su uso.",
+      "assistanceTitle": "¿Necesita ayuda?",
+      "assistanceMessage": "Por favor contacte a Texas Premium Insurance Services para recibir un nuevo enlace de pago."
+    },
+    "error": {
+      "title": "Enlace Inválido",
+      "message": "Este enlace de pago es inválido o ha expirado.",
+      "assistanceTitle": "¿Necesita ayuda?",
+      "assistanceMessage": "Por favor contacte a Texas Premium Insurance Services para obtener un enlace de pago válido."
+    }
   }
 }
 
