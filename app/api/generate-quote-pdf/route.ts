@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
       color: mediumGray,
     });
     yPosition -= 12;
-    page.drawText("Coverage will be provided by one of our 55+ partnered insurance carriers.", {
+    page.drawText("Coverage will be provided by one of our partnered insurance carriers.", {
       x: 50,
       y: yPosition,
       size: 9,
