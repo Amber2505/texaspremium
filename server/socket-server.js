@@ -250,6 +250,7 @@ async function connectMongoDB() {
 
 let paymentLinksDb;
 let paymentLinksCollection;
+let lastDisableDate = null; // Track last disable date to prevent duplicate runs
 
 async function connectPaymentLinksDB() {
   try {
@@ -283,6 +284,7 @@ async function disableTodaysPaymentLinks() {
     endOfToday.setHours(23, 59, 59, 999);
 
     console.log(`🔍 Searching for payment links created today (CST)`);
+    console.log(`   Today's date range: ${startOfToday.toISOString()} to ${endOfToday.toISOString()}`);
 
     const query = {
       linkType: 'payment',
@@ -329,24 +331,42 @@ async function disableTodaysPaymentLinks() {
 }
 
 function scheduleDailyDisable() {
+  // ✅ IMPROVED: Check every 30 seconds (instead of 60) for better accuracy
   setInterval(async () => {
     const now = new Date();
     const cstTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
     
     const hour = cstTime.getHours();
     const minute = cstTime.getMinutes();
+    const todayDate = cstTime.toDateString(); // e.g., "Mon Feb 02 2026"
     
-    if (hour === 22 && minute === 0) {
-      console.log('🕙 10 PM CST - Running payment link auto-disable...');
+    // ✅ IMPROVED: Run between 10:00 PM and 10:05 PM (5-minute window)
+    // ✅ IMPROVED: Only run once per day using lastDisableDate flag
+    if (hour === 22 && minute >= 0 && minute < 5 && lastDisableDate !== todayDate) {
+      console.log('🕙 10 PM CST window detected - Running payment link auto-disable...');
+      console.log(`   Current CST time: ${cstTime.toLocaleTimeString()}`);
+      
       const result = await disableTodaysPaymentLinks();
       
       if (result.success) {
         console.log(`✅ Auto-disable complete: ${result.disabled} links disabled`);
+        lastDisableDate = todayDate; // ✅ Mark today as completed
+        console.log(`   Next auto-disable: Tomorrow at 10:00 PM CST`);
+      } else {
+        console.error(`❌ Auto-disable failed: ${result.error}`);
+        // Don't set lastDisableDate so it can retry in the next interval
       }
     }
-  }, 60000);
+    
+    // ✅ Reset the flag at midnight to allow next day's disable
+    if (hour === 0 && minute === 0 && lastDisableDate !== null) {
+      console.log('🌙 Midnight detected - Resetting auto-disable flag for new day');
+      lastDisableDate = null;
+    }
+  }, 30000); // ✅ Check every 30 seconds instead of 60
   
-  console.log('⏰ Payment link auto-disable scheduled for 10 PM CST daily');
+  console.log('⏰ Payment link auto-disable scheduled for 10:00-10:05 PM CST daily');
+  console.log('   (Checking every 30 seconds for accuracy)');
 }
 
 // ================================================
