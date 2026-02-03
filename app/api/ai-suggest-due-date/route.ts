@@ -1,4 +1,4 @@
-// api/ai-suggestion
+// api/ai-suggest-due-date/route.ts
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 import OpenAI from 'openai';
@@ -99,17 +99,19 @@ ${JSON.stringify(otherCompanyData.slice(0, 5), null, 2)}
    - Industry standards (typically 0-30 days after effective date)
    - Payment type that gets better pricing
    - Company-specific patterns
+   - The suggested due date should maintain the same day-offset pattern from the effective date
 
 **Provide your response in this exact JSON format:**
 {
-  "suggestedDueDate": "YYYY-MM-DD",
+  "daysBetweenEffectiveAndDue": <number>,
   "suggestedPaymentType": "regular" | "autopay" | "paid-in-full",
   "confidence": "high" | "medium" | "low",
   "reasoning": "Brief explanation of why this suggestion",
-  "alternativeDueDate": "YYYY-MM-DD (optional alternative)",
   "companyPattern": "Description of company's typical pattern",
   "pricingAdvantage": "Which payment type typically gets better pricing for this company"
 }
+
+IMPORTANT: Return the number of days between effective date and due date (daysBetweenEffectiveAndDue), NOT the actual date. This allows us to calculate a future date.
 
 Respond ONLY with valid JSON, no additional text.`;
 
@@ -127,7 +129,7 @@ Respond ONLY with valid JSON, no additional text.`;
           content: prompt,
         },
       ],
-      temperature: 0.3, // Lower temperature for more consistent predictions
+      temperature: 0.3,
       response_format: { type: 'json_object' },
     });
 
@@ -136,17 +138,71 @@ Respond ONLY with valid JSON, no additional text.`;
       throw new Error('No response from AI');
     }
 
-    const suggestion = JSON.parse(aiResponse);
+    const aiSuggestion = JSON.parse(aiResponse);
 
-    // Add some metadata
+    // ✅ CALCULATE FUTURE DUE DATE BASED ON PATTERN
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const effectiveDateObj = new Date(effectiveDate);
+    const daysBetween = aiSuggestion.daysBetweenEffectiveAndDue || 15; // Default to 15 days if not provided
+
+    // Calculate the suggested due date from the effective date
+    let suggestedDueDate = new Date(effectiveDateObj);
+    suggestedDueDate.setDate(suggestedDueDate.getDate() + daysBetween);
+
+    // ✅ IF THE SUGGESTED DATE IS IN THE PAST, MOVE IT TO THE FUTURE
+    if (suggestedDueDate < today) {
+      console.log(`⚠️ Suggested date ${suggestedDueDate.toISOString().split('T')[0]} is in the past. Adjusting to future...`);
+      
+      // Calculate how many months have passed since the effective date
+      const monthsPassed = Math.floor(
+        (today.getTime() - effectiveDateObj.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
+      );
+
+      // Move the due date forward by the number of months passed + 1
+      suggestedDueDate = new Date(effectiveDateObj);
+      suggestedDueDate.setMonth(suggestedDueDate.getMonth() + monthsPassed + 1);
+      suggestedDueDate.setDate(suggestedDueDate.getDate() + daysBetween);
+
+      // If still in the past (edge case), set to today + daysBetween
+      if (suggestedDueDate < today) {
+        suggestedDueDate = new Date(today);
+        suggestedDueDate.setDate(suggestedDueDate.getDate() + daysBetween);
+      }
+
+      console.log(`✅ Adjusted to future date: ${suggestedDueDate.toISOString().split('T')[0]}`);
+    }
+
+    // Calculate alternative due date (15 days from suggested)
+    const alternativeDueDate = new Date(suggestedDueDate);
+    alternativeDueDate.setDate(alternativeDueDate.getDate() + 15);
+
+    // Format dates to YYYY-MM-DD
+    const formatDate = (date: Date): string => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    // Build the final response
     const response = {
-      ...suggestion,
+      suggestedDueDate: formatDate(suggestedDueDate),
+      alternativeDueDate: formatDate(alternativeDueDate),
+      suggestedPaymentType: aiSuggestion.suggestedPaymentType,
+      confidence: aiSuggestion.confidence,
+      reasoning: aiSuggestion.reasoning,
+      companyPattern: aiSuggestion.companyPattern,
+      pricingAdvantage: aiSuggestion.pricingAdvantage,
       dataPoints: {
         sameCompany: similarCustomers.length,
         otherCompanies: otherCompanyCustomers.length,
       },
-      companyData: companyData.length > 0 ? companyData.slice(0, 3) : null, // Return up to 3 examples
+      companyData: companyData.length > 0 ? companyData.slice(0, 3) : null,
     };
+
+    console.log('✅ Final AI suggestion with future date:', response.suggestedDueDate);
 
     return NextResponse.json(response);
   } catch (error) {
