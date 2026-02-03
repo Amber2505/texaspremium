@@ -26,7 +26,14 @@ export async function POST(request: NextRequest) {
     const locationId = process.env.SQUARE_LOCATION_ID!;
     const amountInCents = BigInt(Math.round(amount));
 
-    // ✅ Use your original API path that was working
+    // ✅ Conditional redirect based on payment method
+    // Direct Bill → Thank You page (no autopay needed)
+    // Card / Bank → Autopay setup page
+    const redirectUrl =
+      paymentMethod === "direct-bill"
+        ? `https://www.texaspremiumins.com/${language}/payment-thankyou`
+        : `https://www.texaspremiumins.com/${language}/setup-autopay?${paymentMethod}&phone=${customerPhone}&redirect=payment`;
+
     const response = await client.checkout.paymentLinks.create({
       idempotencyKey: crypto.randomUUID(),
       quickPay: {
@@ -35,10 +42,10 @@ export async function POST(request: NextRequest) {
           amount: amountInCents,
           currency: "USD",
         },
-        locationId: locationId, // ✅ THE ONLY FIX NEEDED - This was missing!
+        locationId: locationId,
       },
       checkoutOptions: {
-        redirectUrl: `https://www.texaspremiumins.com/${language}/setup-autopay?method=${paymentMethod}&phone=${customerPhone}&redirect=payment`,
+        redirectUrl: redirectUrl, // ✅ Uses the conditional redirect
         askForShippingAddress: false,
       },
     });
