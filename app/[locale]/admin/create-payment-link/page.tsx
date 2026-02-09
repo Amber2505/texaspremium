@@ -17,6 +17,8 @@ import {
   Calendar,
   Phone,
   ExternalLink,
+  Mail,
+  Info,
 } from "lucide-react";
 
 type LinkType = "payment" | "autopay-only";
@@ -28,10 +30,11 @@ interface LinkHistory {
   amount: number | null;
   description: string | null;
   customerPhone: string;
+  customerEmail?: string; // Optional - comes from Square webhook
   paymentMethod: "card" | "bank" | "direct-bill";
   language: "en" | "es";
   generatedLink: string;
-  squareLink?: string; // ✅ Actual Square payment link
+  squareLink?: string;
   createdAt: string;
   createdAtTimestamp: number;
   disabled?: boolean;
@@ -44,6 +47,7 @@ export default function CreatePaymentLink() {
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  // ✅ REMOVED customerEmail state
   const [paymentMethod, setPaymentMethod] = useState<
     "card" | "bank" | "direct-bill"
   >("card");
@@ -58,7 +62,6 @@ export default function CreatePaymentLink() {
   const [historyLinks, setHistoryLinks] = useState<LinkHistory[]>([]);
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
 
-  // ✅ Phone number formatting helper
   const formatPhoneDisplay = (phone: string): string => {
     const cleaned = phone.replace(/\D/g, "");
     if (cleaned.length === 0) return "";
@@ -100,7 +103,6 @@ export default function CreatePaymentLink() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch history when History tab is opened
   useEffect(() => {
     if (activeTab === "history") {
       fetchHistory();
@@ -131,7 +133,7 @@ export default function CreatePaymentLink() {
     paymentMethod: "card" | "bank" | "direct-bill";
     language: "en" | "es";
     generatedLink: string;
-    squareLink?: string; // ✅ Optional Square link
+    squareLink?: string;
   }) => {
     try {
       const response = await fetch("/api/save-payment-link", {
@@ -145,12 +147,12 @@ export default function CreatePaymentLink() {
           paymentMethod: linkData.paymentMethod,
           language: linkData.language,
           generatedLink: linkData.generatedLink,
-          squareLink: linkData.squareLink || null, // ✅ Store Square link
+          squareLink: linkData.squareLink || null,
         }),
       });
 
       const data = await response.json();
-      return data.linkId; // ✅ Return the MongoDB ID
+      return data.linkId;
     } catch (error) {
       console.error("Error saving to history:", error);
       return null;
@@ -165,7 +167,6 @@ export default function CreatePaymentLink() {
 
     try {
       if (linkType === "autopay-only") {
-        // Generate autopay setup link directly (no API call needed)
         if (!customerPhone || paymentMethod === "direct-bill") {
           setError(
             "Please select a valid phone number and autopay method (Card or Bank)"
@@ -174,7 +175,6 @@ export default function CreatePaymentLink() {
           return;
         }
 
-        // Save to MongoDB first to get an ID
         const autopayDirectLink = `https://www.texaspremiumins.com/${language}/setup-autopay?${paymentMethod}&phone=${customerPhone}&redirect=autopay`;
 
         await saveToHistory({
@@ -185,16 +185,14 @@ export default function CreatePaymentLink() {
           generatedLink: autopayDirectLink,
         });
 
-        // Return the direct link (autopay links already go through our system)
         setGeneratedLink(autopayDirectLink);
         setLoading(false);
         return;
       }
 
-      // ✅ Keep as float - no rounding
       const amountInCents = parseFloat(amount) * 100;
 
-      // Create payment link with Square API
+      // ✅ REMOVED customerEmail from API call
       const response = await fetch("/api/create-payment-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -202,6 +200,7 @@ export default function CreatePaymentLink() {
           amount: amountInCents,
           description,
           customerPhone,
+          // ✅ customerEmail REMOVED - will come from Square webhook
           paymentMethod,
           language,
         }),
@@ -212,7 +211,6 @@ export default function CreatePaymentLink() {
       if (response.ok) {
         const squarePaymentLink = data.paymentLink;
 
-        // Save to MongoDB with placeholder to get an ID
         const linkId = await saveToHistory({
           linkType: "payment",
           amount,
@@ -220,14 +218,12 @@ export default function CreatePaymentLink() {
           customerPhone,
           paymentMethod,
           language,
-          generatedLink: "placeholder", // Temporary placeholder
+          generatedLink: "placeholder",
           squareLink: squarePaymentLink,
         });
 
-        // Generate our proxy link with the actual ID
         const proxyLink = `https://www.texaspremiumins.com/${language}/pay/${linkId}`;
 
-        // Update the document with the correct proxy link
         if (linkId) {
           await fetch("/api/update-payment-link", {
             method: "POST",
@@ -285,7 +281,6 @@ export default function CreatePaymentLink() {
       });
 
       if (response.ok) {
-        // Refresh history to show updated status
         fetchHistory();
       }
     } catch (error) {
@@ -431,6 +426,25 @@ export default function CreatePaymentLink() {
               </div>
             </div>
 
+            {/* ✅ INFO BANNER - Email comes from Square */}
+            {linkType === "payment" && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+                <div className="flex items-start gap-3">
+                  <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-blue-900 font-medium mb-1">
+                      📧 Email Collection
+                    </p>
+                    <p className="text-xs text-blue-700">
+                      Customer email will be collected automatically during
+                      Square checkout. You don&apos;t need to enter it here - it
+                      will be captured from the payment!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Form */}
             <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
               <form onSubmit={handleCreateLink} className="space-y-4">
@@ -474,6 +488,8 @@ export default function CreatePaymentLink() {
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
+
+                    {/* ✅ EMAIL FIELD REMOVED - It comes from Square webhook */}
                   </>
                 )}
 
@@ -743,7 +759,7 @@ export default function CreatePaymentLink() {
                         <strong>
                           {language === "en" ? "English" : "Spanish"}
                         </strong>
-                        .
+                        . Customer email will be captured during checkout.
                       </>
                     )}
                   </p>
@@ -918,6 +934,23 @@ export default function CreatePaymentLink() {
                             }
                           >
                             <strong>Description:</strong> {link.description}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* ✅ Display Email in History (if available from webhook) */}
+                      {link.customerEmail && (
+                        <div className="flex items-center gap-2">
+                          <Mail className="w-4 h-4 text-gray-400" />
+                          <span
+                            className={
+                              link.disabled ? "text-gray-500" : "text-gray-700"
+                            }
+                          >
+                            <strong>Email:</strong> {link.customerEmail}{" "}
+                            <span className="text-xs text-blue-600">
+                              (from Square)
+                            </span>
                           </span>
                         </div>
                       )}

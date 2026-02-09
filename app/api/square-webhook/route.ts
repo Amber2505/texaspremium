@@ -1,7 +1,8 @@
+// app/api/square-webhook/route.ts
 import { NextResponse } from 'next/server';
 import { sendPaymentNotification } from '@/lib/email';
 import { WebhooksHelper } from 'square';
-import { getDatabase } from '@/lib/mongodb'; // Using your helper
+import { getDatabase } from '@/lib/mongodb';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -38,12 +39,11 @@ export async function POST(request: Request) {
     }
 
     // --- 2. THE MONGODB PERSISTENT LOCK ---
-    const db = await getDatabase('db'); // Uses your helper from lib/mongodb.ts
+    const db = await getDatabase('db');
     const locks = db.collection("payment_verify_id");
 
     try {
-      // Ensure TTL Index exists (Runs only once if it doesn't exist)
-      // This tells Mongo to delete documents 24 hours (86400 seconds) after 'processedAt'
+      // Ensure TTL Index exists
       await locks.createIndex({ "processedAt": 1 }, { expireAfterSeconds: 86400 });
 
       // Attempt the Lock
@@ -62,21 +62,75 @@ export async function POST(request: Request) {
       throw dbError;
     }
 
-    // --- 3. PREPARE DATA ---
+    // --- 3. EXTRACT ALL DATA FROM SQUARE PAYMENT OBJECT ---
     const money = payment.amount_money || payment.total_money;
-    const amountStr = `$${(Number(money.amount) / 100).toFixed(2)} ${money.currency}`;
+    const amountCents = Number(money.amount);
+    const amountDollars = (amountCents / 100).toFixed(2);
+    const amountStr = `$${amountDollars} ${money.currency}`;
+    
+    // Extract card details
+    const cardBrand = payment.card_details?.card?.card_brand || "CARD";
+    const cardLast4 = payment.card_details?.card?.last_4 || "";
+    const paymentMethod = `${cardBrand} **** ${cardLast4}`;
+    
+    // Extract customer info from Square payment object
     const billing = payment.billing_address;
     const customerName = `${billing?.first_name || ""} ${billing?.last_name || ""}`.trim() || 
                          payment.card_details?.cardholder_name || 
                          "Online Customer";
+    
+    const customerEmail = payment.buyer_email_address || "";
+    const customerPhone = billing?.phone_number || "";
 
-    // --- 4. SEND EMAIL ---
+    // Get metadata from payment (stored when creating payment link)
+    const metadata = payment.reference_id ? JSON.parse(payment.reference_id || '{}') : {};
+    const language = metadata.language || "en";
+    const redirectMethod = metadata.paymentMethod || "card";
+    const storedPhone = metadata.customerPhone || customerPhone.replace(/\D/g, '');
+
+    // --- 4. STORE PAYMENT DATA IN MONGODB FOR CONSENT PAGE ---
+    try {
+      const paymentsCollection = db.collection("completed_payments");
+      
+      // Create TTL index if it doesn't exist
+      await paymentsCollection.createIndex(
+        { "expireAt": 1 },
+        { expireAfterSeconds: 0 }
+      );
+
+      await paymentsCollection.insertOne({
+        _id: paymentId as any,
+        amount: parseFloat(amountDollars),
+        amountCents: amountCents,
+        currency: money.currency || "USD",
+        cardBrand,
+        cardLast4,
+        customerName,
+        customerEmail,
+        customerPhone: storedPhone,
+        paymentMethod: paymentMethod,
+        language,
+        redirectMethod,
+        transactionId: paymentId,
+        processedAt: new Date(),
+        webhookReceived: true,
+        consentSigned: false,
+        expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // TTL: 24 hours
+      });
+
+      console.log(`✅ Payment data stored in MongoDB: ${paymentId}`);
+    } catch (storeError: any) {
+      console.error(`❌ Failed to store payment data: ${storeError.message}`);
+      // Continue - don't fail webhook for storage issues
+    }
+
+    // --- 5. SEND INTERNAL NOTIFICATION EMAIL ---
     try {
       await sendPaymentNotification({
         amount: amountStr,
         customerName,
-        customerEmail: payment.buyer_email_address || "Check Dashboard",
-        method: `${payment.card_details?.card?.card_brand || "CARD"} **** ${payment.card_details?.card?.last_4 || ""}`,
+        customerEmail: customerEmail || "Check Dashboard",
+        method: paymentMethod,
         transactionId: paymentId,
         timestamp: new Date(),
         paymentJson: JSON.stringify(event, null, 2),
@@ -87,7 +141,7 @@ export async function POST(request: Request) {
 
     } catch (emailError: any) {
       console.error(`❌ Email Failed for ${paymentId}:`, emailError.message);
-      // Remove lock on failure so Square can retry and we can try the email again
+      // Remove lock on failure so Square can retry
       await locks.deleteOne({ _id: paymentId as any });
       return NextResponse.json({ error: 'Email failed' }, { status: 500 });
     }
