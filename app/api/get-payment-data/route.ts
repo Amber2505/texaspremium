@@ -1,7 +1,8 @@
 // app/api/get-payment-data/route.ts
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { getDatabase } from "@/lib/mongodb";
-import { ObjectId } from "mongodb";
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,10 +16,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    console.log("🔍 Looking for payment ID:", paymentId);
+
     const db = await getDatabase("db");
     const paymentsCollection = db.collection("completed_payments");
 
-    const payment = await paymentsCollection.findOne({ _id: new ObjectId(paymentId) });
+    // ✅ FIX: Use 'as any' to bypass TypeScript's ObjectId requirement
+    // Square payment IDs are strings, not ObjectIds
+    const payment = await paymentsCollection.findOne({ _id: paymentId as any });
+
+    console.log("📦 Found payment:", payment ? "YES" : "NO");
 
     if (payment) {
       return NextResponse.json({
@@ -41,9 +48,9 @@ export async function GET(request: NextRequest) {
       });
     }
   } catch (error) {
-    console.error("Error fetching payment data:", error);
+    console.error("❌ Error fetching payment data:", error);
     return NextResponse.json(
-      { success: false, error: "Database error" },
+      { success: false, error: "Database error", details: String(error) },
       { status: 500 }
     );
   }
