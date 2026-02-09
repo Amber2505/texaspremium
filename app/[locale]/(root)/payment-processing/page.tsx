@@ -26,26 +26,41 @@ export default function PaymentProcessingPage({ params }: PageProps) {
 
   useEffect(() => {
     const checkPayment = async () => {
-      // Get parameters from Square redirect
+      // ✅ Check ALL possible Square redirect parameters
       const referenceId =
-        searchParams.get("reference_id") || searchParams.get("checkoutId");
+        searchParams.get("reference_id") ||
+        searchParams.get("checkoutId") ||
+        searchParams.get("transactionId") ||
+        searchParams.get("orderId") ||
+        searchParams.get("paymentId");
+
       const method = searchParams.get("method") || "card";
       const phone = searchParams.get("phone") || "";
+
+      // Debug: Log all search params to see what Square is actually sending
+      console.log("🔍 All URL parameters:", Object.fromEntries(searchParams));
+      console.log("🔍 Extracted referenceId:", referenceId);
 
       if (!referenceId) {
         setStatus("error");
         setErrorMessage(
           isSpanish
-            ? "ID de pago no encontrado en la URL"
-            : "Payment ID not found in URL"
+            ? "ID de pago no encontrado en la URL. Parámetros: " +
+                Array.from(searchParams.keys()).join(", ")
+            : "Payment ID not found in URL. Parameters: " +
+                Array.from(searchParams.keys()).join(", ")
         );
         return;
       }
 
       try {
+        console.log("📡 Fetching payment data for ID:", referenceId);
+
         // Fetch payment data from MongoDB
         const response = await fetch(`/api/get-payment-data?id=${referenceId}`);
         const data = await response.json();
+
+        console.log("📦 Payment data response:", data);
 
         if (data.success && data.payment) {
           setStatus("success");
@@ -62,16 +77,20 @@ export default function PaymentProcessingPage({ params }: PageProps) {
               `phone=${phone || data.payment.customerPhone}&` +
               `redirect=payment`;
 
+            console.log("✅ Redirecting to consent:", consentUrl);
             router.push(consentUrl);
           }, 1000);
         } else {
           // Payment not found yet - webhook may be delayed
+          console.log(`⏳ Payment not found, retry ${retryCount + 1}/10`);
+
           if (retryCount < 10) {
             // Retry after 2 seconds (max 10 retries = 20 seconds)
             setTimeout(() => {
               setRetryCount((prev) => prev + 1);
             }, 2000);
           } else {
+            console.error("❌ Payment not found after 10 retries");
             setStatus("error");
             setErrorMessage(
               isSpanish
@@ -81,7 +100,7 @@ export default function PaymentProcessingPage({ params }: PageProps) {
           }
         }
       } catch (error) {
-        console.error("Error fetching payment:", error);
+        console.error("❌ Error fetching payment:", error);
         setStatus("error");
         setErrorMessage(
           isSpanish
