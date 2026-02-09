@@ -29,6 +29,7 @@ export async function POST(request: Request) {
     const event = JSON.parse(body);
     const payment = event.data?.object?.payment;
     const paymentId = payment?.id;
+    const orderId = payment?.order_id; // Capture this for frontend lookup
 
     // --- 1. FILTERS (Refunds & Office Payments) ---
     const isRefund = (payment?.refund_ids && payment.refund_ids.length > 0) || (payment?.refunded_money?.amount > 0);
@@ -125,6 +126,7 @@ export async function POST(request: Request) {
 
     const paymentDocument = {
       _id: paymentId as any,
+      orderId: orderId,
       amount: parseFloat(amountDollars),
       amountCents: amountCents,
       currency: money.currency || "USD",

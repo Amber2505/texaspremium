@@ -28,12 +28,11 @@ export default function PaymentProcessingPage({ params }: PageProps) {
     const checkPayment = async () => {
       // ✅ Check ALL possible Square redirect parameters
       const referenceId =
-        searchParams.get("reference_id") ||
-        searchParams.get("checkoutId") ||
         searchParams.get("transactionId") ||
         searchParams.get("orderId") ||
+        searchParams.get("checkoutId") ||
+        searchParams.get("referenceId") ||
         searchParams.get("paymentId");
-
       const method = searchParams.get("method") || "card";
       const phone = searchParams.get("phone") || "";
 
@@ -84,11 +83,11 @@ export default function PaymentProcessingPage({ params }: PageProps) {
           // Payment not found yet - webhook may be delayed
           console.log(`⏳ Payment not found, retry ${retryCount + 1}/10`);
 
-          if (retryCount < 10) {
-            // Retry after 2 seconds (max 10 retries = 20 seconds)
+          if (retryCount < 15) {
+            // Change 10 to 15
             setTimeout(() => {
               setRetryCount((prev) => prev + 1);
-            }, 2000);
+            }, 2000); // Keeps it at 2-second intervals
           } else {
             console.error("❌ Payment not found after 10 retries");
             setStatus("error");
