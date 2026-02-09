@@ -1,4 +1,5 @@
 // app/api/square-webhook/route.ts
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextResponse } from 'next/server';
 import { sendPaymentNotification } from '@/lib/email';
 import { WebhooksHelper } from 'square';
@@ -35,6 +36,7 @@ export async function POST(request: Request) {
     const isCompleted = event.type === 'payment.updated' && payment?.status === 'COMPLETED';
 
     if (isRefund || isOfficePayment || !isCompleted || !paymentId) {
+      console.log(`⏭️ Webhook ignored: refund=${isRefund}, office=${isOfficePayment}, completed=${isCompleted}, hasId=${!!paymentId}`);
       return NextResponse.json({ success: true, ignored: true }, { status: 200 });
     }
 
@@ -82,46 +84,77 @@ export async function POST(request: Request) {
     const customerEmail = payment.buyer_email_address || "";
     const customerPhone = billing?.phone_number || "";
 
-    // Get metadata from payment (stored when creating payment link)
-    const metadata = payment.reference_id ? JSON.parse(payment.reference_id || '{}') : {};
-    const language = metadata.language || "en";
-    const redirectMethod = metadata.paymentMethod || "card";
-    const storedPhone = metadata.customerPhone || customerPhone.replace(/\D/g, '');
+    // Get metadata from payment note (stored when creating payment link)
+    let language = "en";
+    let redirectMethod = "card";
+    let storedPhone = customerPhone.replace(/\D/g, '');
+    
+    try {
+      if (payment.note) {
+        const metadata = JSON.parse(payment.note);
+        language = metadata.language || "en";
+        redirectMethod = metadata.paymentMethod || "card";
+        storedPhone = metadata.customerPhone || storedPhone;
+      }
+    } catch (e) {
+      console.log("⚠️ Could not parse payment note metadata");
+    }
+
+    console.log(`📝 Payment Data Extracted:`, {
+      paymentId,
+      amount: amountDollars,
+      email: customerEmail,
+      phone: storedPhone,
+      cardLast4
+    });
 
     // --- 4. STORE PAYMENT DATA IN MONGODB FOR CONSENT PAGE ---
+    const paymentsCollection = db.collection("completed_payments");
+    
+    console.log(`💾 Attempting to store in completed_payments...`);
+    
+    // Create TTL index if it doesn't exist
     try {
-      const paymentsCollection = db.collection("completed_payments");
-      
-      // Create TTL index if it doesn't exist
       await paymentsCollection.createIndex(
         { "expireAt": 1 },
         { expireAfterSeconds: 0 }
       );
+    } catch (indexError: any) {
+      console.log(`⚠️ Index creation warning:`, indexError.message);
+    }
 
-      await paymentsCollection.insertOne({
-        _id: paymentId as any,
-        amount: parseFloat(amountDollars),
-        amountCents: amountCents,
-        currency: money.currency || "USD",
-        cardBrand,
-        cardLast4,
-        customerName,
-        customerEmail,
-        customerPhone: storedPhone,
-        paymentMethod: paymentMethod,
-        language,
-        redirectMethod,
-        transactionId: paymentId,
-        processedAt: new Date(),
-        webhookReceived: true,
-        consentSigned: false,
-        expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // TTL: 24 hours
-      });
+    const paymentDocument = {
+      _id: paymentId as any,
+      amount: parseFloat(amountDollars),
+      amountCents: amountCents,
+      currency: money.currency || "USD",
+      cardBrand,
+      cardLast4,
+      customerName,
+      customerEmail,
+      customerPhone: storedPhone,
+      paymentMethod: paymentMethod,
+      language,
+      redirectMethod,
+      transactionId: paymentId,
+      processedAt: new Date(),
+      webhookReceived: true,
+      consentSigned: false,
+      expireAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // TTL: 24 hours
+    };
 
-      console.log(`✅ Payment data stored in MongoDB: ${paymentId}`);
+    console.log(`💾 Inserting document:`, paymentDocument);
+
+    try {
+      const insertResult = await paymentsCollection.insertOne(paymentDocument);
+      console.log(`✅ Payment data stored in MongoDB completed_payments:`, insertResult.insertedId);
     } catch (storeError: any) {
-      console.error(`❌ Failed to store payment data: ${storeError.message}`);
-      // Continue - don't fail webhook for storage issues
+      console.error(`❌ CRITICAL: Failed to store payment data in completed_payments:`, storeError);
+      console.error(`Error code:`, storeError.code);
+      console.error(`Error message:`, storeError.message);
+      // ⚠️ This is critical - if we can't store the payment, the user will be stuck
+      // Don't just continue - we need to know about this
+      throw storeError;
     }
 
     // --- 5. SEND INTERNAL NOTIFICATION EMAIL ---
@@ -141,13 +174,13 @@ export async function POST(request: Request) {
 
     } catch (emailError: any) {
       console.error(`❌ Email Failed for ${paymentId}:`, emailError.message);
-      // Remove lock on failure so Square can retry
-      await locks.deleteOne({ _id: paymentId as any });
-      return NextResponse.json({ error: 'Email failed' }, { status: 500 });
+      // Email failed but payment is stored - that's ok, don't remove lock
+      return NextResponse.json({ success: true, emailFailed: true }, { status: 200 });
     }
 
   } catch (error: any) {
     console.error('❌ Webhook System Error:', error.message);
-    return NextResponse.json({ success: true, error: error.message }, { status: 200 });
+    console.error('Stack:', error.stack);
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
