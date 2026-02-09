@@ -203,7 +203,7 @@ Al firmar este formulario, declaro y confirmo lo siguiente:
 6. Confirmo que toda la informacion proporcionada en este formulario es verdadera y precisa.`
       : `I, ${customerName}, confirm that I am the authorized holder of the credit/debit card ending in ****${cardLast4}. No one else is using my card on my behalf. I am making this transaction of my own free will.
 
-I hereby authorize Texas Premium Insurance Services to process a charge of $${amount} (USD) to my above-mentioned card for payment of my insurance policy.
+I hereby authorize Texas Premium Insurance Services, LLC to process a charge of $${amount} (USD) to my above-mentioned card for payment of my insurance policy.
 
 By signing this form, I represent and confirm the following:
 

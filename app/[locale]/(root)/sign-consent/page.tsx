@@ -199,7 +199,7 @@ export default function SignConsentPage({ params }: PageProps) {
       setIsSigned(true);
 
       setTimeout(() => {
-        window.location.href = `https://www.texaspremiumins.com/${lang}/setup-autopay?method=${method}&phone=${phone}&redirect=autopay`;
+        window.location.href = `https://www.texaspremiumins.com/${lang}/setup-autopay?${method}&phone=${phone}&redirect=payment`;
       }, 2000);
     } catch (error) {
       console.error("Error:", error);

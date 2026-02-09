@@ -7,6 +7,45 @@ import { motion } from "framer-motion";
 import { Lock, ShieldCheck, Landmark, CreditCard, Loader2 } from "lucide-react";
 
 type TabType = "card" | "bank";
+type CardType = "visa" | "mastercard" | "discover" | "amex" | null;
+
+// Card type detection
+const detectCardType = (number: string): CardType => {
+  const cleaned = number.replace(/\s/g, "");
+  if (/^4/.test(cleaned)) return "visa";
+  if (/^5[1-5]/.test(cleaned)) return "mastercard";
+  if (/^2(?:2(?:2[1-9]|[3-9])|[3-6]|7(?:[01]|20))/.test(cleaned))
+    return "mastercard"; // Mastercard 2-series
+  if (/^6(?:011|5)/.test(cleaned)) return "discover";
+  if (/^3[47]/.test(cleaned)) return "amex";
+  return null;
+};
+
+// Card brand colors (for styling)
+const cardBrandColors: Record<string, string> = {
+  visa: "#1434CB",
+  mastercard: "#EB001B",
+  discover: "#FF6000",
+  amex: "#006FCF",
+};
+
+// Simple card brand icons (you can replace these with actual logo images)
+const CardBrandIcon = ({ type }: { type: CardType }) => {
+  if (!type) return null;
+
+  const color = cardBrandColors[type];
+
+  return (
+    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+      <div
+        className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider"
+        style={{ backgroundColor: `${color}15`, color }}
+      >
+        {type}
+      </div>
+    </div>
+  );
+};
 
 export default function SetupAutopayContent() {
   const t = useTranslations("autopay");
@@ -28,10 +67,10 @@ export default function SetupAutopayContent() {
   const customerEmail = searchParams.get("email") || "";
   const customerPhone = searchParams.get("phone") || "";
 
-  // 🔥 NEW: Get redirect destination from URL
   const redirectTo = searchParams.get("redirect") || "autopay";
 
   const [agreed, setAgreed] = useState(false);
+  const [cardType, setCardType] = useState<CardType>(null);
   const [formData, setFormData] = useState({
     cardholderName: customerName,
     cardNumber: "",
@@ -49,12 +88,37 @@ export default function SetupAutopayContent() {
     confirmAccountNumber: "",
   });
 
-  // ✅ AUTO-TAB FUNCTIONALITY
+  // ✅ ENHANCED CARD NUMBER HANDLING (supports Amex 15 digits)
   const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/\s/g, "");
-    const formatted = value.match(/.{1,4}/g)?.join(" ") || value;
+    const detectedType = detectCardType(value);
+    setCardType(detectedType);
+
+    // Amex: 15 digits (format: 4-6-5)
+    // Others: 16 digits (format: 4-4-4-4)
+    const maxLength = detectedType === "amex" ? 15 : 16;
+    const trimmed = value.slice(0, maxLength);
+
+    let formatted = "";
+    if (detectedType === "amex") {
+      // Amex formatting: 3782 822463 10005
+      formatted =
+        trimmed
+          .match(/(\d{1,4})(\d{1,6})?(\d{1,5})?/)
+          ?.slice(1)
+          .filter(Boolean)
+          .join(" ") || trimmed;
+    } else {
+      // Standard formatting: 1234 5678 9012 3456
+      formatted = trimmed.match(/.{1,4}/g)?.join(" ") || trimmed;
+    }
+
     setFormData({ ...formData, cardNumber: formatted });
-    if (value.length === 16) document.getElementById("expiry-month")?.focus();
+
+    // Auto-advance when complete
+    if (trimmed.length === maxLength) {
+      document.getElementById("expiry-month")?.focus();
+    }
   };
 
   const handleExpiryMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -69,11 +133,14 @@ export default function SetupAutopayContent() {
     if (value.length === 4) document.getElementById("cvv")?.focus();
   };
 
+  // ✅ ENHANCED CVV HANDLING (Amex uses 4 digits, others use 3)
   const handleCvvChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, "").slice(0, 4);
+    const maxCvvLength = cardType === "amex" ? 4 : 3;
+    const value = e.target.value.replace(/\D/g, "").slice(0, maxCvvLength);
     setFormData({ ...formData, cvv: value });
-    if (value.length === 3 || value.length === 4)
+    if (value.length === maxCvvLength) {
       document.getElementById("zip-code")?.focus();
+    }
   };
 
   const handleRoutingNumberChange = (
@@ -120,6 +187,7 @@ export default function SetupAutopayContent() {
                 cvv: formData.cvv,
                 zipCode: formData.zipCode,
                 cardholderName: formData.cardholderName,
+                cardType: cardType, // Include detected card type
               }
             : {
                 accountNumber: formData.accountNumber,
@@ -133,11 +201,9 @@ export default function SetupAutopayContent() {
 
       const data = await response.json();
       if (data.success) {
-        // 🔥 NEW: Conditional redirect based on URL parameter
         if (redirectTo === "payment") {
           router.push(`/payment-thankyou`);
         } else {
-          // Default to autopay success page
           router.push(`/autopay-success`);
         }
       } else {
@@ -161,15 +227,6 @@ export default function SetupAutopayContent() {
         >
           {/* Header */}
           <div className="bg-[#102a56] py-8 text-center border-b border-gray-200">
-            {/* <div className="flex justify-center mb-4">
-              <Image
-                src="/logo.png"
-                alt="Texas Premium Insurance"
-                width={240}
-                height={60}
-                className="h-12 w-auto brightness-0 invert"
-              />
-            </div> */}
             <h2 className="text-xl font-bold text-white">{t("title")}</h2>
             <p className="text-blue-200 text-sm mt-1">{t("subtitle")}</p>
           </div>
@@ -233,15 +290,18 @@ export default function SetupAutopayContent() {
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
                     {t("card.cardNumber")}
                   </label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={19}
-                    value={formData.cardNumber}
-                    onChange={handleCardNumberChange}
-                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                    placeholder={t("card.cardNumberPlaceholder")}
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      maxLength={cardType === "amex" ? 17 : 19} // Amex: 15 digits + 2 spaces, Others: 16 + 3 spaces
+                      value={formData.cardNumber}
+                      onChange={handleCardNumberChange}
+                      className="w-full px-4 py-3 pr-20 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                      placeholder={t("card.cardNumberPlaceholder")}
+                    />
+                    <CardBrandIcon type={cardType} />
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -273,17 +333,19 @@ export default function SetupAutopayContent() {
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
-                      {t("card.cvv")}
+                      {t("card.cvv")} {cardType === "amex" && "(4 digits)"}
                     </label>
                     <input
                       id="cvv"
                       type="text"
                       required
-                      maxLength={4}
+                      maxLength={cardType === "amex" ? 4 : 3}
                       value={formData.cvv}
                       onChange={handleCvvChange}
                       className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none"
-                      placeholder={t("card.cvvPlaceholder")}
+                      placeholder={
+                        cardType === "amex" ? "1234" : t("card.cvvPlaceholder")
+                      }
                     />
                   </div>
                 </div>
