@@ -12,6 +12,8 @@ export async function POST(request: Request) {
   try {
     const { linkId, step } = await request.json();
 
+    console.log("🔄 Updating progress:", { linkId, step });
+
     // Validate inputs
     if (!linkId || !step) {
       return NextResponse.json(
@@ -33,16 +35,19 @@ export async function POST(request: Request) {
     const db = client.db("db");
     const collection = db.collection("payment_link_generated");
 
-    // ✅ Find by _id (MongoDB ObjectId) first, then by linkId field
+    // ✅ Find by MongoDB _id
     let query = {};
     
     if (ObjectId.isValid(linkId)) {
       query = { _id: new ObjectId(linkId) };
     } else {
-      query = { linkId: linkId };
+      return NextResponse.json(
+        { success: false, error: "Invalid linkId format" },
+        { status: 400 }
+      );
     }
 
-    // Get current link to check if we should mark as completed
+    // Get current link
     const link = await collection.findOne(query);
 
     if (!link) {
@@ -53,31 +58,39 @@ export async function POST(request: Request) {
       );
     }
 
-    console.log("✅ Found link, updating step:", step);
+    console.log("✅ Found link, current stages:", link.completedStages);
 
-    // Update the specific progress step
-    const updateData: any = {
-      [`progress.${step}`]: true,
-      [`timestamps.${step}`]: new Date(),
-      updatedAt: new Date(),
+    // ✅ Map step names to YOUR field names
+    const stepFieldMap: Record<string, string> = {
+      payment: "payment",
+      consent: "consent",
+      autopay: "autopaySetup", // ✅ You use "autopaySetup" not "autopay"
     };
 
-    // Check if this marks completion
-    const progress = link.progress || {};
+    const fieldName = stepFieldMap[step];
+
+    // Update the specific stage
+    const updateData: any = {
+      [`completedStages.${fieldName}`]: true,
+      [`timestamps.${fieldName}`]: new Date().toISOString(),
+      lastUpdated: new Date().toISOString(),
+      currentStage: step, // ✅ Update currentStage too
+    };
+
     const paymentMethod = link.paymentMethod;
 
     // Determine if all steps are complete
-    let allComplete = false;
-
     if (step === "autopay") {
-      // Autopay was just completed - mark as fully complete
-      allComplete = true;
-      updateData["timestamps.completed"] = new Date();
+      // Autopay completed - mark as fully complete
+      updateData["timestamps.completed"] = new Date().toISOString();
+      updateData["currentStage"] = "complete";
     } else if (step === "consent" && paymentMethod === "direct-bill") {
-      // Direct-bill doesn't need autopay, so consent is the final step
-      allComplete = true;
-      updateData["timestamps.completed"] = new Date();
+      // Direct-bill doesn't need autopay
+      updateData["timestamps.completed"] = new Date().toISOString();
+      updateData["currentStage"] = "complete";
     }
+
+    console.log("📝 Updating with:", updateData);
 
     // Update MongoDB
     const result = await collection.updateOne(query, { $set: updateData });
@@ -91,10 +104,14 @@ export async function POST(request: Request) {
 
     console.log(`✅ Updated ${step} progress for linkId: ${linkId}`);
 
+    // Fetch updated document to verify
+    const updatedLink = await collection.findOne(query);
+    console.log("✅ Updated completedStages:", updatedLink?.completedStages);
+
     return NextResponse.json({
       success: true,
       message: `${step} marked as complete`,
-      allComplete,
+      completedStages: updatedLink?.completedStages,
     });
   } catch (error) {
     console.error("❌ Error updating progress:", error);

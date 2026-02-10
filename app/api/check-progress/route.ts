@@ -22,17 +22,11 @@ export async function GET(request: Request) {
     const db = client.db("db");
     const collection = db.collection("payment_link_generated");
 
-    // ✅ Try to find by _id (MongoDB ObjectId) first, then by linkId field
+    // ✅ Find by MongoDB _id
     let link = null;
     
-    // Try as MongoDB ObjectId
     if (ObjectId.isValid(linkId)) {
       link = await collection.findOne({ _id: new ObjectId(linkId) });
-    }
-    
-    // If not found, try as linkId field
-    if (!link) {
-      link = await collection.findOne({ linkId: linkId });
     }
 
     if (!link) {
@@ -44,6 +38,7 @@ export async function GET(request: Request) {
     }
 
     console.log("✅ Found link:", link._id);
+    console.log("📊 completedStages:", link.completedStages);
 
     // Check if link is disabled
     if (link.disabled) {
@@ -54,14 +49,18 @@ export async function GET(request: Request) {
       });
     }
 
-    // Return progress and next step
-    const progress = link.progress || {
-      payment: false,
-      consent: false,
-      autopay: false,
+    // ✅ Use YOUR field structure: completedStages
+    const completedStages = link.completedStages || {};
+    const paymentMethod = link.paymentMethod;
+
+    // Convert to simple boolean flags
+    const progress = {
+      payment: completedStages.payment === true,
+      consent: completedStages.consent === true,
+      autopay: completedStages.autopaySetup === true, // ✅ Note: you use "autopaySetup" not "autopay"
     };
 
-    const paymentMethod = link.paymentMethod;
+    console.log("📊 Progress:", progress);
 
     // Determine next step
     let nextStep = "";
@@ -70,18 +69,22 @@ export async function GET(request: Request) {
     if (!progress.payment) {
       nextStep = "payment";
       redirectTo = link.squareLink;
+      console.log("➡️ Next: Payment");
     } else if (!progress.consent) {
       nextStep = "consent";
-      // We need to get payment data for consent form
+      // Get payment data for consent form
       const cardLast4 = link.cardLast4 || "XXXX";
       const customerEmail = link.customerEmail || "";
       redirectTo = `/sign-consent?linkId=${linkId}&amount=${(link.amount / 100).toFixed(2)}&card=${cardLast4}&email=${encodeURIComponent(customerEmail)}&method=${paymentMethod}&phone=${link.customerPhone}`;
+      console.log("➡️ Next: Consent");
     } else if (!progress.autopay && paymentMethod !== "direct-bill") {
       nextStep = "autopay";
       redirectTo = `/setup-autopay?${paymentMethod}&phone=${link.customerPhone}&redirect=payment&linkId=${linkId}`;
+      console.log("➡️ Next: Autopay");
     } else {
       nextStep = "complete";
       redirectTo = "/payment-thankyou";
+      console.log("➡️ Next: Complete / Thank You");
     }
 
     return NextResponse.json({
