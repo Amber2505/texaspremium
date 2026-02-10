@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, use } from "react"; // Added 'use'
+import { useState, useRef, useEffect, use } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   FileSignature,
@@ -14,15 +14,13 @@ import Image from "next/image";
 
 type SignatureMethod = "type" | "draw" | "upload";
 
-// Define the interface for Next.js 15+ async params
 interface PageProps {
-  params: Promise<{ locale: string }>; // Note: Next.js routing uses the folder name [locale]
+  params: Promise<{ locale: string }>;
 }
 
 export default function SignConsentPage({ params }: PageProps) {
-  // Unwrap params using React.use()
   const resolvedParams = use(params);
-  const lang = resolvedParams.locale; // Matches your folder structure [locale]
+  const lang = resolvedParams.locale;
 
   const searchParams = useSearchParams();
   const amount = searchParams.get("amount") || "0.00";
@@ -30,6 +28,7 @@ export default function SignConsentPage({ params }: PageProps) {
   const email = searchParams.get("email") || "";
   const method = searchParams.get("method") || "card";
   const phone = searchParams.get("phone") || "";
+  const linkId = searchParams.get("linkId") || ""; // ✅ Track which link this is
 
   const isSpanish = lang === "es";
 
@@ -46,7 +45,6 @@ export default function SignConsentPage({ params }: PageProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch client IP on mount
   useEffect(() => {
     fetch("https://api.ipify.org?format=json")
       .then((res) => res.json())
@@ -196,10 +194,28 @@ export default function SignConsentPage({ params }: PageProps) {
 
       if (!response.ok) throw new Error("Failed to generate PDF");
       await response.json();
+
+      // ✅ Mark consent as complete
+      if (linkId) {
+        await fetch("/api/update-payment-progress", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            linkId,
+            stage: "consent",
+          }),
+        });
+      }
+
       setIsSigned(true);
 
       setTimeout(() => {
-        window.location.href = `https://www.texaspremiumins.com/${lang}/setup-autopay?${method}&phone=${phone}&redirect=payment`;
+        // 🎯 SMART ROUTING: Direct-bill goes to thank you, autopay goes to setup
+        if (method === "direct-bill") {
+          window.location.href = `/${lang}/payment-thankyou`;
+        } else {
+          window.location.href = `/${lang}/setup-autopay?${method}&phone=${phone}&redirect=payment&linkId=${linkId}`;
+        }
       }, 2000);
     } catch (error) {
       console.error("Error:", error);
@@ -250,7 +266,11 @@ export default function SignConsentPage({ params }: PageProps) {
               : "A copy has been sent via email"}
           </p>
           <p className="text-gray-600 mb-4">
-            {isSpanish
+            {method === "direct-bill"
+              ? isSpanish
+                ? "Redirigiendo a la página de agradecimiento..."
+                : "Redirecting to thank you page..."
+              : isSpanish
               ? "Redirigiendo a la configuracion de autopago..."
               : "Redirecting to autopay setup..."}
           </p>

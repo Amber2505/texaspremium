@@ -68,6 +68,7 @@ export default function SetupAutopayContent() {
   const customerPhone = searchParams.get("phone") || "";
 
   const redirectTo = searchParams.get("redirect") || "autopay";
+  const linkId = searchParams.get("linkId") || ""; // ✅ Track payment link
 
   const [agreed, setAgreed] = useState(false);
   const [cardType, setCardType] = useState<CardType>(null);
@@ -201,6 +202,18 @@ export default function SetupAutopayContent() {
 
       const data = await response.json();
       if (data.success) {
+        // ✅ Mark autopay setup as complete
+        if (linkId && redirectTo === "payment") {
+          await fetch("/api/update-payment-progress", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              linkId,
+              stage: "autopaySetup",
+            }),
+          });
+        }
+
         if (redirectTo === "payment") {
           router.push(`/payment-thankyou`);
         } else {

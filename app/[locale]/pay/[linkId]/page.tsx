@@ -1,8 +1,6 @@
 // app/[lang]/pay/[linkId]/page.tsx
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-require-imports */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -22,7 +20,7 @@ export default function PaymentProxyPage() {
   const linkId = params.linkId as string;
   const lang = params.lang as string;
 
-  // ✅ Check if Square payment completed (from Square redirect)
+  // Check if Square payment completed (from Square redirect)
   const transactionId =
     searchParams.get("transactionId") ||
     searchParams.get("orderId") ||
@@ -51,29 +49,111 @@ export default function PaymentProxyPage() {
           return;
         }
 
-        // 3️⃣ Check if this is a return from Square payment
+        // 3️⃣ SMART ROUTING - Check current progress and redirect accordingly
+        const stages = link.completedStages || {};
+        const method = link.paymentMethod || "card";
+        const phone = link.customerPhone || "";
+
+        // 🎯 If everything is complete, go to thank you page
+        if (
+          stages.consent &&
+          (stages.autopaySetup || method === "direct-bill")
+        ) {
+          setStatus("redirecting");
+          router.push(`/${lang}/payment-thankyou`);
+          return;
+        }
+
+        // 🎯 If consent is done but autopay setup is pending
+        if (
+          stages.consent &&
+          !stages.autopaySetup &&
+          method !== "direct-bill"
+        ) {
+          setStatus("redirecting");
+          router.push(
+            `/${lang}/setup-autopay?${method}&phone=${phone}&redirect=payment`
+          );
+          return;
+        }
+
+        // 🎯 If payment is done but consent is pending
+        if (stages.payment && !stages.consent) {
+          setStatus("redirecting");
+
+          // Get payment data for consent page
+          const paymentResponse = await fetch(
+            `/api/get-payment-data?id=${
+              link.squareTransactionId || transactionId
+            }`
+          );
+          const paymentData = await paymentResponse.json();
+
+          if (paymentData.success && paymentData.payment) {
+            const consentUrl =
+              `/${lang}/sign-consent?` +
+              `amount=${paymentData.payment.amount}&` +
+              `card=${paymentData.payment.cardLast4}&` +
+              `email=${encodeURIComponent(
+                paymentData.payment.customerEmail
+              )}&` +
+              `method=${method}&` +
+              `phone=${phone}&` +
+              `linkId=${linkId}`;
+
+            router.push(consentUrl);
+          } else {
+            setStatus("error");
+            setErrorMessage("Payment data not found");
+          }
+          return;
+        }
+
+        // 4️⃣ Check if this is a return from Square payment
         if (transactionId) {
-          // ✅ Payment completed - redirect to payment-processing page
-          // The processing page will fetch payment data from MongoDB and redirect to consent
+          // ✅ Mark payment as complete
+          await fetch("/api/update-payment-progress", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              linkId,
+              stage: "payment",
+            }),
+          });
+
+          // Update Square transaction ID
+          await fetch("/api/update-payment-link", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              linkId,
+              squareTransactionId: transactionId,
+            }),
+          });
+
           setStatus("redirecting");
 
           const processingUrl =
             `/${lang}/payment-processing?` +
             `reference_id=${transactionId}&` +
-            `method=${link.paymentMethod || "card"}&` +
-            `phone=${link.customerPhone || ""}`;
+            `method=${method}&` +
+            `phone=${phone}&` +
+            `linkId=${linkId}`;
 
           router.push(processingUrl);
           return;
         }
 
-        // 4️⃣ First time visiting - redirect to Square payment
-        if (link.squareLink) {
-          console.log("Redirecting to Square payment link:", link.squareLink);
-          window.location.href = link.squareLink;
-        } else {
-          setStatus("error");
-          setErrorMessage("Payment link is invalid or expired");
+        // 5️⃣ First time visiting - redirect to Square payment
+        if (!stages.payment) {
+          if (link.squareLink) {
+            console.log("Redirecting to Square payment link:", link.squareLink);
+            window.location.href = link.squareLink;
+          } else {
+            setStatus("error");
+            setErrorMessage("Payment link is invalid or expired");
+          }
+          return;
         }
       } catch (error) {
         console.error("Error validating link:", error);
@@ -109,12 +189,12 @@ export default function PaymentProxyPage() {
         <div className="text-center">
           <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-gray-900 mb-2">
-            {lang === "es" ? "¡Pago Exitoso!" : "Payment Successful!"}
+            {lang === "es" ? "Redirigiendo..." : "Redirecting..."}
           </h2>
           <p className="text-gray-600 text-lg mb-2">
             {lang === "es"
-              ? "Procesando su información..."
-              : "Processing your information..."}
+              ? "Llevándote a la siguiente etapa..."
+              : "Taking you to the next step..."}
           </p>
           <div className="animate-spin w-8 h-8 border-4 border-green-200 border-t-green-600 rounded-full mx-auto mt-4"></div>
         </div>

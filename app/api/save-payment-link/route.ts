@@ -36,6 +36,12 @@ export async function POST(request: NextRequest) {
       disabled: false,
       createdAt: new Date(),
       createdAtTimestamp: Date.now(),
+      
+      // ✅ ADD THESE NEW TRACKING FIELDS:
+      currentStage: null,
+      completedStages: {},
+      timestamps: {},
+      lastUpdated: new Date().toISOString(),
     };
 
     const result = await collection.insertOne(linkRecord);

@@ -10,7 +10,6 @@ interface PageProps {
 }
 
 export default function PaymentProcessingPage({ params }: PageProps) {
-  // Use the 'use' hook to unwrap the params promise (Required for Next.js 15+)
   const resolvedParams = use(params);
   const locale = resolvedParams.locale;
 
@@ -26,19 +25,20 @@ export default function PaymentProcessingPage({ params }: PageProps) {
 
   useEffect(() => {
     const checkPayment = async () => {
-      // ✅ Check ALL possible Square redirect parameters
       const referenceId =
         searchParams.get("transactionId") ||
         searchParams.get("orderId") ||
         searchParams.get("checkoutId") ||
         searchParams.get("referenceId") ||
+        searchParams.get("reference_id") ||
         searchParams.get("paymentId");
       const method = searchParams.get("method") || "card";
       const phone = searchParams.get("phone") || "";
+      const linkId = searchParams.get("linkId") || ""; // ✅ Get linkId from URL
 
-      // Debug: Log all search params to see what Square is actually sending
       console.log("🔍 All URL parameters:", Object.fromEntries(searchParams));
       console.log("🔍 Extracted referenceId:", referenceId);
+      console.log("🔍 LinkId:", linkId);
 
       if (!referenceId) {
         setStatus("error");
@@ -55,7 +55,6 @@ export default function PaymentProcessingPage({ params }: PageProps) {
       try {
         console.log("📡 Fetching payment data for ID:", referenceId);
 
-        // Fetch payment data from MongoDB
         const response = await fetch(`/api/get-payment-data?id=${referenceId}`);
         const data = await response.json();
 
@@ -64,9 +63,7 @@ export default function PaymentProcessingPage({ params }: PageProps) {
         if (data.success && data.payment) {
           setStatus("success");
 
-          // Wait a moment to show success message
           setTimeout(() => {
-            // Redirect to consent page with all data from webhook
             const consentUrl =
               `/${locale}/sign-consent?` +
               `amount=${data.payment.amount}&` +
@@ -74,22 +71,21 @@ export default function PaymentProcessingPage({ params }: PageProps) {
               `email=${encodeURIComponent(data.payment.customerEmail)}&` +
               `method=${method}&` +
               `phone=${phone || data.payment.customerPhone}&` +
+              `linkId=${linkId}&` + // ✅ Pass linkId to consent page
               `redirect=payment`;
 
             console.log("✅ Redirecting to consent:", consentUrl);
             router.push(consentUrl);
           }, 1000);
         } else {
-          // Payment not found yet - webhook may be delayed
-          console.log(`⏳ Payment not found, retry ${retryCount + 1}/10`);
+          console.log(`⏳ Payment not found, retry ${retryCount + 1}/15`);
 
           if (retryCount < 15) {
-            // Change 10 to 15
             setTimeout(() => {
               setRetryCount((prev) => prev + 1);
-            }, 2000); // Keeps it at 2-second intervals
+            }, 2000);
           } else {
-            console.error("❌ Payment not found after 10 retries");
+            console.error("❌ Payment not found after 15 retries");
             setStatus("error");
             setErrorMessage(
               isSpanish
@@ -116,7 +112,6 @@ export default function PaymentProcessingPage({ params }: PageProps) {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-blue-50 flex items-center justify-center px-4">
       <div className="max-w-md w-full">
         <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
-          {/* Logo */}
           <Image
             src="/logo.png"
             alt="Texas Premium Insurance Services"
@@ -125,7 +120,6 @@ export default function PaymentProcessingPage({ params }: PageProps) {
             className="mx-auto mb-6"
           />
 
-          {/* Processing State */}
           {status === "processing" && (
             <>
               <div className="mb-6">
@@ -144,14 +138,13 @@ export default function PaymentProcessingPage({ params }: PageProps) {
               {retryCount > 0 && (
                 <p className="text-sm text-gray-500">
                   {isSpanish
-                    ? `Reintento ${retryCount}/10...`
-                    : `Retry ${retryCount}/10...`}
+                    ? `Reintento ${retryCount}/15...`
+                    : `Retry ${retryCount}/15...`}
                 </p>
               )}
             </>
           )}
 
-          {/* Success State */}
           {status === "success" && (
             <>
               <div className="mb-6">
@@ -171,7 +164,6 @@ export default function PaymentProcessingPage({ params }: PageProps) {
             </>
           )}
 
-          {/* Error State */}
           {status === "error" && (
             <>
               <div className="mb-6">
@@ -201,7 +193,6 @@ export default function PaymentProcessingPage({ params }: PageProps) {
           )}
         </div>
 
-        {/* Info Footer */}
         <div className="mt-6 text-center">
           <p className="text-xs text-gray-500">
             {isSpanish
