@@ -1,6 +1,6 @@
 // app/api/check-progress/route.ts
 import { NextResponse } from "next/server";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 
 const uri = process.env.MONGODB_URI!;
 
@@ -20,16 +20,30 @@ export async function GET(request: Request) {
 
     client = await MongoClient.connect(uri);
     const db = client.db("db");
-    const collection = db.collection("payment_links");
+    const collection = db.collection("payment_link_generated");
 
-    const link = await collection.findOne({ linkId });
+    // ✅ Try to find by _id (MongoDB ObjectId) first, then by linkId field
+    let link = null;
+    
+    // Try as MongoDB ObjectId
+    if (ObjectId.isValid(linkId)) {
+      link = await collection.findOne({ _id: new ObjectId(linkId) });
+    }
+    
+    // If not found, try as linkId field
+    if (!link) {
+      link = await collection.findOne({ linkId: linkId });
+    }
 
     if (!link) {
+      console.error("❌ Link not found for linkId:", linkId);
       return NextResponse.json(
         { success: false, error: "Payment link not found" },
         { status: 404 }
       );
     }
+
+    console.log("✅ Found link:", link._id);
 
     // Check if link is disabled
     if (link.disabled) {
@@ -58,7 +72,10 @@ export async function GET(request: Request) {
       redirectTo = link.squareLink;
     } else if (!progress.consent) {
       nextStep = "consent";
-      redirectTo = `/sign-consent?linkId=${linkId}&amount=${(link.amount / 100).toFixed(2)}&card=${link.cardLast4 || 'XXXX'}&email=${encodeURIComponent(link.customerEmail || '')}&method=${paymentMethod}&phone=${link.customerPhone}`;
+      // We need to get payment data for consent form
+      const cardLast4 = link.cardLast4 || "XXXX";
+      const customerEmail = link.customerEmail || "";
+      redirectTo = `/sign-consent?linkId=${linkId}&amount=${(link.amount / 100).toFixed(2)}&card=${cardLast4}&email=${encodeURIComponent(customerEmail)}&method=${paymentMethod}&phone=${link.customerPhone}`;
     } else if (!progress.autopay && paymentMethod !== "direct-bill") {
       nextStep = "autopay";
       redirectTo = `/setup-autopay?${paymentMethod}&phone=${link.customerPhone}&redirect=payment&linkId=${linkId}`;
@@ -82,7 +99,7 @@ export async function GET(request: Request) {
       },
     });
   } catch (error) {
-    console.error("Error checking progress:", error);
+    console.error("❌ Error checking progress:", error);
     return NextResponse.json(
       { success: false, error: "Failed to check progress" },
       { status: 500 }

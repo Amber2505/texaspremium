@@ -2,7 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextResponse } from "next/server";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 
 const uri = process.env.MONGODB_URI!;
 
@@ -31,17 +31,29 @@ export async function POST(request: Request) {
 
     client = await MongoClient.connect(uri);
     const db = client.db("db");
-    const collection = db.collection("payment_links");
+    const collection = db.collection("payment_link_generated");
+
+    // ✅ Find by _id (MongoDB ObjectId) first, then by linkId field
+    let query = {};
+    
+    if (ObjectId.isValid(linkId)) {
+      query = { _id: new ObjectId(linkId) };
+    } else {
+      query = { linkId: linkId };
+    }
 
     // Get current link to check if we should mark as completed
-    const link = await collection.findOne({ linkId });
+    const link = await collection.findOne(query);
 
     if (!link) {
+      console.error("❌ Link not found for linkId:", linkId);
       return NextResponse.json(
         { success: false, error: "Payment link not found" },
         { status: 404 }
       );
     }
+
+    console.log("✅ Found link, updating step:", step);
 
     // Update the specific progress step
     const updateData: any = {
@@ -68,10 +80,7 @@ export async function POST(request: Request) {
     }
 
     // Update MongoDB
-    const result = await collection.updateOne(
-      { linkId },
-      { $set: updateData }
-    );
+    const result = await collection.updateOne(query, { $set: updateData });
 
     if (result.matchedCount === 0) {
       return NextResponse.json(
@@ -88,7 +97,7 @@ export async function POST(request: Request) {
       allComplete,
     });
   } catch (error) {
-    console.error("Error updating progress:", error);
+    console.error("❌ Error updating progress:", error);
     return NextResponse.json(
       { success: false, error: "Failed to update progress" },
       { status: 500 }
