@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { motion } from "framer-motion";
@@ -53,6 +53,7 @@ export default function SetupAutopayContent() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isCheckingProgress, setIsCheckingProgress] = useState(true); // ✅ NEW
 
   const hasAutopayCard = searchParams.has("card");
   const hasBankAdded = searchParams.has("bank");
@@ -72,6 +73,42 @@ export default function SetupAutopayContent() {
 
   const [agreed, setAgreed] = useState(false);
   const [cardType, setCardType] = useState<CardType>(null);
+
+  // ✅ CHECK IF AUTOPAY IS ALREADY COMPLETE ON PAGE LOAD
+  useEffect(() => {
+    const checkAutopayStatus = async () => {
+      if (!linkId || redirectTo !== "payment") {
+        setIsCheckingProgress(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/get-payment-link?linkId=${linkId}`);
+        const data = await response.json();
+
+        if (data.success && data.link) {
+          const stages = data.link.completedStages || {};
+
+          // If autopay is already done, redirect to thank you
+          if (stages.autopaySetup) {
+            console.log(
+              "✅ Autopay already complete, redirecting to thank you..."
+            );
+            router.push(`/payment-thankyou`);
+            return;
+          }
+        }
+
+        // Autopay not done yet, show the form
+        setIsCheckingProgress(false);
+      } catch (error) {
+        console.error("Error checking autopay status:", error);
+        setIsCheckingProgress(false);
+      }
+    };
+
+    checkAutopayStatus();
+  }, [linkId, redirectTo, router]);
   const [formData, setFormData] = useState({
     cardholderName: customerName,
     cardNumber: "",
@@ -229,6 +266,23 @@ export default function SetupAutopayContent() {
       setLoading(false);
     }
   };
+
+  // ✅ SHOW LOADING WHILE CHECKING PROGRESS
+  if (isCheckingProgress) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+          <Loader2 className="w-16 h-16 animate-spin text-blue-600 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-900 mb-2">
+            {t("checking") || "Checking progress..."}
+          </h2>
+          <p className="text-gray-600 text-sm">
+            {t("pleaseWait") || "Please wait a moment"}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">

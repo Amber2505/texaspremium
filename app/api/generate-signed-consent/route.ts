@@ -104,13 +104,20 @@ export async function POST(request: Request) {
 
     const isSpanish = language === "es";
 
-    // Get IP address from headers or client-provided
+    // ✅ FIXED: Properly separate admin/sender IP from customer/signer IP
     const headersList = await headers();
-    const serverIP =
+    
+    // This will be the ADMIN's IP (who created the link) - NOT used for signer
+    const adminIP = 
       headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ||
       headersList.get("x-real-ip") ||
-      "Unknown";
-    const signerIP = clientIP || serverIP;
+      "Server";
+    
+    // Customer/signer IP comes from the client-side call
+    const signerIP = clientIP || "Unknown";
+    
+    console.log("📍 Admin/Sender IP:", adminIP);
+    console.log("👤 Customer/Signer IP:", signerIP);
 
     // Generate unique IDs
     const documentId = crypto.randomUUID();
@@ -330,6 +337,7 @@ By signing this form, I represent and confirm the following:
       color: rgb(0.45, 0.45, 0.45),
     });
 
+    // ✅ Show IP on main document (banks/processors need this for fraud prevention)
     const ipText = `IP: ${signerIP}`;
     page.drawText(ipText, {
       x: sigBoxX + 8,
@@ -438,7 +446,7 @@ By signing this form, I represent and confirm the following:
       { label: "Email:", value: email },
       { label: "Card:", value: `****${cardLast4}` },
       { label: "Amount:", value: `$${amount} USD` },
-      { label: "IP Address:", value: signerIP },
+      { label: "IP Address:", value: signerIP }, // ✅ This is the CUSTOMER's IP
       { label: "Signature Method:", value: signatureMethod },
       { label: "Signing Time:", value: formatUTCTimestamp(documentSignedAt) },
     ];
@@ -488,7 +496,7 @@ By signing this form, I represent and confirm the following:
     });
     ay -= 20;
 
-    const agentIP = serverIP;
+    // ✅ Use proper IPs: adminIP for sender actions, signerIP for customer actions
     const agentEmail = "support@texaspremiumins.com";
 
     const activities = [
@@ -498,7 +506,7 @@ By signing this form, I represent and confirm the following:
         actor: "Texas Premium Insurance Services",
         action: "created the document",
         detail: agentEmail,
-        ip: agentIP,
+        ip: adminIP, // ✅ Admin created it
         timestamp: formatUTCTimestamp(documentCreatedAt),
       },
       {
@@ -507,7 +515,7 @@ By signing this form, I represent and confirm the following:
         actor: "Texas Premium Insurance Services",
         action: `sent the document to ${customerName}`,
         detail: email,
-        ip: agentIP,
+        ip: adminIP, // ✅ Admin sent it
         timestamp: formatUTCTimestamp(documentSentAt),
       },
       {
@@ -516,7 +524,7 @@ By signing this form, I represent and confirm the following:
         actor: customerName.toUpperCase(),
         action: "first viewed document",
         detail: email,
-        ip: signerIP,
+        ip: signerIP, // ✅ Customer viewed it
         timestamp: formatUTCTimestamp(documentViewedAt),
       },
       {
@@ -525,7 +533,7 @@ By signing this form, I represent and confirm the following:
         actor: customerName.toUpperCase(),
         action: "signed the document",
         detail: email,
-        ip: signerIP,
+        ip: signerIP, // ✅ Customer signed it
         timestamp: formatUTCTimestamp(documentSignedAt),
       },
     ];
@@ -826,7 +834,7 @@ By signing this form, I represent and confirm the following:
         <p><strong>Card Last 4:</strong> ****${cardLast4}</p>
         <p><strong>Email:</strong> ${email}</p>
         <p><strong>Signature Method:</strong> ${signatureMethod}</p>
-        <p><strong>Signer IP:</strong> ${signerIP}</p>
+        <p><strong>Customer IP:</strong> ${signerIP}</p>
         <p><strong>Date:</strong> ${todayDate}</p>
         <p><strong>Document ID:</strong> ${documentId}</p>
         <p><strong>Envelope ID:</strong> ${envelopeId}</p>

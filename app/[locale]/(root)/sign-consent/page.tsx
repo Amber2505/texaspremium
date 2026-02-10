@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, use } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   FileSignature,
   CheckCircle,
@@ -21,6 +21,7 @@ interface PageProps {
 export default function SignConsentPage({ params }: PageProps) {
   const resolvedParams = use(params);
   const lang = resolvedParams.locale;
+  const router = useRouter();
 
   const searchParams = useSearchParams();
   const amount = searchParams.get("amount") || "0.00";
@@ -28,7 +29,7 @@ export default function SignConsentPage({ params }: PageProps) {
   const email = searchParams.get("email") || "";
   const method = searchParams.get("method") || "card";
   const phone = searchParams.get("phone") || "";
-  const linkId = searchParams.get("linkId") || ""; // ✅ Track which link this is
+  const linkId = searchParams.get("linkId") || "";
 
   const isSpanish = lang === "es";
 
@@ -41,9 +42,66 @@ export default function SignConsentPage({ params }: PageProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [clientIP, setClientIP] = useState("");
+  const [isCheckingProgress, setIsCheckingProgress] = useState(true); // ✅ NEW
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const signatureSectionRef = useRef<HTMLDivElement>(null); // ✅ NEW: Ref for signature section
+
+  // ✅ SMOOTH SCROLL TO SIGNATURE SECTION
+  const scrollToSignature = () => {
+    signatureSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  };
+
+  // ✅ CHECK IF CONSENT IS ALREADY COMPLETE ON PAGE LOAD
+  useEffect(() => {
+    const checkConsentStatus = async () => {
+      if (!linkId) {
+        setIsCheckingProgress(false);
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/get-payment-link?linkId=${linkId}`);
+        const data = await response.json();
+
+        if (data.success && data.link) {
+          const stages = data.link.completedStages || {};
+
+          // If consent is already done, redirect to next step
+          if (stages.consent) {
+            console.log("✅ Consent already complete, redirecting...");
+
+            // Check if autopay is also done
+            if (
+              stages.autopaySetup ||
+              data.link.paymentMethod === "direct-bill"
+            ) {
+              // Everything is complete, go to thank you
+              router.push(`/${lang}/payment-thankyou`);
+            } else {
+              // Consent done, but autopay pending
+              router.push(
+                `/${lang}/setup-autopay?${method}&phone=${phone}&redirect=payment&linkId=${linkId}`
+              );
+            }
+            return;
+          }
+        }
+
+        // Consent not done yet, show the form
+        setIsCheckingProgress(false);
+      } catch (error) {
+        console.error("Error checking consent status:", error);
+        setIsCheckingProgress(false);
+      }
+    };
+
+    checkConsentStatus();
+  }, [linkId, lang, method, phone, router]);
 
   useEffect(() => {
     fetch("https://api.ipify.org?format=json")
@@ -252,6 +310,23 @@ export default function SignConsentPage({ params }: PageProps) {
     year: "numeric",
   });
 
+  // ✅ SHOW LOADING WHILE CHECKING PROGRESS
+  if (isCheckingProgress) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
+          <Loader2 className="w-16 h-16 animate-spin text-blue-600 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-900 mb-2">
+            {isSpanish ? "Verificando..." : "Checking progress..."}
+          </h2>
+          <p className="text-gray-600 text-sm">
+            {isSpanish ? "Un momento por favor" : "Please wait a moment"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (isSigned) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -315,6 +390,42 @@ export default function SignConsentPage({ params }: PageProps) {
               </div>
             </div>
           </div>
+
+          {/* ✅ SCROLL INDICATOR - CLICKABLE */}
+          <button
+            onClick={scrollToSignature}
+            className="mt-4 w-full bg-blue-50 border-2 border-blue-300 rounded-lg p-4 hover:bg-blue-100 transition-all cursor-pointer animate-pulse hover:animate-none"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex-shrink-0">
+                <svg
+                  className="w-8 h-8 text-blue-600 animate-bounce"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                  />
+                </svg>
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-bold text-blue-900">
+                  {isSpanish
+                    ? "👇 Haz clic aquí para ir a la sección de firma"
+                    : "👇 Click here to jump to signature section"}
+                </p>
+                <p className="text-xs text-blue-700 mt-1">
+                  {isSpanish
+                    ? "Revisa el formulario completo y firma al final"
+                    : "Review the complete form and sign at the bottom"}
+                </p>
+              </div>
+            </div>
+          </button>
         </div>
 
         <div className="bg-white rounded-xl shadow-lg p-8">
@@ -404,7 +515,7 @@ export default function SignConsentPage({ params }: PageProps) {
             </ol>
           </div>
 
-          <div className="mb-6">
+          <div className="mb-6" ref={signatureSectionRef}>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               {isSpanish
                 ? "Nombre completo del titular de la tarjeta"
@@ -425,155 +536,166 @@ export default function SignConsentPage({ params }: PageProps) {
             />
           </div>
 
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-3">
-              {isSpanish ? "Metodo de Firma" : "Signature Method"}{" "}
-              <span className="text-red-500">*</span>
-            </label>
-            <div className="grid grid-cols-3 gap-3">
-              <button
-                type="button"
-                onClick={() => setSignatureMethod("type")}
-                className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 transition ${
-                  signatureMethod === "type"
-                    ? "border-blue-600 bg-blue-50 text-blue-700"
-                    : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
-                }`}
-              >
-                <Type className="w-6 h-6" />
-                <span className="text-sm font-medium">
-                  {isSpanish ? "Escribir" : "Type"}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSignatureMethod("draw")}
-                className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 transition ${
-                  signatureMethod === "draw"
-                    ? "border-blue-600 bg-blue-50 text-blue-700"
-                    : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
-                }`}
-              >
-                <Edit3 className="w-6 h-6" />
-                <span className="text-sm font-medium">
-                  {isSpanish ? "Dibujar" : "Draw"}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSignatureMethod("upload")}
-                className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 transition ${
-                  signatureMethod === "upload"
-                    ? "border-blue-600 bg-blue-50 text-blue-700"
-                    : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
-                }`}
-              >
-                <Upload className="w-6 h-6" />
-                <span className="text-sm font-medium">
-                  {isSpanish ? "Subir" : "Upload"}
-                </span>
-              </button>
+          {/* ✅ SIGNATURE SECTION WITH HIGHLIGHT */}
+          <div className="border-4 border-blue-400 rounded-xl p-6 bg-blue-50/50 mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <FileSignature className="w-6 h-6 text-blue-600" />
+              <h3 className="text-lg font-bold text-blue-900">
+                {isSpanish ? "📝 Sección de Firma" : "📝 Signature Section"}
+              </h3>
             </div>
-          </div>
 
-          <div className="mb-6">
-            <div className="flex items-center justify-between mb-2">
-              <label className="block text-sm font-medium text-gray-700">
-                {isSpanish ? "Firma" : "Signature"}{" "}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                {isSpanish ? "Metodo de Firma" : "Signature Method"}{" "}
                 <span className="text-red-500">*</span>
               </label>
-              {signatureMethod !== "type" && (
+              <div className="grid grid-cols-3 gap-3">
                 <button
-                  onClick={clearSignature}
-                  className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  type="button"
+                  onClick={() => setSignatureMethod("type")}
+                  className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 transition ${
+                    signatureMethod === "type"
+                      ? "border-blue-600 bg-blue-50 text-blue-700"
+                      : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
+                  }`}
                 >
-                  {isSpanish ? "Borrar" : "Clear"}
+                  <Type className="w-6 h-6" />
+                  <span className="text-sm font-medium">
+                    {isSpanish ? "Escribir" : "Type"}
+                  </span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setSignatureMethod("draw")}
+                  className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 transition ${
+                    signatureMethod === "draw"
+                      ? "border-blue-600 bg-blue-50 text-blue-700"
+                      : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
+                  }`}
+                >
+                  <Edit3 className="w-6 h-6" />
+                  <span className="text-sm font-medium">
+                    {isSpanish ? "Dibujar" : "Draw"}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSignatureMethod("upload")}
+                  className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 transition ${
+                    signatureMethod === "upload"
+                      ? "border-blue-600 bg-blue-50 text-blue-700"
+                      : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
+                  }`}
+                >
+                  <Upload className="w-6 h-6" />
+                  <span className="text-sm font-medium">
+                    {isSpanish ? "Subir" : "Upload"}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  {isSpanish ? "Firma" : "Signature"}{" "}
+                  <span className="text-red-500">*</span>
+                </label>
+                {signatureMethod !== "type" && (
+                  <button
+                    onClick={clearSignature}
+                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    {isSpanish ? "Borrar" : "Clear"}
+                  </button>
+                )}
+              </div>
+
+              {signatureMethod === "type" && (
+                <div className="p-6 border-2 border-gray-200 rounded-lg bg-gray-50 text-center">
+                  {customerName ? (
+                    <p
+                      className="text-4xl"
+                      style={{ fontFamily: "'Brush Script MT', cursive" }}
+                    >
+                      {customerName}
+                    </p>
+                  ) : (
+                    <p className="text-gray-400 text-sm">
+                      {isSpanish
+                        ? "Ingrese su nombre arriba"
+                        : "Enter your name above"}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {signatureMethod === "draw" && (
+                <div className="border-2 border-gray-300 rounded-lg bg-white">
+                  <canvas
+                    ref={canvasRef}
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    onTouchStart={startDrawing}
+                    onTouchMove={draw}
+                    onTouchEnd={stopDrawing}
+                    className="w-full cursor-crosshair rounded-lg"
+                    style={{ height: "200px", touchAction: "none" }}
+                  />
+                </div>
+              )}
+
+              {signatureMethod === "upload" && (
+                <div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full px-4 py-8 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 transition flex flex-col items-center gap-2"
+                  >
+                    <Upload className="w-12 h-12 text-gray-400" />
+                    <span className="text-sm text-gray-600">
+                      {isSpanish ? "Haz clic para subir" : "Click to upload"}
+                    </span>
+                  </button>
+                  {uploadedSignature && (
+                    <div className="mt-4 p-4 border-2 border-gray-200 rounded-lg bg-gray-50 text-center">
+                      <img
+                        src={uploadedSignature}
+                        alt="Uploaded"
+                        className="max-h-32 mx-auto"
+                      />
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
-            {signatureMethod === "type" && (
-              <div className="p-6 border-2 border-gray-200 rounded-lg bg-gray-50 text-center">
-                {customerName ? (
-                  <p
-                    className="text-4xl"
-                    style={{ fontFamily: "'Brush Script MT', cursive" }}
-                  >
-                    {customerName}
-                  </p>
-                ) : (
-                  <p className="text-gray-400 text-sm">
-                    {isSpanish
-                      ? "Ingrese su nombre arriba"
-                      : "Enter your name above"}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {signatureMethod === "draw" && (
-              <div className="border-2 border-gray-300 rounded-lg bg-white">
-                <canvas
-                  ref={canvasRef}
-                  onMouseDown={startDrawing}
-                  onMouseMove={draw}
-                  onMouseUp={stopDrawing}
-                  onMouseLeave={stopDrawing}
-                  onTouchStart={startDrawing}
-                  onTouchMove={draw}
-                  onTouchEnd={stopDrawing}
-                  className="w-full cursor-crosshair rounded-lg"
-                  style={{ height: "200px", touchAction: "none" }}
-                />
-              </div>
-            )}
-
-            {signatureMethod === "upload" && (
-              <div>
+            <div className="mb-6">
+              <label className="flex items-start gap-3 cursor-pointer">
                 <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileUpload}
-                  className="hidden"
+                  type="checkbox"
+                  checked={agreedToTerms}
+                  onChange={(e) => setAgreedToTerms(e.target.checked)}
+                  className="mt-1 w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                 />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full px-4 py-8 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 transition flex flex-col items-center gap-2"
-                >
-                  <Upload className="w-12 h-12 text-gray-400" />
-                  <span className="text-sm text-gray-600">
-                    {isSpanish ? "Haz clic para subir" : "Click to upload"}
-                  </span>
-                </button>
-                {uploadedSignature && (
-                  <div className="mt-4 p-4 border-2 border-gray-200 rounded-lg bg-gray-50 text-center">
-                    <img
-                      src={uploadedSignature}
-                      alt="Uploaded"
-                      className="max-h-32 mx-auto"
-                    />
-                  </div>
-                )}
-              </div>
-            )}
+                <span className="text-sm text-gray-700">
+                  {isSpanish
+                    ? "Confirmo que soy el titular autorizado y mi firma es vinculante."
+                    : "I confirm I am the authorized holder and my signature is binding."}
+                </span>
+              </label>
+            </div>
           </div>
-
-          <div className="mb-6">
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={agreedToTerms}
-                onChange={(e) => setAgreedToTerms(e.target.checked)}
-                className="mt-1 w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-              />
-              <span className="text-sm text-gray-700">
-                {isSpanish
-                  ? "Confirmo que soy el titular autorizado y mi firma es vinculante."
-                  : "I confirm I am the authorized holder and my signature is binding."}
-              </span>
-            </label>
-          </div>
+          {/* ✅ END OF SIGNATURE SECTION HIGHLIGHT */}
 
           <button
             onClick={handleSubmit}
