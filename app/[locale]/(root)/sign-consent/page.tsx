@@ -65,29 +65,20 @@ export default function SignConsentPage({ params }: PageProps) {
       }
 
       try {
-        const response = await fetch(`/api/get-payment-link?linkId=${linkId}`);
+        // ✅ Use MongoDB-based progress check
+        const response = await fetch(`/api/check-progress?linkId=${linkId}`);
         const data = await response.json();
 
-        if (data.success && data.link) {
-          const stages = data.link.completedStages || {};
+        if (data.success) {
+          const { progress, nextStep, redirectTo } = data;
 
           // If consent is already done, redirect to next step
-          if (stages.consent) {
-            console.log("✅ Consent already complete, redirecting...");
-
-            // Check if autopay is also done
-            if (
-              stages.autopaySetup ||
-              data.link.paymentMethod === "direct-bill"
-            ) {
-              // Everything is complete, go to thank you
-              router.push(`/${lang}/payment-thankyou`);
-            } else {
-              // Consent done, but autopay pending
-              router.push(
-                `/${lang}/setup-autopay?${method}&phone=${phone}&redirect=payment&linkId=${linkId}`
-              );
-            }
+          if (progress.consent) {
+            console.log(
+              "✅ Consent already complete, redirecting to:",
+              nextStep
+            );
+            router.push(redirectTo);
             return;
           }
         }
@@ -101,7 +92,7 @@ export default function SignConsentPage({ params }: PageProps) {
     };
 
     checkConsentStatus();
-  }, [linkId, lang, method, phone, router]);
+  }, [linkId, router]);
 
   useEffect(() => {
     fetch("https://api.ipify.org?format=json")
@@ -253,14 +244,14 @@ export default function SignConsentPage({ params }: PageProps) {
       if (!response.ok) throw new Error("Failed to generate PDF");
       await response.json();
 
-      // ✅ Mark consent as complete
+      // ✅ Mark consent as complete in MongoDB
       if (linkId) {
-        await fetch("/api/update-payment-progress", {
+        await fetch("/api/update-progress", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             linkId,
-            stage: "consent",
+            step: "consent",
           }),
         });
       }
@@ -268,11 +259,17 @@ export default function SignConsentPage({ params }: PageProps) {
       setIsSigned(true);
 
       setTimeout(() => {
-        // 🎯 SMART ROUTING: Direct-bill goes to thank you, autopay goes to setup
-        if (method === "direct-bill") {
-          window.location.href = `/${lang}/payment-thankyou`;
+        // 🎯 Redirect - let MongoDB determine next step
+        if (linkId) {
+          // Use the payment link to auto-route to next step
+          window.location.href = `/${lang}/pay/${linkId}`;
         } else {
-          window.location.href = `/${lang}/setup-autopay?${method}&phone=${phone}&redirect=payment&linkId=${linkId}`;
+          // Fallback to manual routing
+          if (method === "direct-bill") {
+            window.location.href = `/${lang}/payment-thankyou`;
+          } else {
+            window.location.href = `/${lang}/setup-autopay?${method}&phone=${phone}&redirect=payment&linkId=${linkId}`;
+          }
         }
       }, 2000);
     } catch (error) {

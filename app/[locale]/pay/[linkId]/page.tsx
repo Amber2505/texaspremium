@@ -1,6 +1,4 @@
 // app/[lang]/pay/[linkId]/page.tsx
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -11,16 +9,17 @@ export default function PaymentProxyPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
+
   const [status, setStatus] = useState<
     "loading" | "disabled" | "redirecting" | "error"
   >("loading");
   const [errorMessage, setErrorMessage] = useState("");
-  const [linkData, setLinkData] = useState<any>(null);
+  const [nextStep, setNextStep] = useState("");
 
   const linkId = params.linkId as string;
   const lang = params.lang as string;
 
-  // Check if Square payment completed (from Square redirect)
+  // Check if returning from Square payment
   const transactionId =
     searchParams.get("transactionId") ||
     searchParams.get("orderId") ||
@@ -28,100 +27,22 @@ export default function PaymentProxyPage() {
     searchParams.get("checkoutId");
 
   useEffect(() => {
-    const validateAndRedirect = async () => {
+    const handleRouting = async () => {
       try {
-        // 1️⃣ Fetch link data from MongoDB
-        const response = await fetch(`/api/get-payment-link?linkId=${linkId}`);
-        const data = await response.json();
-
-        if (!data.success) {
-          setStatus("error");
-          setErrorMessage(data.error || "Link not found");
-          return;
-        }
-
-        const link = data.link;
-        setLinkData(link);
-
-        // 2️⃣ Check if link is disabled
-        if (link.disabled) {
-          setStatus("disabled");
-          return;
-        }
-
-        // 3️⃣ SMART ROUTING - Check current progress and redirect accordingly
-        const stages = link.completedStages || {};
-        const method = link.paymentMethod || "card";
-        const phone = link.customerPhone || "";
-
-        // 🎯 If everything is complete, go to thank you page
-        if (
-          stages.consent &&
-          (stages.autopaySetup || method === "direct-bill")
-        ) {
-          setStatus("redirecting");
-          router.push(`/${lang}/payment-thankyou`);
-          return;
-        }
-
-        // 🎯 If consent is done but autopay setup is pending
-        if (
-          stages.consent &&
-          !stages.autopaySetup &&
-          method !== "direct-bill"
-        ) {
-          setStatus("redirecting");
-          router.push(
-            `/${lang}/setup-autopay?${method}&phone=${phone}&redirect=payment`
-          );
-          return;
-        }
-
-        // 🎯 If payment is done but consent is pending
-        if (stages.payment && !stages.consent) {
-          setStatus("redirecting");
-
-          // Get payment data for consent page
-          const paymentResponse = await fetch(
-            `/api/get-payment-data?id=${
-              link.squareTransactionId || transactionId
-            }`
-          );
-          const paymentData = await paymentResponse.json();
-
-          if (paymentData.success && paymentData.payment) {
-            const consentUrl =
-              `/${lang}/sign-consent?` +
-              `amount=${paymentData.payment.amount}&` +
-              `card=${paymentData.payment.cardLast4}&` +
-              `email=${encodeURIComponent(
-                paymentData.payment.customerEmail
-              )}&` +
-              `method=${method}&` +
-              `phone=${phone}&` +
-              `linkId=${linkId}`;
-
-            router.push(consentUrl);
-          } else {
-            setStatus("error");
-            setErrorMessage("Payment data not found");
-          }
-          return;
-        }
-
-        // 4️⃣ Check if this is a return from Square payment
+        // 1️⃣ If returning from Square, mark payment as complete first
         if (transactionId) {
-          // ✅ Mark payment as complete
-          await fetch("/api/update-payment-progress", {
+          console.log("✅ Returned from Square, marking payment complete");
+
+          await fetch("/api/update-progress", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               linkId,
-              stage: "payment",
+              step: "payment",
             }),
           });
 
-          // Update Square transaction ID
+          // Also store Square transaction ID
           await fetch("/api/update-payment-link", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -130,49 +51,62 @@ export default function PaymentProxyPage() {
               squareTransactionId: transactionId,
             }),
           });
+        }
 
-          setStatus("redirecting");
+        // 2️⃣ Check current progress from MongoDB
+        const response = await fetch(`/api/check-progress?linkId=${linkId}`);
+        const data = await response.json();
 
-          const processingUrl =
-            `/${lang}/payment-processing?` +
-            `reference_id=${transactionId}&` +
-            `method=${method}&` +
-            `phone=${phone}&` +
-            `linkId=${linkId}`;
-
-          router.push(processingUrl);
+        if (!data.success) {
+          setStatus("error");
+          setErrorMessage(data.error || "Link not found");
           return;
         }
 
-        // 5️⃣ First time visiting - redirect to Square payment
-        if (!stages.payment) {
-          if (link.squareLink) {
-            console.log("Redirecting to Square payment link:", link.squareLink);
-            window.location.href = link.squareLink;
+        // 3️⃣ Check if link is disabled
+        if (data.disabled) {
+          setStatus("disabled");
+          return;
+        }
+
+        // 4️⃣ Get next step and redirect
+        const { nextStep: step, redirectTo, progress } = data;
+
+        console.log("📊 Current progress:", progress);
+        console.log("➡️ Next step:", step);
+        console.log("🔗 Redirecting to:", redirectTo);
+
+        setNextStep(step);
+        setStatus("redirecting");
+
+        // Wait a moment to show the status
+        setTimeout(() => {
+          if (step === "payment") {
+            // External Square link
+            window.location.href = redirectTo;
           } else {
-            setStatus("error");
-            setErrorMessage("Payment link is invalid or expired");
+            // Internal route
+            router.push(redirectTo);
           }
-          return;
-        }
+        }, 1000);
       } catch (error) {
-        console.error("Error validating link:", error);
+        console.error("Error in routing:", error);
         setStatus("error");
-        setErrorMessage("Failed to validate payment link");
+        setErrorMessage("Failed to process request");
       }
     };
 
     if (linkId) {
-      validateAndRedirect();
+      handleRouting();
     }
-  }, [linkId, transactionId, lang, router, searchParams]);
+  }, [linkId, transactionId, router, lang]);
 
   if (status === "loading") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
         <div className="text-center">
           <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600 text-lg">Validating payment link...</p>
+          <p className="text-gray-600 text-lg">Checking your progress...</p>
           <p className="text-sm text-gray-500 mt-2">
             {lang === "es"
               ? "Esto solo tomará un momento"
@@ -184,19 +118,42 @@ export default function PaymentProxyPage() {
   }
 
   if (status === "redirecting") {
+    const stepMessages = {
+      payment:
+        lang === "es" ? "Redirigiendo al pago..." : "Redirecting to payment...",
+      consent:
+        lang === "es"
+          ? "Redirigiendo al formulario de consentimiento..."
+          : "Redirecting to consent form...",
+      autopay:
+        lang === "es"
+          ? "Redirigiendo a configuración de autopago..."
+          : "Redirecting to autopay setup...",
+      complete:
+        lang === "es"
+          ? "¡Todo completo! Redirigiendo..."
+          : "All complete! Redirecting...",
+    };
+
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-50">
-        <div className="text-center">
-          <CheckCircle className="w-12 h-12 text-green-600 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">
-            {lang === "es" ? "Redirigiendo..." : "Redirecting..."}
+        <div className="text-center max-w-md mx-auto p-8">
+          <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            {stepMessages[nextStep as keyof typeof stepMessages] ||
+              "Redirecting..."}
           </h2>
-          <p className="text-gray-600 text-lg mb-2">
-            {lang === "es"
-              ? "Llevándote a la siguiente etapa..."
-              : "Taking you to the next step..."}
-          </p>
           <div className="animate-spin w-8 h-8 border-4 border-green-200 border-t-green-600 rounded-full mx-auto mt-4"></div>
+
+          {nextStep && nextStep !== "payment" && (
+            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-blue-800">
+                {lang === "es"
+                  ? "Retomando donde lo dejaste..."
+                  : "Picking up where you left off..."}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -246,11 +203,6 @@ export default function PaymentProxyPage() {
               (lang === "es"
                 ? "Este enlace de pago es inválido o ha expirado."
                 : "This payment link is invalid or has expired.")}
-          </p>
-          <p className="text-sm text-gray-500 mb-6">
-            {lang === "es"
-              ? "Por favor contacte a Texas Premium Insurance Services para un nuevo enlace de pago."
-              : "Please contact Texas Premium Insurance Services for a new payment link."}
           </p>
           <div className="space-y-3">
             <button

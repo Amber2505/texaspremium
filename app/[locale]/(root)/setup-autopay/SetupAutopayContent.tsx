@@ -83,18 +83,20 @@ export default function SetupAutopayContent() {
       }
 
       try {
-        const response = await fetch(`/api/get-payment-link?linkId=${linkId}`);
+        // ✅ Use MongoDB-based progress check
+        const response = await fetch(`/api/check-progress?linkId=${linkId}`);
         const data = await response.json();
 
-        if (data.success && data.link) {
-          const stages = data.link.completedStages || {};
+        if (data.success) {
+          const { progress, nextStep, redirectTo: nextUrl } = data;
 
-          // If autopay is already done, redirect to thank you
-          if (stages.autopaySetup) {
+          // If autopay is already done, redirect to next step
+          if (progress.autopay) {
             console.log(
-              "✅ Autopay already complete, redirecting to thank you..."
+              "✅ Autopay already complete, redirecting to:",
+              nextStep
             );
-            router.push(`/payment-thankyou`);
+            router.push(nextUrl);
             return;
           }
         }
@@ -239,14 +241,14 @@ export default function SetupAutopayContent() {
 
       const data = await response.json();
       if (data.success) {
-        // ✅ Mark autopay setup as complete
+        // ✅ Mark autopay setup as complete in MongoDB
         if (linkId && redirectTo === "payment") {
-          await fetch("/api/update-payment-progress", {
+          await fetch("/api/update-progress", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               linkId,
-              stage: "autopaySetup",
+              step: "autopay",
             }),
           });
         }
