@@ -2261,5 +2261,24 @@
       "assistanceTitle": "Need assistance?",
       "assistanceMessage": "Please contact Texas Premium Insurance Services for a valid payment link."
     }
+  },
+  "paymentProxy": {
+    "loading": "Checking your progress...",
+    "loadingSub": "This will only take a moment",
+    "pickingUp": "Picking up where you left off...",
+    "disabledTitle": "Link Disabled",
+    "disabledDesc": "This payment link has been disabled and is no longer active.",
+    "contactInfo": "Please contact Texas Premium Insurance Services for assistance.",
+    "contactBtn": "Contact Support",
+    "invalidTitle": "Invalid Link",
+    "invalidDesc": "This payment link is invalid or has expired.",
+    "tryAgain": "Try Again",
+    "steps": {
+      "payment": "Redirecting to payment...",
+      "consent": "Redirecting to consent form...",
+      "autopay": "Redirecting to autopay setup...",
+      "complete": "All complete! Redirecting...",
+      "default": "Redirecting..."
+    }
   }
 }

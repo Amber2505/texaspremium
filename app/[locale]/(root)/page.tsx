@@ -5,12 +5,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useTranslations } from "next-intl";
-import { useParams } from "next/navigation"; // ✅ ADD THIS IMPORT
+import { useParams } from "next/navigation";
 
 export default function HomePage() {
   const t = useTranslations("home");
-  const params = useParams(); // ✅ ADD THIS
-  const locale = params.locale as string; // ✅ ADD THIS
+  const params = useParams();
+  const locale = params.locale as string;
 
   const images = [
     { src: "/car.png", alt: "Car" },
@@ -25,7 +25,7 @@ export default function HomePage() {
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentImageIndex((prevIndex) =>
-        prevIndex === images.length - 1 ? 0 : prevIndex + 1
+        prevIndex === images.length - 1 ? 0 : prevIndex + 1,
       );
     }, 5000);
 
@@ -37,6 +37,21 @@ export default function HomePage() {
       const urlParams = new URLSearchParams(window.location.search);
       const campaign = urlParams.get("utm_medium") || "Direct";
       sessionStorage.setItem("campaignName", campaign);
+    }
+  }, []);
+
+  // ✅ NEW: Scroll to contact section if hash is present
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.location.hash === "#contact") {
+      setTimeout(() => {
+        const contactSection = document.getElementById("contact-section");
+        if (contactSection) {
+          contactSection.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }
+      }, 100);
     }
   }, []);
 
@@ -58,7 +73,7 @@ export default function HomePage() {
             </h1>
             <p className="text-xl text-gray-700 mb-6">{t("hero.subtitle")}</p>
             <Link
-              href={`/${locale}/auto`} // ✅ FIXED: Added locale
+              href={`/${locale}/auto`}
               className="inline-block bg-[#A0103D] text-white font-semibold py-3 px-6 rounded-md hover:bg-[#102a56]"
             >
               {t("hero.cta")}
@@ -150,7 +165,7 @@ export default function HomePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
             {/* Auto Card */}
             <Link
-              href={`/${locale}/auto`} // ✅ FIXED: Added locale
+              href={`/${locale}/auto`}
               className="group bg-white rounded-2xl shadow-md p-6 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
             >
               <div className="relative mb-6">
@@ -176,7 +191,7 @@ export default function HomePage() {
 
             {/* Home Card */}
             <Link
-              href={`/${locale}/homeowners`} // ✅ FIXED: Added locale
+              href={`/${locale}/homeowners`}
               className="group bg-white rounded-2xl shadow-md p-6 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
             >
               <div className="relative mb-6">
@@ -202,7 +217,7 @@ export default function HomePage() {
 
             {/* Rental Card */}
             <Link
-              href={`/${locale}/renters`} // ✅ FIXED: Added locale
+              href={`/${locale}/renters`}
               className="group bg-white rounded-2xl shadow-md p-6 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
             >
               <div className="relative mb-6">
@@ -228,7 +243,7 @@ export default function HomePage() {
 
             {/* Motorcycle Card */}
             <Link
-              href={`/${locale}/motorcycle`} // ✅ FIXED: Added locale
+              href={`/${locale}/motorcycle`}
               className="group bg-white rounded-2xl shadow-md p-6 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
             >
               <div className="relative mb-6">
@@ -254,7 +269,7 @@ export default function HomePage() {
 
             {/* Commercial Card */}
             <Link
-              href={`/${locale}/general-liability`} // ✅ FIXED: Added locale
+              href={`/${locale}/general-liability`}
               className="group bg-white rounded-2xl shadow-md p-6 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
             >
               <div className="relative mb-6">
@@ -308,7 +323,11 @@ export default function HomePage() {
       </div>
 
       {/* ===== SECTION 4: READY TO START SAVING (CTA) ===== */}
-      <div className="relative bg-[#E5E5E5] py-8 md:py-12 px-4 sm:px-6 lg:px-8">
+      {/* ✅ ADDED: id="contact-section" for scroll targeting */}
+      <div
+        id="contact-section"
+        className="relative bg-[#E5E5E5] py-8 md:py-12 px-4 sm:px-6 lg:px-8"
+      >
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-4xl font-bold text-gray-900 mb-4">
@@ -625,7 +644,7 @@ export default function HomePage() {
           {/* Final CTA Button */}
           <div className="text-center mt-12">
             <Link
-              href={`/${locale}/auto`} // ✅ FIXED: Added locale
+              href={`/${locale}/auto`}
               className="inline-block bg-[#A0103D] text-white font-semibold py-3 px-8 rounded-full hover:bg-[#102a56] transition"
             >
               {t("steps.cta")}

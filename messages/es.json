@@ -2262,6 +2262,25 @@
       "assistanceTitle": "¿Necesita ayuda?",
       "assistanceMessage": "Por favor contacte a Texas Premium Insurance Services para obtener un enlace de pago válido."
     }
+  },
+  "paymentProxy": {
+    "loading": "Comprobando su progreso...",
+    "loadingSub": "Esto solo tomará un momento",
+    "pickingUp": "Retomando donde lo dejaste...",
+    "disabledTitle": "Enlace Deshabilitado",
+    "disabledDesc": "Este enlace de pago ha sido deshabilitado y ya no está activo.",
+    "contactInfo": "Por favor contacte a Texas Premium Insurance Services para asistencia.",
+    "contactBtn": "Contactar Soporte",
+    "invalidTitle": "Enlace Inválido",
+    "invalidDesc": "Este enlace de pago es inválido o ha expirado.",
+    "tryAgain": "Intentar de Nuevo",
+    "steps": {
+      "payment": "Redirigiendo al pago...",
+      "consent": "Redirigiendo al formulario de consentimiento...",
+      "autopay": "Redirigiendo a configuración de autopago...",
+      "complete": "¡Todo completo! Redirigiendo...",
+      "default": "Redirigiendo..."
+    }
   }
 }
 
