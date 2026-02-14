@@ -289,7 +289,6 @@ async function disableTodaysPaymentLinks() {
     const query = {
       linkType: 'payment',
       disabled: { $ne: true },
-      createdAt: { $gte: startOfToday, $lte: endOfToday }
     };
 
     const linksToDisable = await paymentLinksCollection.find(query).toArray();
@@ -1012,8 +1011,7 @@ app.get('/check-links-to-disable', async (req, res) => {
 
     const linksToDisable = await paymentLinksCollection.find({
       linkType: 'payment',
-      disabled: { $ne: true },
-      createdAt: { $gte: startOfToday, $lte: endOfToday }
+      disabled: { $ne: true }
     }).toArray();
 
     res.json({
