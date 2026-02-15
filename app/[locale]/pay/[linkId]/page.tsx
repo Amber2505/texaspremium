@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Loader2, AlertCircle, CheckCircle } from "lucide-react";
+import Image from "next/image";
 // Assuming you have a utility to get dictionaries, or you can import them directly if small
 import en from "@/messages/en.json";
 import es from "@/messages/es.json";
@@ -86,12 +87,22 @@ export default function PaymentProxyPage() {
   // Loading State
   if (status === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-50">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-gray-600 text-lg">{t.loading}</p>
-          <p className="text-sm text-gray-500 mt-2">{t.loadingSub}</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white">
+        <Image
+          src="/logo.png"
+          alt="Texas Premium Insurance Services"
+          width={160}
+          height={64}
+          className="mb-8"
+        />
+        <div className="relative w-10 h-10 mb-4">
+          <div className="absolute inset-0 rounded-full border-4 border-gray-200"></div>
+          <div
+            className="absolute inset-0 rounded-full border-4 border-t-transparent animate-spin"
+            style={{ borderColor: "#1E3A5F", borderTopColor: "transparent" }}
+          ></div>
         </div>
+        <p className="text-gray-500 text-sm font-medium">{t.loading}</p>
       </div>
     );
   }
@@ -102,18 +113,25 @@ export default function PaymentProxyPage() {
       t.steps[nextStep as keyof typeof t.steps] || t.steps.default;
 
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-50">
-        <div className="text-center max-w-md mx-auto p-8">
-          <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">{message}</h2>
-          <div className="animate-spin w-8 h-8 border-4 border-green-200 border-t-green-600 rounded-full mx-auto mt-4"></div>
-
-          {nextStep && nextStep !== "payment" && (
-            <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-sm text-blue-800">{t.pickingUp}</p>
-            </div>
-          )}
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white">
+        <Image
+          src="/logo.png"
+          alt="Texas Premium Insurance Services"
+          width={160}
+          height={64}
+          className="mb-8"
+        />
+        <div className="relative w-10 h-10 mb-4">
+          <div className="absolute inset-0 rounded-full border-4 border-gray-200"></div>
+          <div
+            className="absolute inset-0 rounded-full border-4 border-t-transparent animate-spin"
+            style={{ borderColor: "#1E3A5F", borderTopColor: "transparent" }}
+          ></div>
         </div>
+        <p className="text-gray-700 text-sm font-semibold">{message}</p>
+        {nextStep && nextStep !== "payment" && (
+          <p className="text-gray-400 text-xs mt-2">{t.pickingUp}</p>
+        )}
       </div>
     );
   }

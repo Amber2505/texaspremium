@@ -108,10 +108,7 @@ export async function POST(request: Request) {
     const headersList = await headers();
     
     // This will be the ADMIN's IP (who created the link) - NOT used for signer
-    const adminIP = 
-      headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      headersList.get("x-real-ip") ||
-      "Server";
+    const adminIP = "Internal";
     
     // Customer/signer IP comes from the client-side call
     const signerIP = clientIP || "Unknown";
