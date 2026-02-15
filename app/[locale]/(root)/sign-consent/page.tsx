@@ -9,6 +9,9 @@ import {
   Edit3,
   Upload,
   Loader2,
+  Shield,
+  ChevronDown,
+  Lock,
 } from "lucide-react";
 import Image from "next/image";
 
@@ -42,13 +45,12 @@ export default function SignConsentPage({ params }: PageProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [clientIP, setClientIP] = useState("");
-  const [isCheckingProgress, setIsCheckingProgress] = useState(true); // ✅ NEW
+  const [isCheckingProgress, setIsCheckingProgress] = useState(true);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const signatureSectionRef = useRef<HTMLDivElement>(null); // ✅ NEW: Ref for signature section
+  const signatureSectionRef = useRef<HTMLDivElement>(null);
 
-  // ✅ SMOOTH SCROLL TO SIGNATURE SECTION
   const scrollToSignature = () => {
     signatureSectionRef.current?.scrollIntoView({
       behavior: "smooth",
@@ -56,7 +58,6 @@ export default function SignConsentPage({ params }: PageProps) {
     });
   };
 
-  // ✅ CHECK IF CONSENT IS ALREADY COMPLETE ON PAGE LOAD
   useEffect(() => {
     const checkConsentStatus = async () => {
       if (!linkId) {
@@ -65,25 +66,22 @@ export default function SignConsentPage({ params }: PageProps) {
       }
 
       try {
-        // ✅ Use MongoDB-based progress check
         const response = await fetch(`/api/check-progress?linkId=${linkId}`);
         const data = await response.json();
 
         if (data.success) {
           const { progress, nextStep, redirectTo } = data;
 
-          // If consent is already done, redirect to next step
           if (progress.consent) {
             console.log(
               "✅ Consent already complete, redirecting to:",
-              nextStep
+              nextStep,
             );
             router.push(redirectTo);
             return;
           }
         }
 
-        // Consent not done yet, show the form
         setIsCheckingProgress(false);
       } catch (error) {
         console.error("Error checking consent status:", error);
@@ -112,8 +110,8 @@ export default function SignConsentPage({ params }: PageProps) {
     ctx.scale(2, 2);
     ctx.fillStyle = "#FFFFFF";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = "#000000";
-    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#1e293b";
+    ctx.lineWidth = 2.5;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
   };
@@ -125,7 +123,9 @@ export default function SignConsentPage({ params }: PageProps) {
   }, [signatureMethod]);
 
   const getCoordinates = (
-    e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
+    e:
+      | React.MouseEvent<HTMLCanvasElement>
+      | React.TouchEvent<HTMLCanvasElement>,
   ) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
@@ -138,7 +138,9 @@ export default function SignConsentPage({ params }: PageProps) {
   };
 
   const startDrawing = (
-    e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
+    e:
+      | React.MouseEvent<HTMLCanvasElement>
+      | React.TouchEvent<HTMLCanvasElement>,
   ) => {
     e.preventDefault();
     const canvas = canvasRef.current;
@@ -152,7 +154,9 @@ export default function SignConsentPage({ params }: PageProps) {
   };
 
   const draw = (
-    e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>
+    e:
+      | React.MouseEvent<HTMLCanvasElement>
+      | React.TouchEvent<HTMLCanvasElement>,
   ) => {
     e.preventDefault();
     if (!isDrawing) return;
@@ -180,7 +184,7 @@ export default function SignConsentPage({ params }: PageProps) {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       alert(
-        isSpanish ? "Por favor sube una imagen" : "Please upload an image file"
+        isSpanish ? "Por favor sube una imagen" : "Please upload an image file",
       );
       return;
     }
@@ -193,15 +197,15 @@ export default function SignConsentPage({ params }: PageProps) {
   const handleSubmit = async () => {
     if (!customerName.trim()) {
       alert(
-        isSpanish ? "Por favor ingrese su nombre" : "Please enter your name"
+        isSpanish ? "Por favor ingrese su nombre" : "Please enter your name",
       );
       return;
     }
     if (!agreedToTerms) {
       alert(
         isSpanish
-          ? "Por favor acepta los terminos y condiciones"
-          : "Please agree to the terms and conditions"
+          ? "Por favor acepta los términos y condiciones"
+          : "Please agree to the terms and conditions",
       );
       return;
     }
@@ -216,7 +220,9 @@ export default function SignConsentPage({ params }: PageProps) {
     } else if (signatureMethod === "upload") {
       if (!uploadedSignature) {
         alert(
-          isSpanish ? "Por favor sube tu firma" : "Please upload your signature"
+          isSpanish
+            ? "Por favor sube tu firma"
+            : "Please upload your signature",
         );
         return;
       }
@@ -244,7 +250,6 @@ export default function SignConsentPage({ params }: PageProps) {
       if (!response.ok) throw new Error("Failed to generate PDF");
       await response.json();
 
-      // ✅ Mark consent as complete in MongoDB
       if (linkId) {
         await fetch("/api/update-progress", {
           method: "POST",
@@ -259,12 +264,9 @@ export default function SignConsentPage({ params }: PageProps) {
       setIsSigned(true);
 
       setTimeout(() => {
-        // 🎯 Redirect - let MongoDB determine next step
         if (linkId) {
-          // Use the payment link to auto-route to next step
           window.location.href = `/${lang}/pay/${linkId}`;
         } else {
-          // Fallback to manual routing
           if (method === "direct-bill") {
             window.location.href = `/${lang}/payment-thankyou`;
           } else {
@@ -277,7 +279,7 @@ export default function SignConsentPage({ params }: PageProps) {
       alert(
         isSpanish
           ? "Error al procesar la firma. Por favor intenta de nuevo."
-          : "Error processing signature. Please try again."
+          : "Error processing signature. Please try again.",
       );
       setIsSubmitting(false);
     }
@@ -292,7 +294,7 @@ export default function SignConsentPage({ params }: PageProps) {
       if (!ctx) return resolve("");
       ctx.fillStyle = "#FFFFFF";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "#000000";
+      ctx.fillStyle = "#1e293b";
       ctx.font = "48px 'Brush Script MT', cursive";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -301,308 +303,408 @@ export default function SignConsentPage({ params }: PageProps) {
     });
   };
 
-  const todayDate = new Date().toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  const todayDate = new Date().toLocaleDateString(
+    isSpanish ? "es-US" : "en-US",
+    {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    },
+  );
 
-  // ✅ SHOW LOADING WHILE CHECKING PROGRESS
+  // ── Loading State ──
   if (isCheckingProgress) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
-          <Loader2 className="w-16 h-16 animate-spin text-blue-600 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">
-            {isSpanish ? "Verificando..." : "Checking progress..."}
-          </h2>
-          <p className="text-gray-600 text-sm">
-            {isSpanish ? "Un momento por favor" : "Please wait a moment"}
-          </p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white">
+        <Image
+          src="/logo.png"
+          alt="Texas Premium Insurance Services"
+          width={160}
+          height={64}
+          className="mb-8"
+        />
+        <div className="relative w-10 h-10 mb-4">
+          <div className="absolute inset-0 rounded-full border-4 border-gray-200"></div>
+          <div
+            className="absolute inset-0 rounded-full border-4 border-t-transparent animate-spin"
+            style={{ borderColor: "#1E3A5F", borderTopColor: "transparent" }}
+          ></div>
         </div>
+        <p className="text-gray-500 text-sm font-medium">
+          {isSpanish ? "Verificando..." : "Verifying..."}
+        </p>
       </div>
     );
   }
 
+  // ── Success State ──
   if (isSigned) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="bg-white rounded-xl shadow-lg p-8 max-w-md text-center">
-          <CheckCircle className="w-16 h-16 text-green-600 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            {isSpanish ? "Firmado Exitosamente!" : "Successfully Signed!"}
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{
+          background:
+            "linear-gradient(135deg, #1E3A5F 0%, #2B4C7E 50%, #8B1A3D 100%)",
+        }}
+      >
+        <div className="text-center max-w-sm mx-auto px-6">
+          <div className="w-20 h-20 rounded-full bg-white/10 backdrop-blur flex items-center justify-center mx-auto mb-6 border border-white/20">
+            <CheckCircle className="w-10 h-10 text-emerald-400" />
+          </div>
+          <h2 className="text-2xl font-bold text-white mb-3 tracking-tight">
+            {isSpanish ? "Firmado Exitosamente" : "Successfully Signed"}
           </h2>
-          <p className="text-gray-600 mb-4">
+          <p className="text-white/70 mb-2 text-sm leading-relaxed">
             {isSpanish
-              ? "Se ha enviado una copia por correo electronico"
-              : "A copy has been sent via email"}
+              ? "Se ha enviado una copia a su correo electrónico."
+              : "A copy has been sent to your email."}
           </p>
-          <p className="text-gray-600 mb-4">
+          <p className="text-white/70 text-sm mb-8">
             {method === "direct-bill"
               ? isSpanish
-                ? "Redirigiendo a la página de agradecimiento..."
-                : "Redirecting to thank you page..."
+                ? "Redirigiendo..."
+                : "Redirecting..."
               : isSpanish
-              ? "Redirigiendo a la configuracion de autopago..."
-              : "Redirecting to autopay setup..."}
+                ? "Redirigiendo a configuración de autopago..."
+                : "Redirecting to autopay setup..."}
           </p>
-          <div className="animate-spin w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full mx-auto"></div>
+          <div className="w-8 h-8 rounded-full border-4 border-white/20 border-t-white animate-spin mx-auto"></div>
         </div>
       </div>
     );
   }
 
+  // ── Main Form ──
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-3xl mx-auto">
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-          <div className="flex items-center gap-3 mb-4">
-            <FileSignature className="w-8 h-8 text-blue-600" />
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                {isSpanish ? "Autorizacion de Pago" : "Payment Authorization"}
-              </h1>
-              <p className="text-sm text-gray-600">
-                {isSpanish
-                  ? "Firma este documento para autorizar el cargo"
-                  : "Sign this document to authorize the charge"}
-              </p>
-            </div>
+    <div
+      className="min-h-screen"
+      style={{
+        background:
+          "linear-gradient(160deg, #f0f2f5 0%, #e8eaef 50%, #f5f0f2 100%)",
+      }}
+    >
+      {/* Hero Header */}
+      <div
+        className="relative overflow-hidden"
+        style={{
+          background:
+            "linear-gradient(135deg, #1E3A5F 0%, #2B4C7E 40%, #6B1D3A 80%, #8B1A3D 100%)",
+        }}
+      >
+        <div
+          className="absolute inset-0 opacity-10"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 20% 50%, white 1px, transparent 1px)",
+            backgroundSize: "30px 30px",
+          }}
+        ></div>
+        <div className="relative max-w-2xl mx-auto px-4 py-8 text-center">
+          <h1 className="text-xl font-bold text-white tracking-wide uppercase">
+            {isSpanish
+              ? "Formulario de Autorización de Pago"
+              : "Payment Authorization Form"}
+          </h1>
+          <p className="text-white/60 text-xs mt-2 font-medium tracking-wider">
+            {todayDate}
+          </p>
+          <div className="flex items-center justify-center gap-1.5 mt-3 text-white/40 text-xs">
+            <Lock className="w-3 h-3" />
+            <span>{isSpanish ? "Documento seguro" : "Secure document"}</span>
           </div>
+        </div>
+      </div>
 
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-              <div>
-                <p className="text-sm font-medium text-green-800">
-                  {isSpanish
-                    ? "Pago procesado exitosamente"
-                    : "Payment processed successfully"}
-                </p>
-                <p className="text-xs text-green-600 mt-1">
-                  {isSpanish
-                    ? "Por favor firma para completar"
-                    : "Please sign to complete"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* ✅ SCROLL INDICATOR - CLICKABLE */}
-          <button
-            onClick={scrollToSignature}
-            className="mt-4 w-full bg-blue-50 border-2 border-blue-300 rounded-lg p-4 hover:bg-blue-100 transition-all cursor-pointer animate-pulse hover:animate-none"
+      <div className="max-w-2xl mx-auto px-4 -mt-4 pb-10 relative z-10">
+        {/* Action Required Banner */}
+        <div className="bg-amber-50 border border-amber-300 rounded-lg px-5 py-4 mb-5 flex items-start gap-3 shadow-sm">
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+            style={{ backgroundColor: "#8B1A3D" }}
           >
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0">
-                <svg
-                  className="w-8 h-8 text-blue-600 animate-bounce"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 14l-7 7m0 0l-7-7m7 7V3"
-                  />
-                </svg>
-              </div>
-              <div className="text-left">
-                <p className="text-sm font-bold text-blue-900">
-                  {isSpanish
-                    ? "👇 Haz clic aquí para ir a la sección de firma"
-                    : "👇 Click here to jump to signature section"}
-                </p>
-                <p className="text-xs text-blue-700 mt-1">
-                  {isSpanish
-                    ? "Revisa el formulario completo y firma al final"
-                    : "Review the complete form and sign at the bottom"}
-                </p>
-              </div>
-            </div>
-          </button>
+            <FileSignature className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-amber-900">
+              {isSpanish
+                ? "Firma requerida para completar su transacción"
+                : "Signature required to complete your transaction"}
+            </p>
+            <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+              {isSpanish
+                ? "Su pago no se procesará hasta que firme este formulario de autorización."
+                : "Your payment will not be processed until you sign this authorization form."}
+            </p>
+          </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-lg p-8">
-          <div className="text-center mb-6">
-            <Image
-              src="/logo.png"
-              alt="Texas Premium Insurance Services"
-              width={200}
-              height={80}
-              className="mx-auto mb-4"
-            />
-            <h2 className="text-xl font-bold text-gray-900 mb-2">
-              {isSpanish
-                ? "FORMULARIO DE AUTORIZACION DE PAGO"
-                : "PAYMENT AUTHORIZATION FORM"}
-            </h2>
-            <p className="text-sm text-gray-600">{todayDate}</p>
+        {/* Scroll to Signature CTA */}
+        <button onClick={scrollToSignature} className="w-full mb-5 group">
+          <div
+            className="rounded-lg px-5 py-3.5 flex items-center justify-between text-white transition-opacity hover:opacity-90"
+            style={{
+              background:
+                "linear-gradient(135deg, #1E3A5F 0%, #2B4C7E 60%, #6B1D3A 100%)",
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <Edit3 className="w-5 h-5 opacity-80" />
+              <span className="text-sm font-semibold">
+                {isSpanish
+                  ? "Ir a la sección de firma"
+                  : "Jump to signature section"}
+              </span>
+            </div>
+            <ChevronDown className="w-5 h-5 opacity-70 group-hover:translate-y-0.5 transition-transform" />
+          </div>
+        </button>
+
+        {/* Document Card */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          {/* Transaction Summary */}
+          <div
+            className="px-6 py-5 border-b border-gray-100"
+            style={{
+              background: "linear-gradient(135deg, #f8f9fb 0%, #f3f0f4 100%)",
+            }}
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p
+                  className="text-xs font-medium uppercase tracking-wider mb-1"
+                  style={{ color: "#1E3A5F" }}
+                >
+                  {isSpanish ? "Monto a autorizar" : "Amount to authorize"}
+                </p>
+                <p
+                  className="text-3xl font-bold tracking-tight"
+                  style={{ color: "#1E3A5F" }}
+                >
+                  ${amount}
+                  <span className="text-sm font-normal text-gray-400 ml-1.5">
+                    USD
+                  </span>
+                </p>
+              </div>
+              <div className="text-right">
+                <p
+                  className="text-xs font-medium uppercase tracking-wider mb-1"
+                  style={{ color: "#1E3A5F" }}
+                >
+                  {isSpanish ? "Tarjeta" : "Card"}
+                </p>
+                <p className="text-base font-semibold text-gray-700 font-mono tracking-wider">
+                  &bull;&bull;&bull;&bull; {cardLast4}
+                </p>
+              </div>
+            </div>
           </div>
 
-          <div className="border-2 border-gray-300 rounded-lg p-6 mb-6 bg-gray-50">
-            <p className="text-gray-800 leading-relaxed mb-4">
+          {/* Authorization Text */}
+          <div className="px-6 py-6">
+            <p className="text-gray-700 leading-relaxed text-sm">
               {isSpanish ? (
                 <>
-                  Yo,{" "}
-                  <strong>
-                    confirmo que soy el titular autorizado de la tarjeta de
-                    credito/debito que termina en ****{cardLast4}
-                  </strong>
-                  . Nadie mas esta utilizando mi tarjeta en mi nombre. Estoy
-                  realizando esta transaccion de mi propia voluntad.
+                  Yo, confirmo que soy el titular autorizado de la tarjeta de
+                  crédito/débito que termina en <strong>****{cardLast4}</strong>
+                  . Nadie más está utilizando mi tarjeta en mi nombre. Estoy
+                  realizando esta transacción de mi propia voluntad.
                 </>
               ) : (
                 <>
-                  I,{" "}
-                  <strong>
-                    confirm that I am the authorized holder of the credit/debit
-                    card ending in ****{cardLast4}
-                  </strong>
-                  . No one else is using my card on my behalf. I am making this
-                  transaction of my own free will.
+                  I confirm that I am the authorized holder of the credit/debit
+                  card ending in <strong>****{cardLast4}</strong>. No one else
+                  is using my card on my behalf. I am making this transaction of
+                  my own free will.
                 </>
               )}
             </p>
 
-            <p className="text-gray-800 leading-relaxed mb-4">
+            <p className="text-gray-700 leading-relaxed text-sm mt-4">
               {isSpanish ? (
                 <>
                   Por la presente autorizo a{" "}
                   <strong>Texas Premium Insurance Services</strong> a procesar
                   un cargo de{" "}
-                  <span className="text-2xl font-bold text-blue-600">
-                    ${amount}
-                  </span>{" "}
-                  (USD) a mi tarjeta mencionada anteriormente para el pago de mi
-                  poliza de seguro.
+                  <strong style={{ color: "#1E3A5F" }}>${amount} USD</strong> a
+                  mi tarjeta mencionada anteriormente para el pago de mi póliza
+                  de seguro.
                 </>
               ) : (
                 <>
                   I hereby authorize{" "}
                   <strong>Texas Premium Insurance Services</strong> to process a
                   charge of{" "}
-                  <span className="text-2xl font-bold text-blue-600">
-                    ${amount}
-                  </span>{" "}
-                  (USD) to my above-mentioned card for payment of my insurance
-                  policy.
+                  <strong style={{ color: "#1E3A5F" }}>${amount} USD</strong> to
+                  my above-mentioned card for payment of my insurance policy.
                 </>
               )}
             </p>
 
-            <ol className="list-decimal list-inside text-gray-700 text-sm space-y-2">
-              <li>
-                {isSpanish
-                  ? `Soy el titular legalmente autorizado de la tarjeta.`
-                  : `I am the legally authorized holder of the card.`}
-              </li>
-              <li>
-                {isSpanish
-                  ? "Autorizo personalmente esta transaccion."
-                  : "I am personally authorizing this transaction."}
-              </li>
-              <li>
-                {isSpanish
-                  ? "Acepto que esta firma electronica es legalmente vinculante."
-                  : "I agree that this electronic signature is legally binding."}
-              </li>
-            </ol>
-          </div>
-
-          <div className="mb-6" ref={signatureSectionRef}>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              {isSpanish
-                ? "Nombre completo del titular de la tarjeta"
-                : "Card Holder's Full Name"}{" "}
-              <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              placeholder={
-                isSpanish
-                  ? "Ingrese su nombre completo"
-                  : "Enter your full name"
-              }
-              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
-              required
-            />
-          </div>
-
-          {/* ✅ SIGNATURE SECTION WITH HIGHLIGHT */}
-          <div className="border-4 border-blue-400 rounded-xl p-6 bg-blue-50/50 mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <FileSignature className="w-6 h-6 text-blue-600" />
-              <h3 className="text-lg font-bold text-blue-900">
-                {isSpanish ? "📝 Sección de Firma" : "📝 Signature Section"}
-              </h3>
+            {/* Terms */}
+            <div
+              className="mt-5 rounded-lg p-4 border border-gray-100"
+              style={{ backgroundColor: "#f8f9fb" }}
+            >
+              <p
+                className="text-xs font-semibold uppercase tracking-wider mb-3"
+                style={{ color: "#1E3A5F" }}
+              >
+                {isSpanish ? "Términos" : "Terms"}
+              </p>
+              <div className="space-y-2.5">
+                {[
+                  isSpanish
+                    ? "Soy el titular legalmente autorizado de la tarjeta."
+                    : "I am the legally authorized holder of the card.",
+                  isSpanish
+                    ? "Autorizo personalmente esta transacción."
+                    : "I am personally authorizing this transaction.",
+                  isSpanish
+                    ? "Acepto que esta firma electrónica es legalmente vinculante."
+                    : "I agree that this electronic signature is legally binding.",
+                ].map((term, i) => (
+                  <div key={i} className="flex items-start gap-2.5">
+                    <div
+                      className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
+                      style={{ backgroundColor: "#1E3A5F" }}
+                    >
+                      <span className="text-[10px] font-bold text-white">
+                        {i + 1}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      {term}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </div>
+          </div>
 
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                {isSpanish ? "Metodo de Firma" : "Signature Method"}{" "}
-                <span className="text-red-500">*</span>
-              </label>
-              <div className="grid grid-cols-3 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setSignatureMethod("type")}
-                  className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 transition ${
-                    signatureMethod === "type"
-                      ? "border-blue-600 bg-blue-50 text-blue-700"
-                      : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
-                  }`}
-                >
-                  <Type className="w-6 h-6" />
-                  <span className="text-sm font-medium">
-                    {isSpanish ? "Escribir" : "Type"}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSignatureMethod("draw")}
-                  className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 transition ${
-                    signatureMethod === "draw"
-                      ? "border-blue-600 bg-blue-50 text-blue-700"
-                      : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
-                  }`}
-                >
-                  <Edit3 className="w-6 h-6" />
-                  <span className="text-sm font-medium">
-                    {isSpanish ? "Dibujar" : "Draw"}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSignatureMethod("upload")}
-                  className={`flex flex-col items-center justify-center gap-2 p-4 rounded-lg border-2 transition ${
-                    signatureMethod === "upload"
-                      ? "border-blue-600 bg-blue-50 text-blue-700"
-                      : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
-                  }`}
-                >
-                  <Upload className="w-6 h-6" />
-                  <span className="text-sm font-medium">
-                    {isSpanish ? "Subir" : "Upload"}
-                  </span>
-                </button>
+          {/* Divider */}
+          <div className="px-6">
+            <div className="border-t border-dashed border-gray-300"></div>
+          </div>
+
+          {/* Signature Section */}
+          <div className="px-6 py-6" ref={signatureSectionRef}>
+            {/* Section Header */}
+            <div className="flex items-center gap-2.5 mb-6">
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
+                style={{
+                  background:
+                    "linear-gradient(135deg, #1E3A5F 0%, #8B1A3D 100%)",
+                }}
+              >
+                <FileSignature className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900">
+                  {isSpanish ? "Firma del titular" : "Cardholder Signature"}
+                </h3>
+                <p className="text-xs text-gray-500">
+                  {isSpanish
+                    ? "Requerido para completar"
+                    : "Required to complete"}
+                </p>
               </div>
             </div>
 
-            <div className="mb-6">
+            {/* Name Input */}
+            <div className="mb-5">
+              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
+                {isSpanish
+                  ? "Nombre completo del titular"
+                  : "Cardholder Full Name"}{" "}
+                <span style={{ color: "#8B1A3D" }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                placeholder={
+                  isSpanish
+                    ? "Ingrese su nombre completo"
+                    : "Enter your full name"
+                }
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-base text-gray-900 placeholder:text-gray-400 transition-all outline-none"
+                style={{ boxShadow: "none" }}
+                onFocus={(e) => {
+                  e.target.style.borderColor = "#1E3A5F";
+                  e.target.style.boxShadow = "0 0 0 3px rgba(30,58,95,0.1)";
+                }}
+                onBlur={(e) => {
+                  e.target.style.borderColor = "#d1d5db";
+                  e.target.style.boxShadow = "none";
+                }}
+                required
+              />
+            </div>
+
+            {/* Signature Method Selector */}
+            <div className="mb-5">
+              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
+                {isSpanish ? "Método de firma" : "Signature Method"}{" "}
+                <span style={{ color: "#8B1A3D" }}>*</span>
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  {
+                    key: "type" as SignatureMethod,
+                    icon: Type,
+                    label: isSpanish ? "Escribir" : "Type",
+                  },
+                  {
+                    key: "draw" as SignatureMethod,
+                    icon: Edit3,
+                    label: isSpanish ? "Dibujar" : "Draw",
+                  },
+                  {
+                    key: "upload" as SignatureMethod,
+                    icon: Upload,
+                    label: isSpanish ? "Subir" : "Upload",
+                  },
+                ].map(({ key, icon: Icon, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setSignatureMethod(key)}
+                    className="flex items-center justify-center gap-2 py-3 px-3 rounded-lg border-2 text-sm font-medium transition-all"
+                    style={
+                      signatureMethod === key
+                        ? {
+                            borderColor: "#1E3A5F",
+                            backgroundColor: "rgba(30,58,95,0.05)",
+                            color: "#1E3A5F",
+                          }
+                        : {
+                            borderColor: "#e5e7eb",
+                            backgroundColor: "white",
+                            color: "#6b7280",
+                          }
+                    }
+                  >
+                    <Icon className="w-4 h-4" />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Signature Input Area */}
+            <div className="mb-5">
               <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider">
                   {isSpanish ? "Firma" : "Signature"}{" "}
-                  <span className="text-red-500">*</span>
+                  <span style={{ color: "#8B1A3D" }}>*</span>
                 </label>
                 {signatureMethod !== "type" && (
                   <button
                     onClick={clearSignature}
-                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                    className="text-xs font-semibold uppercase tracking-wider"
+                    style={{ color: "#8B1A3D" }}
                   >
                     {isSpanish ? "Borrar" : "Clear"}
                   </button>
@@ -610,10 +712,10 @@ export default function SignConsentPage({ params }: PageProps) {
               </div>
 
               {signatureMethod === "type" && (
-                <div className="p-6 border-2 border-gray-200 rounded-lg bg-gray-50 text-center">
+                <div className="py-8 border-2 border-gray-200 rounded-lg bg-white text-center relative">
                   {customerName ? (
                     <p
-                      className="text-4xl"
+                      className="text-4xl text-gray-800"
                       style={{ fontFamily: "'Brush Script MT', cursive" }}
                     >
                       {customerName}
@@ -621,15 +723,16 @@ export default function SignConsentPage({ params }: PageProps) {
                   ) : (
                     <p className="text-gray-400 text-sm">
                       {isSpanish
-                        ? "Ingrese su nombre arriba"
-                        : "Enter your name above"}
+                        ? "Ingrese su nombre arriba para previsualizar"
+                        : "Enter your name above to preview"}
                     </p>
                   )}
+                  <div className="absolute bottom-3 left-4 right-4 border-b border-gray-200"></div>
                 </div>
               )}
 
               {signatureMethod === "draw" && (
-                <div className="border-2 border-gray-300 rounded-lg bg-white">
+                <div className="border-2 border-gray-200 rounded-lg bg-white overflow-hidden relative">
                   <canvas
                     ref={canvasRef}
                     onMouseDown={startDrawing}
@@ -639,9 +742,13 @@ export default function SignConsentPage({ params }: PageProps) {
                     onTouchStart={startDrawing}
                     onTouchMove={draw}
                     onTouchEnd={stopDrawing}
-                    className="w-full cursor-crosshair rounded-lg"
+                    className="w-full cursor-crosshair"
                     style={{ height: "200px", touchAction: "none" }}
                   />
+                  <div className="absolute bottom-4 left-4 right-4 border-b border-gray-200 pointer-events-none"></div>
+                  <p className="absolute bottom-1 right-4 text-[10px] text-gray-300 pointer-events-none">
+                    {isSpanish ? "Firme aquí" : "Sign here"}
+                  </p>
                 </div>
               )}
 
@@ -654,64 +761,96 @@ export default function SignConsentPage({ params }: PageProps) {
                     onChange={handleFileUpload}
                     className="hidden"
                   />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="w-full px-4 py-8 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 transition flex flex-col items-center gap-2"
-                  >
-                    <Upload className="w-12 h-12 text-gray-400" />
-                    <span className="text-sm text-gray-600">
-                      {isSpanish ? "Haz clic para subir" : "Click to upload"}
-                    </span>
-                  </button>
-                  {uploadedSignature && (
-                    <div className="mt-4 p-4 border-2 border-gray-200 rounded-lg bg-gray-50 text-center">
+                  {!uploadedSignature ? (
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-full py-10 border-2 border-dashed border-gray-300 rounded-lg hover:border-gray-400 transition-all flex flex-col items-center gap-2 group"
+                    >
+                      <div className="w-12 h-12 rounded-full bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center transition-colors">
+                        <Upload className="w-5 h-5 text-gray-400 group-hover:text-gray-500 transition-colors" />
+                      </div>
+                      <span className="text-sm text-gray-500 group-hover:text-gray-600 font-medium transition-colors">
+                        {isSpanish
+                          ? "Haz clic para subir imagen de firma"
+                          : "Click to upload signature image"}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        PNG, JPG {isSpanish ? "o" : "or"} SVG
+                      </span>
+                    </button>
+                  ) : (
+                    <div className="py-6 border-2 border-gray-200 rounded-lg bg-white text-center relative">
                       <img
                         src={uploadedSignature}
-                        alt="Uploaded"
-                        className="max-h-32 mx-auto"
+                        alt="Uploaded signature"
+                        className="max-h-28 mx-auto"
                       />
+                      <div className="absolute bottom-3 left-4 right-4 border-b border-gray-200"></div>
                     </div>
                   )}
                 </div>
               )}
             </div>
 
-            <div className="mb-6">
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={agreedToTerms}
-                  onChange={(e) => setAgreedToTerms(e.target.checked)}
-                  className="mt-1 w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                />
-                <span className="text-sm text-gray-700">
-                  {isSpanish
-                    ? "Confirmo que soy el titular autorizado y mi firma es vinculante."
-                    : "I confirm I am the authorized holder and my signature is binding."}
-                </span>
-              </label>
-            </div>
-          </div>
-          {/* ✅ END OF SIGNATURE SECTION HIGHLIGHT */}
+            {/* Agreement Checkbox */}
+            <label className="flex items-start gap-3 cursor-pointer mb-6 p-4 rounded-lg border border-gray-200 hover:border-gray-300 transition-all">
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+                className="mt-0.5 w-5 h-5 border-gray-300 rounded cursor-pointer"
+                style={{ accentColor: "#1E3A5F" }}
+              />
+              <span className="text-sm text-gray-700 leading-relaxed">
+                {isSpanish
+                  ? "Confirmo que soy el titular autorizado de la tarjeta y que mi firma electrónica es legalmente vinculante."
+                  : "I confirm I am the authorized cardholder and that my electronic signature is legally binding."}
+              </span>
+            </label>
 
-          <button
-            onClick={handleSubmit}
-            disabled={!customerName.trim() || !agreedToTerms || isSubmitting}
-            className="w-full px-6 py-4 bg-gradient-to-r from-red-700 to-blue-800 text-white rounded-lg font-semibold text-lg hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-6 h-6 animate-spin" />{" "}
-                {isSpanish ? "Procesando..." : "Processing..."}
-              </>
-            ) : (
-              <>
-                <FileSignature className="w-6 h-6" />{" "}
-                {isSpanish ? "Firmar y Continuar" : "Sign and Continue"}
-              </>
-            )}
-          </button>
+            {/* Submit Button */}
+            <button
+              onClick={handleSubmit}
+              disabled={!customerName.trim() || !agreedToTerms || isSubmitting}
+              className="w-full py-4 text-white rounded-lg font-semibold text-base transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2.5 hover:opacity-90"
+              style={{
+                background:
+                  "linear-gradient(135deg, #1E3A5F 0%, #2B4C7E 40%, #6B1D3A 80%, #8B1A3D 100%)",
+              }}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>{isSpanish ? "Procesando..." : "Processing..."}</span>
+                </>
+              ) : (
+                <>
+                  <FileSignature className="w-5 h-5" />
+                  <span>
+                    {isSpanish ? "Firmar y Continuar" : "Sign & Continue"}
+                  </span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
+
+        {/* Footer Trust Indicators */}
+        <div className="mt-6 flex items-center justify-center gap-4 text-xs text-gray-400">
+          <div className="flex items-center gap-1.5">
+            <Shield className="w-3.5 h-3.5" />
+            <span>{isSpanish ? "Cifrado SSL" : "SSL Encrypted"}</span>
+          </div>
+          <span className="text-gray-300">|</span>
+          <div className="flex items-center gap-1.5">
+            <Lock className="w-3.5 h-3.5" />
+            <span>{isSpanish ? "Firma segura" : "Secure Signing"}</span>
+          </div>
+        </div>
+
+        <p className="text-center text-xs text-gray-400 mt-3">
+          &copy; {new Date().getFullYear()} Texas Premium Insurance Services
+        </p>
       </div>
     </div>
   );
