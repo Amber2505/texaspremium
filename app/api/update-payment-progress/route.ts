@@ -1,4 +1,8 @@
 // app/api/update-progress/route.ts
+// ✅ IMPORTANT: This file must be at /api/update-progress/route.ts
+//    Your consent page and pay proxy call "/api/update-progress"
+//    If your file is at /api/update-payment-progress/route.ts, RENAME IT
+//    or create this file as a copy.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextResponse } from "next/server";
@@ -37,7 +41,7 @@ export async function POST(request: Request) {
 
     // ✅ Find by MongoDB _id
     let query = {};
-    
+
     if (ObjectId.isValid(linkId)) {
       query = { _id: new ObjectId(linkId) };
     } else {
@@ -64,7 +68,7 @@ export async function POST(request: Request) {
     const stepFieldMap: Record<string, string> = {
       payment: "payment",
       consent: "consent",
-      autopay: "autopaySetup", // ✅ You use "autopaySetup" not "autopay"
+      autopay: "autopaySetup",
     };
 
     const fieldName = stepFieldMap[step];
@@ -74,18 +78,16 @@ export async function POST(request: Request) {
       [`completedStages.${fieldName}`]: true,
       [`timestamps.${fieldName}`]: new Date().toISOString(),
       lastUpdated: new Date().toISOString(),
-      currentStage: step, // ✅ Update currentStage too
+      currentStage: step,
     };
 
     const paymentMethod = link.paymentMethod;
 
     // Determine if all steps are complete
     if (step === "autopay") {
-      // Autopay completed - mark as fully complete
       updateData["timestamps.completed"] = new Date().toISOString();
       updateData["currentStage"] = "complete";
     } else if (step === "consent" && paymentMethod === "direct-bill") {
-      // Direct-bill doesn't need autopay
       updateData["timestamps.completed"] = new Date().toISOString();
       updateData["currentStage"] = "complete";
     }

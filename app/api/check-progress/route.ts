@@ -24,7 +24,7 @@ export async function GET(request: Request) {
 
     // ✅ Find by MongoDB _id
     let link = null;
-    
+
     if (ObjectId.isValid(linkId)) {
       link = await collection.findOne({ _id: new ObjectId(linkId) });
     }
@@ -52,12 +52,13 @@ export async function GET(request: Request) {
     // ✅ Use YOUR field structure: completedStages
     const completedStages = link.completedStages || {};
     const paymentMethod = link.paymentMethod;
+    const lang = link.language || "en";
 
     // Convert to simple boolean flags
     const progress = {
       payment: completedStages.payment === true,
       consent: completedStages.consent === true,
-      autopay: completedStages.autopaySetup === true, // ✅ Note: you use "autopaySetup" not "autopay"
+      autopay: completedStages.autopaySetup === true,
     };
 
     console.log("📊 Progress:", progress);
@@ -72,18 +73,17 @@ export async function GET(request: Request) {
       console.log("➡️ Next: Payment");
     } else if (!progress.consent) {
       nextStep = "consent";
-      // Get payment data for consent form
       const cardLast4 = link.cardLast4 || "XXXX";
       const customerEmail = link.customerEmail || "";
-      redirectTo = `/sign-consent?linkId=${linkId}&amount=${(link.amount / 100).toFixed(2)}&card=${cardLast4}&email=${encodeURIComponent(customerEmail)}&method=${paymentMethod}&phone=${link.customerPhone}`;
+      redirectTo = `/${lang}/sign-consent?linkId=${linkId}&amount=${(link.amount / 100).toFixed(2)}&card=${cardLast4}&email=${encodeURIComponent(customerEmail)}&method=${paymentMethod}&phone=${link.customerPhone}`;
       console.log("➡️ Next: Consent");
     } else if (!progress.autopay && paymentMethod !== "direct-bill") {
       nextStep = "autopay";
-      redirectTo = `/setup-autopay?${paymentMethod}&phone=${link.customerPhone}&redirect=payment&linkId=${linkId}`;
+      redirectTo = `/${lang}/setup-autopay?${paymentMethod}&phone=${link.customerPhone}&redirect=payment&linkId=${linkId}`;
       console.log("➡️ Next: Autopay");
     } else {
       nextStep = "complete";
-      redirectTo = "/payment-thankyou";
+      redirectTo = `/${lang}/payment-thankyou`;
       console.log("➡️ Next: Complete / Thank You");
     }
 
