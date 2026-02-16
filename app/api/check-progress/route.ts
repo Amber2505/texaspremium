@@ -51,8 +51,37 @@ export async function GET(request: Request) {
 
     // ✅ Use YOUR field structure: completedStages
     const completedStages = link.completedStages || {};
-    const paymentMethod = link.paymentMethod;
-    const lang = link.language || "en";
+const paymentMethod = link.paymentMethod;
+const lang = link.language || "en";
+
+// ✅ If email/card missing, try to get from completed_payments
+let customerEmail = link.customerEmail || "";
+let cardLast4 = link.cardLast4 || "";
+
+if (!customerEmail || !cardLast4) {
+    try {
+        const paymentsCollection = db.collection("completed_payments");
+        const payment = await paymentsCollection.findOne({
+            customerPhone: link.customerPhone,
+        }, { sort: { processedAt: -1 } }); // Get most recent
+
+        if (payment) {
+            if (!customerEmail && payment.customerEmail) {
+                customerEmail = payment.customerEmail;
+                // Save back to link for future lookups
+                await collection.updateOne(
+                    { _id: link._id },
+                    { $set: { customerEmail: payment.customerEmail, cardLast4: payment.cardLast4 } }
+                );
+            }
+            if (!cardLast4 && payment.cardLast4) {
+                cardLast4 = payment.cardLast4;
+            }
+        }
+    } catch (err) {
+        console.error("Error fetching payment data:", err);
+    }
+}
 
     // Convert to simple boolean flags
     const progress = {
@@ -72,9 +101,7 @@ export async function GET(request: Request) {
       redirectTo = link.squareLink;
       console.log("➡️ Next: Payment");
     } else if (!progress.consent) {
-      nextStep = "consent";
-      const cardLast4 = link.cardLast4 || "XXXX";
-      const customerEmail = link.customerEmail || "";
+    nextStep = "consent";
       redirectTo = `/${lang}/sign-consent?linkId=${linkId}&amount=${(link.amount / 100).toFixed(2)}&card=${cardLast4}&email=${encodeURIComponent(customerEmail)}&method=${paymentMethod}&phone=${link.customerPhone}`;
       console.log("➡️ Next: Consent");
     } else if (!progress.autopay && paymentMethod !== "direct-bill") {
