@@ -1,3 +1,4 @@
+//app/[locale]/pay/[linkId]/page.tsx
 /* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 import { useEffect, useState } from "react";

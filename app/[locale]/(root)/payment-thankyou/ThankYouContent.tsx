@@ -1,3 +1,4 @@
+//app/[locale]/(root)/payment-thankyou/ThankYouContent.tsx
 "use client";
 
 import { useEffect, useRef } from "react";

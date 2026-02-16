@@ -1,3 +1,4 @@
+//app/[locale]/(root)/sign-consent/page.tsx
 "use client";
 
 import { useState, useRef, useEffect, use } from "react";

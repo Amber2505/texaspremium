@@ -1,4 +1,3 @@
-// app/api/update-payment-link/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { MongoClient, ObjectId } from "mongodb";
 
@@ -9,11 +8,11 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { linkId, generatedLink } = body;
+    const { linkId, generatedLink, squareLink, squareTransactionId } = body;
 
-    if (!linkId || !generatedLink) {
+    if (!linkId) {
       return NextResponse.json(
-        { error: "Link ID and generated link are required" },
+        { error: "Link ID is required" },
         { status: 400 }
       );
     }
@@ -22,10 +21,22 @@ export async function POST(request: NextRequest) {
     const db = client.db("db");
     const collection = db.collection("payment_link_generated");
 
-    // Update the generatedLink field
+    // Build update object dynamically
+    const updateFields: Record<string, string> = {};
+    if (generatedLink) updateFields.generatedLink = generatedLink;
+    if (squareLink) updateFields.squareLink = squareLink;
+    if (squareTransactionId) updateFields.squareTransactionId = squareTransactionId;
+
+    if (Object.keys(updateFields).length === 0) {
+      return NextResponse.json(
+        { error: "No fields to update" },
+        { status: 400 }
+      );
+    }
+
     const result = await collection.updateOne(
       { _id: new ObjectId(linkId) },
-      { $set: { generatedLink: generatedLink } }
+      { $set: updateFields }
     );
 
     if (result.matchedCount === 0) {

@@ -1,3 +1,4 @@
+//app/[locale]/(root)/setup-autopay/SetupAutopayContent.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -94,7 +95,7 @@ export default function SetupAutopayContent() {
           if (progress.autopay) {
             console.log(
               "✅ Autopay already complete, redirecting to:",
-              nextStep
+              nextStep,
             );
             router.push(nextUrl);
             return;
@@ -184,7 +185,7 @@ export default function SetupAutopayContent() {
   };
 
   const handleRoutingNumberChange = (
-    e: React.ChangeEvent<HTMLInputElement>
+    e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const value = e.target.value.replace(/\D/g, "").slice(0, 9);
     setFormData({ ...formData, routingNumber: value });

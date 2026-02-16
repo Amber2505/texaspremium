@@ -1,3 +1,4 @@
+//app/[locale]/(root)/payment-processing/page.tsx
 "use client";
 
 import { useEffect, useState, use } from "react";
@@ -18,7 +19,7 @@ export default function PaymentProcessingPage({ params }: PageProps) {
   const isSpanish = locale === "es";
 
   const [status, setStatus] = useState<"processing" | "success" | "error">(
-    "processing"
+    "processing",
   );
   const [retryCount, setRetryCount] = useState(0);
   const [errorMessage, setErrorMessage] = useState("");
@@ -47,7 +48,7 @@ export default function PaymentProcessingPage({ params }: PageProps) {
             ? "ID de pago no encontrado en la URL. Parámetros: " +
                 Array.from(searchParams.keys()).join(", ")
             : "Payment ID not found in URL. Parameters: " +
-                Array.from(searchParams.keys()).join(", ")
+                Array.from(searchParams.keys()).join(", "),
         );
         return;
       }
@@ -90,7 +91,7 @@ export default function PaymentProcessingPage({ params }: PageProps) {
             setErrorMessage(
               isSpanish
                 ? "No se pudo encontrar la información del pago. Por favor contacte soporte."
-                : "Could not find payment information. Please contact support."
+                : "Could not find payment information. Please contact support.",
             );
           }
         }
@@ -100,7 +101,7 @@ export default function PaymentProcessingPage({ params }: PageProps) {
         setErrorMessage(
           isSpanish
             ? "Error al procesar el pago. Por favor intente de nuevo."
-            : "Error processing payment. Please try again."
+            : "Error processing payment. Please try again.",
         );
       }
     };

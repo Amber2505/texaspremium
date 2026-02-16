@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     // ✅ REMOVED customerEmail from requirements
-    const { amount, description, customerPhone, paymentMethod, language } = body;
+    const { amount, description, customerPhone, paymentMethod, language, linkId } = body;
 
     if (!amount || !description || !customerPhone) {
       return NextResponse.json(
@@ -46,7 +46,9 @@ export async function POST(request: NextRequest) {
       },
       checkoutOptions: {
         // ✅ NEW: Redirect to processing page instead of directly to consent
-        redirectUrl: `https://www.texaspremiumins.com/${language}/payment-processing?method=${paymentMethod}&phone=${encodeURIComponent(customerPhone)}`,
+        redirectUrl: linkId
+  ? `https://www.texaspremiumins.com/${language}/pay/${linkId}`
+  : `https://www.texaspremiumins.com/${language}/payment-processing?method=${paymentMethod}&phone=${encodeURIComponent(customerPhone)}`,
         askForShippingAddress: false,
       },
       // ✅ Store metadata in reference_id for webhook to retrieve

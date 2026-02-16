@@ -1,3 +1,4 @@
+// app/api/mark-paid/route.ts
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 

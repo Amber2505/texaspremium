@@ -70,7 +70,7 @@ export default function CreatePaymentLink() {
       return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3)}`;
     return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(
       6,
-      10
+      10,
     )}`;
   };
 
@@ -169,7 +169,7 @@ export default function CreatePaymentLink() {
       if (linkType === "autopay-only") {
         if (!customerPhone || paymentMethod === "direct-bill") {
           setError(
-            "Please select a valid phone number and autopay method (Card or Bank)"
+            "Please select a valid phone number and autopay method (Card or Bank)",
           );
           setLoading(false);
           return;
@@ -192,7 +192,25 @@ export default function CreatePaymentLink() {
 
       const amountInCents = parseFloat(amount) * 100;
 
-      // ✅ REMOVED customerEmail from API call
+      // ✅ STEP 1: Save to MongoDB FIRST to get linkId
+      const linkId = await saveToHistory({
+        linkType: "payment",
+        amount,
+        description,
+        customerPhone,
+        paymentMethod,
+        language,
+        generatedLink: "placeholder",
+        squareLink: "pending",
+      });
+
+      if (!linkId) {
+        setError("Failed to save payment link. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      // ✅ STEP 2: Create Square link WITH linkId so redirect comes back to /pay/{linkId}
       const response = await fetch("/api/create-payment-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -200,9 +218,9 @@ export default function CreatePaymentLink() {
           amount: amountInCents,
           description,
           customerPhone,
-          // ✅ customerEmail REMOVED - will come from Square webhook
           paymentMethod,
           language,
+          linkId,
         }),
       });
 
@@ -210,30 +228,18 @@ export default function CreatePaymentLink() {
 
       if (response.ok) {
         const squarePaymentLink = data.paymentLink;
-
-        const linkId = await saveToHistory({
-          linkType: "payment",
-          amount,
-          description,
-          customerPhone,
-          paymentMethod,
-          language,
-          generatedLink: "placeholder",
-          squareLink: squarePaymentLink,
-        });
-
         const proxyLink = `https://www.texaspremiumins.com/${language}/pay/${linkId}`;
 
-        if (linkId) {
-          await fetch("/api/update-payment-link", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              linkId,
-              generatedLink: proxyLink,
-            }),
-          });
-        }
+        // ✅ STEP 3: Update MongoDB with both the Square link and proxy link
+        await fetch("/api/update-payment-link", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            linkId,
+            generatedLink: proxyLink,
+            squareLink: squarePaymentLink,
+          }),
+        });
 
         setGeneratedLink(proxyLink);
       } else {
@@ -978,8 +984,8 @@ export default function CreatePaymentLink() {
                           {link.paymentMethod === "card"
                             ? "Card Autopay"
                             : link.paymentMethod === "bank"
-                            ? "Bank Autopay"
-                            : "Direct Bill (No Autopay)"}
+                              ? "Bank Autopay"
+                              : "Direct Bill (No Autopay)"}
                         </span>
                       </div>
 
