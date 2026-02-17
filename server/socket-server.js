@@ -369,6 +369,86 @@ function scheduleDailyDisable() {
 }
 
 // ================================================
+// DAILY AUTOPAY SECURITY CODE SYSTEM
+// Generates new 4-digit code daily at 7 AM CST
+// ================================================
+
+let securityCodeCollection;
+let lastCodeDate = null;
+
+async function connectSecurityCodeDB() {
+  try {
+    securityCodeCollection = mongoClient.db('db').collection('texas_autopay_security');
+    console.log('✅ Security code database connected');
+    return true;
+  } catch (error) {
+    console.error('❌ Security code DB connection error:', error.message);
+    return false;
+  }
+}
+
+async function generateDailySecurityCode() {
+  try {
+    if (!securityCodeCollection) return;
+
+    // Generate random 4-digit code (1000-9999)
+    const code = Math.floor(1000 + Math.random() * 9000).toString();
+    const now = new Date();
+    const cstTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+    const todayDate = cstTime.toDateString();
+
+    // Save to MongoDB (upsert so there's always only one active code)
+    await securityCodeCollection.updateOne(
+      { type: 'daily_code' },
+      {
+        $set: {
+          code: code,
+          generatedAt: now.toISOString(),
+          generatedDate: todayDate,
+          expiresAt: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        }
+      },
+      { upsert: true }
+    );
+
+    console.log(`🔐 New daily security code generated for ${todayDate}`);
+
+    // Send SMS to admin
+    const message = encodeURIComponent(`Your autopay security code for today is: ${code}`);
+    await fetch(`https://astraldbapi.herokuapp.com/message_send/?message=${message}&To=9727486404`);
+    console.log('📱 Security code sent via SMS');
+
+    return code;
+  } catch (error) {
+    console.error('❌ Error generating security code:', error.message);
+  }
+}
+
+function scheduleDailySecurityCode() {
+  setInterval(async () => {
+    const now = new Date();
+    const cstTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+    const hour = cstTime.getHours();
+    const minute = cstTime.getMinutes();
+    const todayDate = cstTime.toDateString();
+
+    // Run at 7:00-7:05 AM CST, once per day
+    if (hour === 7 && minute >= 0 && minute < 5 && lastCodeDate !== todayDate) {
+      console.log('🔐 7 AM CST - Generating new security code...');
+      await generateDailySecurityCode();
+      lastCodeDate = todayDate;
+    }
+
+    // Reset at midnight
+    if (hour === 0 && minute === 0 && lastCodeDate !== null) {
+      lastCodeDate = null;
+    }
+  }, 30000); // Check every 30 seconds
+
+  console.log('⏰ Daily security code scheduled for 7:00 AM CST');
+}
+
+// ================================================
 // RINGCENTRAL SYNC FUNCTION (WITH FIXED DUPLICATE PREVENTION)
 // ================================================
 let lastSyncTime = null;
@@ -876,7 +956,24 @@ async function startServer() {
   if (dbConnected) {
     await connectPaymentLinksDB();
     scheduleDailyDisable();
-  }
+    await connectSecurityCodeDB();
+    scheduleDailySecurityCode();
+    
+    // Generate code on startup if none exists for today
+    if (securityCodeCollection) {
+      const now = new Date();
+      const cstTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+      const existing = await securityCodeCollection.findOne({ type: 'daily_code', generatedDate: cstTime.toDateString() });
+      if (!existing) {
+        console.log('🔐 No code for today, generating on startup...');
+        await generateDailySecurityCode();
+        lastCodeDate = cstTime.toDateString();
+      } else {
+        lastCodeDate = cstTime.toDateString();
+        console.log('🔐 Today\'s security code already exists');
+      }
+    }
+}
   
   if (!dbConnected) {
     console.error('Server starting WITHOUT database connection');
@@ -1029,6 +1126,30 @@ app.get('/check-links-to-disable', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/verify-security-code', async (req, res) => {
+  try {
+    if (!securityCodeCollection) {
+      return res.status(500).json({ error: 'Database not connected' });
+    }
+
+    const { code } = req.body;
+    if (!code) {
+      return res.json({ valid: false, error: 'No code provided' });
+    }
+
+    const activeCode = await securityCodeCollection.findOne({ type: 'daily_code' });
+    
+    if (!activeCode) {
+      return res.json({ valid: false, error: 'No active code found' });
+    }
+
+    const isValid = activeCode.code === code;
+    return res.json({ valid: isValid });
+  } catch (error) {
+    return res.status(500).json({ valid: false, error: error.message });
   }
 });
 

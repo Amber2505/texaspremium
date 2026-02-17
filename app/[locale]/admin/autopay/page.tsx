@@ -155,8 +155,24 @@ export default function AdminAutopayDashboard() {
   };
 
   const handleCodeSubmit = async () => {
-    if (securityCode !== "9820") {
-      alert("Invalid security code.");
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_SOCKET_URL || "https://texaspremium-production.up.railway.app"}/verify-security-code`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: securityCode }),
+        },
+      );
+      const data = await res.json();
+
+      if (!data.valid) {
+        alert("Invalid security code.");
+        setSecurityCode("");
+        return;
+      }
+    } catch {
+      alert("Could not verify code. Please try again.");
       setSecurityCode("");
       return;
     }
