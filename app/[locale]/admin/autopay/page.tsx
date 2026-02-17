@@ -1,3 +1,6 @@
+//app/[locale]/admin/autopay/page.tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -16,6 +19,7 @@ interface AutopayCustomer {
   cardBrand?: string;
   accountLast4?: string;
   accountType?: string;
+  viewed?: boolean;
 }
 
 interface DecryptedData {
@@ -47,11 +51,16 @@ export default function AdminAutopayDashboard() {
   const [selectedCustomer, setSelectedCustomer] =
     useState<AutopayCustomer | null>(null);
   const [decryptedData, setDecryptedData] = useState<DecryptedData | null>(
-    null
+    null,
   );
   const [adminName, setAdminName] = useState("");
   const [showData, setShowData] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [securityCode, setSecurityCode] = useState("");
+  const [isCodeVerified, setIsCodeVerified] = useState(false);
+  const [showCodePrompt, setShowCodePrompt] = useState(false);
+  const [pendingCustomer, setPendingCustomer] =
+    useState<AutopayCustomer | null>(null);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -139,14 +148,31 @@ export default function AdminAutopayDashboard() {
       return;
     }
 
-    setSelectedCustomer(customer);
+    // Show code prompt first
+    setPendingCustomer(customer);
+    setSecurityCode("");
+    setShowCodePrompt(true);
+  };
+
+  const handleCodeSubmit = async () => {
+    if (securityCode !== "9820") {
+      alert("Invalid security code.");
+      setSecurityCode("");
+      return;
+    }
+
+    setShowCodePrompt(false);
+    setIsCodeVerified(true);
+
+    if (!pendingCustomer) return;
+    setSelectedCustomer(pendingCustomer);
 
     try {
       const response = await fetch("/api/autopay/decrypt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          customerId: customer._id,
+          customerId: pendingCustomer._id,
           adminName: adminName.trim(),
         }),
       });
@@ -162,12 +188,15 @@ export default function AdminAutopayDashboard() {
     } catch (_error) {
       console.error("Failed to decrypt data:", _error);
       alert("Failed to decrypt data");
+    } finally {
+      setPendingCustomer(null);
+      setIsCodeVerified(false);
     }
   };
 
   const handleDelete = async (id: string, name: string) => {
     const confirmed = window.confirm(
-      `Are you sure you want to delete autopay info for ${name}? This action cannot be undone.`
+      `Are you sure you want to delete autopay info for ${name}? This action cannot be undone.`,
     );
 
     if (!confirmed) return;
@@ -292,60 +321,66 @@ export default function AdminAutopayDashboard() {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100">
-                {filteredCustomers.map((customer) => (
-                  <tr
-                    key={customer._id}
-                    className="hover:bg-blue-50/30 transition-colors group"
-                  >
-                    <td className="px-6 py-4">
-                      <div className="font-bold text-gray-900">
-                        {customer.customerName}
-                      </div>
-                      <div className="text-xs text-blue-600 font-mono">
-                        {customer.customerPhone}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`px-2 py-1 text-[10px] font-bold rounded-md uppercase ${
-                          customer.method === "card"
-                            ? "bg-indigo-100 text-indigo-700"
-                            : "bg-emerald-100 text-emerald-700"
-                        }`}
-                      >
-                        {customer.method}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
-                      {customer.method === "card"
-                        ? `${customer.cardBrand || "Card"} ••${
-                            customer.cardLast4
-                          }`
-                        : `${customer.accountType || "ACH"} ••${
-                            customer.accountLast4
+                {filteredCustomers.map((customer) => {
+                  const isNew = !customer.viewed;
+                  return (
+                    <tr
+                      key={customer._id}
+                      className={`hover:bg-blue-50/30 transition-colors group ${isNew ? "bg-blue-50/50" : ""}`}
+                    >
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-gray-900">
+                            {customer.customerName}
+                          </span>
+                          {isNew && (
+                            <span className="px-1.5 py-0.5 text-[9px] font-bold bg-red-500 text-white rounded animate-pulse">
+                              NEW
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-blue-600 font-mono">
+                          {customer.customerPhone}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`px-2 py-1 text-[10px] font-bold rounded-md uppercase ${
+                            customer.method === "card"
+                              ? "bg-indigo-100 text-indigo-700"
+                              : "bg-emerald-100 text-emerald-700"
                           }`}
-                    </td>
-                    <td className="px-6 py-4 text-xs text-gray-400 font-mono">
-                      {new Date(customer.createdAt).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 text-right space-x-3">
-                      <button
-                        onClick={() => handleDecrypt(customer)}
-                        className="text-blue-600 hover:text-blue-800 text-sm font-bold transition-all"
-                      >
-                        VIEW
-                      </button>
-                      <button
-                        onClick={() =>
-                          handleDelete(customer._id, customer.customerName)
-                        }
-                        className="text-gray-300 hover:text-red-600 text-sm font-bold transition-all"
-                      >
-                        DELETE
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                        >
+                          {customer.method}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {customer.method === "card"
+                          ? `${customer.cardBrand || "Card"} ••${customer.cardLast4}`
+                          : `${customer.accountType || "ACH"} ••${customer.accountLast4}`}
+                      </td>
+                      <td className="px-6 py-4 text-xs text-gray-400 font-mono">
+                        {new Date(customer.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 text-right space-x-3">
+                        <button
+                          onClick={() => handleDecrypt(customer)}
+                          className="text-blue-600 hover:text-blue-800 text-sm font-bold transition-all"
+                        >
+                          VIEW
+                        </button>
+                        <button
+                          onClick={() =>
+                            handleDelete(customer._id, customer.customerName)
+                          }
+                          className="text-gray-300 hover:text-red-600 text-sm font-bold transition-all"
+                        >
+                          DELETE
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -360,6 +395,63 @@ export default function AdminAutopayDashboard() {
           )}
         </div>
       </div>
+
+      {/* Security Code Modal */}
+      <AnimatePresence>
+        {showCodePrompt && (
+          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden"
+            >
+              <div className="bg-slate-900 p-6 text-white text-center">
+                <Shield className="w-10 h-10 mx-auto mb-2 text-amber-400" />
+                <h3 className="text-lg font-bold">Security Verification</h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Enter security code to view sensitive data
+                </p>
+              </div>
+              <div className="p-6 space-y-4">
+                <input
+                  type="password"
+                  value={securityCode}
+                  onChange={(e) =>
+                    setSecurityCode(
+                      e.target.value.replace(/\D/g, "").slice(0, 4),
+                    )
+                  }
+                  onKeyDown={(e) => e.key === "Enter" && handleCodeSubmit()}
+                  placeholder="Enter 4-digit code"
+                  maxLength={4}
+                  autoFocus
+                  className="w-full px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-slate-900 focus:border-slate-900 outline-none"
+                />
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowCodePrompt(false);
+                      setPendingCustomer(null);
+                      setSecurityCode("");
+                    }}
+                    className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleCodeSubmit}
+                    disabled={securityCode.length !== 4}
+                    className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-black transition disabled:opacity-40"
+                  >
+                    Verify
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Modal Backdrop & Content */}
       <AnimatePresence>
@@ -402,7 +494,8 @@ export default function AdminAutopayDashboard() {
                         <button
                           onClick={() =>
                             copyToClipboard(
-                              decryptedData.cardNumber?.replace(/\s/g, "") || ""
+                              decryptedData.cardNumber?.replace(/\s/g, "") ||
+                                "",
                             )
                           }
                           className="text-blue-600 text-xs font-bold"

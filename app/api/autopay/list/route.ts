@@ -8,8 +8,8 @@ export async function GET() {
     const autopayCollection = db.collection("autopay_customers");
 
     const customers = await autopayCollection
-      .find({})
-      .project({
+    .find({})
+    .project({
         _id: 1,
         customerName: 1,
         customerPhone: 1,
@@ -22,15 +22,22 @@ export async function GET() {
         cardBrand: 1,
         accountLast4: 1,
         accountType: 1,
-      })
-      .sort({ createdAt: -1 })
-      .toArray();
+        accessLog: 1,
+    })
+    .sort({ createdAt: -1 })
+    .toArray();
 
-    return NextResponse.json({
-      success: true,
-      customers,
-      total: customers.length,
-    });
+// Add viewed flag based on accessLog, remove accessLog from response
+const customersWithViewed = customers.map(({ accessLog, ...rest }) => ({
+    ...rest,
+    viewed: Array.isArray(accessLog) && accessLog.length > 0,
+}));
+
+return NextResponse.json({
+    success: true,
+    customers: customersWithViewed,
+    total: customersWithViewed.length,
+});
 
   } catch (error) {
     console.error('❌ List autopay error:', error);
