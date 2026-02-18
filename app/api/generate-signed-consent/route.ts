@@ -91,16 +91,46 @@ function drawViewIcon(page: PDFPage, x: number, y: number, color: any) {
 
 export async function POST(request: Request) {
   try {
+    const body = await request.json();
     const {
       customerName,
       amount,
       cardLast4,
-      email,
       signatureDataUrl,
       signatureMethod,
       language,
       clientIP,
-    } = await request.json();
+    } = body;
+
+    let email = body.email || "";
+
+    // ✅ If email is missing, look it up from completed_payments
+    if (!email || !email.trim()) {
+      try {
+        const { MongoClient } = await import("mongodb");
+        const mongoClient = await MongoClient.connect(process.env.MONGODB_URI!);
+        const db = mongoClient.db("db");
+        const payment = await db.collection("completed_payments").findOne(
+          { cardLast4, amount: parseFloat(amount) },
+          { sort: { processedAt: -1 } }
+        );
+        if (payment?.customerEmail) {
+          email = payment.customerEmail;
+          console.log("✅ Found email from completed_payments:", email);
+        }
+        await mongoClient.close();
+      } catch (err) {
+        console.error("⚠️ Error looking up email:", err);
+      }
+    }
+
+    if (!email || !email.trim()) {
+      console.error("❌ No email found anywhere for this customer");
+      return NextResponse.json(
+        { error: "Customer email not found. Please contact support." },
+        { status: 400 }
+      );
+    }
 
     const isSpanish = language === "es";
 
