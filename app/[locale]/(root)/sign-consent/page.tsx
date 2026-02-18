@@ -59,6 +59,31 @@ export default function SignConsentPage({ params }: PageProps) {
     });
   };
 
+  const [resolvedEmail, setResolvedEmail] = useState(email);
+  const [resolvedCard, setResolvedCard] = useState(cardLast4);
+
+  useEffect(() => {
+    if (!linkId) return;
+
+    const fetchDetails = async () => {
+      try {
+        const res = await fetch(`/api/get-link-details?linkId=${linkId}`);
+        const data = await res.json();
+        if (data.success) {
+          if (data.email) setResolvedEmail(data.email);
+          if (data.cardLast4) setResolvedCard(data.cardLast4);
+        }
+      } catch (err) {
+        console.error("Error fetching link details:", err);
+      }
+    };
+
+    fetchDetails();
+    // Retry once in case webhook hasn't fired yet
+    const retry = setTimeout(fetchDetails, 3000);
+    return () => clearTimeout(retry);
+  }, [linkId]);
+
   useEffect(() => {
     const checkConsentStatus = async () => {
       if (!linkId) {
@@ -239,8 +264,10 @@ export default function SignConsentPage({ params }: PageProps) {
         body: JSON.stringify({
           customerName,
           amount,
-          cardLast4,
-          email,
+          cardLast4: resolvedCard,
+          email: resolvedEmail,
+          phone,
+          linkId,
           signatureDataUrl,
           signatureMethod,
           language: lang,
