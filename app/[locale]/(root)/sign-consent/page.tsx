@@ -47,6 +47,7 @@ export default function SignConsentPage({ params }: PageProps) {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [clientIP, setClientIP] = useState("");
   const [isCheckingProgress, setIsCheckingProgress] = useState(true);
+  const [isLoadingDetails, setIsLoadingDetails] = useState(!!linkId);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -75,13 +76,12 @@ export default function SignConsentPage({ params }: PageProps) {
         }
       } catch (err) {
         console.error("Error fetching link details:", err);
+      } finally {
+        setIsLoadingDetails(false);
       }
     };
 
     fetchDetails();
-    // Retry once in case webhook hasn't fired yet
-    const retry = setTimeout(fetchDetails, 3000);
-    return () => clearTimeout(retry);
   }, [linkId]);
 
   useEffect(() => {
@@ -341,7 +341,7 @@ export default function SignConsentPage({ params }: PageProps) {
   );
 
   // ── Loading State ──
-  if (isCheckingProgress) {
+  if (isCheckingProgress || isLoadingDetails) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white">
         <Image
