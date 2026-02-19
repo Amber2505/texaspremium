@@ -91,6 +91,7 @@ function drawViewIcon(page: PDFPage, x: number, y: number, color: any) {
 
 export async function POST(request: Request) {
   try {
+    // ✅ UPDATED: Extract body and look up email from DB if missing
     const body = await request.json();
     const {
       customerName,
@@ -104,20 +105,39 @@ export async function POST(request: Request) {
 
     let email = body.email || "";
 
-    // ✅ If email is missing, look it up from completed_payments
+    // ✅ If email is missing, look it up from DB
     if (!email || !email.trim()) {
       try {
-        const { MongoClient } = await import("mongodb");
+        const { MongoClient, ObjectId } = await import("mongodb");
         const mongoClient = await MongoClient.connect(process.env.MONGODB_URI!);
         const db = mongoClient.db("db");
-        const payment = await db.collection("completed_payments").findOne(
-          { cardLast4, amount: parseFloat(amount) },
-          { sort: { processedAt: -1 } }
-        );
-        if (payment?.customerEmail) {
-          email = payment.customerEmail;
-          console.log("✅ Found email from completed_payments:", email);
+
+        const phone = body.phone || "";
+        const linkId = body.linkId || "";
+
+        // Try completed_payments by phone
+        if (phone) {
+          const payment = await db.collection("completed_payments").findOne(
+            { customerPhone: phone.replace(/\D/g, "") },
+            { sort: { processedAt: -1 } }
+          );
+          if (payment?.customerEmail) {
+            email = payment.customerEmail;
+            console.log("✅ Found email from completed_payments:", email);
+          }
         }
+
+        // Fallback: payment_link_generated
+        if ((!email || !email.trim()) && linkId) {
+          const link = await db.collection("payment_link_generated").findOne(
+            { _id: new ObjectId(linkId) }
+          );
+          if (link?.customerEmail) {
+            email = link.customerEmail;
+            console.log("✅ Found email from payment_link_generated:", email);
+          }
+        }
+
         await mongoClient.close();
       } catch (err) {
         console.error("⚠️ Error looking up email:", err);
@@ -473,7 +493,7 @@ By signing this form, I represent and confirm the following:
       { label: "Email:", value: email },
       { label: "Card:", value: `****${cardLast4}` },
       { label: "Amount:", value: `$${amount} USD` },
-      { label: "IP Address:", value: signerIP }, // ✅ This is the CUSTOMER's IP
+      { label: "IP Address:", value: signerIP },
       { label: "Signature Method:", value: signatureMethod },
       { label: "Signing Time:", value: formatUTCTimestamp(documentSignedAt) },
     ];
@@ -523,7 +543,6 @@ By signing this form, I represent and confirm the following:
     });
     ay -= 20;
 
-    // ✅ Use proper IPs: adminIP for sender actions, signerIP for customer actions
     const agentEmail = "support@texaspremiumins.com";
 
     const activities = [
@@ -533,7 +552,7 @@ By signing this form, I represent and confirm the following:
         actor: "Texas Premium Insurance Services",
         action: "created the document",
         detail: agentEmail,
-        ip: adminIP, // ✅ Admin created it
+        ip: adminIP,
         timestamp: formatUTCTimestamp(documentCreatedAt),
       },
       {
@@ -542,7 +561,7 @@ By signing this form, I represent and confirm the following:
         actor: "Texas Premium Insurance Services",
         action: `sent the document to ${customerName}`,
         detail: email,
-        ip: adminIP, // ✅ Admin sent it
+        ip: adminIP,
         timestamp: formatUTCTimestamp(documentSentAt),
       },
       {
@@ -551,7 +570,7 @@ By signing this form, I represent and confirm the following:
         actor: customerName.toUpperCase(),
         action: "first viewed document",
         detail: email,
-        ip: signerIP, // ✅ Customer viewed it
+        ip: signerIP,
         timestamp: formatUTCTimestamp(documentViewedAt),
       },
       {
@@ -560,7 +579,7 @@ By signing this form, I represent and confirm the following:
         actor: customerName.toUpperCase(),
         action: "signed the document",
         detail: email,
-        ip: signerIP, // ✅ Customer signed it
+        ip: signerIP,
         timestamp: formatUTCTimestamp(documentSignedAt),
       },
     ];
@@ -678,15 +697,11 @@ By signing this form, I represent and confirm the following:
           <tr>
             <td align="center">
               <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                
-                <!-- Header with Logo -->
                 <tr>
                   <td style="padding: 20px; text-align: center; background-color: #ffffff;">
                     <img src="https://www.texaspremiumins.com/logo.png" alt="Texas Premium Insurance Services" style="height: 50px; width: auto;">
                   </td>
                 </tr>
-
-                <!-- Blue Banner -->
                 <tr>
                   <td style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 40px 20px; text-align: center;">
                     <table cellpadding="0" cellspacing="0" style="margin: 0 auto 20px;">
@@ -700,14 +715,10 @@ By signing this form, I represent and confirm the following:
                       ${isSpanish ? "Documento Completado" : "Document Completed"}
                     </h1>
                     <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 16px;">
-                      ${isSpanish 
-                        ? "Tu documento ha sido firmado exitosamente" 
-                        : "Your document has been successfully signed"}
+                      ${isSpanish ? "Tu documento ha sido firmado exitosamente" : "Your document has been successfully signed"}
                     </p>
                   </td>
                 </tr>
-
-                <!-- Content -->
                 <tr>
                   <td style="padding: 40px 30px;">
                     <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px;">
@@ -718,8 +729,6 @@ By signing this form, I represent and confirm the following:
                         ? "Tu Autorización de Pago ha sido completada y firmada exitosamente. El documento completo con certificado de auditoría está adjunto a este correo electrónico."
                         : "Your Payment Authorization has been completed and signed successfully. The complete document with audit certificate is attached to this email."}
                     </p>
-
-                    <!-- Info box about attachment -->
                     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 30px;">
                       <tr>
                         <td style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 4px;">
@@ -735,8 +744,6 @@ By signing this form, I represent and confirm the following:
                         </td>
                       </tr>
                     </table>
-
-                    <!-- Document Info Box -->
                     <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f9fafb; border-radius: 6px; border: 1px solid #e5e7eb;">
                       <tr>
                         <td style="padding: 20px;">
@@ -745,33 +752,19 @@ By signing this form, I represent and confirm the following:
                           </p>
                           <table width="100%" cellpadding="0" cellspacing="0">
                             <tr>
-                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">
-                                ${isSpanish ? "Documento:" : "Document:"}
-                              </td>
-                              <td style="padding: 6px 0; color: #111827; font-size: 14px; font-weight: 500; text-align: right;">
-                                ${isSpanish ? "Autorización de Pago" : "Payment Authorization"}
-                              </td>
+                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">${isSpanish ? "Documento:" : "Document:"}</td>
+                              <td style="padding: 6px 0; color: #111827; font-size: 14px; font-weight: 500; text-align: right;">${isSpanish ? "Autorización de Pago" : "Payment Authorization"}</td>
                             </tr>
                             <tr>
-                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">
-                                ${isSpanish ? "Monto:" : "Amount:"}
-                              </td>
-                              <td style="padding: 6px 0; color: #111827; font-size: 14px; font-weight: 600; text-align: right;">
-                                $${amount} USD
-                              </td>
+                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">${isSpanish ? "Monto:" : "Amount:"}</td>
+                              <td style="padding: 6px 0; color: #111827; font-size: 14px; font-weight: 600; text-align: right;">$${amount} USD</td>
                             </tr>
                             <tr>
-                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">
-                                ${isSpanish ? "Fecha:" : "Date:"}
-                              </td>
-                              <td style="padding: 6px 0; color: #111827; font-size: 14px; font-weight: 500; text-align: right;">
-                                ${todayDate}
-                              </td>
+                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">${isSpanish ? "Fecha:" : "Date:"}</td>
+                              <td style="padding: 6px 0; color: #111827; font-size: 14px; font-weight: 500; text-align: right;">${todayDate}</td>
                             </tr>
                             <tr>
-                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">
-                                ${isSpanish ? "Estado:" : "Status:"}
-                              </td>
+                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">${isSpanish ? "Estado:" : "Status:"}</td>
                               <td style="padding: 6px 0; text-align: right;">
                                 <span style="display: inline-block; background-color: #dcfce7; color: #166534; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">
                                   ${isSpanish ? "COMPLETADO" : "COMPLETED"}
@@ -782,11 +775,8 @@ By signing this form, I represent and confirm the following:
                         </td>
                       </tr>
                     </table>
-
                   </td>
                 </tr>
-
-                <!-- Footer -->
                 <tr>
                   <td style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb;">
                     <p style="color: #6b7280; font-size: 12px; line-height: 1.6; margin: 0 0 10px;">
@@ -806,10 +796,7 @@ By signing this form, I represent and confirm the following:
                     </p>
                   </td>
                 </tr>
-
               </table>
-
-              <!-- Disclaimer -->
               <table width="600" cellpadding="0" cellspacing="0" style="margin-top: 20px;">
                 <tr>
                   <td style="padding: 0 20px;">
@@ -824,7 +811,6 @@ By signing this form, I represent and confirm the following:
                   </td>
                 </tr>
               </table>
-
             </td>
           </tr>
         </table>
@@ -832,7 +818,7 @@ By signing this form, I represent and confirm the following:
       </html>
     `;
 
-    // Send to customer with DocuSign-style email
+    // Send to customer
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
@@ -849,7 +835,7 @@ By signing this form, I represent and confirm the following:
       ],
     });
 
-    // Send internal notification with full details
+    // Send internal notification
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: process.env.NOTIFICATION_EMAIL,

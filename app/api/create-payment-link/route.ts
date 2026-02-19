@@ -12,7 +12,7 @@ const client = new square.SquareClient({
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    // ✅ REMOVED customerEmail from requirements
+    // ✅ Added linkId to support redirect back to /pay/{linkId}
     const { amount, description, customerPhone, paymentMethod, language, linkId } = body;
 
     if (!amount || !description || !customerPhone) {
@@ -33,7 +33,12 @@ export async function POST(request: NextRequest) {
     };
     const referenceId = JSON.stringify(referenceData);
 
-    // ✅ Updated redirect URL to go to payment-processing page
+    // ✅ If linkId exists, redirect back to /pay/{linkId} so progress tracking works
+    // If no linkId (legacy), fall back to /payment-processing
+    const redirectUrl = linkId
+      ? `https://www.texaspremiumins.com/${language}/pay/${linkId}`
+      : `https://www.texaspremiumins.com/${language}/payment-processing?method=${paymentMethod}&phone=${encodeURIComponent(customerPhone)}`;
+
     const response = await client.checkout.paymentLinks.create({
       idempotencyKey: crypto.randomUUID(),
       quickPay: {
@@ -45,13 +50,9 @@ export async function POST(request: NextRequest) {
         locationId: locationId,
       },
       checkoutOptions: {
-        // ✅ NEW: Redirect to processing page instead of directly to consent
-        redirectUrl: linkId
-  ? `https://www.texaspremiumins.com/${language}/pay/${linkId}`
-  : `https://www.texaspremiumins.com/${language}/payment-processing?method=${paymentMethod}&phone=${encodeURIComponent(customerPhone)}`,
+        redirectUrl,
         askForShippingAddress: false,
       },
-      // ✅ Store metadata in reference_id for webhook to retrieve
       paymentNote: referenceId,
     });
 

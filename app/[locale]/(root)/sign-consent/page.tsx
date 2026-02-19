@@ -1,4 +1,5 @@
-//app/[locale]/(root)/sign-consent/page.tsx
+// app/[locale]/(root)/sign-consent/page.tsx
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
 import { useState, useRef, useEffect, use } from "react";
@@ -47,6 +48,15 @@ export default function SignConsentPage({ params }: PageProps) {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [clientIP, setClientIP] = useState("");
   const [isCheckingProgress, setIsCheckingProgress] = useState(true);
+
+  // ✅ Resolved data from DB - shows shimmer until loaded
+  const [resolvedEmail, setResolvedEmail] = useState(email);
+  const [resolvedCard, setResolvedCard] = useState(
+    cardLast4 !== "1234" ? cardLast4 : "",
+  );
+  const [resolvedAmount, setResolvedAmount] = useState(
+    amount !== "0.00" ? amount : "",
+  );
   const [isLoadingDetails, setIsLoadingDetails] = useState(!!linkId);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -60,62 +70,47 @@ export default function SignConsentPage({ params }: PageProps) {
     });
   };
 
-  const [resolvedEmail, setResolvedEmail] = useState(email);
-  const [resolvedCard, setResolvedCard] = useState(cardLast4);
-
+  // ✅ Combined init: check progress + fetch real card/email in parallel
   useEffect(() => {
-    if (!linkId) return;
+    if (!linkId) {
+      setIsCheckingProgress(false);
+      setIsLoadingDetails(false);
+      return;
+    }
 
-    const fetchDetails = async () => {
+    const init = async () => {
       try {
-        const res = await fetch(`/api/get-link-details?linkId=${linkId}`);
-        const data = await res.json();
-        if (data.success) {
-          if (data.email) setResolvedEmail(data.email);
-          if (data.cardLast4) setResolvedCard(data.cardLast4);
+        const [progressRes, detailsRes] = await Promise.all([
+          fetch(`/api/check-progress?linkId=${linkId}`),
+          fetch(`/api/get-link-details?linkId=${linkId}`),
+        ]);
+
+        const progressData = await progressRes.json();
+        const detailsData = await detailsRes.json();
+
+        // Handle details - card, email, amount
+        if (detailsData.success) {
+          if (detailsData.email) setResolvedEmail(detailsData.email);
+          if (detailsData.cardLast4) setResolvedCard(detailsData.cardLast4);
+          if (detailsData.amount) {
+            setResolvedAmount((detailsData.amount / 100).toFixed(2));
+          }
+        }
+
+        // Handle progress - redirect if consent already done
+        if (progressData.success && progressData.progress?.consent) {
+          router.push(progressData.redirectTo);
+          return;
         }
       } catch (err) {
-        console.error("Error fetching link details:", err);
+        console.error("Error initializing:", err);
       } finally {
+        setIsCheckingProgress(false);
         setIsLoadingDetails(false);
       }
     };
 
-    fetchDetails();
-  }, [linkId]);
-
-  useEffect(() => {
-    const checkConsentStatus = async () => {
-      if (!linkId) {
-        setIsCheckingProgress(false);
-        return;
-      }
-
-      try {
-        const response = await fetch(`/api/check-progress?linkId=${linkId}`);
-        const data = await response.json();
-
-        if (data.success) {
-          const { progress, nextStep, redirectTo } = data;
-
-          if (progress.consent) {
-            console.log(
-              "✅ Consent already complete, redirecting to:",
-              nextStep,
-            );
-            router.push(redirectTo);
-            return;
-          }
-        }
-
-        setIsCheckingProgress(false);
-      } catch (error) {
-        console.error("Error checking consent status:", error);
-        setIsCheckingProgress(false);
-      }
-    };
-
-    checkConsentStatus();
+    init();
   }, [linkId, router]);
 
   useEffect(() => {
@@ -235,6 +230,14 @@ export default function SignConsentPage({ params }: PageProps) {
       );
       return;
     }
+    if (!resolvedCard) {
+      alert(
+        isSpanish
+          ? "Información de tarjeta aún cargando, intente de nuevo"
+          : "Card info still loading, please try again",
+      );
+      return;
+    }
 
     let signatureDataUrl = "";
     if (signatureMethod === "draw") {
@@ -257,15 +260,30 @@ export default function SignConsentPage({ params }: PageProps) {
 
     setIsSubmitting(true);
 
+    // ✅ Fetch email one more time at submit if still missing
+    let finalEmail = resolvedEmail;
+    if (!finalEmail && linkId) {
+      try {
+        const res = await fetch(`/api/get-link-details?linkId=${linkId}`);
+        const data = await res.json();
+        if (data.success && data.email) {
+          finalEmail = data.email;
+          setResolvedEmail(data.email);
+        }
+      } catch {
+        // Will fall back to server-side lookup in generate-signed-consent
+      }
+    }
+
     try {
       const response = await fetch("/api/generate-signed-consent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customerName,
-          amount,
+          amount: resolvedAmount || amount,
           cardLast4: resolvedCard,
-          email: resolvedEmail,
+          email: finalEmail,
           phone,
           linkId,
           signatureDataUrl,
@@ -340,8 +358,8 @@ export default function SignConsentPage({ params }: PageProps) {
     },
   );
 
-  // ── Loading State ──
-  if (isCheckingProgress || isLoadingDetails) {
+  // ── Loading State (only for progress check) ──
+  if (isCheckingProgress) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white">
         <Image
@@ -489,7 +507,7 @@ export default function SignConsentPage({ params }: PageProps) {
 
         {/* Document Card */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          {/* Transaction Summary */}
+          {/* Transaction Summary - with shimmer loading */}
           <div
             className="px-6 py-5 border-b border-gray-100"
             style={{
@@ -504,15 +522,19 @@ export default function SignConsentPage({ params }: PageProps) {
                 >
                   {isSpanish ? "Monto a autorizar" : "Amount to authorize"}
                 </p>
-                <p
-                  className="text-3xl font-bold tracking-tight"
-                  style={{ color: "#1E3A5F" }}
-                >
-                  ${amount}
-                  <span className="text-sm font-normal text-gray-400 ml-1.5">
-                    USD
-                  </span>
-                </p>
+                {resolvedAmount ? (
+                  <p
+                    className="text-3xl font-bold tracking-tight"
+                    style={{ color: "#1E3A5F" }}
+                  >
+                    ${resolvedAmount}
+                    <span className="text-sm font-normal text-gray-400 ml-1.5">
+                      USD
+                    </span>
+                  </p>
+                ) : (
+                  <div className="h-9 w-32 bg-gray-200 rounded animate-pulse mt-1"></div>
+                )}
               </div>
               <div className="text-right">
                 <p
@@ -521,29 +543,43 @@ export default function SignConsentPage({ params }: PageProps) {
                 >
                   {isSpanish ? "Tarjeta" : "Card"}
                 </p>
-                <p className="text-base font-semibold text-gray-700 font-mono tracking-wider">
-                  &bull;&bull;&bull;&bull; {cardLast4}
-                </p>
+                {resolvedCard ? (
+                  <p className="text-base font-semibold text-gray-700 font-mono tracking-wider">
+                    &bull;&bull;&bull;&bull; {resolvedCard}
+                  </p>
+                ) : (
+                  <div className="h-6 w-24 bg-gray-200 rounded animate-pulse mt-1"></div>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Authorization Text */}
+          {/* Authorization Text - with inline shimmer for card/amount */}
           <div className="px-6 py-6">
             <p className="text-gray-700 leading-relaxed text-sm">
               {isSpanish ? (
                 <>
                   Yo, confirmo que soy el titular autorizado de la tarjeta de
-                  crédito/débito que termina en <strong>****{cardLast4}</strong>
+                  crédito/débito que termina en{" "}
+                  {resolvedCard ? (
+                    <strong>****{resolvedCard}</strong>
+                  ) : (
+                    <span className="inline-block h-4 w-16 bg-gray-200 rounded animate-pulse align-middle"></span>
+                  )}
                   . Nadie más está utilizando mi tarjeta en mi nombre. Estoy
                   realizando esta transacción de mi propia voluntad.
                 </>
               ) : (
                 <>
                   I confirm that I am the authorized holder of the credit/debit
-                  card ending in <strong>****{cardLast4}</strong>. No one else
-                  is using my card on my behalf. I am making this transaction of
-                  my own free will.
+                  card ending in{" "}
+                  {resolvedCard ? (
+                    <strong>****{resolvedCard}</strong>
+                  ) : (
+                    <span className="inline-block h-4 w-16 bg-gray-200 rounded animate-pulse align-middle"></span>
+                  )}
+                  . No one else is using my card on my behalf. I am making this
+                  transaction of my own free will.
                 </>
               )}
             </p>
@@ -554,17 +590,29 @@ export default function SignConsentPage({ params }: PageProps) {
                   Por la presente autorizo a{" "}
                   <strong>Texas Premium Insurance Services</strong> a procesar
                   un cargo de{" "}
-                  <strong style={{ color: "#1E3A5F" }}>${amount} USD</strong> a
-                  mi tarjeta mencionada anteriormente para el pago de mi póliza
-                  de seguro.
+                  {resolvedAmount ? (
+                    <strong style={{ color: "#1E3A5F" }}>
+                      ${resolvedAmount} USD
+                    </strong>
+                  ) : (
+                    <span className="inline-block h-4 w-20 bg-gray-200 rounded animate-pulse align-middle"></span>
+                  )}{" "}
+                  a mi tarjeta mencionada anteriormente para el pago de mi
+                  póliza de seguro.
                 </>
               ) : (
                 <>
                   I hereby authorize{" "}
                   <strong>Texas Premium Insurance Services</strong> to process a
                   charge of{" "}
-                  <strong style={{ color: "#1E3A5F" }}>${amount} USD</strong> to
-                  my above-mentioned card for payment of my insurance policy.
+                  {resolvedAmount ? (
+                    <strong style={{ color: "#1E3A5F" }}>
+                      ${resolvedAmount} USD
+                    </strong>
+                  ) : (
+                    <span className="inline-block h-4 w-20 bg-gray-200 rounded animate-pulse align-middle"></span>
+                  )}{" "}
+                  to my above-mentioned card for payment of my insurance policy.
                 </>
               )}
             </p>
