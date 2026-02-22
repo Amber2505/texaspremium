@@ -40,14 +40,48 @@ export async function GET() {
   try {
     const mongoClient = await clientPromise;
     const db = mongoClient.db('db');
-    
+
+    // ✅ Auto-sync: Get all unique company names from customer policies
+    const policyCompanies = await db
+      .collection('customer_policyandclaim_info')
+      .distinct('company_name');
+
+    // Get existing company names from company_database
+    const existingCompanies = await db
+      .collection('company_database')
+      .distinct('name');
+
+    const existingSet = new Set(existingCompanies);
+
+    // Find new companies that don't exist yet
+    const newCompanies = policyCompanies.filter(
+      (name: string) => name && name.trim() && !existingSet.has(name.trim())
+    );
+
+    // Auto-add new companies with empty links
+    if (newCompanies.length > 0) {
+      const docs = newCompanies.map((name: string) => ({
+        name: name.trim(),
+        paymentLink: '',
+        claimLink: '',
+        claimPhone: '',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        autoAdded: true,
+      }));
+
+      await db.collection('company_database').insertMany(docs);
+      console.log(`✅ Auto-added ${newCompanies.length} new companies: ${newCompanies.join(', ')}`);
+    }
+
+    // Now fetch all companies
     const companiesArray = await db
       .collection('company_database')
       .find({})
       .toArray();
 
     const companyDatabase: Record<string, CompanyData> = {};
-    
+
     companiesArray.forEach((doc) => {
       const name = doc.name || doc['Company Name'];
       if (name) {
@@ -56,8 +90,8 @@ export async function GET() {
           paymentLink: doc.paymentLink || doc['Payment Link'] || '',
           claimLink: doc.claimLink || doc['Claim Link'] || '',
           claimPhone: doc.claimPhone || doc['Claim Phone'] || '',
-          createdAt: doc.createdAt ? doc.createdAt.toISOString() : undefined, // ✅ Added
-          updatedAt: doc.updatedAt ? doc.updatedAt.toISOString() : undefined, // ✅ Added
+          createdAt: doc.createdAt ? doc.createdAt.toISOString() : undefined,
+          updatedAt: doc.updatedAt ? doc.updatedAt.toISOString() : undefined,
         };
       }
     });
@@ -66,15 +100,19 @@ export async function GET() {
       companies: companyDatabase,
       meta: {
         totalCompanies: Object.keys(companyDatabase).length,
-        source: 'mongodb'
-      }
+        newlyAdded: newCompanies.length,
+        source: 'mongodb',
+      },
     });
   } catch (error) {
     console.error('MongoDB Error:', error);
-    return NextResponse.json({
-      error: 'Failed to fetch from MongoDB',
-      message: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: 'Failed to fetch from MongoDB',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    );
   }
 }
 
