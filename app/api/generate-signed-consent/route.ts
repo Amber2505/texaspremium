@@ -44,7 +44,7 @@ function drawWrappedText(
           font: fontObj,
           color,
         });
-        currentY -= fontSize + 5;
+        currentY -= fontSize + 3;
         currentLine = word + " ";
       } else {
         currentLine = testLine;
@@ -62,7 +62,7 @@ function drawWrappedText(
       currentY -= fontSize + 5;
     }
 
-    currentY -= 3;
+    currentY -= 2;
   }
 
   return currentY;
@@ -226,14 +226,17 @@ export async function POST(request: Request) {
     }
 
     // Title
-    page.drawText(
-      isSpanish ? "FORMULARIO DE AUTORIZACION DE PAGO" : "PAYMENT AUTHORIZATION FORM",
-      { x: 50, y: yPosition, size: 16, font: boldFont, color: rgb(0, 0, 0) }
-    );
+    const titleText = isSpanish ? "FORMULARIO DE AUTORIZACION DE PAGO" : "PAYMENT AUTHORIZATION FORM";
+    page.drawText(titleText, {
+      x: (pageWidth - boldFont.widthOfTextAtSize(titleText, 16)) / 2,
+      y: yPosition, size: 16, font: boldFont, color: rgb(0, 0, 0),
+    });
     yPosition -= 20;
 
-    page.drawText(`Date: ${todayDate}`, {
-      x: 50, y: yPosition, size: 11, font, color: rgb(0, 0, 0),
+    const dateText = `Date: ${todayDate}`;
+    page.drawText(dateText, {
+      x: (pageWidth - font.widthOfTextAtSize(dateText, 11)) / 2,
+      y: yPosition, size: 11, font, color: rgb(0, 0, 0),
     });
     yPosition -= 25;
 
@@ -268,7 +271,7 @@ By signing this form, I represent and confirm the following:
     yPosition -= 12;
 
     // Check if we need a new page for the signature section
-    if (yPosition < 280) {
+    if (yPosition < 230) {
       page.drawText(`Document ID: ${documentId}`, {
         x: 50, y: 30, size: 8, font, color: rgb(0.5, 0.5, 0.5),
       });
