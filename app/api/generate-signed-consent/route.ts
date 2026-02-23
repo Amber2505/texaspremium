@@ -59,10 +59,10 @@ function drawWrappedText(
         font: fontObj,
         color,
       });
-      currentY -= fontSize + 5;
+      currentY -= fontSize + 2;
     }
 
-    currentY -= 2;
+    currentY -= 1;
   }
 
   return currentY;
@@ -267,11 +267,10 @@ By signing this form, I represent and confirm the following:
 5. I agree that this electronic signature is legally binding and carries the same validity as a handwritten signature under the Electronic Signatures in Global and National Commerce Act (E-SIGN Act, 15 U.S.C. 7001 et seq.) and the Uniform Electronic Transactions Act (UETA).
 6. I confirm that all information provided in this form, including my email address and billing zip code, is true and accurate.`;
 
-    yPosition = drawWrappedText(page, authText, 50, yPosition, pageWidth - 100, 9.5, font, rgb(0, 0, 0));
-    yPosition -= 12;
-
+    yPosition = drawWrappedText(page, authText, 50, yPosition, pageWidth - 100, 8.8, font, rgb(0, 0, 0));
+    yPosition -= 8;
     // Check if we need a new page for the signature section
-    if (yPosition < 230) {
+    if (yPosition < 200) {
       page.drawText(`Document ID: ${documentId}`, {
         x: 50, y: 30, size: 8, font, color: rgb(0.5, 0.5, 0.5),
       });
@@ -705,34 +704,30 @@ By signing this form, I represent and confirm the following:
                       </tr>
                     </table>
                     <h1 style="color: #ffffff; margin: 0 0 10px; font-size: 24px; font-weight: 600;">
-                      ${isSpanish ? "Documento Completado" : "Document Completed"}
+                      Document Completed
                     </h1>
                     <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 16px;">
-                      ${isSpanish ? "Tu documento ha sido firmado exitosamente" : "Your document has been successfully signed"}
+                      Your document has been successfully signed
                     </p>
                   </td>
                 </tr>
                 <tr>
                   <td style="padding: 40px 30px;">
                     <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px;">
-                      ${isSpanish ? "Hola" : "Hello"} <strong>${customerName}</strong>,
+                      Hello <strong>${customerName}</strong>,
                     </p>
                     <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 25px;">
-                      ${isSpanish 
-                        ? "Tu Autorización de Pago ha sido completada y firmada exitosamente. El documento completo con certificado de auditoría está adjunto a este correo electrónico."
-                        : "Your Payment Authorization has been completed and signed successfully. The complete document with audit certificate is attached to this email."}
+                      Your Payment Authorization has been completed and signed successfully. The complete document with audit certificate is attached to this email.
                     </p>
                     <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 30px;">
                       <tr>
                         <td style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 4px;">
                           <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.5;">
-                            <strong>📎 ${isSpanish ? "Archivo Adjunto" : "Attachment"}:</strong><br>
+                            <strong>📎 Attachment:</strong><br>
                             <span style="font-family: monospace; font-size: 13px;">Payment_Authorization_${customerName.replace(/\s+/g, "_")}.pdf</span>
                           </p>
                           <p style="margin: 8px 0 0; color: #92400e; font-size: 13px;">
-                            ${isSpanish 
-                              ? "Descarga el archivo PDF adjunto para ver tu documento firmado completo."
-                              : "Download the attached PDF file to view your complete signed document."}
+                            Download the attached PDF file to view your complete signed document.
                           </p>
                         </td>
                       </tr>
@@ -741,30 +736,30 @@ By signing this form, I represent and confirm the following:
                       <tr>
                         <td style="padding: 20px;">
                           <p style="color: #6b7280; font-size: 13px; margin: 0 0 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                            ${isSpanish ? "Detalles del Documento" : "Document Details"}
+                            Document Details
                           </p>
                           <table width="100%" cellpadding="0" cellspacing="0">
                             <tr>
-                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">${isSpanish ? "Documento:" : "Document:"}</td>
-                              <td style="padding: 6px 0; color: #111827; font-size: 14px; font-weight: 500; text-align: right;">${isSpanish ? "Autorización de Pago" : "Payment Authorization"}</td>
+                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">Document:</td>
+                              <td style="padding: 6px 0; color: #111827; font-size: 14px; font-weight: 500; text-align: right;">Payment Authorization</td>
                             </tr>
                             <tr>
-                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">${isSpanish ? "Monto:" : "Amount:"}</td>
+                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">Amount:</td>
                               <td style="padding: 6px 0; color: #111827; font-size: 14px; font-weight: 600; text-align: right;">$${amount} USD</td>
                             </tr>
                             <tr>
-                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">${isSpanish ? "Codigo Postal:" : "Billing Zip:"}</td>
+                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">Billing Zip:</td>
                               <td style="padding: 6px 0; color: #111827; font-size: 14px; font-weight: 500; text-align: right;">${billingZip || "—"}</td>
                             </tr>
                             <tr>
-                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">${isSpanish ? "Fecha:" : "Date:"}</td>
+                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">Date:</td>
                               <td style="padding: 6px 0; color: #111827; font-size: 14px; font-weight: 500; text-align: right;">${todayDate}</td>
                             </tr>
                             <tr>
-                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">${isSpanish ? "Estado:" : "Status:"}</td>
+                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">Status:</td>
                               <td style="padding: 6px 0; text-align: right;">
                                 <span style="display: inline-block; background-color: #dcfce7; color: #166534; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">
-                                  ${isSpanish ? "COMPLETADO" : "COMPLETED"}
+                                  COMPLETED
                                 </span>
                               </td>
                             </tr>
@@ -777,15 +772,11 @@ By signing this form, I represent and confirm the following:
                 <tr>
                   <td style="padding: 30px; background-color: #f9fafb; border-top: 1px solid #e5e7eb;">
                     <p style="color: #6b7280; font-size: 12px; line-height: 1.6; margin: 0 0 10px;">
-                      <strong style="color: #111827;">${isSpanish ? "No Compartas Este Correo" : "Do Not Share This Email"}</strong><br>
-                      ${isSpanish 
-                        ? "Este correo contiene información confidencial. Por favor no compartas este correo o el documento con otros."
-                        : "This email contains confidential information. Please do not share this email or document with others."}
+                      <strong style="color: #111827;">Do Not Share This Email</strong><br>
+                      This email contains confidential information. Please do not share this email or document with others.
                     </p>
                     <p style="color: #9ca3af; font-size: 11px; line-height: 1.5; margin: 15px 0 0;">
-                      ${isSpanish 
-                        ? "Este documento fue firmado electrónicamente y es legalmente vinculante. La identidad del firmante ha sido autenticada y este registro de auditoría es a prueba de manipulaciones."
-                        : "This document was electronically signed and is legally binding. The signer's identity has been authenticated and this audit trail is tamper-evident."}
+                      This document was electronically signed and is legally binding. The signer's identity has been authenticated and this audit trail is tamper-evident.
                     </p>
                     <p style="color: #9ca3af; font-size: 11px; margin: 15px 0 0;">
                       Document ID: ${documentId}<br>
@@ -798,12 +789,10 @@ By signing this form, I represent and confirm the following:
                 <tr>
                   <td style="padding: 0 20px;">
                     <p style="color: #9ca3af; font-size: 11px; line-height: 1.5; text-align: center; margin: 0;">
-                      ${isSpanish 
-                        ? "¿Preguntas sobre el documento? Si necesitas modificar el documento o tienes preguntas, comunícate directamente con el remitente."
-                        : "Questions about the Document? If you need to modify the document or have questions about the details, please reach out to the sender directly."}
+                      Questions about the Document? If you need to modify the document or have questions about the details, please reach out to the sender directly.
                     </p>
                     <p style="color: #9ca3af; font-size: 11px; text-align: center; margin: 10px 0 0;">
-                      © ${new Date().getFullYear()} Texas Premium Insurance Services. ${isSpanish ? "Todos los derechos reservados." : "All rights reserved."}
+                      © ${new Date().getFullYear()} Texas Premium Insurance Services. All rights reserved.
                     </p>
                   </td>
                 </tr>
