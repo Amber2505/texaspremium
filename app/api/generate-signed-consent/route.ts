@@ -91,7 +91,6 @@ function drawViewIcon(page: PDFPage, x: number, y: number, color: any) {
 
 export async function POST(request: Request) {
   try {
-    // ✅ UPDATED: Extract body and look up email from DB if missing
     const body = await request.json();
     const {
       customerName,
@@ -101,11 +100,14 @@ export async function POST(request: Request) {
       signatureMethod,
       language,
       clientIP,
+      cardholderEmail,  // ✅ NEW: email the cardholder typed on the form
+      billingZip,       // ✅ NEW: billing zip code for AVS
+      userAgent,        // ✅ NEW: browser/device info
     } = body;
 
     let email = body.email || "";
 
-    // ✅ If email is missing, look it up from DB
+    // If email is missing, look it up from DB
     if (!email || !email.trim()) {
       try {
         const { MongoClient, ObjectId } = await import("mongodb");
@@ -115,7 +117,6 @@ export async function POST(request: Request) {
         const phone = body.phone || "";
         const linkId = body.linkId || "";
 
-        // Try completed_payments by phone
         if (phone) {
           const payment = await db.collection("completed_payments").findOne(
             { customerPhone: phone.replace(/\D/g, "") },
@@ -127,7 +128,6 @@ export async function POST(request: Request) {
           }
         }
 
-        // Fallback: payment_link_generated
         if ((!email || !email.trim()) && linkId) {
           const link = await db.collection("payment_link_generated").findOne(
             { _id: new ObjectId(linkId) }
@@ -154,17 +154,13 @@ export async function POST(request: Request) {
 
     const isSpanish = language === "es";
 
-    // ✅ FIXED: Properly separate admin/sender IP from customer/signer IP
-    const headersList = await headers();
-    
-    // This will be the ADMIN's IP (who created the link) - NOT used for signer
     const adminIP = "Internal";
-    
-    // Customer/signer IP comes from the client-side call
     const signerIP = clientIP || "Unknown";
-    
+
     console.log("📍 Admin/Sender IP:", adminIP);
     console.log("👤 Customer/Signer IP:", signerIP);
+    console.log("📧 Cardholder Email (self-entered):", cardholderEmail);
+    console.log("📮 Billing Zip:", billingZip);
 
     // Generate unique IDs
     const documentId = crypto.randomUUID();
@@ -241,38 +237,38 @@ export async function POST(request: Request) {
     });
     yPosition -= 25;
 
-    // Authorization text
+    // ✅ UPDATED: Stronger authorization text with cardholder identity statement
     const authText = isSpanish
-      ? `Yo, ${customerName}, confirmo que soy el titular autorizado de la tarjeta de credito/debito que termina en ****${cardLast4}. Nadie mas esta utilizando mi tarjeta en mi nombre. Estoy realizando esta transaccion de mi propia voluntad.
+      ? `Yo, ${customerName}, confirmo que soy la persona cuyo nombre aparece en la tarjeta de credito/debito que termina en ****${cardLast4}. Confirmo que soy el titular autorizado de esta tarjeta y que nadie mas esta utilizando mi tarjeta en mi nombre. Estoy realizando esta transaccion de mi propia voluntad.
 
 Por la presente autorizo a Texas Premium Insurance Services a procesar un cargo de $${amount} (USD) a mi tarjeta mencionada anteriormente para el pago de mi poliza de seguro.
 
 Al firmar este formulario, declaro y confirmo lo siguiente:
 
-1. Soy el titular legalmente autorizado de la tarjeta que termina en ****${cardLast4}.
+1. Soy la persona cuyo nombre aparece en la tarjeta que termina en ****${cardLast4} y soy su titular legalmente autorizado. Entiendo que si el nombre que proporciono no coincide con el nombre del titular de la tarjeta, estoy cometiendo fraude en un documento firmado.
 2. Estoy autorizando personalmente esta transaccion y ningun tercero esta utilizando mi tarjeta sin mi conocimiento.
 3. He sido informado del monto exacto de $${amount} y del concepto del cargo antes de autorizar esta transaccion.
 4. Reconozco que este cargo sera procesado de inmediato tras mi autorizacion.
 5. Acepto que esta firma electronica es legalmente vinculante y tiene la misma validez que una firma manuscrita conforme a la Ley E-SIGN (15 U.S.C. 7001 et seq.) y la Ley UETA.
-6. Confirmo que toda la informacion proporcionada en este formulario es verdadera y precisa.`
-      : `I, ${customerName}, confirm that I am the authorized holder of the credit/debit card ending in ****${cardLast4}. No one else is using my card on my behalf. I am making this transaction of my own free will.
+6. Confirmo que toda la informacion proporcionada en este formulario, incluyendo mi correo electronico y codigo postal de facturacion, es verdadera y precisa.`
+      : `I, ${customerName}, confirm that I am the person whose name appears on the credit/debit card ending in ****${cardLast4}. I confirm that I am the authorized holder of this card and that no one else is using my card on my behalf. I am making this transaction of my own free will.
 
 I hereby authorize Texas Premium Insurance Services, LLC to process a charge of $${amount} (USD) to my above-mentioned card for payment of my insurance policy.
 
 By signing this form, I represent and confirm the following:
 
-1. I am the legally authorized holder of the card ending in ****${cardLast4}.
+1. I am the person whose name appears on the card ending in ****${cardLast4} and I am its legally authorized holder. I understand that if the name I provide does not match the name of the cardholder on file, I am committing fraud on a signed legal document.
 2. I am personally authorizing this transaction and no third party is using my card without my knowledge.
 3. I have been informed of the exact amount of $${amount} and the purpose of this charge prior to authorizing this transaction.
 4. I acknowledge that this charge will be processed immediately upon my authorization.
 5. I agree that this electronic signature is legally binding and carries the same validity as a handwritten signature under the Electronic Signatures in Global and National Commerce Act (E-SIGN Act, 15 U.S.C. 7001 et seq.) and the Uniform Electronic Transactions Act (UETA).
-6. I confirm that all information provided in this form is true and accurate.`;
+6. I confirm that all information provided in this form, including my email address and billing zip code, is true and accurate.`;
 
     yPosition = drawWrappedText(page, authText, 50, yPosition, pageWidth - 100, 9.5, font, rgb(0, 0, 0));
     yPosition -= 12;
 
     // Check if we need a new page for the signature section
-    if (yPosition < 250) {
+    if (yPosition < 280) {
       page.drawText(`Document ID: ${documentId}`, {
         x: 50, y: 30, size: 8, font, color: rgb(0.5, 0.5, 0.5),
       });
@@ -282,45 +278,28 @@ By signing this form, I represent and confirm the following:
     }
 
     // Details grid
-    page.drawText(isSpanish ? "Nombre:" : "Name:", {
-      x: 50, y: yPosition, size: 11, font: boldFont, color: rgb(0, 0, 0),
-    });
-    page.drawText(customerName, {
-      x: 140, y: yPosition, size: 11, font, color: rgb(0, 0, 0),
-    });
-    yPosition -= 20;
+    const detailRows = [
+      { label: isSpanish ? "Nombre:" : "Name:", value: customerName },
+      { label: isSpanish ? "Tarjeta:" : "Card:", value: `****${cardLast4}` },
+      { label: isSpanish ? "Monto:" : "Amount:", value: `$${amount} USD`, bold: true, color: rgb(0, 0, 0.6) },
+      { label: isSpanish ? "Correo de Facturacion:" : "Cardholder Email:", value: cardholderEmail || "(not provided)" },
+      { label: isSpanish ? "Codigo Postal:" : "Billing Zip Code:", value: billingZip || "(not provided)" },
+      { label: isSpanish ? "Correo (Cuenta):" : "Account Email:", value: email },
+      { label: isSpanish ? "Fecha:" : "Date Signed:", value: todayDate },
+    ];
 
-    page.drawText(isSpanish ? "Tarjeta:" : "Card:", {
-      x: 50, y: yPosition, size: 11, font: boldFont, color: rgb(0, 0, 0),
-    });
-    page.drawText(`****${cardLast4}`, {
-      x: 140, y: yPosition, size: 11, font, color: rgb(0, 0, 0),
-    });
-    yPosition -= 20;
-
-    page.drawText(isSpanish ? "Monto:" : "Amount:", {
-      x: 50, y: yPosition, size: 11, font: boldFont, color: rgb(0, 0, 0),
-    });
-    page.drawText(`$${amount} USD`, {
-      x: 140, y: yPosition, size: 11, font: boldFont, color: rgb(0, 0, 0.6),
-    });
-    yPosition -= 20;
-
-    page.drawText(isSpanish ? "Correo:" : "Email:", {
-      x: 50, y: yPosition, size: 11, font: boldFont, color: rgb(0, 0, 0),
-    });
-    page.drawText(email, {
-      x: 140, y: yPosition, size: 11, font, color: rgb(0, 0, 0),
-    });
-    yPosition -= 20;
-
-    page.drawText(isSpanish ? "Fecha:" : "Date Signed:", {
-      x: 50, y: yPosition, size: 11, font: boldFont, color: rgb(0, 0, 0),
-    });
-    page.drawText(todayDate, {
-      x: 140, y: yPosition, size: 11, font, color: rgb(0, 0, 0),
-    });
-    yPosition -= 30;
+    for (const row of detailRows) {
+      page.drawText(row.label, {
+        x: 50, y: yPosition, size: 11, font: boldFont, color: rgb(0, 0, 0),
+      });
+      page.drawText(row.value, {
+        x: 200, y: yPosition, size: 11,
+        font: row.bold ? boldFont : font,
+        color: (row as any).color || rgb(0, 0, 0),
+      });
+      yPosition -= 20;
+    }
+    yPosition -= 10;
 
     // Signature section
     page.drawText(isSpanish ? "Firma:" : "Signature:", {
@@ -384,7 +363,6 @@ By signing this form, I represent and confirm the following:
       color: rgb(0.45, 0.45, 0.45),
     });
 
-    // ✅ Show IP on main document (banks/processors need this for fraud prevention)
     const ipText = `IP: ${signerIP}`;
     page.drawText(ipText, {
       x: sigBoxX + 8,
@@ -490,11 +468,14 @@ By signing this form, I represent and confirm the following:
 
     const signerInfoItems = [
       { label: "Name:", value: customerName },
-      { label: "Email:", value: email },
+      { label: "Account Email:", value: email },
+      { label: "Cardholder Email:", value: cardholderEmail || "(not provided)" },
+      { label: "Billing Zip Code:", value: billingZip || "(not provided)" },
       { label: "Card:", value: `****${cardLast4}` },
       { label: "Amount:", value: `$${amount} USD` },
       { label: "IP Address:", value: signerIP },
       { label: "Signature Method:", value: signatureMethod },
+      { label: "Browser/Device:", value: userAgent ? userAgent.substring(0, 80) : "Unknown" },
       { label: "Signing Time:", value: formatUTCTimestamp(documentSignedAt) },
     ];
 
@@ -502,9 +483,18 @@ By signing this form, I represent and confirm the following:
       auditPage.drawText(item.label, {
         x: 60, y: ay, size: 9, font: boldFont, color: rgb(0.25, 0.25, 0.25),
       });
-      auditPage.drawText(item.value, {
-        x: 170, y: ay, size: 9, font, color: rgb(0.3, 0.3, 0.3),
-      });
+      // Wrap long values (like user agent)
+      const maxValWidth = aw - 50 - 170;
+      if (font.widthOfTextAtSize(item.value, 9) > maxValWidth) {
+        const truncated = item.value.substring(0, 75) + "...";
+        auditPage.drawText(truncated, {
+          x: 170, y: ay, size: 9, font, color: rgb(0.3, 0.3, 0.3),
+        });
+      } else {
+        auditPage.drawText(item.value, {
+          x: 170, y: ay, size: 9, font, color: rgb(0.3, 0.3, 0.3),
+        });
+      }
       ay -= 14;
     }
 
@@ -605,8 +595,7 @@ By signing this form, I represent and confirm the following:
       else if (activity.iconType === "view") drawViewIcon(auditPage, iconX, iconY, activity.iconColor);
       else if (activity.iconType === "check") drawCheckmark(auditPage, iconX, iconY, activity.iconColor);
 
-      const actorText = `${activity.actor}`;
-      auditPage.drawText(actorText, {
+      auditPage.drawText(activity.actor, {
         x: 80, y: ay, size: 9.5, font: boldFont, color: rgb(0.2, 0.2, 0.2),
       });
 
@@ -635,9 +624,10 @@ By signing this form, I represent and confirm the following:
     });
     ay -= 18;
 
+    // ✅ Include billingZip in the hash for tamper-evidence
     const verificationHash = crypto
       .createHash("sha256")
-      .update(`${documentId}-${envelopeId}-${customerName}-${amount}-${signerIP}-${documentSignedAt.toISOString()}`)
+      .update(`${documentId}-${envelopeId}-${customerName}-${amount}-${signerIP}-${billingZip || ""}-${documentSignedAt.toISOString()}`)
       .digest("hex");
 
     const hashLine = `SHA-256 Hash: ${verificationHash}`;
@@ -661,7 +651,7 @@ By signing this form, I represent and confirm the following:
     });
     ay -= 11;
 
-    const cert3 = `Signer IP: ${signerIP} | Envelope ID: ${envelopeId}`;
+    const cert3 = `Signer IP: ${signerIP} | Billing Zip: ${billingZip || "N/A"} | Envelope ID: ${envelopeId}`;
     auditPage.drawText(cert3, {
       x: (aw - font.widthOfTextAtSize(cert3, 7.5)) / 2,
       y: ay, size: 7.5, font, color: rgb(0.5, 0.5, 0.5),
@@ -760,6 +750,10 @@ By signing this form, I represent and confirm the following:
                               <td style="padding: 6px 0; color: #111827; font-size: 14px; font-weight: 600; text-align: right;">$${amount} USD</td>
                             </tr>
                             <tr>
+                              <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">${isSpanish ? "Codigo Postal:" : "Billing Zip:"}</td>
+                              <td style="padding: 6px 0; color: #111827; font-size: 14px; font-weight: 500; text-align: right;">${billingZip || "—"}</td>
+                            </tr>
+                            <tr>
                               <td style="padding: 6px 0; color: #6b7280; font-size: 14px;">${isSpanish ? "Fecha:" : "Date:"}</td>
                               <td style="padding: 6px 0; color: #111827; font-size: 14px; font-weight: 500; text-align: right;">${todayDate}</td>
                             </tr>
@@ -818,10 +812,16 @@ By signing this form, I represent and confirm the following:
       </html>
     `;
 
-    // Send to customer
+    // ✅ Build recipients: always send to account email; also send to cardholder email if different
+    const emailRecipients = [email];
+    if (cardholderEmail && cardholderEmail.trim() && cardholderEmail.toLowerCase() !== email.toLowerCase()) {
+      emailRecipients.push(cardholderEmail.trim());
+    }
+
+    // Send to customer(s)
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
-      to: email,
+      to: emailRecipients.join(", "),
       subject: isSpanish 
         ? `✓ Documento Completado - Autorización de Pago` 
         : `✓ Document Completed - Payment Authorization`,
@@ -845,9 +845,12 @@ By signing this form, I represent and confirm the following:
         <p><strong>Customer Name:</strong> ${customerName}</p>
         <p><strong>Amount:</strong> $${amount}</p>
         <p><strong>Card Last 4:</strong> ****${cardLast4}</p>
-        <p><strong>Email:</strong> ${email}</p>
+        <p><strong>Account Email:</strong> ${email}</p>
+        <p><strong>Cardholder Email (self-entered):</strong> ${cardholderEmail || "(not provided)"}</p>
+        <p><strong>Billing Zip Code:</strong> ${billingZip || "(not provided)"}</p>
         <p><strong>Signature Method:</strong> ${signatureMethod}</p>
         <p><strong>Customer IP:</strong> ${signerIP}</p>
+        <p><strong>Browser/Device:</strong> ${userAgent || "Unknown"}</p>
         <p><strong>Date:</strong> ${todayDate}</p>
         <p><strong>Document ID:</strong> ${documentId}</p>
         <p><strong>Envelope ID:</strong> ${envelopeId}</p>

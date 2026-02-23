@@ -4,6 +4,7 @@
 
 import { useState, useRef, useEffect, use } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+
 import {
   FileSignature,
   CheckCircle,
@@ -14,8 +15,11 @@ import {
   Shield,
   ChevronDown,
   Lock,
+  Mail,
+  MapPin,
 } from "lucide-react";
 import Image from "next/image";
+import { useTranslations } from "next-intl";
 
 type SignatureMethod = "type" | "draw" | "upload";
 
@@ -28,6 +32,8 @@ export default function SignConsentPage({ params }: PageProps) {
   const lang = resolvedParams.locale;
   const router = useRouter();
 
+  const t = useTranslations("consent");
+
   const searchParams = useSearchParams();
   const amount = searchParams.get("amount") || "0.00";
   const cardLast4 = searchParams.get("card") || "1234";
@@ -36,9 +42,9 @@ export default function SignConsentPage({ params }: PageProps) {
   const phone = searchParams.get("phone") || "";
   const linkId = searchParams.get("linkId") || "";
 
-  const isSpanish = lang === "es";
-
   const [customerName, setCustomerName] = useState("");
+  const [cardholderEmail, setCardholderEmail] = useState("");
+  const [billingZip, setBillingZip] = useState("");
   const [signatureMethod, setSignatureMethod] =
     useState<SignatureMethod>("type");
   const [uploadedSignature, setUploadedSignature] = useState("");
@@ -49,7 +55,6 @@ export default function SignConsentPage({ params }: PageProps) {
   const [clientIP, setClientIP] = useState("");
   const [isCheckingProgress, setIsCheckingProgress] = useState(true);
 
-  // ✅ Resolved data from DB - shows shimmer until loaded
   const [resolvedEmail, setResolvedEmail] = useState(email);
   const [resolvedCard, setResolvedCard] = useState(
     cardLast4 !== "1234" ? cardLast4 : "",
@@ -70,7 +75,6 @@ export default function SignConsentPage({ params }: PageProps) {
     });
   };
 
-  // ✅ Combined init: check progress + fetch real card/email in parallel
   useEffect(() => {
     if (!linkId) {
       setIsCheckingProgress(false);
@@ -88,7 +92,6 @@ export default function SignConsentPage({ params }: PageProps) {
         const progressData = await progressRes.json();
         const detailsData = await detailsRes.json();
 
-        // Handle details - card, email, amount
         if (detailsData.success) {
           if (detailsData.email) setResolvedEmail(detailsData.email);
           if (detailsData.cardLast4) setResolvedCard(detailsData.cardLast4);
@@ -97,7 +100,6 @@ export default function SignConsentPage({ params }: PageProps) {
           }
         }
 
-        // Handle progress - redirect if consent already done
         if (progressData.success && progressData.progress?.consent) {
           router.push(progressData.redirectTo);
           return;
@@ -204,9 +206,7 @@ export default function SignConsentPage({ params }: PageProps) {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) {
-      alert(
-        isSpanish ? "Por favor sube una imagen" : "Please upload an image file",
-      );
+      alert(t("uploadImage"));
       return;
     }
     const reader = new FileReader();
@@ -217,25 +217,26 @@ export default function SignConsentPage({ params }: PageProps) {
 
   const handleSubmit = async () => {
     if (!customerName.trim()) {
-      alert(
-        isSpanish ? "Por favor ingrese su nombre" : "Please enter your name",
-      );
+      alert(t("enterName"));
       return;
     }
     if (!agreedToTerms) {
-      alert(
-        isSpanish
-          ? "Por favor acepta los términos y condiciones"
-          : "Please agree to the terms and conditions",
-      );
+      alert(t("agreeTerms"));
       return;
     }
     if (!resolvedCard) {
-      alert(
-        isSpanish
-          ? "Información de tarjeta aún cargando, intente de nuevo"
-          : "Card info still loading, please try again",
-      );
+      alert(t("cardLoading"));
+      return;
+    }
+    if (!billingZip.trim() || !/^\d{5}$/.test(billingZip.trim())) {
+      alert(t("invalidZip"));
+      return;
+    }
+    if (
+      !cardholderEmail.trim() ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cardholderEmail.trim())
+    ) {
+      alert(t("invalidEmail"));
       return;
     }
 
@@ -248,11 +249,7 @@ export default function SignConsentPage({ params }: PageProps) {
       signatureDataUrl = await convertTypedSignatureToImage(customerName);
     } else if (signatureMethod === "upload") {
       if (!uploadedSignature) {
-        alert(
-          isSpanish
-            ? "Por favor sube tu firma"
-            : "Please upload your signature",
-        );
+        alert(t("uploadYourSignature"));
         return;
       }
       signatureDataUrl = uploadedSignature;
@@ -260,7 +257,6 @@ export default function SignConsentPage({ params }: PageProps) {
 
     setIsSubmitting(true);
 
-    // ✅ Fetch email one more time at submit if still missing
     let finalEmail = resolvedEmail;
     if (!finalEmail && linkId) {
       try {
@@ -275,6 +271,9 @@ export default function SignConsentPage({ params }: PageProps) {
       }
     }
 
+    const userAgent =
+      typeof window !== "undefined" ? navigator.userAgent : "Unknown";
+
     try {
       const response = await fetch("/api/generate-signed-consent", {
         method: "POST",
@@ -288,8 +287,11 @@ export default function SignConsentPage({ params }: PageProps) {
           linkId,
           signatureDataUrl,
           signatureMethod,
-          language: lang,
+          language: "en",
           clientIP,
+          cardholderEmail: cardholderEmail.trim(),
+          billingZip: billingZip.trim(),
+          userAgent,
         }),
       });
 
@@ -300,10 +302,7 @@ export default function SignConsentPage({ params }: PageProps) {
         await fetch("/api/update-progress", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            linkId,
-            step: "consent",
-          }),
+          body: JSON.stringify({ linkId, step: "consent" }),
         });
       }
 
@@ -322,11 +321,7 @@ export default function SignConsentPage({ params }: PageProps) {
       }, 2000);
     } catch (error) {
       console.error("Error:", error);
-      alert(
-        isSpanish
-          ? "Error al procesar la firma. Por favor intenta de nuevo."
-          : "Error processing signature. Please try again.",
-      );
+      alert(t("errorProcessing"));
       setIsSubmitting(false);
     }
   };
@@ -349,16 +344,23 @@ export default function SignConsentPage({ params }: PageProps) {
     });
   };
 
+  const inputClass =
+    "w-full px-4 py-3 border border-gray-300 rounded-lg text-base text-gray-900 placeholder:text-gray-400 transition-all outline-none";
+  const inputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.target.style.borderColor = "#1E3A5F";
+    e.target.style.boxShadow = "0 0 0 3px rgba(30,58,95,0.1)";
+  };
+  const inputBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    e.target.style.borderColor = "#d1d5db";
+    e.target.style.boxShadow = "none";
+  };
+
   const todayDate = new Date().toLocaleDateString(
-    isSpanish ? "es-US" : "en-US",
-    {
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    },
+    lang === "es" ? "es-US" : "en-US",
+    { month: "long", day: "numeric", year: "numeric" },
   );
 
-  // ── Loading State (only for progress check) ──
+  // ── Loading State ──
   if (isCheckingProgress) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white">
@@ -376,9 +378,7 @@ export default function SignConsentPage({ params }: PageProps) {
             style={{ borderColor: "#1E3A5F", borderTopColor: "transparent" }}
           ></div>
         </div>
-        <p className="text-gray-500 text-sm font-medium">
-          {isSpanish ? "Verificando..." : "Verifying..."}
-        </p>
+        <p className="text-gray-500 text-sm font-medium">{t("verifying")}</p>
       </div>
     );
   }
@@ -398,21 +398,15 @@ export default function SignConsentPage({ params }: PageProps) {
             <CheckCircle className="w-10 h-10 text-emerald-400" />
           </div>
           <h2 className="text-2xl font-bold text-white mb-3 tracking-tight">
-            {isSpanish ? "Firmado Exitosamente" : "Successfully Signed"}
+            {t("successTitle")}
           </h2>
           <p className="text-white/70 mb-2 text-sm leading-relaxed">
-            {isSpanish
-              ? "Se ha enviado una copia a su correo electrónico."
-              : "A copy has been sent to your email."}
+            {t("successEmailSent")}
           </p>
           <p className="text-white/70 text-sm mb-8">
             {method === "direct-bill"
-              ? isSpanish
-                ? "Redirigiendo..."
-                : "Redirecting..."
-              : isSpanish
-                ? "Redirigiendo a configuración de autopago..."
-                : "Redirecting to autopay setup..."}
+              ? t("redirecting")
+              : t("redirectingAutopay")}
           </p>
           <div className="w-8 h-8 rounded-full border-4 border-white/20 border-t-white animate-spin mx-auto"></div>
         </div>
@@ -447,16 +441,14 @@ export default function SignConsentPage({ params }: PageProps) {
         ></div>
         <div className="relative max-w-2xl mx-auto px-4 py-8 text-center">
           <h1 className="text-xl font-bold text-white tracking-wide uppercase">
-            {isSpanish
-              ? "Formulario de Autorización de Pago"
-              : "Payment Authorization Form"}
+            {t("pageTitle")}
           </h1>
           <p className="text-white/60 text-xs mt-2 font-medium tracking-wider">
             {todayDate}
           </p>
           <div className="flex items-center justify-center gap-1.5 mt-3 text-white/40 text-xs">
             <Lock className="w-3 h-3" />
-            <span>{isSpanish ? "Documento seguro" : "Secure document"}</span>
+            <span>{t("secureDocument")}</span>
           </div>
         </div>
       </div>
@@ -472,14 +464,10 @@ export default function SignConsentPage({ params }: PageProps) {
           </div>
           <div>
             <p className="text-sm font-semibold text-amber-900">
-              {isSpanish
-                ? "Firma requerida para completar su transacción"
-                : "Signature required to complete your transaction"}
+              {t("actionRequired")}
             </p>
             <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-              {isSpanish
-                ? "Su pago no se procesará hasta que firme este formulario de autorización."
-                : "Your payment will not be processed until you sign this authorization form."}
+              {t("actionRequiredDesc")}
             </p>
           </div>
         </div>
@@ -496,9 +484,7 @@ export default function SignConsentPage({ params }: PageProps) {
             <div className="flex items-center gap-3">
               <Edit3 className="w-5 h-5 opacity-80" />
               <span className="text-sm font-semibold">
-                {isSpanish
-                  ? "Ir a la sección de firma"
-                  : "Jump to signature section"}
+                {t("jumpToSignature")}
               </span>
             </div>
             <ChevronDown className="w-5 h-5 opacity-70 group-hover:translate-y-0.5 transition-transform" />
@@ -507,7 +493,7 @@ export default function SignConsentPage({ params }: PageProps) {
 
         {/* Document Card */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          {/* Transaction Summary - with shimmer loading */}
+          {/* Transaction Summary */}
           <div
             className="px-6 py-5 border-b border-gray-100"
             style={{
@@ -520,7 +506,7 @@ export default function SignConsentPage({ params }: PageProps) {
                   className="text-xs font-medium uppercase tracking-wider mb-1"
                   style={{ color: "#1E3A5F" }}
                 >
-                  {isSpanish ? "Monto a autorizar" : "Amount to authorize"}
+                  {t("amountToAuthorize")}
                 </p>
                 {resolvedAmount ? (
                   <p
@@ -541,7 +527,7 @@ export default function SignConsentPage({ params }: PageProps) {
                   className="text-xs font-medium uppercase tracking-wider mb-1"
                   style={{ color: "#1E3A5F" }}
                 >
-                  {isSpanish ? "Tarjeta" : "Card"}
+                  {t("card")}
                 </p>
                 {resolvedCard ? (
                   <p className="text-base font-semibold text-gray-700 font-mono tracking-wider">
@@ -554,67 +540,29 @@ export default function SignConsentPage({ params }: PageProps) {
             </div>
           </div>
 
-          {/* Authorization Text - with inline shimmer for card/amount */}
+          {/* Authorization Text */}
           <div className="px-6 py-6">
             <p className="text-gray-700 leading-relaxed text-sm">
-              {isSpanish ? (
-                <>
-                  Yo, confirmo que soy el titular autorizado de la tarjeta de
-                  crédito/débito que termina en{" "}
-                  {resolvedCard ? (
-                    <strong>****{resolvedCard}</strong>
-                  ) : (
-                    <span className="inline-block h-4 w-16 bg-gray-200 rounded animate-pulse align-middle"></span>
-                  )}
-                  . Nadie más está utilizando mi tarjeta en mi nombre. Estoy
-                  realizando esta transacción de mi propia voluntad.
-                </>
+              {t("authText1_prefix")}{" "}
+              {resolvedCard ? (
+                <strong>****{resolvedCard}</strong>
               ) : (
-                <>
-                  I confirm that I am the authorized holder of the credit/debit
-                  card ending in{" "}
-                  {resolvedCard ? (
-                    <strong>****{resolvedCard}</strong>
-                  ) : (
-                    <span className="inline-block h-4 w-16 bg-gray-200 rounded animate-pulse align-middle"></span>
-                  )}
-                  . No one else is using my card on my behalf. I am making this
-                  transaction of my own free will.
-                </>
+                <span className="inline-block h-4 w-16 bg-gray-200 rounded animate-pulse align-middle"></span>
               )}
+              {t("authText1_suffix")}
             </p>
 
             <p className="text-gray-700 leading-relaxed text-sm mt-4">
-              {isSpanish ? (
-                <>
-                  Por la presente autorizo a{" "}
-                  <strong>Texas Premium Insurance Services</strong> a procesar
-                  un cargo de{" "}
-                  {resolvedAmount ? (
-                    <strong style={{ color: "#1E3A5F" }}>
-                      ${resolvedAmount} USD
-                    </strong>
-                  ) : (
-                    <span className="inline-block h-4 w-20 bg-gray-200 rounded animate-pulse align-middle"></span>
-                  )}{" "}
-                  a mi tarjeta mencionada anteriormente para el pago de mi
-                  póliza de seguro.
-                </>
+              {t("authText2_prefix")} <strong>{t("authText2_company")}</strong>{" "}
+              {t("authText2_middle")}{" "}
+              {resolvedAmount ? (
+                <strong style={{ color: "#1E3A5F" }}>
+                  ${resolvedAmount} USD
+                </strong>
               ) : (
-                <>
-                  I hereby authorize{" "}
-                  <strong>Texas Premium Insurance Services</strong> to process a
-                  charge of{" "}
-                  {resolvedAmount ? (
-                    <strong style={{ color: "#1E3A5F" }}>
-                      ${resolvedAmount} USD
-                    </strong>
-                  ) : (
-                    <span className="inline-block h-4 w-20 bg-gray-200 rounded animate-pulse align-middle"></span>
-                  )}{" "}
-                  to my above-mentioned card for payment of my insurance policy.
-                </>
-              )}
+                <span className="inline-block h-4 w-20 bg-gray-200 rounded animate-pulse align-middle"></span>
+              )}{" "}
+              {t("authText2_suffix")}
             </p>
 
             {/* Terms */}
@@ -626,20 +574,10 @@ export default function SignConsentPage({ params }: PageProps) {
                 className="text-xs font-semibold uppercase tracking-wider mb-3"
                 style={{ color: "#1E3A5F" }}
               >
-                {isSpanish ? "Términos" : "Terms"}
+                {t("terms")}
               </p>
               <div className="space-y-2.5">
-                {[
-                  isSpanish
-                    ? "Soy el titular legalmente autorizado de la tarjeta."
-                    : "I am the legally authorized holder of the card.",
-                  isSpanish
-                    ? "Autorizo personalmente esta transacción."
-                    : "I am personally authorizing this transaction.",
-                  isSpanish
-                    ? "Acepto que esta firma electrónica es legalmente vinculante."
-                    : "I agree that this electronic signature is legally binding.",
-                ].map((term, i) => (
+                {[t("term1"), t("term2"), t("term3")].map((term, i) => (
                   <div key={i} className="flex items-start gap-2.5">
                     <div
                       className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
@@ -665,7 +603,6 @@ export default function SignConsentPage({ params }: PageProps) {
 
           {/* Signature Section */}
           <div className="px-6 py-6" ref={signatureSectionRef}>
-            {/* Section Header */}
             <div className="flex items-center gap-2.5 mb-6">
               <div
                 className="w-8 h-8 rounded-lg flex items-center justify-center"
@@ -678,12 +615,10 @@ export default function SignConsentPage({ params }: PageProps) {
               </div>
               <div>
                 <h3 className="text-base font-bold text-gray-900">
-                  {isSpanish ? "Firma del titular" : "Cardholder Signature"}
+                  {t("cardholderSignature")}
                 </h3>
                 <p className="text-xs text-gray-500">
-                  {isSpanish
-                    ? "Requerido para completar"
-                    : "Required to complete"}
+                  {t("requiredToComplete")}
                 </p>
               </div>
             </div>
@@ -691,38 +626,96 @@ export default function SignConsentPage({ params }: PageProps) {
             {/* Name Input */}
             <div className="mb-5">
               <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
-                {isSpanish
-                  ? "Nombre completo del titular"
-                  : "Cardholder Full Name"}{" "}
+                {t("cardholderFullName")}{" "}
                 <span style={{ color: "#8B1A3D" }}>*</span>
               </label>
               <input
                 type="text"
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
-                placeholder={
-                  isSpanish
-                    ? "Ingrese su nombre completo"
-                    : "Enter your full name"
-                }
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg text-base text-gray-900 placeholder:text-gray-400 transition-all outline-none"
+                placeholder={t("enterFullName")}
+                className={inputClass}
                 style={{ boxShadow: "none" }}
-                onFocus={(e) => {
-                  e.target.style.borderColor = "#1E3A5F";
-                  e.target.style.boxShadow = "0 0 0 3px rgba(30,58,95,0.1)";
-                }}
-                onBlur={(e) => {
-                  e.target.style.borderColor = "#d1d5db";
-                  e.target.style.boxShadow = "none";
-                }}
+                onFocus={inputFocus}
+                onBlur={inputBlur}
                 required
               />
+            </div>
+
+            {/* Cardholder Email + Billing Zip */}
+            <div className="mb-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
+                  <span className="flex items-center gap-1.5">
+                    <Mail className="w-3 h-3" />
+                    {t("cardholderEmailLabel")}{" "}
+                    <span style={{ color: "#8B1A3D" }}>*</span>
+                  </span>
+                </label>
+                <input
+                  type="email"
+                  value={cardholderEmail}
+                  onChange={(e) => setCardholderEmail(e.target.value)}
+                  placeholder={t("cardholderEmailPlaceholder")}
+                  className={inputClass}
+                  style={{ boxShadow: "none" }}
+                  onFocus={inputFocus}
+                  onBlur={inputBlur}
+                  required
+                />
+                <p className="text-[11px] text-gray-400 mt-1.5 leading-snug">
+                  {t("cardholderEmailHelper")}
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
+                  <span className="flex items-center gap-1.5">
+                    <MapPin className="w-3 h-3" />
+                    {t("billingZipLabel")}{" "}
+                    <span style={{ color: "#8B1A3D" }}>*</span>
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  value={billingZip}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, "").slice(0, 5);
+                    setBillingZip(val);
+                  }}
+                  placeholder={t("billingZipPlaceholder")}
+                  inputMode="numeric"
+                  maxLength={5}
+                  className={inputClass}
+                  style={{ boxShadow: "none" }}
+                  onFocus={inputFocus}
+                  onBlur={inputBlur}
+                  required
+                />
+                <p className="text-[11px] text-gray-400 mt-1.5 leading-snug">
+                  {t("billingZipHelper")}
+                </p>
+              </div>
+            </div>
+
+            {/* Identity Confirmation Notice */}
+            <div className="mb-5 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+              <p className="text-xs text-blue-800 leading-relaxed">
+                <strong>{t("identityConfirmTitle")}</strong>{" "}
+                {t("identityConfirm_prefix")}{" "}
+                {resolvedCard ? (
+                  <strong>****{resolvedCard}</strong>
+                ) : (
+                  <span className="inline-block h-3.5 w-14 bg-blue-200 rounded animate-pulse align-middle" />
+                )}
+                {t("identityConfirm_suffix")}
+              </p>
             </div>
 
             {/* Signature Method Selector */}
             <div className="mb-5">
               <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
-                {isSpanish ? "Método de firma" : "Signature Method"}{" "}
+                {t("signatureMethod")}{" "}
                 <span style={{ color: "#8B1A3D" }}>*</span>
               </label>
               <div className="grid grid-cols-3 gap-2">
@@ -730,17 +723,17 @@ export default function SignConsentPage({ params }: PageProps) {
                   {
                     key: "type" as SignatureMethod,
                     icon: Type,
-                    label: isSpanish ? "Escribir" : "Type",
+                    label: t("type"),
                   },
                   {
                     key: "draw" as SignatureMethod,
                     icon: Edit3,
-                    label: isSpanish ? "Dibujar" : "Draw",
+                    label: t("draw"),
                   },
                   {
                     key: "upload" as SignatureMethod,
                     icon: Upload,
-                    label: isSpanish ? "Subir" : "Upload",
+                    label: t("upload"),
                   },
                 ].map(({ key, icon: Icon, label }) => (
                   <button
@@ -773,8 +766,7 @@ export default function SignConsentPage({ params }: PageProps) {
             <div className="mb-5">
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  {isSpanish ? "Firma" : "Signature"}{" "}
-                  <span style={{ color: "#8B1A3D" }}>*</span>
+                  {t("signature")} <span style={{ color: "#8B1A3D" }}>*</span>
                 </label>
                 {signatureMethod !== "type" && (
                   <button
@@ -782,7 +774,7 @@ export default function SignConsentPage({ params }: PageProps) {
                     className="text-xs font-semibold uppercase tracking-wider"
                     style={{ color: "#8B1A3D" }}
                   >
-                    {isSpanish ? "Borrar" : "Clear"}
+                    {t("clear")}
                   </button>
                 )}
               </div>
@@ -797,11 +789,7 @@ export default function SignConsentPage({ params }: PageProps) {
                       {customerName}
                     </p>
                   ) : (
-                    <p className="text-gray-400 text-sm">
-                      {isSpanish
-                        ? "Ingrese su nombre arriba para previsualizar"
-                        : "Enter your name above to preview"}
-                    </p>
+                    <p className="text-gray-400 text-sm">{t("typePreview")}</p>
                   )}
                   <div className="absolute bottom-3 left-4 right-4 border-b border-gray-200"></div>
                 </div>
@@ -823,7 +811,7 @@ export default function SignConsentPage({ params }: PageProps) {
                   />
                   <div className="absolute bottom-4 left-4 right-4 border-b border-gray-200 pointer-events-none"></div>
                   <p className="absolute bottom-1 right-4 text-[10px] text-gray-300 pointer-events-none">
-                    {isSpanish ? "Firme aquí" : "Sign here"}
+                    {t("signHere")}
                   </p>
                 </div>
               )}
@@ -846,12 +834,10 @@ export default function SignConsentPage({ params }: PageProps) {
                         <Upload className="w-5 h-5 text-gray-400 group-hover:text-gray-500 transition-colors" />
                       </div>
                       <span className="text-sm text-gray-500 group-hover:text-gray-600 font-medium transition-colors">
-                        {isSpanish
-                          ? "Haz clic para subir imagen de firma"
-                          : "Click to upload signature image"}
+                        {t("uploadSignature")}
                       </span>
                       <span className="text-xs text-gray-400">
-                        PNG, JPG {isSpanish ? "o" : "or"} SVG
+                        {t("uploadFormats")}
                       </span>
                     </button>
                   ) : (
@@ -878,16 +864,20 @@ export default function SignConsentPage({ params }: PageProps) {
                 style={{ accentColor: "#1E3A5F" }}
               />
               <span className="text-sm text-gray-700 leading-relaxed">
-                {isSpanish
-                  ? "Confirmo que soy el titular autorizado de la tarjeta y que mi firma electrónica es legalmente vinculante."
-                  : "I confirm I am the authorized cardholder and that my electronic signature is legally binding."}
+                {t("confirmCheckbox")}
               </span>
             </label>
 
             {/* Submit Button */}
             <button
               onClick={handleSubmit}
-              disabled={!customerName.trim() || !agreedToTerms || isSubmitting}
+              disabled={
+                !customerName.trim() ||
+                !agreedToTerms ||
+                !cardholderEmail.trim() ||
+                billingZip.length !== 5 ||
+                isSubmitting
+              }
               className="w-full py-4 text-white rounded-lg font-semibold text-base transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2.5 hover:opacity-90"
               style={{
                 background:
@@ -897,14 +887,12 @@ export default function SignConsentPage({ params }: PageProps) {
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>{isSpanish ? "Procesando..." : "Processing..."}</span>
+                  <span>{t("processing")}</span>
                 </>
               ) : (
                 <>
                   <FileSignature className="w-5 h-5" />
-                  <span>
-                    {isSpanish ? "Firmar y Continuar" : "Sign & Continue"}
-                  </span>
+                  <span>{t("signAndContinue")}</span>
                 </>
               )}
             </button>
@@ -915,12 +903,12 @@ export default function SignConsentPage({ params }: PageProps) {
         <div className="mt-6 flex items-center justify-center gap-4 text-xs text-gray-400">
           <div className="flex items-center gap-1.5">
             <Shield className="w-3.5 h-3.5" />
-            <span>{isSpanish ? "Cifrado SSL" : "SSL Encrypted"}</span>
+            <span>{t("sslEncrypted")}</span>
           </div>
           <span className="text-gray-300">|</span>
           <div className="flex items-center gap-1.5">
             <Lock className="w-3.5 h-3.5" />
-            <span>{isSpanish ? "Firma segura" : "Secure Signing"}</span>
+            <span>{t("secureSigning")}</span>
           </div>
         </div>
 
