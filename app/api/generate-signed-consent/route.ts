@@ -639,7 +639,7 @@ By signing this form, I represent and confirm the following:
     });
     ay -= 12;
 
-    const cert1 = "This document was electronically signed and verified by Texas Premium Insurance Services.";
+    const cert1 = "This document was electronically signed and verified by Texas Premium Insurance Services, LLC.";
     auditPage.drawText(cert1, {
       x: (aw - font.widthOfTextAtSize(cert1, 7.5)) / 2,
       y: ay, size: 7.5, font, color: rgb(0.5, 0.5, 0.5),
