@@ -1,3 +1,4 @@
+// app/api/send/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from "@/lib/mongodb";
 import { azureStorage } from "@/lib/services/azureStorage";

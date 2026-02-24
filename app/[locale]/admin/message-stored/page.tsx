@@ -43,7 +43,7 @@ export default function MessageStoredPage() {
     string | null
   >(null); // NEW
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>(
-    []
+    [],
   ); // NEW
   const [conversation, setConversation] = useState<RingCentralMessage[]>([]);
   const [mounted, setMounted] = useState(false);
@@ -62,7 +62,7 @@ export default function MessageStoredPage() {
   // Delete features
   const [selectMode, setSelectMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
 
   // Image lightbox state
@@ -90,6 +90,10 @@ export default function MessageStoredPage() {
   const [matchingMessageIndices, setMatchingMessageIndices] = useState<
     number[]
   >([]);
+
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduledDateTime, setScheduledDateTime] = useState("");
+  const [scheduling, setScheduling] = useState(false);
 
   // Menu and details modal state
   const [showChatMenu, setShowChatMenu] = useState(false);
@@ -208,7 +212,7 @@ export default function MessageStoredPage() {
         fetch(
           `/api/messages?skip=0&limit=25${
             filterType === "unread" ? "&unreadOnly=true" : ""
-          }`
+          }`,
         )
           .then((r) => r.json())
           .then((data) => {
@@ -272,8 +276,8 @@ export default function MessageStoredPage() {
       try {
         const res = await fetch(
           `/api/messages/conversation?conversationId=${encodeURIComponent(
-            selectedConversationId
-          )}&skip=0&limit=10`
+            selectedConversationId,
+          )}&skip=0&limit=10`,
         );
         const data = await res.json();
         const newMessages = data.messages || [];
@@ -290,8 +294,8 @@ export default function MessageStoredPage() {
             prev.map((c) =>
               (c.conversationId || c.phoneNumber) === selectedConversationId
                 ? { ...c, unreadCount: 0 }
-                : c
-            )
+                : c,
+            ),
           );
 
           // Auto-scroll if user is near bottom
@@ -328,8 +332,8 @@ export default function MessageStoredPage() {
     try {
       const res = await fetch(
         `/api/messages/conversation?conversationId=${encodeURIComponent(
-          selectedConversationId
-        )}&skip=${messagesSkip}&limit=10`
+          selectedConversationId,
+        )}&skip=${messagesSkip}&limit=10`,
       );
       const data = await res.json();
       const olderMessages = data.messages || [];
@@ -339,7 +343,7 @@ export default function MessageStoredPage() {
         setConversation((prev) => {
           const existingIds = new Set(prev.map((m) => m.id));
           const newUniqueMessages = olderMessages.filter(
-            (msg: { id?: string }) => msg.id && !existingIds.has(msg.id)
+            (msg: { id?: string }) => msg.id && !existingIds.has(msg.id),
           );
 
           if (newUniqueMessages.length > 0) {
@@ -403,7 +407,7 @@ export default function MessageStoredPage() {
         JSON.stringify({
           type: "join",
           room: `conversation:${selectedConversationId}`,
-        })
+        }),
       );
     };
 
@@ -413,8 +417,8 @@ export default function MessageStoredPage() {
         // Fetch latest messages and merge with existing
         fetch(
           `/api/messages/conversation?conversationId=${encodeURIComponent(
-            selectedConversationId
-          )}&skip=0&limit=10`
+            selectedConversationId,
+          )}&skip=0&limit=10`,
         )
           .then((r) => r.json())
           .then((d) => {
@@ -422,10 +426,10 @@ export default function MessageStoredPage() {
             // Merge: keep older messages that aren't in the new batch
             setConversation((prev) => {
               const newMessageIds = new Set(
-                newMessages.map((m: StoredMessage) => m.id)
+                newMessages.map((m: StoredMessage) => m.id),
               );
               const olderMessages = prev.filter(
-                (m) => !newMessageIds.has(m.id)
+                (m) => !newMessageIds.has(m.id),
               );
               return [...olderMessages, ...newMessages];
             });
@@ -498,7 +502,7 @@ export default function MessageStoredPage() {
     skip = 0,
     search = "",
     filter: "all" | "unread" = "all",
-    append = false
+    append = false,
   ) => {
     if (skip === 0 && !append) setLoading(true);
     else setIsLoadingMore(true);
@@ -526,11 +530,11 @@ export default function MessageStoredPage() {
         setConversations((prev) => {
           // Deduplicate: only add conversations that don't already exist
           const existingKeys = new Set(
-            prev.map((c) => c.conversationId || c.phoneNumber)
+            prev.map((c) => c.conversationId || c.phoneNumber),
           );
           const uniqueNew = newConversations.filter(
             (c: ConversationSummary) =>
-              !existingKeys.has(c.conversationId || c.phoneNumber)
+              !existingKeys.has(c.conversationId || c.phoneNumber),
           );
           return [...prev, ...uniqueNew];
         });
@@ -566,7 +570,7 @@ export default function MessageStoredPage() {
 
   const viewConversation = async (
     conv: ConversationSummary,
-    searchText?: string
+    searchText?: string,
   ) => {
     const conversationId = conv.conversationId || conv.phoneNumber;
     const participants = conv.participants || [conv.phoneNumber];
@@ -589,7 +593,7 @@ export default function MessageStoredPage() {
 
     try {
       let url = `/api/messages/conversation?conversationId=${encodeURIComponent(
-        conversationId
+        conversationId,
       )}`;
 
       if (searchText && searchText.trim()) {
@@ -604,14 +608,14 @@ export default function MessageStoredPage() {
       // If conversation not found (no messages and total is 0), remove it from list
       if (data.total === 0 && (!data.messages || data.messages.length === 0)) {
         console.log(
-          `⚠️ Conversation ${conversationId} not found in MongoDB - removing from list`
+          `⚠️ Conversation ${conversationId} not found in MongoDB - removing from list`,
         );
 
         // Remove from conversations list
         setConversations((prev) =>
           prev.filter(
-            (c) => (c.conversationId || c.phoneNumber) !== conversationId
-          )
+            (c) => (c.conversationId || c.phoneNumber) !== conversationId,
+          ),
         );
 
         // Clear selected conversation
@@ -622,7 +626,7 @@ export default function MessageStoredPage() {
         setIsLoadingConversation(false);
 
         alert(
-          "This conversation no longer exists and has been removed from the list."
+          "This conversation no longer exists and has been removed from the list.",
         );
         return;
       }
@@ -640,7 +644,7 @@ export default function MessageStoredPage() {
       const unreadIds = (data.messages || [])
         .filter(
           (m: StoredMessage) =>
-            m.direction === "Inbound" && m.readStatus === "Unread" && m.id
+            m.direction === "Inbound" && m.readStatus === "Unread" && m.id,
         )
         .map((m: StoredMessage) => m.id);
 
@@ -656,8 +660,8 @@ export default function MessageStoredPage() {
         prev.map((c) =>
           (c.conversationId || c.phoneNumber) === conversationId
             ? { ...c, unreadCount: 0 }
-            : c
-        )
+            : c,
+        ),
       );
 
       if (
@@ -667,7 +671,7 @@ export default function MessageStoredPage() {
       ) {
         setTimeout(() => {
           const matchElement = document.getElementById(
-            `message-${data.firstMatchIndex}`
+            `message-${data.firstMatchIndex}`,
           );
           if (matchElement) {
             matchElement.scrollIntoView({
@@ -702,8 +706,8 @@ export default function MessageStoredPage() {
     try {
       const response = await fetch(
         `/api/messages/conversation?conversationId=${encodeURIComponent(
-          conversationId
-        )}&all=true`
+          conversationId,
+        )}&all=true`,
       );
       const data = await response.json();
 
@@ -712,7 +716,7 @@ export default function MessageStoredPage() {
         .map((m: StoredMessage) => m.id);
 
       console.log(
-        `📬 Marking ${inboundMessageIds.length} messages as unread on RingCentral...`
+        `📬 Marking ${inboundMessageIds.length} messages as unread on RingCentral...`,
       );
 
       if (inboundMessageIds.length > 0) {
@@ -737,7 +741,7 @@ export default function MessageStoredPage() {
             return { ...conv, unreadCount: messageCount };
           }
           return conv;
-        })
+        }),
       );
 
       setOpenDropdown(null);
@@ -751,7 +755,7 @@ export default function MessageStoredPage() {
 
   const deleteConversation = async (
     conversationId: string,
-    displayName: string
+    displayName: string,
   ) => {
     if (!confirm(`Delete entire conversation with ${displayName}?`)) {
       return;
@@ -767,14 +771,14 @@ export default function MessageStoredPage() {
       // If 404, conversation doesn't exist - still remove from UI
       if (response.status === 404) {
         console.log(
-          `⚠️ Conversation ${conversationId} not found - removing from list anyway`
+          `⚠️ Conversation ${conversationId} not found - removing from list anyway`,
         );
 
         setConversations((prev) =>
           prev.filter(
             (conv) =>
-              (conv.conversationId || conv.phoneNumber) !== conversationId
-          )
+              (conv.conversationId || conv.phoneNumber) !== conversationId,
+          ),
         );
 
         if (selectedConversationId === conversationId) {
@@ -792,8 +796,9 @@ export default function MessageStoredPage() {
 
       setConversations((prev) =>
         prev.filter(
-          (conv) => (conv.conversationId || conv.phoneNumber) !== conversationId
-        )
+          (conv) =>
+            (conv.conversationId || conv.phoneNumber) !== conversationId,
+        ),
       );
 
       if (selectedConversationId === conversationId) {
@@ -826,7 +831,7 @@ export default function MessageStoredPage() {
       const cleaned = phone.replace(/\D/g, "");
       if (cleaned.length < 10) {
         return alert(
-          `Invalid phone number: ${phone}. Must be at least 10 digits.`
+          `Invalid phone number: ${phone}. Must be at least 10 digits.`,
         );
       }
       const formatted = cleaned.startsWith("1")
@@ -927,7 +932,7 @@ export default function MessageStoredPage() {
                 },
               }
             : c;
-        })
+        }),
       );
 
       const formData = new FormData();
@@ -964,10 +969,44 @@ export default function MessageStoredPage() {
       setMessageInput(text);
       setSelectedFiles(filesToSend);
       setConversation((prev) =>
-        prev.filter((m) => !m.id?.startsWith("optimistic-"))
+        prev.filter((m) => !m.id?.startsWith("optimistic-")),
       );
     } finally {
       setSending(false);
+    }
+  };
+
+  const scheduleMessage = async () => {
+    if (!selectedConversationId || !messageInput.trim() || !scheduledDateTime)
+      return;
+
+    setScheduling(true);
+    try {
+      const response = await fetch("/api/messages/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: selectedConversationId,
+          phoneNumbers: selectedParticipants,
+          message: messageInput.trim(),
+          scheduledAt: new Date(scheduledDateTime).toISOString(),
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error);
+
+      setMessageInput("");
+      setShowScheduleModal(false);
+      setScheduledDateTime("");
+      alert(
+        `✅ Message scheduled for ${new Date(scheduledDateTime).toLocaleString()}`,
+      );
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      alert(`Failed to schedule: ${err.message}`);
+    } finally {
+      setScheduling(false);
     }
   };
 
@@ -1004,7 +1043,7 @@ export default function MessageStoredPage() {
   // Render text with clickable links, emails, and phone numbers
   const renderTextWithLinks = (
     text: string,
-    isOutbound: boolean
+    isOutbound: boolean,
   ): React.ReactNode => {
     if (!text) return null;
 
@@ -1025,7 +1064,7 @@ export default function MessageStoredPage() {
         result.push(
           <span key={`text-${i}`}>
             {text.substring(lastIndex, matchPosition)}
-          </span>
+          </span>,
         );
       }
 
@@ -1049,7 +1088,7 @@ export default function MessageStoredPage() {
             onClick={(e) => e.stopPropagation()}
           >
             {matchedText}
-          </a>
+          </a>,
         );
       } else if (matchedText.includes("@") && matchedText.includes(".")) {
         result.push(
@@ -1060,7 +1099,7 @@ export default function MessageStoredPage() {
             onClick={(e) => e.stopPropagation()}
           >
             {matchedText}
-          </a>
+          </a>,
         );
       } else {
         const cleanPhone = matchedText.replace(/\D/g, "");
@@ -1072,7 +1111,7 @@ export default function MessageStoredPage() {
             onClick={(e) => e.stopPropagation()}
           >
             {matchedText}
-          </a>
+          </a>,
         );
       }
 
@@ -1090,7 +1129,7 @@ export default function MessageStoredPage() {
   const openLightbox = (
     url: string,
     filename: string,
-    allImages: Array<{ url: string; filename: string }>
+    allImages: Array<{ url: string; filename: string }>,
   ) => {
     const currentIndex = allImages.findIndex((img) => img.url === url);
     let finalFilename = filename;
@@ -1147,7 +1186,7 @@ export default function MessageStoredPage() {
 
     try {
       const proxyUrl = `/api/download?url=${encodeURIComponent(
-        url
+        url,
       )}&filename=${encodeURIComponent(finalFilename)}`;
 
       const response = await fetch(proxyUrl);
@@ -1416,7 +1455,7 @@ export default function MessageStoredPage() {
                             conv.matchingMessages.length > 0;
                           viewConversation(
                             conv,
-                            isContentSearch ? searchInput : undefined
+                            isContentSearch ? searchInput : undefined,
                           );
                         }}
                         className="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center cursor-pointer relative"
@@ -1449,7 +1488,7 @@ export default function MessageStoredPage() {
                             conv.matchingMessages.length > 0;
                           viewConversation(
                             conv,
-                            isContentSearch ? searchInput : undefined
+                            isContentSearch ? searchInput : undefined,
                           );
                         }}
                         className="flex-1 min-w-0 cursor-pointer"
@@ -1476,7 +1515,7 @@ export default function MessageStoredPage() {
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="text-xs text-gray-500 whitespace-nowrap">
                               {new Date(
-                                conv.lastMessageTime
+                                conv.lastMessageTime,
                               ).toLocaleTimeString([], {
                                 hour: "2-digit",
                                 minute: "2-digit",
@@ -1535,7 +1574,7 @@ export default function MessageStoredPage() {
                           onClick={(e) => {
                             e.stopPropagation();
                             setOpenDropdown(
-                              openDropdown === convKey ? null : convKey
+                              openDropdown === convKey ? null : convKey,
                             );
                           }}
                           className="p-2 hover:bg-gray-200 rounded-full transition-colors"
@@ -1724,7 +1763,7 @@ export default function MessageStoredPage() {
                                 const currentConv = conversations.find(
                                   (c) =>
                                     (c.conversationId || c.phoneNumber) ===
-                                    selectedConversationId
+                                    selectedConversationId,
                                 );
                                 if (currentConv) viewConversation(currentConv);
                               }}
@@ -1913,7 +1952,7 @@ export default function MessageStoredPage() {
                     index === 0 ||
                     new Date(msg.creationTime).toDateString() !==
                       new Date(
-                        conversation[index - 1]?.creationTime || ""
+                        conversation[index - 1]?.creationTime || "",
                       ).toDateString();
                   const isSelected = selectedMessageIds.has(msg.id || "");
                   const isMatchingMessage =
@@ -1931,7 +1970,7 @@ export default function MessageStoredPage() {
                                 year: "numeric",
                                 month: "short",
                                 day: "numeric",
-                              }
+                              },
                             )}
                           </div>
                         </div>
@@ -1960,8 +1999,8 @@ export default function MessageStoredPage() {
                                   ? "bg-blue-600 text-white ring-2 ring-blue-400"
                                   : "bg-gray-200 opacity-80 hover:opacity-100"
                                 : isOutbound
-                                ? "bg-blue-600 text-white"
-                                : "bg-white text-gray-900 border border-gray-200"
+                                  ? "bg-blue-600 text-white"
+                                  : "bg-white text-gray-900 border border-gray-200"
                             } ${selectMode ? "cursor-pointer" : ""} ${
                               isMatchingMessage
                                 ? "ring-2 ring-purple-500 ring-offset-2"
@@ -2006,23 +2045,23 @@ export default function MessageStoredPage() {
                                       if (matchIndex === -1)
                                         return renderTextWithLinks(
                                           text,
-                                          isOutbound
+                                          isOutbound,
                                         );
 
                                       const before = text.slice(0, matchIndex);
                                       const match = text.slice(
                                         matchIndex,
-                                        matchIndex + activeSearchText.length
+                                        matchIndex + activeSearchText.length,
                                       );
                                       const after = text.slice(
-                                        matchIndex + activeSearchText.length
+                                        matchIndex + activeSearchText.length,
                                       );
 
                                       return (
                                         <>
                                           {renderTextWithLinks(
                                             before,
-                                            isOutbound
+                                            isOutbound,
                                           )}
                                           <mark
                                             className={`${
@@ -2035,14 +2074,14 @@ export default function MessageStoredPage() {
                                           </mark>
                                           {renderTextWithLinks(
                                             after,
-                                            isOutbound
+                                            isOutbound,
                                           )}
                                         </>
                                       );
                                     })()
                                   : renderTextWithLinks(
                                       msg.subject,
-                                      isOutbound
+                                      isOutbound,
                                     )}
                               </p>
                             )}
@@ -2062,14 +2101,14 @@ export default function MessageStoredPage() {
                                             .filter(
                                               (a: MessageAttachment) =>
                                                 a.contentType?.startsWith(
-                                                  "image/"
+                                                  "image/",
                                                 ) &&
-                                                (a.azureUrl || a.uri)
+                                                (a.azureUrl || a.uri),
                                             )
                                             .map((a: MessageAttachment) => ({
                                               url: a.azureUrl || a.uri || "",
                                               filename: a.filename || "image",
-                                            }))
+                                            })),
                                       );
 
                                       return (
@@ -2085,7 +2124,7 @@ export default function MessageStoredPage() {
                                               openLightbox(
                                                 url,
                                                 att.filename || "image",
-                                                allImages
+                                                allImages,
                                               );
                                             }}
                                             title="Click to view full size"
@@ -2095,7 +2134,7 @@ export default function MessageStoredPage() {
                                               e.stopPropagation();
                                               downloadFile(
                                                 url,
-                                                att.filename || "image.png"
+                                                att.filename || "image.png",
                                               );
                                             }}
                                             className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
@@ -2150,7 +2189,7 @@ export default function MessageStoredPage() {
                                             onClick={() =>
                                               downloadFile(
                                                 url,
-                                                att.filename || "audio.mp3"
+                                                att.filename || "audio.mp3",
                                               )
                                             }
                                             className={`p-1 rounded hover:bg-opacity-80 ${
@@ -2209,7 +2248,7 @@ export default function MessageStoredPage() {
                                             onClick={() =>
                                               downloadFile(
                                                 url,
-                                                att.filename || "video.mp4"
+                                                att.filename || "video.mp4",
                                               )
                                             }
                                             className={`p-1 rounded hover:bg-opacity-80 ${
@@ -2272,7 +2311,7 @@ export default function MessageStoredPage() {
                                             onClick={() =>
                                               downloadFile(
                                                 url,
-                                                att.filename || "document.pdf"
+                                                att.filename || "document.pdf",
                                               )
                                             }
                                             className={`p-1 rounded hover:bg-opacity-80 ${
@@ -2301,7 +2340,7 @@ export default function MessageStoredPage() {
                                     }
 
                                     return null;
-                                  }
+                                  },
                                 )}
                               </div>
                             ) : null}
@@ -2316,7 +2355,7 @@ export default function MessageStoredPage() {
                               >
                                 {new Date(msg.creationTime).toLocaleTimeString(
                                   [],
-                                  { hour: "2-digit", minute: "2-digit" }
+                                  { hour: "2-digit", minute: "2-digit" },
                                 )}
                               </span>
                               {isOutbound && (
@@ -2361,8 +2400,8 @@ export default function MessageStoredPage() {
                               isLarge
                                 ? "bg-red-100 border border-red-300"
                                 : isWarning
-                                ? "bg-yellow-100 border border-yellow-300"
-                                : "bg-gray-100"
+                                  ? "bg-yellow-100 border border-yellow-300"
+                                  : "bg-gray-100"
                             }`}
                           >
                             <div className="flex flex-col">
@@ -2374,8 +2413,8 @@ export default function MessageStoredPage() {
                                   isLarge
                                     ? "text-red-600 font-semibold"
                                     : isWarning
-                                    ? "text-yellow-700"
-                                    : "text-gray-500"
+                                      ? "text-yellow-700"
+                                      : "text-gray-500"
                                 }`}
                               >
                                 {sizeMB}MB {isLarge && "⚠️"}
@@ -2384,7 +2423,7 @@ export default function MessageStoredPage() {
                             <button
                               onClick={() =>
                                 setSelectedFiles((prev) =>
-                                  prev.filter((_, j) => j !== i)
+                                  prev.filter((_, j) => j !== i),
                                 )
                               }
                               className="text-red-600 hover:text-red-800 p-1"
@@ -2428,6 +2467,26 @@ export default function MessageStoredPage() {
                         />
                       </svg>
                     </button>
+                    <button
+                      onClick={() => setShowScheduleModal(true)}
+                      disabled={!messageInput.trim()}
+                      className="p-2 sm:px-3 sm:py-3 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-xl flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Schedule message"
+                    >
+                      <svg
+                        className="w-6 h-6"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                        />
+                      </svg>
+                    </button>
                     <input
                       type="file"
                       ref={fileInputRef}
@@ -2444,7 +2503,7 @@ export default function MessageStoredPage() {
 
                           if (!isValidType) {
                             alert(
-                              `❌ ${f.name}\n\nFile type not supported.\n\nMMS supports: Images, Audio, and Video files only.`
+                              `❌ ${f.name}\n\nFile type not supported.\n\nMMS supports: Images, Audio, and Video files only.`,
                             );
                             return;
                           }
@@ -2452,7 +2511,7 @@ export default function MessageStoredPage() {
                           if (f.size > MAX_FILE_SIZE) {
                             const sizeMB = (f.size / 1024 / 1024).toFixed(2);
                             alert(
-                              `❌ ${f.name} is too large!\n\nFile size: ${sizeMB}MB\nMMS limit: 1.5MB\n\nPlease compress the file or choose a smaller one.`
+                              `❌ ${f.name} is too large!\n\nFile size: ${sizeMB}MB\nMMS limit: 1.5MB\n\nPlease compress the file or choose a smaller one.`,
                             );
                             return;
                           }
@@ -2494,7 +2553,7 @@ export default function MessageStoredPage() {
                                     file.size /
                                     1024 /
                                     1024
-                                  ).toFixed(2)}MB). Max size is 1.5MB.`
+                                  ).toFixed(2)}MB). Max size is 1.5MB.`,
                                 );
                                 continue;
                               }
@@ -2505,7 +2564,7 @@ export default function MessageStoredPage() {
                                 }`,
                                 {
                                   type: file.type,
-                                }
+                                },
                               );
                               imageFiles.push(newFile);
                             }
@@ -2563,6 +2622,85 @@ export default function MessageStoredPage() {
           )}
         </div>
       </div>
+
+      {showScheduleModal && (
+        <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl border border-gray-200">
+            <h3 className="text-xl font-bold text-gray-900 mb-1">
+              Schedule Message
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              To:{" "}
+              {selectedParticipants.map((p) => formatPhoneNumber(p)).join(", ")}
+            </p>
+
+            <div className="bg-gray-50 rounded-lg p-3 mb-4 border border-gray-200">
+              <p className="text-sm font-medium text-gray-700 mb-1">
+                Message preview:
+              </p>
+              <p className="text-sm text-gray-600 break-words">
+                {messageInput}
+              </p>
+            </div>
+
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Send at
+              </label>
+              <input
+                type="datetime-local"
+                value={scheduledDateTime}
+                min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+                onChange={(e) => setScheduledDateTime(e.target.value)}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+              />
+              {scheduledDateTime && (
+                <p className="text-xs text-purple-600 mt-2">
+                  📅 Will send: {new Date(scheduledDateTime).toLocaleString()}
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowScheduleModal(false);
+                  setScheduledDateTime("");
+                }}
+                className="flex-1 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={scheduleMessage}
+                disabled={!scheduledDateTime || scheduling}
+                className="flex-1 bg-purple-600 text-white py-3 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2"
+              >
+                {scheduling ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                      />
+                    </svg>
+                    Schedule
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* New Message Modal */}
       {showNewMessageModal && (

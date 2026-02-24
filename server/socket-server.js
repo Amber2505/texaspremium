@@ -32,6 +32,7 @@ const io = new Server(httpServer, {
 // ================================================
 const MY_PHONE_NUMBER = process.env.MY_PHONE_NUMBER || '+14697295185';
 const RINGCENTRAL_SERVER = 'https://platform.ringcentral.com';
+let scheduleCollection;
 
 // ================================================
 // HELPER: Normalize phone number
@@ -221,6 +222,9 @@ async function connectMongoDB() {
     
     messagesDb = mongoClient.db('db');
     conversationsCollection = messagesDb.collection('texas_premium_messages');
+    scheduleCollection = messagesDb.collection('schedule_message_storage');
+    await scheduleCollection.createIndex({ status: 1, scheduledAt: 1 }).catch(() => {});
+    console.log('✅ Schedule collection connected');
     
     // Create index for faster message lookups
     await conversationsCollection.createIndex({ 'messages.id': 1 }).catch(() => {});
@@ -447,6 +451,8 @@ function scheduleDailySecurityCode() {
 
   console.log('⏰ Daily security code scheduled for 7:00 AM CST');
 }
+
+
 
 // ================================================
 // RINGCENTRAL SYNC FUNCTION (WITH FIXED DUPLICATE PREVENTION)
@@ -948,6 +954,185 @@ async function syncReadStatus(platform) {
 }
 
 // ================================================
+// SCHEDULED MESSAGES PROCESSOR
+// ================================================
+let isProcessingScheduled = false;
+
+async function processScheduledMessages() {
+  if (!scheduleCollection) return;
+  if (isProcessingScheduled) {
+    console.log('⏳ Scheduled processor already running, skipping...');
+    return;
+  }
+
+  isProcessingScheduled = true;
+  const now = new Date();
+
+  // 90 second lookahead so messages at exact boundary are never skipped
+  const cutoff = new Date(now.getTime() + 90 * 1000);
+
+  try {
+    // Reset jobs stuck in "processing" for more than 5 minutes
+    const stuckCutoff = new Date(now.getTime() - 5 * 60 * 1000);
+    const stuckResult = await scheduleCollection.updateMany(
+      { status: 'processing', processingStartedAt: { $lt: stuckCutoff } },
+      { $set: { status: 'pending', processingStartedAt: null } }
+    );
+    if (stuckResult.modifiedCount > 0) {
+      console.log(`♻️ Reset ${stuckResult.modifiedCount} stuck scheduled job(s)`);
+    }
+
+    while (true) {
+      // Atomic claim - find pending job and mark processing in one operation
+      // prevents double-send if this somehow runs twice simultaneously
+      const job = await scheduleCollection.findOneAndUpdate(
+        {
+          status: 'pending',
+          scheduledAt: { $lte: cutoff },
+        },
+        {
+          $set: {
+            status: 'processing',
+            processingStartedAt: new Date(),
+          },
+        },
+        {
+          sort: { scheduledAt: 1 },
+          returnDocument: 'after',
+        }
+      );
+
+      if (!job) break;
+
+      const jobId = job._id.toString();
+      const scheduledAt = new Date(job.scheduledAt);
+      const msUntilDue = scheduledAt.getTime() - Date.now();
+
+      // If we grabbed a message in our 90s lookahead that isn't due yet, wait
+      if (msUntilDue > 1000) {
+        console.log(`⏳ Job ${jobId} due in ${Math.round(msUntilDue / 1000)}s, waiting...`);
+        await new Promise(resolve => setTimeout(resolve, msUntilDue));
+      }
+
+      console.log(`📤 Sending scheduled message ${jobId}`);
+      console.log(`   To: [${job.phoneNumbers.join(', ')}]`);
+      console.log(`   Scheduled: ${scheduledAt.toISOString()}`);
+
+      try {
+        const platform = await getRingCentralPlatform();
+        const FormData = require('form-data');
+        const formData = new FormData();
+
+        const body = {
+          from: { phoneNumber: MY_PHONE_NUMBER },
+          to: job.phoneNumbers.map(p => ({ phoneNumber: p })),
+          text: job.message,
+        };
+
+        const jsonBuffer = Buffer.from(JSON.stringify(body), 'utf8');
+        formData.append('json', jsonBuffer, {
+          filename: 'request.json',
+          contentType: 'application/json',
+        });
+
+        const response = await platform.post(
+          '/restapi/v1.0/account/~/extension/~/sms',
+          formData
+        );
+        const result = await response.json();
+
+        // Save sent message to the conversation in MongoDB
+        const conversationId = job.phoneNumbers
+          .map(p => normalizePhone(p))
+          .filter(p => p !== normalizePhone(MY_PHONE_NUMBER))
+          .sort()
+          .join(',');
+
+        const messageObj = {
+          id: result.id?.toString() || Date.now().toString(),
+          direction: 'Outbound',
+          type: 'SMS',
+          subject: job.message,
+          creationTime: new Date(result.creationTime || Date.now()).toISOString(),
+          lastModifiedTime: new Date(result.lastModifiedTime || Date.now()).toISOString(),
+          readStatus: 'Read',
+          messageStatus: 'Sent',
+          from: { phoneNumber: MY_PHONE_NUMBER },
+          to: job.phoneNumbers.map(p => ({ phoneNumber: p })),
+          attachments: [],
+          scheduledMessageId: jobId,
+        };
+
+        await conversationsCollection.updateOne(
+          { conversationId },
+          {
+            $push: {
+              messages: { $each: [messageObj], $sort: { creationTime: 1 } },
+            },
+            $set: {
+              lastMessageTime: messageObj.creationTime,
+              lastMessageId: messageObj.id,
+            },
+            $setOnInsert: {
+              conversationId,
+              phoneNumber: job.phoneNumbers[0],
+              participants: conversationId.split(','),
+              isGroup: job.phoneNumbers.length > 1,
+            },
+          },
+          { upsert: true }
+        );
+
+        // Mark job as sent
+        await scheduleCollection.updateOne(
+          { _id: job._id },
+          {
+            $set: {
+              status: 'sent',
+              sentAt: new Date(),
+              messageId: result.id?.toString() || null,
+              processingStartedAt: null,
+            },
+          }
+        );
+
+        // Broadcast to any open chat windows
+        io.to(`conversation:${conversationId}`).emit('newRingCentralMessage', {
+          conversationId,
+          phoneNumber: job.phoneNumbers[0],
+          messageId: messageObj.id,
+          timestamp: messageObj.creationTime,
+          subject: job.message,
+          direction: 'Outbound',
+        });
+
+        console.log(`✅ Scheduled job ${jobId} sent (RC ID: ${result.id})`);
+
+      } catch (sendError) {
+        console.error(`❌ Scheduled job ${jobId} failed:`, sendError.message);
+
+        await scheduleCollection.updateOne(
+          { _id: job._id },
+          {
+            $set: {
+              status: 'failed',
+              failedAt: new Date(),
+              error: sendError.message || 'Unknown error',
+              processingStartedAt: null,
+            },
+          }
+        );
+      }
+    }
+
+  } catch (error) {
+    console.error('❌ Scheduled processor error:', error.message);
+  } finally {
+    isProcessingScheduled = false;
+  }
+}
+
+// ================================================
 // START SERVER & CRON
 // ================================================
 async function startServer() {
@@ -958,6 +1143,11 @@ async function startServer() {
     scheduleDailyDisable();
     await connectSecurityCodeDB();
     scheduleDailySecurityCode();
+    // Scheduled messages — run every 60 seconds
+    setInterval(processScheduledMessages, 60 * 1000);
+    // Run once on startup to catch anything missed during downtime/redeploy
+    setTimeout(processScheduledMessages, 8000);
+    console.log('⏰ Scheduled messages processor started (every 60s)');
     
     // Generate code on startup if none exists for today
     if (securityCodeCollection) {
@@ -1015,6 +1205,7 @@ async function startServer() {
 }
 
 startServer();
+
 
 // ================================================
 // SOCKET.IO HANDLERS (ALL ORIGINAL HANDLERS PRESERVED)
@@ -1150,6 +1341,27 @@ app.post('/verify-security-code', async (req, res) => {
     return res.json({ valid: isValid });
   } catch (error) {
     return res.status(500).json({ valid: false, error: error.message });
+  }
+});
+
+app.post('/trigger-scheduled', async (req, res) => {
+  console.log('📅 Manual scheduled messages trigger');
+  processScheduledMessages();
+  res.json({ success: true });
+});
+
+app.get('/scheduled-status', async (req, res) => {
+  try {
+    if (!scheduleCollection) return res.status(500).json({ error: 'DB not connected' });
+    const [pending, sent, failed, processing] = await Promise.all([
+      scheduleCollection.countDocuments({ status: 'pending' }),
+      scheduleCollection.countDocuments({ status: 'sent' }),
+      scheduleCollection.countDocuments({ status: 'failed' }),
+      scheduleCollection.countDocuments({ status: 'processing' }),
+    ]);
+    res.json({ pending, sent, failed, processing, isProcessing: isProcessingScheduled });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

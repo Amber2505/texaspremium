@@ -1,3 +1,4 @@
+// app/api/messages/delete-conversation/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from "@/lib/mongodb";
 
