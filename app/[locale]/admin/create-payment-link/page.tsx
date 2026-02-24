@@ -265,6 +265,18 @@ export default function CreatePaymentLink() {
     }
   };
 
+  const handleReset = () => {
+    setLinkType("payment");
+    setAmount("");
+    setDescription("");
+    setCustomerPhone("");
+    setPaymentMethod("card");
+    setLanguage("en");
+    setGeneratedLink("");
+    setError("");
+    setCopied(false);
+  };
+
   const handleCopyHistoryLink = async (link: string, linkId: string) => {
     try {
       await navigator.clipboard.writeText(link);
@@ -682,6 +694,27 @@ export default function CreatePaymentLink() {
                         : "Create Autopay Link"}
                     </>
                   )}
+                </button>
+                {/* Reset Button */}
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  className="w-full px-6 py-3 bg-gray-100 text-gray-600 rounded-lg font-medium hover:bg-gray-200 transition flex items-center justify-center gap-2"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="w-5 h-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                    <path d="M3 3v5h5" />
+                  </svg>
+                  Reset Form
                 </button>
               </form>
             </div>
