@@ -43,11 +43,21 @@ interface ScheduledMessage {
   createdAt: string;
 }
 
+interface ScheduledConvSummary {
+  conversationId: string;
+  phoneNumbers: string[];
+  scheduledCount: number;
+  nextScheduledAt: string;
+  messages: ScheduledMessage[];
+}
+
 export default function MessageStoredPage() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchInput, setSearchInput] = useState("");
-  const [filterType, setFilterType] = useState<"all" | "unread">("all");
+  const [filterType, setFilterType] = useState<"all" | "unread" | "scheduled">(
+    "all",
+  );
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [selectedConversationId, setSelectedConversationId] = useState<
     string | null
@@ -117,6 +127,9 @@ export default function MessageStoredPage() {
   const [showChatMenu, setShowChatMenu] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [editingScheduledMessage, setEditingScheduledMessage] = useState("");
+  const [scheduledConversations, setScheduledConversations] = useState<
+    ScheduledConvSummary[]
+  >([]);
   const chatMenuRef = useRef<HTMLDivElement>(null);
 
   // Memoize scrollToBottom to use in useEffect dependencies
@@ -219,7 +232,12 @@ export default function MessageStoredPage() {
   }, []);
 
   useEffect(() => {
-    if (mounted) fetchMessages(0, "", filterType, false);
+    if (!mounted) return;
+    if (filterType === "scheduled") {
+      fetchAllScheduledConversations();
+    } else {
+      fetchMessages(0, "", filterType, false);
+    }
   }, [mounted, filterType]);
 
   // Polling for new messages (only refresh if not searching and on first page)
@@ -227,7 +245,7 @@ export default function MessageStoredPage() {
     if (!mounted) return;
     const interval = setInterval(() => {
       // Only auto-refresh if not searching
-      if (!searchInput.trim()) {
+      if (!searchInput.trim() && filterType !== "scheduled") {
         fetch(
           `/api/messages?skip=0&limit=25${
             filterType === "unread" ? "&unreadOnly=true" : ""
@@ -506,8 +524,13 @@ export default function MessageStoredPage() {
       const { scrollTop, scrollHeight, clientHeight } = element;
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
 
-      if (isNearBottom) {
-        fetchMessages(conversations.length, searchInput, filterType, true);
+      if (isNearBottom && filterType !== "scheduled") {
+        fetchMessages(
+          conversations.length,
+          searchInput,
+          filterType as "all" | "unread",
+          true,
+        );
       }
     };
 
@@ -556,7 +579,7 @@ export default function MessageStoredPage() {
   const fetchMessages = async (
     skip = 0,
     search = "",
-    filter: "all" | "unread" = "all",
+    filter: "all" | "unread" | "scheduled" = "all",
     append = false,
   ) => {
     if (skip === 0 && !append) setLoading(true);
@@ -619,7 +642,9 @@ export default function MessageStoredPage() {
     searchTimeoutRef.current = setTimeout(() => {
       setConversations([]);
       setHasMore(true);
-      fetchMessages(0, value, filterType, false);
+      if (filterType !== "scheduled") {
+        fetchMessages(0, value, filterType, false);
+      }
     }, 300);
   };
 
@@ -1083,6 +1108,43 @@ export default function MessageStoredPage() {
     }
   };
 
+  const fetchAllScheduledConversations = async () => {
+    try {
+      const res = await fetch("/api/messages/schedule");
+      const data = await res.json();
+      if (data.success) {
+        const pending = (data.scheduled as ScheduledMessage[]).filter(
+          (s) => s.status === "pending",
+        );
+
+        // Group by conversationId
+        const grouped = new Map<string, ScheduledConvSummary>();
+        for (const s of pending) {
+          if (!grouped.has(s.conversationId)) {
+            grouped.set(s.conversationId, {
+              conversationId: s.conversationId,
+              phoneNumbers: s.phoneNumbers,
+              scheduledCount: 0,
+              nextScheduledAt: s.scheduledAt,
+              messages: [],
+            });
+          }
+          const entry = grouped.get(s.conversationId)!;
+          entry.scheduledCount++;
+          entry.messages.push(s);
+          // Track earliest scheduled time
+          if (new Date(s.scheduledAt) < new Date(entry.nextScheduledAt)) {
+            entry.nextScheduledAt = s.scheduledAt;
+          }
+        }
+
+        setScheduledConversations(Array.from(grouped.values()));
+      }
+    } catch (e) {
+      console.error("Failed to fetch scheduled conversations", e);
+    }
+  };
+
   const deleteMessages = async (ids: string[]) => {
     if (!selectedConversationId || ids.length === 0) return;
     try {
@@ -1388,9 +1450,13 @@ export default function MessageStoredPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => {
-                setConversations([]);
-                setHasMore(true);
-                fetchMessages(0, searchInput, filterType, false);
+                if (filterType === "scheduled") {
+                  fetchAllScheduledConversations();
+                } else {
+                  setConversations([]);
+                  setHasMore(true);
+                  fetchMessages(0, searchInput, filterType, false);
+                }
               }}
               className="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
               title="Refresh conversations"
@@ -1466,9 +1532,11 @@ export default function MessageStoredPage() {
                 <button
                   onClick={() => {
                     setSearchInput("");
-                    setConversations([]);
-                    setHasMore(true);
-                    fetchMessages(0, "", filterType, false);
+                    if (filterType !== "scheduled") {
+                      setConversations([]);
+                      setHasMore(true);
+                      fetchMessages(0, "", filterType, false);
+                    }
                   }}
                   className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
                 >
@@ -1506,23 +1574,151 @@ export default function MessageStoredPage() {
               <select
                 value={filterType}
                 onChange={(e) => {
-                  const newFilter = e.target.value as "all" | "unread";
+                  const newFilter = e.target.value as
+                    | "all"
+                    | "unread"
+                    | "scheduled";
                   setFilterType(newFilter);
-                  setConversations([]);
-                  setHasMore(true);
-                  fetchMessages(0, searchInput, newFilter, false);
+                  if (newFilter === "scheduled") {
+                    fetchAllScheduledConversations();
+                  } else {
+                    setConversations([]);
+                    setHasMore(true);
+                    fetchMessages(0, searchInput, newFilter, false);
+                  }
                 }}
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 font-medium"
               >
                 <option value="all">All Messages</option>
                 <option value="unread">Unread Only</option>
+                <option value="scheduled">Scheduled</option>
               </select>
             </div>
           </div>
 
           {/* Conversations list */}
           <div className="flex-1 overflow-y-auto" ref={conversationsListRef}>
-            {loading ? (
+            {filterType === "scheduled" ? (
+              // ── SCHEDULED VIEW ──
+              scheduledConversations.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-500 p-6">
+                  <svg
+                    className="w-16 h-16 mb-4 text-gray-300"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <p className="text-center text-sm font-medium">
+                    No scheduled messages
+                  </p>
+                  <p className="text-center text-xs text-gray-400 mt-1">
+                    Schedule a message from any conversation
+                  </p>
+                </div>
+              ) : (
+                scheduledConversations.map((sc) => {
+                  const convKey = sc.conversationId;
+                  const isSelected = selectedConversationId === convKey;
+                  const displayName = sc.phoneNumbers
+                    .map((p) => formatPhoneNumber(p))
+                    .join(", ");
+                  const nextDate = new Date(sc.nextScheduledAt);
+
+                  return (
+                    <div
+                      key={convKey}
+                      onClick={() => {
+                        // Find existing conversation or open by conversationId
+                        const existing = conversations.find(
+                          (c) =>
+                            (c.conversationId || c.phoneNumber) === convKey,
+                        );
+                        if (existing) {
+                          viewConversation(existing);
+                        } else {
+                          setSelectedPhone(sc.phoneNumbers[0]);
+                          setSelectedConversationId(convKey);
+                          setSelectedParticipants(sc.phoneNumbers);
+                          setConversation([]);
+                          setMessageInput("");
+                          fetchScheduledMessages(convKey);
+                          setShowScheduledPanel(false);
+                        }
+                      }}
+                      className={`p-4 border-b border-gray-100 transition-colors cursor-pointer ${
+                        isSelected
+                          ? "bg-purple-50 border-l-4 border-l-purple-600"
+                          : "hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        {/* Avatar */}
+                        <div className="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center relative">
+                          <svg
+                            className="w-6 h-6 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                          {/* Count badge */}
+                          {sc.scheduledCount > 1 && (
+                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-purple-700 rounded-full border-2 border-white flex items-center justify-center">
+                              <span className="text-white text-[10px] font-bold">
+                                {sc.scheduledCount}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <h3
+                              className="font-semibold text-gray-900 text-sm truncate"
+                              title={displayName}
+                            >
+                              {displayName}
+                            </h3>
+                            <span className="text-xs text-purple-600 font-medium whitespace-nowrap ml-2">
+                              {nextDate.toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-purple-600 font-medium mb-1">
+                            📅 {sc.scheduledCount} scheduled · Next:{" "}
+                            {nextDate.toLocaleDateString([], {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </p>
+
+                          {/* Preview of next message */}
+                          <p className="text-sm text-gray-500 truncate">
+                            {sc.messages[0]?.message || "Scheduled message"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )
+            ) : loading ? (
               <div className="flex items-center justify-center h-full">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
               </div>
