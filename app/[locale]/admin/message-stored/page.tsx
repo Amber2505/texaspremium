@@ -3061,6 +3061,7 @@ export default function MessageStoredPage() {
                               min={new Date(Date.now() + 60000)
                                 .toISOString()
                                 .slice(0, 16)}
+                              max="9999-12-31T23:59"
                               onChange={(e) =>
                                 setEditScheduledDateTime(e.target.value)
                               }
@@ -3323,7 +3324,7 @@ export default function MessageStoredPage() {
               {selectedParticipants.map((p) => formatPhoneNumber(p)).join(", ")}
             </p>
 
-            <div className="bg-gray-50 rounded-lg p-3 mb-4 border border-gray-200">
+            <div className="bg-gray-50 rounded-lg p-3 mb-4 border border-gray-200 max-h-32 overflow-y-auto">
               <p className="text-sm font-medium text-gray-700 mb-1">
                 Message preview:
               </p>
@@ -3340,6 +3341,7 @@ export default function MessageStoredPage() {
                 type="datetime-local"
                 value={scheduledDateTime}
                 min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+                max="9999-12-31T23:59"
                 onChange={(e) => setScheduledDateTime(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
               />
