@@ -1816,7 +1816,8 @@ export default function MessageStoredPage() {
 
                           {/* Preview of next message */}
                           <p className="text-sm text-gray-500 truncate">
-                            {sc.messages[0]?.message || "Scheduled message"}
+                            {sc.messages[0]?.message?.split("\n\nNote:")[0] ||
+                              "Scheduled message"}
                           </p>
                         </div>
                       </div>
@@ -3327,8 +3328,7 @@ export default function MessageStoredPage() {
                 Message preview:
               </p>
               <p className="text-sm text-gray-600 break-words whitespace-pre-wrap">
-                {messageInput}
-                {SCHEDULED_MESSAGE_FOOTER}
+                {messageInput + SCHEDULED_MESSAGE_FOOTER}
               </p>
             </div>
 
