@@ -78,7 +78,7 @@ export default function MessageStoredPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
-  const SCHEDULED_MESSAGE_FOOTER = `\n\nNote: This is a scheduled reminder. If you've recently made a payment, please disregard — or reply to confirm your policy status.`;
+  const SCHEDULED_MESSAGE_FOOTER = `\n\nNote: This is a scheduled reminder. If this has already been taken care of, please disregard — or reply to update your status.`;
 
   // Delete features
   const [selectMode, setSelectMode] = useState(false);

@@ -1016,6 +1016,11 @@ async function processScheduledMessages() {
       console.log(`📤 Sending scheduled message ${jobId}`);
       console.log(`   To: [${job.phoneNumbers.join(', ')}]`);
       console.log(`   Scheduled: ${scheduledAt.toISOString()}`);
+      const FOOTER = `\n\nNote: This is a scheduled reminder. If this has already been taken care of, please disregard — or reply to update your status.`;
+      const messageText = job.message.includes('Note: This is a scheduled reminder')
+        ? job.message
+        : job.message + FOOTER;
+
 
       try {
         const platform = await getRingCentralPlatform();
@@ -1025,7 +1030,7 @@ async function processScheduledMessages() {
         const body = {
           from: { phoneNumber: MY_PHONE_NUMBER },
           to: job.phoneNumbers.map(p => ({ phoneNumber: p })),
-          text: job.message,
+          text: messageText,
         };
 
         const jsonBuffer = Buffer.from(JSON.stringify(body), 'utf8');
@@ -1051,7 +1056,7 @@ async function processScheduledMessages() {
           id: result.id?.toString() || Date.now().toString(),
           direction: 'Outbound',
           type: 'SMS',
-          subject: job.message,
+          subject: messageText,
           creationTime: new Date(result.creationTime || Date.now()).toISOString(),
           lastModifiedTime: new Date(result.lastModifiedTime || Date.now()).toISOString(),
           readStatus: 'Read',
@@ -1101,7 +1106,7 @@ async function processScheduledMessages() {
           phoneNumber: job.phoneNumbers[0],
           messageId: messageObj.id,
           timestamp: messageObj.creationTime,
-          subject: job.message,
+          subject: messageText,
           direction: 'Outbound',
         });
 
