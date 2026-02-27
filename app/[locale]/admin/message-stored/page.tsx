@@ -78,6 +78,7 @@ export default function MessageStoredPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
+  const SCHEDULED_MESSAGE_FOOTER = `\n\nNote: This is a scheduled reminder. If you've recently made a payment, please disregard — or reply to confirm your policy status.`;
 
   // Delete features
   const [selectMode, setSelectMode] = useState(false);
@@ -1068,7 +1069,7 @@ export default function MessageStoredPage() {
         body: JSON.stringify({
           conversationId: selectedConversationId,
           phoneNumbers: selectedParticipants,
-          message: messageInput.trim(),
+          message: messageInput.trim() + SCHEDULED_MESSAGE_FOOTER,
           scheduledAt: new Date(scheduledDateTime).toISOString(),
         }),
       });
@@ -2838,7 +2839,7 @@ export default function MessageStoredPage() {
                               </div>
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm text-gray-800 break-words leading-relaxed">
+                              <p className="text-sm text-gray-800 break-words leading-relaxed whitespace-pre-wrap">
                                 {sm.message}
                               </p>
                               <p className="text-xs text-purple-600 font-medium mt-1">
@@ -3220,8 +3221,9 @@ export default function MessageStoredPage() {
               <p className="text-sm font-medium text-gray-700 mb-1">
                 Message preview:
               </p>
-              <p className="text-sm text-gray-600 break-words">
+              <p className="text-sm text-gray-600 break-words whitespace-pre-wrap">
                 {messageInput}
+                {SCHEDULED_MESSAGE_FOOTER}
               </p>
             </div>
 
