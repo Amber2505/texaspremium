@@ -35,6 +35,7 @@ interface MessageAttachment {
 interface MessageData {
   id?: number;
   direction?: string;
+  readStatus?: string;
   from?: { phoneNumber?: string };
   to?: ToRecipient[];
   attachments?: MessageAttachment[];
@@ -105,10 +106,54 @@ export async function POST(request: NextRequest) {
     const body: WebhookEvent[] = await request.json();
 
     for (const event of body) {
+      console.log("📨 RC Webhook event:", JSON.stringify(event, null, 2));
       if (event.eventType !== "/restapi/v1.0/account/~/extension/~/message-store") continue;
-
+      
       const msgData = event.body;
-      if (!msgData || msgData.direction !== "Inbound") continue;
+      if (!msgData) continue;
+
+      // ── SYNC READ STATUS FROM RINGCENTRAL → MONGODB ──
+      // Handles when message is marked read/unread directly in RC app or phone
+      if (msgData.id && msgData.readStatus) {
+        const messageId = msgData.id.toString();
+        const readStatus = msgData.readStatus; // "Read" or "Unread"
+
+        const client = await connectToDatabase;
+        const db = client.db("db");
+        const conversationsCollection = db.collection("texas_premium_messages");
+
+        const result = await conversationsCollection.updateOne(
+          { "messages.id": messageId },
+          {
+            $set: {
+              "messages.$.readStatus": readStatus,
+            },
+          },
+        );
+
+        if (result.modifiedCount > 0) {
+          console.log(`🔄 Synced read status from RC: message ${messageId} → ${readStatus}`);
+
+          // Recalculate unreadCount for this conversation
+          const conv = await conversationsCollection.findOne({ "messages.id": messageId });
+          if (conv) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const unreadCount = (conv.messages as any[]).filter(
+              (m) => m.direction === "Inbound" && m.readStatus === "Unread"
+            ).length;
+
+            await conversationsCollection.updateOne(
+              { _id: conv._id },
+              { $set: { unreadCount } }
+            );
+
+            console.log(`   Conversation ${conv.conversationId} unreadCount → ${unreadCount}`);
+          }
+        }
+      }
+
+      // Only process new inbound messages below
+      if (msgData.direction !== "Inbound") continue;
 
       const client = await connectToDatabase;
       const db = client.db("db");

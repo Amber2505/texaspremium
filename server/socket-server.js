@@ -833,17 +833,16 @@ async function syncRingCentralMessages() {
 async function syncReadStatus(platform) {
   let readSynced = 0;
   let unreadSynced = 0;
-  
-  // Get all inbound messages with their read status from MongoDB
+
   const conversationsWithInbound = await conversationsCollection.find(
     { 'messages.direction': 'Inbound' },
     { projection: { conversationId: 1, phoneNumber: 1, 'messages.id': 1, 'messages.direction': 1, 'messages.readStatus': 1 } }
-  ).limit(50).toArray(); // Limit to prevent timeout
-  
+  ).limit(50).toArray();
+
   const localUnreadIds = new Set();
   const localReadIds = new Set();
   const messageConvMap = new Map();
-  
+
   for (const conv of conversationsWithInbound) {
     const convId = conv.conversationId || conv.phoneNumber;
     for (const msg of (conv.messages || [])) {
@@ -857,30 +856,26 @@ async function syncReadStatus(platform) {
       }
     }
   }
-  
+
   if (localUnreadIds.size === 0 && localReadIds.size === 0) {
     return { readSynced: 0, unreadSynced: 0 };
   }
-  
-  // Check RingCentral for read messages (that we have as unread)
+
+  // ── Sync Read: RC says Read, we have Unread ──
   if (localUnreadIds.size > 0) {
-    const readResponse = await platform.get(
+    const rcReadMessages = (await (await platform.get(
       '/restapi/v1.0/account/~/extension/~/message-store',
       { messageType: 'SMS', readStatus: 'Read', perPage: 500 }
-    );
-    
-    const rcReadMessages = (await readResponse.json()).records || [];
+    )).json()).records || [];
+
     const rcReadIds = new Set(rcReadMessages.map(m => m.id.toString()));
-    
-    // Find messages that are Read in RC but Unread locally
     const toMarkRead = [];
     for (const msgId of localUnreadIds) {
       if (rcReadIds.has(msgId)) {
         toMarkRead.push({ msgId, convId: messageConvMap.get(msgId) });
       }
     }
-    
-    // Batch update
+
     for (const { msgId, convId } of toMarkRead) {
       await conversationsCollection.updateOne(
         { $or: [{ conversationId: convId }, { phoneNumber: convId }], 'messages.id': msgId },
@@ -888,12 +883,11 @@ async function syncReadStatus(platform) {
       );
       readSynced++;
     }
-    
-    // Update unread counts for affected conversations
+
     const affectedConvs = new Set(toMarkRead.map(t => t.convId));
     for (const convId of affectedConvs) {
-      const conv = await conversationsCollection.findOne({ 
-        $or: [{ conversationId: convId }, { phoneNumber: convId }] 
+      const conv = await conversationsCollection.findOne({
+        $or: [{ conversationId: convId }, { phoneNumber: convId }]
       });
       if (conv) {
         const newUnreadCount = (conv.messages || [])
@@ -902,29 +896,30 @@ async function syncReadStatus(platform) {
           { _id: conv._id },
           { $set: { unreadCount: newUnreadCount } }
         );
+        io.to(`conversation:${convId}`).emit('readStatusChanged', {
+          conversationId: convId,
+          unreadCount: newUnreadCount,
+        });
+        console.log(`📡 Broadcast readStatusChanged for ${convId} → unread: ${newUnreadCount}`);
       }
     }
   }
-  
-  // Check RingCentral for unread messages (that we have as read)
+
+  // ── Sync Unread: RC says Unread, we have Read ──
   if (localReadIds.size > 0) {
-    const unreadResponse = await platform.get(
+    const rcUnreadMessages = (await (await platform.get(
       '/restapi/v1.0/account/~/extension/~/message-store',
       { messageType: 'SMS', readStatus: 'Unread', perPage: 500 }
-    );
-    
-    const rcUnreadMessages = (await unreadResponse.json()).records || [];
+    )).json()).records || [];
+
     const rcUnreadIds = new Set(rcUnreadMessages.map(m => m.id.toString()));
-    
-    // Find messages that are Unread in RC but Read locally
     const toMarkUnread = [];
     for (const msgId of localReadIds) {
       if (rcUnreadIds.has(msgId)) {
         toMarkUnread.push({ msgId, convId: messageConvMap.get(msgId) });
       }
     }
-    
-    // Batch update
+
     for (const { msgId, convId } of toMarkUnread) {
       await conversationsCollection.updateOne(
         { $or: [{ conversationId: convId }, { phoneNumber: convId }], 'messages.id': msgId },
@@ -932,12 +927,11 @@ async function syncReadStatus(platform) {
       );
       unreadSynced++;
     }
-    
-    // Update unread counts for affected conversations
-    const affectedConvs = new Set(toMarkUnread.map(t => t.convId));
-    for (const convId of affectedConvs) {
-      const conv = await conversationsCollection.findOne({ 
-        $or: [{ conversationId: convId }, { phoneNumber: convId }] 
+
+    const affectedUnreadConvs = new Set(toMarkUnread.map(t => t.convId));
+    for (const convId of affectedUnreadConvs) {
+      const conv = await conversationsCollection.findOne({
+        $or: [{ conversationId: convId }, { phoneNumber: convId }]
       });
       if (conv) {
         const newUnreadCount = (conv.messages || [])
@@ -946,10 +940,15 @@ async function syncReadStatus(platform) {
           { _id: conv._id },
           { $set: { unreadCount: newUnreadCount } }
         );
+        io.to(`conversation:${convId}`).emit('readStatusChanged', {
+          conversationId: convId,
+          unreadCount: newUnreadCount,
+        });
+        console.log(`📡 Broadcast readStatusChanged for ${convId} → unread: ${newUnreadCount}`);
       }
     }
   }
-  
+
   return { readSynced, unreadSynced };
 }
 

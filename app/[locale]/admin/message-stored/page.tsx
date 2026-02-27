@@ -510,6 +510,15 @@ export default function MessageStoredPage() {
             scrollToBottom();
           });
       }
+      if (data.type === "readStatusChanged") {
+        setConversations((prev) =>
+          prev.map((c) =>
+            (c.conversationId || c.phoneNumber) === data.conversationId
+              ? { ...c, unreadCount: data.unreadCount }
+              : c,
+          ),
+        );
+      }
     };
 
     return () => ws.close();
@@ -831,6 +840,75 @@ export default function MessageStoredPage() {
     } catch (error) {
       console.error("Failed to mark as unread:", error);
       alert("Failed to mark as unread");
+    }
+  };
+
+  const markAllAsRead = async () => {
+    if (!confirm("Mark all conversations as read?")) return;
+
+    const unreadConvs = conversations.filter(
+      (c) =>
+        (c.unreadCount ?? 0) > 0 ||
+        (c.lastMessage?.direction === "Inbound" &&
+          c.lastMessage?.readStatus === "Unread"),
+    );
+
+    if (unreadConvs.length === 0) return;
+
+    try {
+      // Step 1: Fetch all unread IDs in parallel (no RC calls yet)
+      const allUnreadIds: string[] = [];
+
+      await Promise.all(
+        unreadConvs.map(async (conv) => {
+          const convId = conv.conversationId || conv.phoneNumber;
+          const res = await fetch(
+            `/api/messages/conversation?conversationId=${encodeURIComponent(convId)}&all=true`,
+          );
+          const data = await res.json();
+          const ids = (data.messages || [])
+            .filter(
+              (m: StoredMessage) =>
+                m.direction === "Inbound" && m.readStatus === "Unread" && m.id,
+            )
+            .map((m: StoredMessage) => m.id as string);
+          allUnreadIds.push(...ids);
+        }),
+      );
+
+      // Step 2: Mark all read in MongoDB in parallel (fast, no rate limit)
+      await Promise.all(
+        unreadConvs.map((conv) =>
+          fetch("/api/messages/mark-read", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              conversationId: conv.conversationId || conv.phoneNumber,
+            }),
+          }),
+        ),
+      );
+
+      // Step 3: ONE batched call to RingCentral (API handles rate limiting internally)
+      if (allUnreadIds.length > 0) {
+        await fetch("/api/messages/mark-read-ringcentral", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messageIds: allUnreadIds }),
+        });
+      }
+
+      // Step 4: Update UI
+      setConversations((prev) => prev.map((c) => ({ ...c, unreadCount: 0 })));
+
+      if (filterType === "unread") {
+        setConversations([]);
+        setHasMore(true);
+        fetchMessages(0, searchInput, "unread", false);
+      }
+    } catch (error) {
+      console.error("Failed to mark all as read:", error);
+      alert("Failed to mark all as read");
     }
   };
 
@@ -1595,6 +1673,33 @@ export default function MessageStoredPage() {
                 <option value="scheduled">Scheduled</option>
               </select>
             </div>
+            {/* Mark All Read button - shows when there are unread conversations */}
+            {conversations.some(
+              (c) =>
+                (c.unreadCount ?? 0) > 0 ||
+                (c.lastMessage?.direction === "Inbound" &&
+                  c.lastMessage?.readStatus === "Unread"),
+            ) && (
+              <button
+                onClick={markAllAsRead}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-sm font-medium rounded-lg transition-colors"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                Mark All as Read
+              </button>
+            )}
           </div>
 
           {/* Conversations list */}
