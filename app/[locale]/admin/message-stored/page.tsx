@@ -494,6 +494,12 @@ export default function MessageStoredPage() {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === "newRingCentralMessage") {
+        // 🔔 Play notification sound for inbound messages
+        if (data.direction === "Inbound" || !data.direction) {
+          const audio = new Audio("/notification_message.wav");
+          audio.volume = 0.5;
+          audio.play().catch(() => {}); // catch blocks autoplay restrictions
+        }
         // Fetch latest messages and merge with existing
         fetch(
           `/api/messages/conversation?conversationId=${encodeURIComponent(
