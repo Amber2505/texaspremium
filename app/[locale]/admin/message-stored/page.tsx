@@ -522,7 +522,7 @@ export default function MessageStoredPage() {
         if (data.direction === "Inbound" || !data.direction) {
           if (audioUnlockedRef.current) {
             const audio = new Audio("/notification_message.wav");
-            audio.volume = 0.5;
+            audio.volume = 1.0;
             audio.play().catch((err) => console.log("Audio failed:", err));
           }
         }
