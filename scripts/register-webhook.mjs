@@ -27,7 +27,7 @@ const res = await fetch('https://platform.ringcentral.com/restapi/v1.0/subscript
     ],
     deliveryMode: {
       transportType: 'WebHook',
-      address: 'https://your-nextjs-domain.com/api/messages/webhook'
+      address: 'https://www.texaspremiumins.com/api/messages/webhook'
     },
     expiresIn: 630720000
   })
