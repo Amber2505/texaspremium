@@ -139,6 +139,30 @@ export default function MessageStoredPage() {
   >([]);
   const chatMenuRef = useRef<HTMLDivElement>(null);
 
+  const audioUnlockedRef = useRef(false);
+
+  // Unlock audio on first user interaction (Chrome requires this)
+  useEffect(() => {
+    const unlock = () => {
+      if (audioUnlockedRef.current) return;
+      const audio = new Audio("/notification_message.wav");
+      audio.volume = 0;
+      audio
+        .play()
+        .then(() => {
+          audio.pause();
+          audioUnlockedRef.current = true;
+        })
+        .catch(() => {});
+    };
+    document.addEventListener("click", unlock);
+    document.addEventListener("keydown", unlock);
+    return () => {
+      document.removeEventListener("click", unlock);
+      document.removeEventListener("keydown", unlock);
+    };
+  }, []);
+
   // Memoize scrollToBottom to use in useEffect dependencies
   const scrollToBottom = useCallback(() => {
     if (shouldScrollToBottom)
@@ -496,9 +520,11 @@ export default function MessageStoredPage() {
       if (data.type === "newRingCentralMessage") {
         // 🔔 Play notification sound for inbound messages
         if (data.direction === "Inbound" || !data.direction) {
-          const audio = new Audio("/notification_message.wav");
-          audio.volume = 0.5;
-          audio.play().catch(() => {}); // catch blocks autoplay restrictions
+          if (audioUnlockedRef.current) {
+            const audio = new Audio("/notification_message.wav");
+            audio.volume = 0.5;
+            audio.play().catch((err) => console.log("Audio failed:", err));
+          }
         }
         // Fetch latest messages and merge with existing
         fetch(
