@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { RingCentralMessage } from "@/lib/models/message";
 import Image from "next/image";
+import { franc } from "franc"; //helpful for determining whether to use English or Spanish footer in scheduled messages based on message content
 
 interface ConversationSummary {
   phoneNumber: string;
@@ -78,8 +79,13 @@ export default function MessageStoredPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
-  const SCHEDULED_MESSAGE_FOOTER = `\n\nNote: This is a scheduled reminder. If this has already been taken care of, please disregard — or reply to update your status.`;
-
+  const FOOTER_EN = `\n\nNote: This is a scheduled reminder. If this has already been taken care of, please disregard — or reply to update your status.`;
+  const FOOTER_ES = `\n\nNota: Este es un recordatorio programado. Si esto ya fue atendido, por favor ignórelo — o responda para actualizar su estado.`;
+  const getFooter = (text: string): string => {
+    if (!text || text.trim().length < 10) return FOOTER_EN;
+    const lang = franc(text, { only: ["eng", "spa"] });
+    return lang === "spa" ? FOOTER_ES : FOOTER_EN;
+  };
   // Delete features
   const [selectMode, setSelectMode] = useState(false);
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(
@@ -1147,7 +1153,7 @@ export default function MessageStoredPage() {
         body: JSON.stringify({
           conversationId: selectedConversationId,
           phoneNumbers: selectedParticipants,
-          message: messageInput.trim() + SCHEDULED_MESSAGE_FOOTER,
+          message: messageInput.trim() + getFooter(messageInput.trim()),
           scheduledAt: new Date(scheduledDateTime).toISOString(),
         }),
       });
@@ -3329,7 +3335,7 @@ export default function MessageStoredPage() {
                 Message preview:
               </p>
               <p className="text-sm text-gray-600 break-words whitespace-pre-wrap">
-                {messageInput + SCHEDULED_MESSAGE_FOOTER}
+                {messageInput + getFooter(messageInput)}
               </p>
             </div>
 
