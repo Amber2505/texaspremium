@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_WS_URL!
+    const railwayUrl = process.env.NEXT_PUBLIC_SOCKET_URL!
       .replace('ws://', 'http://')
       .replace('wss://', 'https://');
 
