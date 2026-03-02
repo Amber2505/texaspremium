@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(req: NextRequest) {
   try {
+    console.log('🔔 Webhook hit!', new Date().toISOString());
+    
     const validationToken = req.headers.get('validation-token');
     if (validationToken) {
       return NextResponse.json({}, {
@@ -10,19 +12,27 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
+    console.log('📦 Webhook body:', JSON.stringify(body));
+    
     const messageId = body?.body?.id;
-    if (!messageId) return NextResponse.json({ ok: true });
+    if (!messageId) {
+      console.log('❌ No messageId found in body');
+      return NextResponse.json({ ok: true });
+    }
 
-    // Tell Railway to sync immediately
     const railwayUrl = process.env.NEXT_PUBLIC_RAILWAY_WS_URL!
       .replace('ws://', 'http://')
       .replace('wss://', 'https://');
 
-    fetch(`${railwayUrl}/trigger-sync`, { method: 'POST' }); // fire and forget
+    console.log('🚀 Calling Railway at:', `${railwayUrl}/trigger-sync`);
+
+    const syncRes = await fetch(`${railwayUrl}/trigger-sync`, { method: 'POST' });
+    console.log('✅ Railway response status:', syncRes.status);
 
     return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ ok: true }); // always 200 to RC
+  } catch (err) {
+    console.error('❌ Webhook error:', err);
+    return NextResponse.json({ ok: true });
   }
 }
 
