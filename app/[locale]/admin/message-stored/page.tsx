@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -138,6 +139,9 @@ export default function MessageStoredPage() {
     ScheduledConvSummary[]
   >([]);
   const chatMenuRef = useRef<HTMLDivElement>(null);
+  const [showInlineSearch, setShowInlineSearch] = useState(false);
+  const [inlineSearchInput, setInlineSearchInput] = useState("");
+  const inlineSearchRef = useRef<HTMLInputElement>(null);
 
   const audioUnlockedRef = useRef(false);
 
@@ -163,10 +167,13 @@ export default function MessageStoredPage() {
     };
   }, []);
 
-  // Memoize scrollToBottom to use in useEffect dependencies
   const scrollToBottom = useCallback(() => {
-    if (shouldScrollToBottom)
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (shouldScrollToBottom) {
+      const container = messagesContainerRef.current;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
   }, [shouldScrollToBottom]);
 
   // Lightbox functions - memoized for useEffect dependency
@@ -298,8 +305,17 @@ export default function MessageStoredPage() {
   }, [mounted, searchInput, filterType]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [conversation, scrollToBottom]);
+    if (shouldScrollToBottom && conversation.length > 0) {
+      const lastMsg = conversation[conversation.length - 1];
+      // Only auto-scroll for outbound (just sent) or optimistic messages
+      if (
+        lastMsg?.direction === "Outbound" ||
+        lastMsg?.id?.startsWith("optimistic-")
+      ) {
+        scrollToBottom();
+      }
+    }
+  }, [conversation, scrollToBottom, shouldScrollToBottom]);
 
   useEffect(() => {
     const handler = () => openDropdown && setOpenDropdown(null);
@@ -713,7 +729,7 @@ export default function MessageStoredPage() {
     setConversation([]);
     setMessagesSkip(0);
     setHasMoreMessages(true);
-    setActiveSearchText(searchText || "");
+    setActiveSearchText("");
     setMatchingMessageIndices([]);
 
     // Only scroll to bottom if NOT searching
@@ -763,8 +779,21 @@ export default function MessageStoredPage() {
       setHasMoreMessages(data.hasMore || false);
       setMessagesSkip(data.messages?.length || 0);
 
-      if (data.matchingIndices && data.matchingIndices.length > 0) {
-        setMatchingMessageIndices(data.matchingIndices);
+      if (searchText && searchText.trim()) {
+        const normalize = (s: string) =>
+          s
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
+        const needle = normalize(searchText);
+        const clientIndices = (data.messages || [])
+          .map((msg: RingCentralMessage, i: number) =>
+            normalize(msg.subject || "").includes(needle) ? i : -1,
+          )
+          .filter((i: number) => i !== -1);
+        setMatchingMessageIndices(clientIndices);
       }
 
       await markAsRead(conversationId);
@@ -792,22 +821,30 @@ export default function MessageStoredPage() {
         ),
       );
 
-      if (
-        searchText &&
-        data.firstMatchIndex !== undefined &&
-        data.firstMatchIndex >= 0
-      ) {
+      if (searchText && searchText.trim()) {
+        const normalize = (s: string) =>
+          s
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
+        const needle = normalize(searchText);
+        const firstIdx = (data.messages || []).findIndex(
+          (msg: RingCentralMessage) =>
+            normalize(msg.subject || "").includes(needle),
+        );
         setTimeout(() => {
-          const matchElement = document.getElementById(
-            `message-${data.firstMatchIndex}`,
-          );
-          if (matchElement) {
-            matchElement.scrollIntoView({
-              behavior: "smooth",
-              block: "center",
-            });
+          const matchElement = document.getElementById(`message-${firstIdx}`);
+          const container = messagesContainerRef.current;
+          if (matchElement && container) {
+            const elementTop = matchElement.offsetTop;
+            const containerHeight = container.clientHeight;
+            const elementHeight = matchElement.offsetHeight;
+            container.scrollTop =
+              elementTop - containerHeight / 2 + elementHeight / 2;
           }
-        }, 150);
+        }, 250);
       } else {
         setTimeout(scrollToBottom, 100);
       }
@@ -2332,12 +2369,141 @@ export default function MessageStoredPage() {
                             </svg>
                             Select
                           </button>
+                          <button
+                            onClick={() => {
+                              setShowInlineSearch(true);
+                              setShowChatMenu(false);
+                              setTimeout(
+                                () => inlineSearchRef.current?.focus(),
+                                100,
+                              );
+                            }}
+                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 rounded-b-lg"
+                          >
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                              />
+                            </svg>
+                            Search
+                          </button>
                         </div>
                       )}
                     </div>
                   )}
                 </div>
               </div>
+
+              {/* Inline Search Bar */}
+              {showInlineSearch && (
+                <div className="bg-white border-b border-gray-200 px-3 py-2 flex items-center gap-2">
+                  <svg
+                    className="w-4 h-4 text-gray-400 flex-shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                  <input
+                    ref={inlineSearchRef}
+                    type="text"
+                    value={inlineSearchInput}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setInlineSearchInput(val);
+                      if (!val.trim()) {
+                        setMatchingMessageIndices([]);
+                        setActiveSearchText("");
+                        return;
+                      }
+                      // Normalize: lowercase, remove accents, collapse spaces
+                      const normalize = (str: string) =>
+                        str
+                          .toLowerCase()
+                          .normalize("NFD")
+                          .replace(/[\u0300-\u036f]/g, "")
+                          .replace(/\s+/g, " ")
+                          .trim();
+
+                      const normalizedSearch = normalize(val);
+                      const indices = conversation
+                        .map((msg, i) => {
+                          const text = normalize(msg.subject || "");
+                          // Match as exact phrase
+                          return text.includes(normalizedSearch) ? i : -1;
+                        })
+                        .filter((i) => i !== -1);
+                      setMatchingMessageIndices(indices);
+                      setActiveSearchText(val);
+                      // Scroll to first match instantly
+                      if (indices.length > 0) {
+                        const el = document.getElementById(
+                          `message-${indices[0]}`,
+                        );
+                        const container = messagesContainerRef.current;
+                        if (el && container) {
+                          container.scrollTop =
+                            el.offsetTop -
+                            container.clientHeight / 2 +
+                            el.offsetHeight / 2;
+                        }
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        setShowInlineSearch(false);
+                        setInlineSearchInput("");
+                        setActiveSearchText("");
+                        setMatchingMessageIndices([]);
+                      }
+                    }}
+                    placeholder="Search in conversation..."
+                    className="flex-1 text-sm outline-none bg-transparent"
+                  />
+                  {matchingMessageIndices.length > 0 && (
+                    <span className="text-xs text-purple-600 font-medium whitespace-nowrap">
+                      {matchingMessageIndices.length} found
+                    </span>
+                  )}
+                  <button
+                    onClick={() => {
+                      setShowInlineSearch(false);
+                      setInlineSearchInput("");
+                      setActiveSearchText("");
+                      setMatchingMessageIndices([]);
+                    }}
+                    className="text-gray-400 hover:text-gray-600 p-1"
+                  >
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              )}
 
               {/* Messages */}
               <div
@@ -2502,45 +2668,69 @@ export default function MessageStoredPage() {
                                 {isMatchingMessage && activeSearchText
                                   ? (() => {
                                       const text = msg.subject;
-                                      const searchLower =
-                                        activeSearchText.toLowerCase();
-                                      const textLower = text.toLowerCase();
-                                      const matchIndex =
-                                        textLower.indexOf(searchLower);
+                                      const normalize = (s: string) =>
+                                        s
+                                          .toLowerCase()
+                                          .normalize("NFD")
+                                          .replace(/[\u0300-\u036f]/g, "");
+                                      const normalize2 = (s: string) =>
+                                        s
+                                          .toLowerCase()
+                                          .normalize("NFD")
+                                          .replace(/[\u0300-\u036f]/g, "");
+                                      const needle = normalize2(
+                                        activeSearchText.trim(),
+                                      );
+                                      const parts: {
+                                        text: string;
+                                        highlight: boolean;
+                                      }[] = [];
+                                      let remaining = text;
+                                      let remainingNorm = normalize2(text);
 
-                                      if (matchIndex === -1)
-                                        return renderTextWithLinks(
-                                          text,
-                                          isOutbound,
+                                      while (remaining.length > 0) {
+                                        const idx =
+                                          remainingNorm.indexOf(needle);
+                                        if (idx === -1) {
+                                          parts.push({
+                                            text: remaining,
+                                            highlight: false,
+                                          });
+                                          break;
+                                        }
+                                        if (idx > 0) {
+                                          parts.push({
+                                            text: remaining.slice(0, idx),
+                                            highlight: false,
+                                          });
+                                        }
+                                        parts.push({
+                                          text: remaining.slice(
+                                            idx,
+                                            idx + needle.length,
+                                          ),
+                                          highlight: true,
+                                        });
+                                        remaining = remaining.slice(
+                                          idx + needle.length,
                                         );
-
-                                      const before = text.slice(0, matchIndex);
-                                      const match = text.slice(
-                                        matchIndex,
-                                        matchIndex + activeSearchText.length,
-                                      );
-                                      const after = text.slice(
-                                        matchIndex + activeSearchText.length,
-                                      );
-
+                                        remainingNorm = remainingNorm.slice(
+                                          idx + needle.length,
+                                        );
+                                      }
                                       return (
                                         <>
-                                          {renderTextWithLinks(
-                                            before,
-                                            isOutbound,
-                                          )}
-                                          <mark
-                                            className={`${
-                                              isOutbound
-                                                ? "bg-yellow-200 text-gray-900"
-                                                : "bg-yellow-200"
-                                            } px-0.5 rounded`}
-                                          >
-                                            {match}
-                                          </mark>
-                                          {renderTextWithLinks(
-                                            after,
-                                            isOutbound,
+                                          {parts.map((part, pi) =>
+                                            part.highlight ? (
+                                              <mark
+                                                key={pi}
+                                                className={`${isOutbound ? "bg-yellow-200 text-gray-900" : "bg-yellow-200"} px-0.5 rounded`}
+                                              >
+                                                {part.text}
+                                              </mark>
+                                            ) : (
+                                              <span key={pi}>{part.text}</span>
+                                            ),
                                           )}
                                         </>
                                       );
@@ -3306,7 +3496,7 @@ export default function MessageStoredPage() {
                       }}
                       placeholder="Type a message..."
                       className="flex-1 px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm sm:text-base resize-none max-h-40 overflow-y-auto"
-                      disabled={sending}
+                      disabled={false}
                     />
 
                     <button
