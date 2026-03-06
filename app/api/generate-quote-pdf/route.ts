@@ -27,9 +27,12 @@ export async function POST(request: NextRequest) {
       return age;
     };
 
-    // Format phone number to always show (972) 748-6404
-    const formatPhoneNumber = (): string => {
-      return "(972) 748-6404";
+    const formatPhoneNumber = (phone: string): string => {
+      const digits = phone.replace(/\\D/g, "");
+      if (digits.length === 10) {
+        return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+      }
+      return phone;
     };
 
     // Create a new PDF document
@@ -181,7 +184,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Phone on separate line with more space
-    page.drawText(formatPhoneNumber(), {
+    page.drawText(formatPhoneNumber(data.customerPhone), {
       x: 50,
       y: addressLine2 ? yPosition - 60 : yPosition - 48,
       size: 10,
@@ -259,7 +262,7 @@ export async function POST(request: NextRequest) {
     yPosition -= 20;
 
     data.vehicles.forEach((vehicle: any, index: number) => {
-      const vinDisplay = vehicle.vin ? ` - VIN: XXXX${vehicle.vin}` : '';
+      const vinDisplay = vehicle.vin ? ` - VIN: ${vehicle.vin}` : '';
       const vehicleText = `${index + 1}. ${vehicle.year} ${vehicle.make} ${vehicle.model}${vinDisplay}`;
       page.drawText(vehicleText, {
         x: 60,
@@ -335,14 +338,14 @@ export async function POST(request: NextRequest) {
     yPosition -= 10;
 
     // Check if we need a second page for payment options
-    const paymentBoxHeight = 150;
-    const disclaimerHeight = 50;
+    const paymentBoxHeight = 210;
+    const disclaimerHeight = 100;
     const footerHeight = 40;
     const requiredSpace = paymentBoxHeight + disclaimerHeight + footerHeight;
 
     let currentPage = page;
     
-    if (yPosition < requiredSpace) {
+    if (yPosition < requiredSpace + 20) {
       // Need a second page
       currentPage = pdfDoc.addPage([612, 792]);
       allPages.push(currentPage);
@@ -593,16 +596,28 @@ export async function POST(request: NextRequest) {
 
     if (savings.length > 0) {
       yPosition -= 5;
-      currentPage.drawText(`Save with one-time payment! vs monthly payments (${savings.join(", ")})`, {
+      currentPage.drawText(`Save with one-time payment! vs monthly payments:`, {
         x: 60,
         y: yPosition,
         size: 9,
         font: helveticaBold,
         color: rgb(0, 0.6, 0),
       });
+      yPosition -= 13;
+      savings.forEach((savingLine) => {
+        const amount = savingLine.split(": $")[1];
+        currentPage.drawText(`  • Save $${amount} over the full term`, {
+          x: 60,
+          y: yPosition,
+          size: 8,
+          font: helveticaBold,
+          color: rgb(0, 0.6, 0),
+        });
+        yPosition -= 12;
+      });
     }
 
-    yPosition -= paymentBoxHeight - 80;
+    yPosition -= 15;
 
     // Ensure enough space for disclaimer and footer
     if (yPosition < 80) {

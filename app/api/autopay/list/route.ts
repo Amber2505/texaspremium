@@ -1,3 +1,4 @@
+//app/api/autopay/list/route.ts
 import { NextResponse } from 'next/server';
 import connectToDatabase from "@/lib/mongodb";
 
@@ -23,6 +24,7 @@ export async function GET() {
         accountLast4: 1,
         accountType: 1,
         accessLog: 1,
+        completed: 1,
     })
     .sort({ createdAt: -1 })
     .toArray();

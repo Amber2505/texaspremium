@@ -20,6 +20,7 @@ interface AutopayCustomer {
   accountLast4?: string;
   accountType?: string;
   viewed?: boolean;
+  completed?: boolean;
 }
 
 interface DecryptedData {
@@ -61,6 +62,10 @@ export default function AdminAutopayDashboard() {
   const [showCodePrompt, setShowCodePrompt] = useState(false);
   const [pendingCustomer, setPendingCustomer] =
     useState<AutopayCustomer | null>(null);
+  const [activeTab, setActiveTab] = useState<"pending" | "completed">(
+    "pending",
+  );
+  const [sortByNew, setSortByNew] = useState(true);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -248,19 +253,46 @@ export default function AdminAutopayDashboard() {
   };
 
   // Filter customers based on search input (name or phone)
-  const filteredCustomers = customers.filter((c) => {
-    const searchLower = searchQuery.toLowerCase();
-    const normalizedSearchPhone = normalizePhoneNumber(searchQuery);
-    const normalizedCustomerPhone = normalizePhoneNumber(c.customerPhone);
+  const toggleCompleted = async (id: string, completed: boolean) => {
+    try {
+      await fetch("/api/autopay/update-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, completed }),
+      });
+      setCustomers((prev) =>
+        prev.map((c) => (c._id === id ? { ...c, completed, viewed: true } : c)),
+      );
+    } catch {
+      alert("Failed to update status");
+    }
+  };
 
-    // Check name match
-    const nameMatch = c.customerName.toLowerCase().includes(searchLower);
+  const filteredCustomers = customers
+    .filter((c) => {
+      const searchLower = searchQuery.toLowerCase();
+      const normalizedSearchPhone = normalizePhoneNumber(searchQuery);
+      const normalizedCustomerPhone = normalizePhoneNumber(c.customerPhone);
+      const nameMatch = c.customerName.toLowerCase().includes(searchLower);
+      const phoneMatch = normalizedCustomerPhone.includes(
+        normalizedSearchPhone,
+      );
+      const matchesSearch = nameMatch || phoneMatch;
+      const matchesTab =
+        activeTab === "completed" ? !!c.completed : !c.completed;
+      return matchesSearch && matchesTab;
+    })
+    .sort((a, b) => {
+      if (!sortByNew) return 0;
+      // New (unviewed) first, then by date
+      if (!a.viewed && b.viewed) return -1;
+      if (a.viewed && !b.viewed) return 1;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
 
-    // Check phone match (normalized - digits only)
-    const phoneMatch = normalizedCustomerPhone.includes(normalizedSearchPhone);
-
-    return nameMatch || phoneMatch;
-  });
+  const pendingCount = customers.filter((c) => !c.completed).length;
+  const newCount = customers.filter((c) => !c.viewed).length;
+  const completedCount = customers.filter((c) => !!c.completed).length;
 
   if (isCheckingAuth) {
     return (
@@ -291,6 +323,25 @@ export default function AdminAutopayDashboard() {
       {/* Header */}
       <div className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
+          <button
+            onClick={() => router.push("/admin")}
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-2 transition-colors"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+            Back to Admin
+          </button>
           <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
             Autopay Portal
           </h1>
@@ -316,6 +367,79 @@ export default function AdminAutopayDashboard() {
             <span className="text-sm font-medium">Logout</span>
           </button>
         </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="max-w-7xl mx-auto mb-4 flex items-center justify-between gap-4">
+        <div className="flex bg-white rounded-xl border border-gray-200 p-1 shadow-sm gap-1">
+          <button
+            onClick={() => setActiveTab("pending")}
+            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${
+              activeTab === "pending"
+                ? "bg-blue-600 text-white shadow"
+                : "text-gray-500 hover:text-gray-800"
+            }`}
+          >
+            Pending
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-black ${
+                activeTab === "pending"
+                  ? "bg-blue-500 text-white"
+                  : "bg-gray-100 text-gray-600"
+              }`}
+            >
+              {pendingCount}
+            </span>
+            {newCount > 0 && (
+              <span className="px-1.5 py-0.5 text-[9px] font-black bg-red-500 text-white rounded animate-pulse">
+                {newCount} NEW
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("completed")}
+            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${
+              activeTab === "completed"
+                ? "bg-emerald-600 text-white shadow"
+                : "text-gray-500 hover:text-gray-800"
+            }`}
+          >
+            Completed
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-black ${
+                activeTab === "completed"
+                  ? "bg-emerald-500 text-white"
+                  : "bg-gray-100 text-gray-600"
+              }`}
+            >
+              {completedCount}
+            </span>
+          </button>
+        </div>
+
+        <button
+          onClick={() => setSortByNew((v) => !v)}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-bold transition-all ${
+            sortByNew
+              ? "bg-amber-50 border-amber-300 text-amber-700"
+              : "bg-white border-gray-200 text-gray-500"
+          }`}
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"
+            />
+          </svg>
+          {sortByNew ? "Newest First" : "Default Order"}
+        </button>
       </div>
 
       {/* Main Table */}
@@ -380,6 +504,18 @@ export default function AdminAutopayDashboard() {
                           className="text-blue-600 hover:text-blue-800 text-sm font-bold transition-all"
                         >
                           VIEW
+                        </button>
+                        <button
+                          onClick={() =>
+                            toggleCompleted(customer._id, !customer.completed)
+                          }
+                          className={`text-sm font-bold transition-all ${
+                            customer.completed
+                              ? "text-amber-500 hover:text-amber-700"
+                              : "text-emerald-500 hover:text-emerald-700"
+                          }`}
+                        >
+                          {customer.completed ? "REOPEN" : "DONE"}
                         </button>
                         <button
                           onClick={() =>

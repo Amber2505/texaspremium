@@ -147,7 +147,7 @@ const DEFAULT_QUICK_RESPONSES: QuickResponse[] = [
 export default function AdminLiveChatDashboard() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [selectedSession, setSelectedSession] = useState<ChatSession | null>(
-    null
+    null,
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState("");
@@ -157,7 +157,7 @@ export default function AdminLiveChatDashboard() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(
-    null
+    null,
   );
   const [customerTyping, setCustomerTyping] = useState<{
     [key: string]: boolean;
@@ -285,7 +285,7 @@ export default function AdminLiveChatDashboard() {
               // Main admin session is valid - auto-login to chat
               console.log(
                 "✅ Auto-logging in with main admin session:",
-                session.username
+                session.username,
               );
               loginAsAdmin(session.username);
               return;
@@ -356,7 +356,7 @@ export default function AdminLiveChatDashboard() {
       23,
       59,
       59,
-      999
+      999,
     );
     return endOfDay.getTime();
   };
@@ -403,7 +403,7 @@ export default function AdminLiveChatDashboard() {
   const handleShortcutInput = (value: string) => {
     if (value.startsWith("/")) {
       const matchingResponse = quickResponses.find(
-        (qr) => qr.shortcut === value
+        (qr) => qr.shortcut === value,
       );
       if (matchingResponse) {
         setInputMessage(matchingResponse.message);
@@ -421,7 +421,7 @@ export default function AdminLiveChatDashboard() {
 
     if (
       !confirm(
-        `Are you sure you want to delete the chat with ${displayName}?\n\nThis action cannot be undone and will remove all messages permanently.`
+        `Are you sure you want to delete the chat with ${displayName}?\n\nThis action cannot be undone and will remove all messages permanently.`,
       )
     ) {
       return;
@@ -439,7 +439,7 @@ export default function AdminLiveChatDashboard() {
     } else {
       console.error("❌ Socket not connected, cannot delete chat");
       alert(
-        "Cannot delete chat: Connection to server lost. Please refresh the page."
+        "Cannot delete chat: Connection to server lost. Please refresh the page.",
       );
     }
   };
@@ -488,8 +488,8 @@ Status: ${
       selectedSession.customerEnded
         ? "Customer Ended"
         : selectedSession.adminEnded
-        ? "Admin Ended"
-        : "Active"
+          ? "Admin Ended"
+          : "Active"
     }
 Downloaded: ${new Date().toLocaleString()}
 ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
@@ -517,8 +517,8 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
     setSelectedSession(updatedSession);
     setSessions((prev) =>
       prev.map((s) =>
-        s.userId === selectedSession.userId ? updatedSession : s
-      )
+        s.userId === selectedSession.userId ? updatedSession : s,
+      ),
     );
     setShowNotesModal(false);
   };
@@ -558,7 +558,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
     if (!SOCKET_URL) {
       console.error("❌ NEXT_PUBLIC_SOCKET_URL is not defined");
       alert(
-        "Socket URL is not configured. Please check your environment variables."
+        "Socket URL is not configured. Please check your environment variables.",
       );
       return;
     }
@@ -598,7 +598,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         setSessions((prev) => {
           const existingIds = new Set(prev.map((s) => s.userId));
           const newChats = chats.filter(
-            (chat) => !existingIds.has(chat.userId)
+            (chat) => !existingIds.has(chat.userId),
           );
           return [...prev, ...newChats];
         });
@@ -606,7 +606,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         setHasMoreChats(hasMore);
         setTotalChatsCount(total);
         setIsLoadingMore(false);
-      }
+      },
     );
 
     socketRef.current.on(
@@ -623,8 +623,8 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                   deletedBy: adminName,
                   deletedAt: new Date().toISOString(),
                 }
-              : msg
-          )
+              : msg,
+          ),
         );
 
         setSessions((prev) =>
@@ -640,13 +640,13 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                           deletedBy: adminName,
                           deletedAt: new Date().toISOString(),
                         }
-                      : msg
+                      : msg,
                   ),
                 }
-              : session
-          )
+              : session,
+          ),
         );
-      }
+      },
     );
 
     socketRef.current.on(
@@ -657,7 +657,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         setSessions((prev) => {
           const filtered = prev.filter((s) => s.userId !== userId);
           console.log(
-            `📊 Sessions before: ${prev.length}, after: ${filtered.length}`
+            `📊 Sessions before: ${prev.length}, after: ${filtered.length}`,
           );
           return filtered;
         });
@@ -671,7 +671,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         if (deletedBy !== adminName) {
           alert(`Chat with ${userId} was deleted by ${deletedBy}`);
         }
-      }
+      },
     );
 
     socketRef.current.on("delete-error", ({ message }: { message: string }) => {
@@ -700,7 +700,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         setHasMoreDeletedChats(hasMore);
         setDeletedChatsTotal(total);
         setDeletedChatsLoading(false);
-      }
+      },
     );
 
     socketRef.current.on(
@@ -710,7 +710,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         alert(message);
         loadDeletedChats(0);
         socketRef.current?.emit("admin-join");
-      }
+      },
     );
 
     socketRef.current.on(
@@ -719,7 +719,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         console.error("❌ Restore error:", message);
         alert(`Failed to restore: ${message}`);
         setDeletedChatsLoading(false);
-      }
+      },
     );
 
     socketRef.current.on("customer-joined", (session: ChatSession) => {
@@ -769,8 +769,8 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                       ? 0
                       : (session.unreadCount || 0) + 1,
                 }
-              : session
-          )
+              : session,
+          ),
         );
 
         if (selectedSessionRef.current?.userId === userId) {
@@ -787,7 +787,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         if (!session?.hasAgent || session.agentName !== adminName) {
           playNotificationSound();
         }
-      }
+      },
     );
 
     socketRef.current.on("new-message", (message: ChatMessage) => {
@@ -813,8 +813,8 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                   ],
                   lastSeen: new Date().toISOString(),
                 }
-              : session
-          )
+              : session,
+          ),
         );
 
         if (selectedSessionRef.current?.userId === userId) {
@@ -826,7 +826,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
             return prev;
           });
         }
-      }
+      },
     );
 
     socketRef.current.on("session-updated", (updatedSession: ChatSession) => {
@@ -834,8 +834,8 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         prev.map((s) =>
           s.userId === updatedSession.userId
             ? { ...updatedSession, lastSeen: new Date().toISOString() }
-            : s
-        )
+            : s,
+        ),
       );
     });
 
@@ -843,7 +843,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
       "customer-typing-indicator",
       ({ userId, isTyping }: { userId: string; isTyping: boolean }) => {
         setCustomerTyping((prev) => ({ ...prev, [userId]: isTyping }));
-      }
+      },
     );
 
     socketRef.current.on(
@@ -853,10 +853,10 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
           prev.map((s) =>
             s.userId === userId
               ? { ...s, isActive: false, lastSeen: new Date().toISOString() }
-              : s
-          )
+              : s,
+          ),
         );
-      }
+      },
     );
 
     socketRef.current.on(
@@ -872,8 +872,8 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                   customerEnded: true,
                   lastSeen: new Date().toISOString(),
                 }
-              : s
-          )
+              : s,
+          ),
         );
 
         if (selectedSessionRef.current?.userId === userId) {
@@ -887,7 +887,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
             },
           ]);
         }
-      }
+      },
     );
 
     socketRef.current.on("session-ended", ({ userId }: { userId: string }) => {
@@ -900,8 +900,8 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                 adminEnded: true,
                 lastSeen: new Date().toISOString(),
               }
-            : s
-        )
+            : s,
+        ),
       );
 
       if (selectedSessionRef.current?.userId === userId) {
@@ -938,8 +938,8 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
     if (isClaimedByMe) {
       setSessions((prev) =>
         prev.map((s) =>
-          s.userId === session.userId ? { ...s, unreadCount: 0 } : s
-        )
+          s.userId === session.userId ? { ...s, unreadCount: 0 } : s,
+        ),
       );
       return;
     }
@@ -974,8 +974,8 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                 ],
                 lastSeen: new Date().toISOString(),
               }
-            : session
-        )
+            : session,
+        ),
       );
 
       socketRef.current.emit("admin-message", {
@@ -1090,8 +1090,8 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                     ],
                     lastSeen: new Date().toISOString(),
                   }
-                : session
-            )
+                : session,
+            ),
           );
 
           socketRef.current.emit("admin-message", {
@@ -1263,7 +1263,28 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
       >
         <div className="p-4 border-b bg-gradient-to-r from-red-700 to-blue-800 text-white flex-shrink-0">
           <div className="flex items-center justify-between mb-2">
-            <h2 className="text-xl font-bold">Live Chats</h2>
+            <div className="flex flex-col">
+              <button
+                onClick={() => (window.location.href = "/admin")}
+                className="flex items-center gap-1 text-xs text-blue-200 hover:text-white mb-1 transition-colors"
+              >
+                <svg
+                  className="w-3 h-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+                Back to Admin
+              </button>
+              <h2 className="text-xl font-bold">Live Chats</h2>
+            </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowMobileSidebar(false)}

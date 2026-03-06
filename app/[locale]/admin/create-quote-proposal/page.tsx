@@ -7,6 +7,8 @@ import { Shield, Loader2 } from "lucide-react";
 export default function CreateQuoteProposal() {
   const [loading, setLoading] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [vinLoading, setVinLoading] = useState<number | null>(null);
+  const [vinErrors, setVinErrors] = useState<Record<number, string>>({});
 
   // ✅ Authentication check
   useEffect(() => {
@@ -126,6 +128,48 @@ export default function CreateQuoteProposal() {
     setFormData({ ...formData, drivers: newDrivers });
   };
 
+  const handleVinLookup = async (index: number, vin: string) => {
+    const newErrors = { ...vinErrors };
+    if (vin.length !== 17) {
+      newErrors[index] = "VIN must be exactly 17 characters.";
+      setVinErrors(newErrors);
+      return;
+    }
+    delete newErrors[index];
+    setVinErrors(newErrors);
+    setVinLoading(index);
+    try {
+      const response = await fetch(
+        `https://astraldbapi.herokuapp.com/basic_vin_data/${vin}`,
+      );
+      if (!response.ok) throw new Error("VIN lookup failed");
+      const data = await response.json();
+      if (data?.vin) {
+        const newVehicles = [...formData.vehicles];
+        newVehicles[index] = {
+          ...newVehicles[index],
+          vin: vin,
+          make: data.make || "",
+          model: data.model || "",
+          year: data.year ? data.year.toString() : "",
+        };
+        setFormData({ ...formData, vehicles: newVehicles });
+      } else {
+        setVinErrors({
+          ...vinErrors,
+          [index]: "No vehicle found for this VIN.",
+        });
+      }
+    } catch {
+      setVinErrors({
+        ...vinErrors,
+        [index]: "VIN lookup failed. Please try again.",
+      });
+    } finally {
+      setVinLoading(null);
+    }
+  };
+
   // Vehicle functions
   const handleVehicleChange = (index: number, field: string, value: string) => {
     const newVehicles = [...formData.vehicles];
@@ -209,7 +253,7 @@ export default function CreateQuoteProposal() {
       a.href = url;
       a.download = `Quote_${formData.customerName.replace(
         /\s/g,
-        "_"
+        "_",
       )}_${Date.now()}.pdf`;
       document.body.appendChild(a);
       a.click();
@@ -244,6 +288,25 @@ export default function CreateQuoteProposal() {
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-6xl mx-auto">
         <div className="bg-white rounded-lg shadow-md p-8">
+          <button
+            onClick={() => (window.location.href = "/admin")}
+            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-4 transition-colors"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+            Back to Admin
+          </button>
           <h1 className="text-3xl font-bold text-gray-900 mb-6">
             Auto Insurance Quote Proposal Generator
           </h1>
@@ -443,43 +506,79 @@ export default function CreateQuoteProposal() {
                   )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <input
-                    type="text"
-                    placeholder="Year"
-                    value={vehicle.year}
-                    onChange={(e) =>
-                      handleVehicleChange(index, "year", e.target.value)
-                    }
-                    className="px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Make"
-                    value={vehicle.make}
-                    onChange={(e) =>
-                      handleVehicleChange(index, "make", e.target.value)
-                    }
-                    className="px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Model"
-                    value={vehicle.model}
-                    onChange={(e) =>
-                      handleVehicleChange(index, "model", e.target.value)
-                    }
-                    className="px-3 py-2 border border-gray-300 rounded-md"
-                  />
-                  <input
-                    type="text"
-                    placeholder="VIN (Last 6)"
-                    value={vehicle.vin}
-                    onChange={(e) =>
-                      handleVehicleChange(index, "vin", e.target.value)
-                    }
-                    className="px-3 py-2 border border-gray-300 rounded-md"
-                    maxLength={6}
-                  />
+                  <div className="md:col-span-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      VIN Number
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Enter full 17-character VIN"
+                        value={vehicle.vin}
+                        onChange={(e) => {
+                          const val = e.target.value.toUpperCase();
+                          handleVehicleChange(index, "vin", val);
+                          if (val.length === 17) handleVinLookup(index, val);
+                        }}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md font-mono"
+                        maxLength={17}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleVinLookup(index, vehicle.vin)}
+                        disabled={
+                          vehicle.vin.length !== 17 || vinLoading === index
+                        }
+                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm"
+                      >
+                        {vinLoading === index ? "Looking up..." : "Lookup"}
+                      </button>
+                    </div>
+                    {vinErrors[index] && (
+                      <p className="text-red-500 text-xs mt-1">
+                        {vinErrors[index]}
+                      </p>
+                    )}
+                    <p className="text-xs text-gray-500 mt-1">
+                      Year, make, and model will auto-fill after VIN lookup
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Year
+                    </label>
+                    <input
+                      type="text"
+                      value={vehicle.year}
+                      readOnly
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                      placeholder="Auto-filled"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Make
+                    </label>
+                    <input
+                      type="text"
+                      value={vehicle.make}
+                      readOnly
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                      placeholder="Auto-filled"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Model
+                    </label>
+                    <input
+                      type="text"
+                      value={vehicle.model}
+                      readOnly
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                      placeholder="Auto-filled"
+                    />
+                  </div>
                 </div>
               </div>
             ))}

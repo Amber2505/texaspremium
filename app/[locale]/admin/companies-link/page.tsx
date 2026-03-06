@@ -34,7 +34,7 @@ export default function CompaniesLinkAdmin() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingCompany, setEditingCompany] = useState<CompanyData | null>(
-    null
+    null,
   );
   const [formData, setFormData] = useState<CompanyData>({
     name: "",
@@ -163,7 +163,7 @@ export default function CompaniesLinkAdmin() {
         "success",
         editingCompany
           ? `Updated ${formData.name} successfully`
-          : `Added ${formData.name} successfully`
+          : `Added ${formData.name} successfully`,
       );
 
       handleCloseModal();
@@ -177,7 +177,7 @@ export default function CompaniesLinkAdmin() {
   const handleDelete = async (companyName: string) => {
     if (
       !confirm(
-        `Are you sure you want to delete "${companyName}"? This action cannot be undone.`
+        `Are you sure you want to delete "${companyName}"? This action cannot be undone.`,
       )
     ) {
       return;
@@ -188,7 +188,7 @@ export default function CompaniesLinkAdmin() {
         `/api/company-database?name=${encodeURIComponent(companyName)}`,
         {
           method: "DELETE",
-        }
+        },
       );
 
       if (!response.ok) {
@@ -204,7 +204,7 @@ export default function CompaniesLinkAdmin() {
   };
 
   const filteredCompanies = companies.filter((company) =>
-    company.name.toLowerCase().includes(searchTerm.toLowerCase())
+    company.name.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const formatDate = (dateString?: string) => {
@@ -241,6 +241,25 @@ export default function CompaniesLinkAdmin() {
         <div className="bg-white rounded-lg shadow-md p-4 mb-4">
           <div className="flex justify-between items-center">
             <div>
+              <button
+                onClick={() => (window.location.href = "/admin")}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-2 transition-colors"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+                Back to Admin
+              </button>
               <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
                 <Building2 className="w-7 h-7 text-indigo-600" />
                 Company Database Admin

@@ -1591,9 +1591,30 @@ export default function MessageStoredPage() {
         }`}
       >
         <div className="flex items-center justify-between">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
-            Messages
-          </h1>
+          <div className="flex flex-col">
+            <button
+              onClick={() => (window.location.href = "/admin")}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-1 transition-colors"
+            >
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
+              Back to Admin
+            </button>
+            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+              Messages
+            </h1>
+          </div>
           <Image
             src="/logo.png"
             alt="Texas Premium Insurance Services"
@@ -3636,7 +3657,7 @@ export default function MessageStoredPage() {
               value={newPhoneNumber}
               onChange={(e) => setNewPhoneNumber(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && startNewConversation()}
-              placeholder="+19727486404, +16825513029, ..."
+              placeholder="+19724567890, +16824567890, ..."
               className="w-full px-4 py-3 border rounded-lg mb-4 text-base"
               autoFocus
             />

@@ -355,6 +355,25 @@ export default function CreatePaymentLink() {
               <Link2 className="w-6 h-6 text-white" />
             </div>
             <div>
+              <button
+                onClick={() => (window.location.href = "/admin")}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-1 transition-colors"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+                Back to Admin
+              </button>
               <h1 className="text-2xl font-bold text-gray-900">
                 Payment Links
               </h1>
