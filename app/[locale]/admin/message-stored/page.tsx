@@ -139,6 +139,7 @@ export default function MessageStoredPage() {
     ScheduledConvSummary[]
   >([]);
   const chatMenuRef = useRef<HTMLDivElement>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [showInlineSearch, setShowInlineSearch] = useState(false);
   const [inlineSearchInput, setInlineSearchInput] = useState("");
   const inlineSearchRef = useRef<HTMLInputElement>(null);
@@ -238,6 +239,19 @@ export default function MessageStoredPage() {
   };
 
   useEffect(() => setMounted(true), []);
+
+  // Load all drafts from localStorage on mount
+  useEffect(() => {
+    const allDrafts: Record<string, string> = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith("draft_")) {
+        const convId = key.replace("draft_", "");
+        allDrafts[convId] = localStorage.getItem(key) || "";
+      }
+    }
+    setDrafts(allDrafts);
+  }, []);
 
   // Authentication check - redirect to /admin if not logged in
   useEffect(() => {
@@ -719,10 +733,27 @@ export default function MessageStoredPage() {
     const conversationId = conv.conversationId || conv.phoneNumber;
     const participants = conv.participants || [conv.phoneNumber];
 
+    // Persist current draft to sidebar before switching
+    if (selectedConversationId && messageInput.trim()) {
+      setDrafts((prev) => ({
+        ...prev,
+        [selectedConversationId]: messageInput,
+      }));
+    } else if (selectedConversationId) {
+      setDrafts((prev) => {
+        const n = { ...prev };
+        delete n[selectedConversationId];
+        return n;
+      });
+    }
+
     setSelectedPhone(conv.phoneNumber); // Keep for backward compatibility
     setSelectedConversationId(conversationId); // NEW
     setSelectedParticipants(participants); // NEW
-    setMessageInput("");
+    const savedDraft = localStorage.getItem(
+      `draft_${conv.conversationId || conv.phoneNumber}`,
+    );
+    setMessageInput(savedDraft || "");
     setSelectMode(false);
     setSelectedMessageIds(new Set());
     setIsLoadingConversation(true);
@@ -1116,6 +1147,14 @@ export default function MessageStoredPage() {
 
     const text = messageInput.trim();
     setMessageInput("");
+    if (selectedConversationId) {
+      localStorage.removeItem(`draft_${selectedConversationId}`);
+      setDrafts((prev) => {
+        const n = { ...prev };
+        delete n[selectedConversationId];
+        return n;
+      });
+    }
     const filesToSend = [...selectedFiles];
     setSelectedFiles([]);
     setSending(true);
@@ -2050,24 +2089,31 @@ export default function MessageStoredPage() {
                             )}
                           </div>
                         </div>
-                        <p className="text-sm text-gray-600 truncate flex items-center gap-1">
-                          {lastMsg?.direction === "Outbound" && (
-                            <svg
-                              className="w-4 h-4 text-gray-400 flex-shrink-0"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                          )}
-                          {lastMsg?.subject || "No message"}
-                        </p>
+                        {drafts[convKey] ? (
+                          <p className="text-sm text-amber-600 truncate flex items-center gap-1">
+                            <span className="font-semibold">Draft:</span>&nbsp;
+                            {drafts[convKey]}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-gray-600 truncate flex items-center gap-1">
+                            {lastMsg?.direction === "Outbound" && (
+                              <svg
+                                className="w-4 h-4 text-gray-400 flex-shrink-0"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M5 13l4 4L19 7"
+                                />
+                              </svg>
+                            )}
+                            {lastMsg?.subject || "No message"}
+                          </p>
+                        )}
                         {conv.matchingMessages &&
                           conv.matchingMessages.length > 0 &&
                           searchInput && (
@@ -3468,7 +3514,21 @@ export default function MessageStoredPage() {
                     <textarea
                       ref={messageInputRef}
                       value={messageInput}
-                      onChange={(e) => setMessageInput(e.target.value)}
+                      onChange={(e) => {
+                        setMessageInput(e.target.value);
+                        if (selectedConversationId) {
+                          if (e.target.value.trim()) {
+                            localStorage.setItem(
+                              `draft_${selectedConversationId}`,
+                              e.target.value,
+                            );
+                          } else {
+                            localStorage.removeItem(
+                              `draft_${selectedConversationId}`,
+                            );
+                          }
+                        }
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
                           e.preventDefault();
