@@ -66,6 +66,10 @@ export default function AdminAutopayDashboard() {
     "pending",
   );
   const [sortByNew, setSortByNew] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalCount, setTotalCount] = useState(0);
+  const [newCount, setNewCount] = useState(0);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -113,33 +117,39 @@ export default function AdminAutopayDashboard() {
 
   useEffect(() => {
     if (!isCheckingAuth) {
-      fetchCustomers();
+      fetchCustomers(false, currentPage, pageSize);
 
-      // Auto-refresh every 10 seconds
       intervalRef.current = setInterval(() => {
         if (!showData) {
-          // Only auto-refresh if modal is not open
-          fetchCustomers(true);
+          fetchCustomers(true, currentPage, pageSize);
         }
       }, 10000);
 
       return () => {
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-        }
+        if (intervalRef.current) clearInterval(intervalRef.current);
       };
     }
-  }, [showData, isCheckingAuth]);
+  }, [showData, isCheckingAuth, activeTab, currentPage, pageSize, searchQuery]);
 
-  const fetchCustomers = async (silent = false) => {
-    if (!silent) {
-      setLoading(true);
-    }
-
+  const fetchCustomers = async (
+    silent = false,
+    page = currentPage,
+    size = pageSize,
+  ) => {
+    if (!silent) setLoading(true);
     try {
-      const response = await fetch("/api/autopay/list");
+      const skip = size === 0 ? 0 : (page - 1) * size;
+      const params = new URLSearchParams({
+        skip: skip.toString(),
+        limit: size.toString(),
+        tab: activeTab,
+        search: searchQuery,
+      });
+      const response = await fetch(`/api/autopay/list?${params}`);
       const data = await response.json();
       setCustomers(data.customers || []);
+      setTotalCount(data.total || 0);
+      setNewCount(data.newCount || 0);
     } catch (error) {
       console.error("Failed to fetch customers:", error);
     } finally {
@@ -268,31 +278,10 @@ export default function AdminAutopayDashboard() {
     }
   };
 
-  const filteredCustomers = customers
-    .filter((c) => {
-      const searchLower = searchQuery.toLowerCase();
-      const normalizedSearchPhone = normalizePhoneNumber(searchQuery);
-      const normalizedCustomerPhone = normalizePhoneNumber(c.customerPhone);
-      const nameMatch = c.customerName.toLowerCase().includes(searchLower);
-      const phoneMatch = normalizedCustomerPhone.includes(
-        normalizedSearchPhone,
-      );
-      const matchesSearch = nameMatch || phoneMatch;
-      const matchesTab =
-        activeTab === "completed" ? !!c.completed : !c.completed;
-      return matchesSearch && matchesTab;
-    })
-    .sort((a, b) => {
-      if (!sortByNew) return 0;
-      // New (unviewed) first, then by date
-      if (!a.viewed && b.viewed) return -1;
-      if (a.viewed && !b.viewed) return 1;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-
-  const pendingCount = customers.filter((c) => !c.completed).length;
-  const newCount = customers.filter((c) => !c.viewed).length;
-  const completedCount = customers.filter((c) => !!c.completed).length;
+  const filteredCustomers = customers;
+  const totalPages = pageSize === 0 ? 1 : Math.ceil(totalCount / pageSize);
+  const pendingCount = activeTab === "pending" ? totalCount : 0;
+  const completedCount = activeTab === "completed" ? totalCount : 0;
 
   if (isCheckingAuth) {
     return (
@@ -355,7 +344,10 @@ export default function AdminAutopayDashboard() {
             type="text"
             placeholder="Search Name or Phone..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1);
+            }}
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-64"
           />
 
@@ -373,7 +365,10 @@ export default function AdminAutopayDashboard() {
       <div className="max-w-7xl mx-auto mb-4 flex items-center justify-between gap-4">
         <div className="flex bg-white rounded-xl border border-gray-200 p-1 shadow-sm gap-1">
           <button
-            onClick={() => setActiveTab("pending")}
+            onClick={() => {
+              setActiveTab("pending");
+              setCurrentPage(1);
+            }}
             className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${
               activeTab === "pending"
                 ? "bg-blue-600 text-white shadow"
@@ -390,14 +385,17 @@ export default function AdminAutopayDashboard() {
             >
               {pendingCount}
             </span>
-            {newCount > 0 && (
+            {newCount > 0 && activeTab === "pending" && (
               <span className="px-1.5 py-0.5 text-[9px] font-black bg-red-500 text-white rounded animate-pulse">
                 {newCount} NEW
               </span>
             )}
           </button>
           <button
-            onClick={() => setActiveTab("completed")}
+            onClick={() => {
+              setActiveTab("completed");
+              setCurrentPage(1);
+            }}
             className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${
               activeTab === "completed"
                 ? "bg-emerald-600 text-white shadow"
@@ -532,6 +530,96 @@ export default function AdminAutopayDashboard() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {totalCount > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50">
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <span>Rows per page:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setCurrentPage(1);
+                  }}
+                  className="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={0}>All</option>
+                </select>
+                <span className="ml-2">
+                  {pageSize === 0
+                    ? `All ${totalCount} records`
+                    : `${Math.min((currentPage - 1) * pageSize + 1, totalCount)}–${Math.min(currentPage * pageSize, totalCount)} of ${totalCount}`}
+                </span>
+              </div>
+              {pageSize !== 0 && totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                    className="px-2 py-1 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-200 disabled:opacity-30"
+                  >
+                    «
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-200 disabled:opacity-30"
+                  >
+                    ‹ Prev
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(
+                      (p) =>
+                        p === 1 ||
+                        p === totalPages ||
+                        Math.abs(p - currentPage) <= 1,
+                    )
+                    .reduce<(number | string)[]>((acc, p, i, arr) => {
+                      if (i > 0 && (p as number) - (arr[i - 1] as number) > 1)
+                        acc.push("...");
+                      acc.push(p);
+                      return acc;
+                    }, [])
+                    .map((p, i) =>
+                      p === "..." ? (
+                        <span key={`e-${i}`} className="px-2 text-gray-400">
+                          …
+                        </span>
+                      ) : (
+                        <button
+                          key={p}
+                          onClick={() => setCurrentPage(p as number)}
+                          className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${currentPage === p ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-200"}`}
+                        >
+                          {p}
+                        </button>
+                      ),
+                    )}
+                  <button
+                    onClick={() =>
+                      setCurrentPage((p) => Math.min(totalPages, p + 1))
+                    }
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-200 disabled:opacity-30"
+                  >
+                    Next ›
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={currentPage === totalPages}
+                    className="px-2 py-1 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-200 disabled:opacity-30"
+                  >
+                    »
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {filteredCustomers.length === 0 && (
             <div className="text-center py-20">
