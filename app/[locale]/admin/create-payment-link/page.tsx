@@ -61,6 +61,9 @@ export default function CreatePaymentLink() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyLinks, setHistoryLinks] = useState<LinkHistory[]>([]);
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+  const [editingDescId, setEditingDescId] = useState<string | null>(null);
+  const [editingDescValue, setEditingDescValue] = useState("");
+  const [savingDescId, setSavingDescId] = useState<string | null>(null);
 
   const formatPhoneDisplay = (phone: string): string => {
     const cleaned = phone.replace(/\D/g, "");
@@ -228,6 +231,7 @@ export default function CreatePaymentLink() {
 
       if (response.ok) {
         const squarePaymentLink = data.paymentLink;
+        const squareLinkId = data.squareLinkId || null;
         const proxyLink = `https://www.texaspremiumins.com/${language}/pay/${linkId}`;
 
         // ✅ STEP 3: Update MongoDB with both the Square link and proxy link
@@ -238,6 +242,7 @@ export default function CreatePaymentLink() {
             linkId,
             generatedLink: proxyLink,
             squareLink: squarePaymentLink,
+            squareLinkId,
           }),
         });
 
@@ -284,6 +289,31 @@ export default function CreatePaymentLink() {
       setTimeout(() => setCopiedLinkId(null), 2000);
     } catch (err) {
       console.error("Failed to copy:", err);
+    }
+  };
+
+  const handleSaveDescription = async (linkId: string) => {
+    setSavingDescId(linkId);
+    try {
+      const response = await fetch("/api/update-payment-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ linkId, description: editingDescValue }),
+      });
+      if (response.ok) {
+        setHistoryLinks((prev) =>
+          prev.map((l) =>
+            l._id === linkId ? { ...l, description: editingDescValue } : l,
+          ),
+        );
+        setEditingDescId(null);
+      } else {
+        alert("Failed to update description");
+      }
+    } catch {
+      alert("Error saving description");
+    } finally {
+      setSavingDescId(null);
     }
   };
 
@@ -983,18 +1013,66 @@ export default function CreatePaymentLink() {
                         </div>
                       )}
 
-                      {link.description && (
-                        <div className="flex items-start gap-2">
-                          <FileText className="w-4 h-4 text-gray-400 mt-0.5" />
-                          <span
-                            className={
-                              link.disabled ? "text-gray-500" : "text-gray-700"
-                            }
-                          >
-                            <strong>Description:</strong> {link.description}
-                          </span>
-                        </div>
-                      )}
+                      <div className="flex items-start gap-2">
+                        <FileText className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                        {editingDescId === link._id ? (
+                          <div className="flex-1 flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={editingDescValue}
+                              onChange={(e) =>
+                                setEditingDescValue(e.target.value)
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter")
+                                  handleSaveDescription(link._id);
+                                if (e.key === "Escape") setEditingDescId(null);
+                              }}
+                              autoFocus
+                              className="flex-1 text-sm px-2 py-1 border border-blue-400 rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                            <button
+                              onClick={() => handleSaveDescription(link._id)}
+                              disabled={!!savingDescId}
+                              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition disabled:opacity-50"
+                            >
+                              {savingDescId === link._id ? "..." : "Save"}
+                            </button>
+                            <button
+                              onClick={() => setEditingDescId(null)}
+                              className="px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex-1 flex items-center justify-between gap-2">
+                            <span
+                              className={
+                                link.disabled
+                                  ? "text-gray-500"
+                                  : "text-gray-700"
+                              }
+                            >
+                              <strong>Description:</strong>{" "}
+                              {link.description || (
+                                <span className="text-gray-400 italic">
+                                  No description
+                                </span>
+                              )}
+                            </span>
+                            <button
+                              onClick={() => {
+                                setEditingDescId(link._id);
+                                setEditingDescValue(link.description || "");
+                              }}
+                              className="text-xs text-blue-500 hover:text-blue-700 flex-shrink-0"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        )}
+                      </div>
 
                       {/* ✅ Display Email in History (if available from webhook) */}
                       {link.customerEmail && (

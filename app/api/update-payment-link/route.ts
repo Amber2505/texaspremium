@@ -1,14 +1,69 @@
+// app/api/update-payment-link/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { MongoClient, ObjectId } from "mongodb";
 
 const uri = process.env.MONGODB_URI!;
+
+async function updateSquareDescription(squareLinkId: string, description: string) {
+  try {
+    if (!squareLinkId) return;
+
+    // First fetch current link to get required version field
+    const getRes = await fetch(
+      `https://connect.squareup.com/v2/online-checkout/payment-links/${squareLinkId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+          "Square-Version": "2024-01-18",
+        },
+      }
+    );
+
+    const getData = await getRes.json();
+    const version = getData.payment_link?.version;
+
+    if (!version) {
+      console.error("Could not retrieve Square link version", getData);
+      return;
+    }
+
+    const updateRes = await fetch(
+      `https://connect.squareup.com/v2/online-checkout/payment-links/${squareLinkId}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${process.env.SQUARE_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+          "Square-Version": "2024-01-18",
+        },
+        body: JSON.stringify({
+          payment_link: {
+            version,
+            quick_pay: {
+              name: description,
+            },
+          },
+        }),
+      }
+    );
+
+    const updateData = await updateRes.json();
+    if (!updateRes.ok) {
+      console.error("Square update failed:", JSON.stringify(updateData));
+    }
+  } catch (err) {
+    console.error("Failed to update Square description:", err);
+  }
+}
 
 export async function POST(request: NextRequest) {
   let client: MongoClient | null = null;
 
   try {
     const body = await request.json();
-    const { linkId, generatedLink, squareLink, squareTransactionId } = body;
+    const { linkId, generatedLink, squareLink, squareLinkId, squareTransactionId, description } = body;
+    let existingSquareLinkId: string | null = null;
 
     if (!linkId) {
       return NextResponse.json(
@@ -25,13 +80,23 @@ export async function POST(request: NextRequest) {
     const updateFields: Record<string, string> = {};
     if (generatedLink) updateFields.generatedLink = generatedLink;
     if (squareLink) updateFields.squareLink = squareLink;
+    if (squareLinkId) updateFields.squareLinkId = squareLinkId;
     if (squareTransactionId) updateFields.squareTransactionId = squareTransactionId;
+    if (description !== undefined) updateFields.description = description;
 
     if (Object.keys(updateFields).length === 0) {
       return NextResponse.json(
         { error: "No fields to update" },
         { status: 400 }
       );
+    }
+
+    if (description !== undefined) {
+      const existing = await collection.findOne(
+        { _id: new ObjectId(linkId) },
+        { projection: { squareLinkId: 1 } }
+      );
+      existingSquareLinkId = existing?.squareLinkId || null;
     }
 
     const result = await collection.updateOne(
@@ -41,6 +106,10 @@ export async function POST(request: NextRequest) {
 
     if (result.matchedCount === 0) {
       return NextResponse.json({ error: "Link not found" }, { status: 404 });
+    }
+
+    if (description !== undefined && existingSquareLinkId) {
+      await updateSquareDescription(existingSquareLinkId, description);
     }
 
     return NextResponse.json({

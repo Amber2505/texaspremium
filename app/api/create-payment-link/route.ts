@@ -57,11 +57,13 @@ export async function POST(request: NextRequest) {
     });
 
     const paymentLinkUrl = response.paymentLink?.url;
+    const paymentLinkApiId = response.paymentLink?.id;
 
     if (paymentLinkUrl) {
       return NextResponse.json({
         success: true,
         paymentLink: paymentLinkUrl,
+        squareLinkId: paymentLinkApiId || null,
       });
     } else {
       return NextResponse.json(
