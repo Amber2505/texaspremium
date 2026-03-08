@@ -28,6 +28,8 @@ async function updateSquareDescription(squareLinkId: string, description: string
       return;
     }
 
+    console.log("Updating Square link:", squareLinkId, "with description:", description, "version:", version);
+
     const updateRes = await fetch(
       `https://connect.squareup.com/v2/online-checkout/payment-links/${squareLinkId}`,
       {
@@ -49,6 +51,7 @@ async function updateSquareDescription(squareLinkId: string, description: string
     );
 
     const updateData = await updateRes.json();
+    console.log("Square update response:", updateRes.status, JSON.stringify(updateData));
     if (!updateRes.ok) {
       console.error("Square update failed:", JSON.stringify(updateData));
     }
