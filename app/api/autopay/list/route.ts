@@ -32,6 +32,11 @@ export async function GET(request: Request) {
           $or: [
             { customerName: { $regex: search, $options: "i" } },
             { customerPhone: searchRegex },
+            { cardLast4: { $regex: search.replace(/\D/g, ""), $options: "i" } },
+            { cardBrand: { $regex: search, $options: "i" } },
+            { accountLast4: { $regex: search.replace(/\D/g, ""), $options: "i" } },
+            { accountType: { $regex: search, $options: "i" } },
+            { method: { $regex: search, $options: "i" } },
           ],
         },
       ];
