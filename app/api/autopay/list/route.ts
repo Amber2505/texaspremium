@@ -25,20 +25,30 @@ export async function GET(request: Request) {
     }
 
     if (search.trim()) {
-      const searchRegex = { $regex: search.replace(/\D/g, ""), $options: "i" };
+      const digitsOnly = search.replace(/\D/g, "");
+      const tabFilter = tab === "completed"
+        ? { completed: true }
+        : { $or: [{ completed: false }, { completed: { $exists: false } }] };
+
+      const searchConditions: QueryFilter[] = [
+        { customerName: { $regex: search, $options: "i" } },
+        { cardBrand: { $regex: search, $options: "i" } },
+        { accountType: { $regex: search, $options: "i" } },
+        { method: { $regex: search, $options: "i" } },
+      ];
+
+      // Only add digit-based searches if there are digits in the query
+      if (digitsOnly) {
+        searchConditions.push(
+          { customerPhone: { $regex: digitsOnly, $options: "i" } },
+          { cardLast4: { $regex: digitsOnly, $options: "i" } },
+          { accountLast4: { $regex: digitsOnly, $options: "i" } },
+        );
+      }
+
       query.$and = [
-        { ...(tab === "completed" ? { completed: true } : { $or: [{ completed: false }, { completed: { $exists: false } }] }) },
-        {
-          $or: [
-            { customerName: { $regex: search, $options: "i" } },
-            { customerPhone: searchRegex },
-            { cardLast4: { $regex: search.replace(/\D/g, ""), $options: "i" } },
-            { cardBrand: { $regex: search, $options: "i" } },
-            { accountLast4: { $regex: search.replace(/\D/g, ""), $options: "i" } },
-            { accountType: { $regex: search, $options: "i" } },
-            { method: { $regex: search, $options: "i" } },
-          ],
-        },
+        tabFilter,
+        { $or: searchConditions },
       ];
       delete query.completed;
       delete query.$or;

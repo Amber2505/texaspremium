@@ -117,6 +117,7 @@ export default function AdminAutopayDashboard() {
 
   useEffect(() => {
     if (!isCheckingAuth) {
+      // Only show full loader on tab/page changes, not search
       fetchCustomers(false, currentPage, pageSize);
 
       intervalRef.current = setInterval(() => {
@@ -129,7 +130,15 @@ export default function AdminAutopayDashboard() {
         if (intervalRef.current) clearInterval(intervalRef.current);
       };
     }
-  }, [showData, isCheckingAuth, activeTab, currentPage, pageSize, searchQuery]);
+  }, [showData, isCheckingAuth, activeTab, currentPage, pageSize]);
+
+  // Separate effect for search — always silent so input keeps focus
+  useEffect(() => {
+    if (!isCheckingAuth) {
+      fetchCustomers(true, 1, pageSize);
+      setCurrentPage(1);
+    }
+  }, [searchQuery]);
 
   const fetchCustomers = async (
     silent = false,
