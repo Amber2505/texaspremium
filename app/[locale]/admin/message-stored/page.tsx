@@ -1544,25 +1544,21 @@ export default function MessageStoredPage() {
     if (!filename.includes(".")) {
       const urlPath = url.split("?")[0];
       const urlExt = urlPath.split(".").pop()?.toLowerCase();
+      const normalizedExt = urlExt === "jpeg" ? "jpg" : urlExt;
       if (
-        urlExt &&
-        [
-          "jpg",
-          "jpeg",
-          "png",
-          "gif",
-          "webp",
-          "mp4",
-          "mp3",
-          "wav",
-          "pdf",
-        ].includes(urlExt)
+        normalizedExt &&
+        ["jpg", "png", "gif", "webp", "mp4", "mp3", "wav", "pdf"].includes(
+          normalizedExt,
+        )
       ) {
-        finalFilename = `${filename}.${urlExt}`;
+        finalFilename = `${filename}.${normalizedExt}`;
       } else {
         finalFilename = `${filename}.jpg`;
       }
     }
+
+    // Normalize .jpeg to .jpg
+    finalFilename = finalFilename.replace(/\.jpeg$/i, ".jpg");
 
     try {
       const proxyUrl = `/api/download?url=${encodeURIComponent(

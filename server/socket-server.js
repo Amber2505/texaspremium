@@ -462,6 +462,7 @@ let nextSyncTime = null;
 let rateLimitedUntil = null;
 let consecutiveErrors = 0;
 let isSyncing = false;
+let pendingSyncQueued = false;
 
 async function getRingCentralPlatform() {
   const SDK = require('@ringcentral/sdk').SDK;
@@ -485,8 +486,9 @@ async function syncRingCentralMessages() {
   }
 
   if (isSyncing) {
-    console.log('⏳ Sync already in progress, skipping...');
-    return { success: false, error: 'Sync in progress' };
+    console.log('⏳ Sync already in progress, queuing follow-up...');
+    pendingSyncQueued = true;
+    return { success: false, error: 'Sync in progress, queued' };
   }
   
   isSyncing = true;
@@ -601,12 +603,6 @@ async function syncRingCentralMessages() {
           continue;
         }
         // Fall through to fix attachments or add to correct conversation
-      }
-
-      // Limit API calls per sync
-      if (synced >= 10) {
-        console.log('⚠️ Reached max syncs (10), will continue next cycle');
-        break;
       }
 
       // For inbound messages, fetch full message details
@@ -799,6 +795,14 @@ async function syncRingCentralMessages() {
     }
 
     isSyncing = false;
+
+    // Run queued sync if one came in while we were syncing
+    if (pendingSyncQueued) {
+      pendingSyncQueued = false;
+      console.log('🔄 Running queued sync...');
+      setTimeout(() => syncRingCentralMessages(), 1000);
+    }
+
     return { 
       success: true, 
       synced, 
@@ -824,7 +828,12 @@ async function syncRingCentralMessages() {
       console.log(`🚫 Rate limited! Backing off for ${backoffSeconds}s`);
       return { success: false, error: 'Rate limited', backoffSeconds };
     }
-    
+
+    if (pendingSyncQueued) {
+      pendingSyncQueued = false;
+      setTimeout(() => syncRingCentralMessages(), 2000);
+    }
+
     return { success: false, error: error.message };
   }
 }

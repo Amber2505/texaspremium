@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
     const contentType = response.headers.get("content-type") || "application/octet-stream";
     
     // If filename doesn't have extension, try to add one based on content type
+    // If filename doesn't have extension, try to add one based on content type
     if (!filename.includes('.')) {
       const extMap: Record<string, string> = {
         'image/jpeg': '.jpg',
@@ -41,6 +42,10 @@ export async function GET(request: NextRequest) {
       const ext = extMap[contentType.split(';')[0]] || '';
       filename = filename + ext;
     }
+
+    // Always normalize .jpeg to .jpg
+    filename = filename.replace(/\.jpeg$/i, '.jpg');
+  
     
     // Get the blob data
     const blob = await response.blob();
