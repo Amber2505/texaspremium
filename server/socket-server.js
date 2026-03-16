@@ -631,14 +631,36 @@ async function syncRingCentralMessages() {
 
       // Process attachments
       const processedAttachments = [];
+      let extractedText = fullMessage.subject || '';
       
       if (fullMessage.attachments && fullMessage.attachments.length > 0) {
         for (const att of fullMessage.attachments) {
-          if (!att.contentType || att.contentType.startsWith('text/')) continue;
+          if (!att.contentType) continue;
+          
+          // Extract text from text/plain attachments and merge into subject
+          if (att.contentType.startsWith('text/') && att.uri) {
+            try {
+              const textResponse = await fetch(att.uri, {
+                headers: { 'Authorization': `Bearer ${authToken}` }
+              });
+              if (textResponse.ok) {
+                const textContent = await textResponse.text();
+                if (textContent.trim()) {
+                  extractedText = extractedText 
+                    ? `${extractedText}\n${textContent.trim()}` 
+                    : textContent.trim();
+                }
+              }
+            } catch (e) {
+              console.log(`⚠️ Could not fetch text attachment: ${e.message}`);
+            }
+            continue;
+          }
           
           const isMedia = att.contentType.startsWith('image/') ||
                          att.contentType.startsWith('audio/') ||
-                         att.contentType.startsWith('video/');
+                         att.contentType.startsWith('video/') ||
+                         att.contentType === 'application/pdf';
           
           if (!isMedia || !att.uri) continue;
 
@@ -675,7 +697,7 @@ async function syncRingCentralMessages() {
         id: messageId,
         direction: fullMessage.direction,
         type: processedAttachments.length > 0 ? 'MMS' : (fullMessage.type || 'SMS'),
-        subject: fullMessage.subject || '',
+        subject: extractedText,
         creationTime: fullMessage.creationTime,
         lastModifiedTime: fullMessage.lastModifiedTime,
         readStatus: fullMessage.readStatus || (fullMessage.direction === 'Inbound' ? 'Unread' : 'Read'), // ✅ Use RingCentral's status
