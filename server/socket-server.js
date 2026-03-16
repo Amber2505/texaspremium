@@ -776,6 +776,7 @@ async function syncRingCentralMessages() {
 
     const duration = Date.now() - startTime;
     lastSyncTime = new Date().toISOString();
+    await syncMissedCalls();
     consecutiveErrors = 0;
     rateLimitedUntil = null;
     
@@ -835,6 +836,90 @@ async function syncRingCentralMessages() {
     }
 
     return { success: false, error: error.message };
+  }
+}
+
+// ================================================
+// MISSED CALLS SYNC
+// ================================================
+async function syncMissedCalls() {
+  if (!conversationsCollection) return;
+
+  try {
+    const platform = await getRingCentralPlatform();
+    const dateFrom = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const response = await platform.get('/restapi/v1.0/account/~/extension/~/call-log', {
+      type: 'Voice',
+      result: 'Missed',
+      dateFrom,
+      perPage: 100,
+    });
+
+    const data = await response.json();
+    const calls = data.records || [];
+    let synced = 0;
+
+    for (const call of calls) {
+      const callId = call.id.toString();
+      const callerPhone = normalizePhone(call.from?.phoneNumber || '');
+      if (!callerPhone) continue;
+
+      const conversationId = callerPhone;
+
+      const exists = await conversationsCollection.findOne({ 'messages.id': `call_${callId}` });
+      if (exists) continue;
+
+      const messageObj = {
+        id: `call_${callId}`,
+        direction: 'Inbound',
+        type: 'MissedCall',
+        subject: '',
+        creationTime: call.startTime,
+        lastModifiedTime: call.startTime,
+        readStatus: 'Unread',
+        messageStatus: 'Received',
+        from: { phoneNumber: callerPhone },
+        to: [{ phoneNumber: MY_PHONE_NUMBER }],
+        attachments: [],
+        callDuration: call.duration || 0,
+      };
+
+      await conversationsCollection.updateOne(
+        { conversationId },
+        {
+          $push: { messages: { $each: [messageObj], $sort: { creationTime: 1 } } },
+          $set: {
+            conversationId,
+            phoneNumber: callerPhone,
+            participants: [callerPhone],
+            isGroup: false,
+            lastMessageTime: call.startTime,
+          },
+          $inc: { unreadCount: 1 },
+        },
+        { upsert: true }
+      );
+
+      io.to(`conversation:${conversationId}`).emit('newRingCentralMessage', {
+        conversationId,
+        phoneNumber: callerPhone,
+        messageId: `call_${callId}`,
+        timestamp: call.startTime,
+        subject: '📵 Missed call',
+        direction: 'Inbound',
+        type: 'MissedCall',
+      });
+
+      synced++;
+      console.log(`📵 Missed call from ${callerPhone} at ${call.startTime}`);
+    }
+
+    if (synced > 0) console.log(`✅ Synced ${synced} missed calls`);
+    return { synced };
+  } catch (error) {
+    console.error('❌ Missed call sync error:', error.message);
+    return { synced: 0 };
   }
 }
 
