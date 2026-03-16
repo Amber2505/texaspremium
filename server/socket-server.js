@@ -177,6 +177,18 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Payment link progress notification endpoint
+app.post('/notify/payment-progress', (req, res) => {
+  try {
+    const { linkId } = req.body;
+    console.log(`💳 Payment progress updated for link: ${linkId}`);
+    io.to('payment-links-admin').emit('paymentLinkUpdated', { linkId });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Manual sync trigger endpoint
 app.post('/trigger-sync', async (req, res) => {
   try {

@@ -106,6 +106,17 @@ export async function POST(request: Request) {
 
     console.log(`✅ Updated ${step} progress for linkId: ${linkId}`);
 
+    // Notify Railway to broadcast to admin clients
+    try {
+      await fetch(`${process.env.NEXT_PUBLIC_RAILWAY_URL}/notify/payment-progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ linkId }),
+      });
+    } catch (e) {
+      console.log('Could not notify Railway of progress update');
+    }
+
     // Fetch updated document to verify
     const updatedLink = await collection.findOne(query);
     console.log("✅ Updated completedStages:", updatedLink?.completedStages);

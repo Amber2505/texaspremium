@@ -1,7 +1,7 @@
 // app/admin/create-payment-link/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Copy,
   Check,
@@ -30,7 +30,7 @@ interface LinkHistory {
   amount: number | null;
   description: string | null;
   customerPhone: string;
-  customerEmail?: string; // Optional - comes from Square webhook
+  customerEmail?: string;
   paymentMethod: "card" | "bank" | "direct-bill";
   language: "en" | "es";
   generatedLink: string;
@@ -38,6 +38,18 @@ interface LinkHistory {
   createdAt: string;
   createdAtTimestamp: number;
   disabled?: boolean;
+  currentStage?: string;
+  completedStages?: {
+    payment?: boolean;
+    consent?: boolean;
+    autopaySetup?: boolean;
+  };
+  timestamps?: {
+    payment?: string;
+    consent?: string;
+    autopaySetup?: string;
+    completed?: string;
+  };
 }
 
 export default function CreatePaymentLink() {
@@ -64,6 +76,7 @@ export default function CreatePaymentLink() {
   const [editingDescId, setEditingDescId] = useState<string | null>(null);
   const [editingDescValue, setEditingDescValue] = useState("");
   const [savingDescId, setSavingDescId] = useState<string | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   const formatPhoneDisplay = (phone: string): string => {
     const cleaned = phone.replace(/\D/g, "");
@@ -111,6 +124,33 @@ export default function CreatePaymentLink() {
       fetchHistory();
     }
   }, [activeTab]);
+
+  // Live updates via WebSocket
+  useEffect(() => {
+    if (isCheckingAuth) return;
+
+    const ws = new WebSocket(process.env.NEXT_PUBLIC_RAILWAY_WS_URL!);
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: "join", room: "payment-links-admin" }));
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === "paymentLinkUpdated") {
+        // Silently refresh history to show updated progress
+        fetch("/api/payment-link-history")
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success) setHistoryLinks(d.links);
+          })
+          .catch(() => {});
+      }
+    };
+
+    wsRef.current = ws;
+    return () => ws.close();
+  }, [isCheckingAuth]);
 
   const fetchHistory = async () => {
     setHistoryLoading(true);
@@ -1132,6 +1172,222 @@ export default function CreatePaymentLink() {
                       </div>
                     </div>
 
+                    {/* Progress Tracker */}
+                    {link.linkType === "payment" && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                          Customer Progress
+                        </p>
+                        <div className="flex items-center gap-1">
+                          {/* Payment */}
+                          <div
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                              link.completedStages?.payment
+                                ? "bg-green-100 text-green-700"
+                                : "bg-gray-100 text-gray-400"
+                            }`}
+                          >
+                            {link.completedStages?.payment ? (
+                              <svg
+                                className="w-3 h-3"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2.5}
+                                  d="M5 13l4 4L19 7"
+                                />
+                              </svg>
+                            ) : (
+                              <svg
+                                className="w-3 h-3"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                                />
+                              </svg>
+                            )}
+                            Payment
+                          </div>
+
+                          <div
+                            className={`w-4 h-0.5 ${link.completedStages?.payment ? "bg-green-300" : "bg-gray-200"}`}
+                          />
+
+                          {/* Consent */}
+                          <div
+                            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                              link.completedStages?.consent
+                                ? "bg-green-100 text-green-700"
+                                : link.completedStages?.payment
+                                  ? "bg-blue-50 text-blue-500 ring-1 ring-blue-300"
+                                  : "bg-gray-100 text-gray-400"
+                            }`}
+                          >
+                            {link.completedStages?.consent ? (
+                              <svg
+                                className="w-3 h-3"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2.5}
+                                  d="M5 13l4 4L19 7"
+                                />
+                              </svg>
+                            ) : (
+                              <svg
+                                className="w-3 h-3"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                                />
+                              </svg>
+                            )}
+                            Consent
+                          </div>
+
+                          {link.paymentMethod !== "direct-bill" && (
+                            <>
+                              <div
+                                className={`w-4 h-0.5 ${link.completedStages?.consent ? "bg-green-300" : "bg-gray-200"}`}
+                              />
+
+                              {/* Autopay */}
+                              <div
+                                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                  link.completedStages?.autopaySetup
+                                    ? "bg-green-100 text-green-700"
+                                    : link.completedStages?.consent
+                                      ? "bg-blue-50 text-blue-500 ring-1 ring-blue-300"
+                                      : "bg-gray-100 text-gray-400"
+                                }`}
+                              >
+                                {link.completedStages?.autopaySetup ? (
+                                  <svg
+                                    className="w-3 h-3"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2.5}
+                                      d="M5 13l4 4L19 7"
+                                    />
+                                  </svg>
+                                ) : (
+                                  <svg
+                                    className="w-3 h-3"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                                    />
+                                  </svg>
+                                )}
+                                Autopay
+                              </div>
+                            </>
+                          )}
+
+                          {/* Complete badge */}
+                          {link.timestamps?.completed && (
+                            <>
+                              <div className="w-4 h-0.5 bg-green-300" />
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
+                                <svg
+                                  className="w-3 h-3"
+                                  fill="currentColor"
+                                  viewBox="0 0 20 20"
+                                >
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                                Done
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Timestamps */}
+                        {(link.timestamps?.payment ||
+                          link.timestamps?.consent ||
+                          link.timestamps?.autopaySetup) && (
+                          <div className="mt-2 space-y-0.5">
+                            {link.timestamps?.payment && (
+                              <p className="text-[10px] text-gray-400">
+                                💳 Paid:{" "}
+                                {new Date(
+                                  link.timestamps.payment,
+                                ).toLocaleString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                  hour12: true,
+                                })}
+                              </p>
+                            )}
+                            {link.timestamps?.consent && (
+                              <p className="text-[10px] text-gray-400">
+                                📝 Consent:{" "}
+                                {new Date(
+                                  link.timestamps.consent,
+                                ).toLocaleString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                  hour12: true,
+                                })}
+                              </p>
+                            )}
+                            {link.timestamps?.autopaySetup && (
+                              <p className="text-[10px] text-gray-400">
+                                🔄 Autopay:{" "}
+                                {new Date(
+                                  link.timestamps.autopaySetup,
+                                ).toLocaleString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                  hour12: true,
+                                })}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div
                       className={`mt-3 pt-3 border-t ${
                         link.disabled ? "border-red-200" : "border-gray-200"
