@@ -57,28 +57,45 @@ export async function GET(request: Request) {
     const total = await autopayCollection.countDocuments(query);
     const newCount = await autopayCollection.countDocuments({ ...query, accessLog: { $exists: false } });
 
-    const customers = await autopayCollection
-      .find(query)
-      .project({
-        _id: 1,
-        customerName: 1,
-        customerPhone: 1,
-        customerEmail: 1,
-        method: 1,
-        status: 1,
-        createdAt: 1,
-        transactionId: 1,
-        cardLast4: 1,
-        cardBrand: 1,
-        accountLast4: 1,
-        accountType: 1,
-        accessLog: 1,
-        completed: 1,
-      })
-      .sort({ accessLog: 1, createdAt: -1 }) // unviewed first, then newest
-      .skip(limit === 0 ? 0 : skip)
-      .limit(limit === 0 ? 0 : limit)
-      .toArray();
+    const pipeline = [
+      { $match: query },
+      {
+        $addFields: {
+          _isViewed: {
+            $cond: [
+              { $and: [
+                { $isArray: "$accessLog" },
+                { $gt: [{ $size: { $ifNull: ["$accessLog", []] } }, 0] }
+              ]},
+              1,
+              0
+            ]
+          }
+        }
+      },
+      { $sort: { _isViewed: 1, createdAt: -1 } },
+      ...(limit === 0 ? [] : [{ $skip: skip }, { $limit: limit }]),
+      {
+        $project: {
+          _id: 1,
+          customerName: 1,
+          customerPhone: 1,
+          customerEmail: 1,
+          method: 1,
+          status: 1,
+          createdAt: 1,
+          transactionId: 1,
+          cardLast4: 1,
+          cardBrand: 1,
+          accountLast4: 1,
+          accountType: 1,
+          accessLog: 1,
+          completed: 1,
+        }
+      }
+    ];
+
+    const customers = await autopayCollection.aggregate(pipeline).toArray();
 
     const customersWithViewed = customers.map(({ accessLog, ...rest }) => ({
       ...rest,
