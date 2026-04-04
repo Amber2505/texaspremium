@@ -650,9 +650,9 @@ async function syncRingCentralMessages() {
           if (!att.contentType) continue;
           
           // Extract text from text/plain attachments — INBOUND ONLY
-          // Outbound SMS already have subject populated; extracting the attachment doubles the text
+          // Only use attachment text if subject is empty (RC sends both, don't double up)
           if (att.contentType.startsWith('text/') && att.uri) {
-            if (msg.direction === 'Inbound') {
+            if (msg.direction === 'Inbound' && !extractedText.trim()) {
               try {
                 const textResponse = await fetch(att.uri, {
                   headers: { 'Authorization': `Bearer ${authToken}` }
@@ -660,9 +660,7 @@ async function syncRingCentralMessages() {
                 if (textResponse.ok) {
                   const textContent = await textResponse.text();
                   if (textContent.trim()) {
-                    extractedText = extractedText 
-                      ? `${extractedText}\n${textContent.trim()}` 
-                      : textContent.trim();
+                    extractedText = textContent.trim();
                   }
                 }
               } catch (e) {
