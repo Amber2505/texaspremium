@@ -138,6 +138,8 @@ export default function MessageStoredPage() {
   const [scheduledConversations, setScheduledConversations] = useState<
     ScheduledConvSummary[]
   >([]);
+  const sendingRef = useRef<HTMLDivElement>(null);
+  const isSendingRef = useRef(false);
   const chatMenuRef = useRef<HTMLDivElement>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [showInlineSearch, setShowInlineSearch] = useState(false);
@@ -1141,9 +1143,12 @@ export default function MessageStoredPage() {
     if (
       !selectedConversationId ||
       (!messageInput.trim() && selectedFiles.length === 0) ||
-      sending
+      sending ||
+      isSendingRef.current
     )
       return;
+
+    isSendingRef.current = true;
 
     const text = messageInput.trim();
     setMessageInput("");
@@ -1246,6 +1251,7 @@ export default function MessageStoredPage() {
       );
     } finally {
       setSending(false);
+      isSendingRef.current = false;
     }
   };
 

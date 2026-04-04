@@ -649,22 +649,25 @@ async function syncRingCentralMessages() {
         for (const att of fullMessage.attachments) {
           if (!att.contentType) continue;
           
-          // Extract text from text/plain attachments and merge into subject
+          // Extract text from text/plain attachments — INBOUND ONLY
+          // Outbound SMS already have subject populated; extracting the attachment doubles the text
           if (att.contentType.startsWith('text/') && att.uri) {
-            try {
-              const textResponse = await fetch(att.uri, {
-                headers: { 'Authorization': `Bearer ${authToken}` }
-              });
-              if (textResponse.ok) {
-                const textContent = await textResponse.text();
-                if (textContent.trim()) {
-                  extractedText = extractedText 
-                    ? `${extractedText}\n${textContent.trim()}` 
-                    : textContent.trim();
+            if (msg.direction === 'Inbound') {
+              try {
+                const textResponse = await fetch(att.uri, {
+                  headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+                if (textResponse.ok) {
+                  const textContent = await textResponse.text();
+                  if (textContent.trim()) {
+                    extractedText = extractedText 
+                      ? `${extractedText}\n${textContent.trim()}` 
+                      : textContent.trim();
+                  }
                 }
+              } catch (e) {
+                console.log(`⚠️ Could not fetch text attachment: ${e.message}`);
               }
-            } catch (e) {
-              console.log(`⚠️ Could not fetch text attachment: ${e.message}`);
             }
             continue;
           }
@@ -886,6 +889,7 @@ async function syncMissedCalls() {
     const response = await platform.get('/restapi/v1.0/account/~/extension/~/call-log', {
       type: 'Voice',
       result: 'Missed',
+      direction: 'Inbound',
       dateFrom,
       perPage: 100,
     });

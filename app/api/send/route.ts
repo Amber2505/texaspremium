@@ -323,29 +323,37 @@ export async function POST(request: NextRequest) {
     };
 
     // Add message to conversation
-    await conversationsCollection.updateOne(
-      { conversationId: conversationId },
-      {
-        $push: { 
-          messages: {
-            $each: [messageObj],
-            $sort: { creationTime: 1 }
-          }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } as any,
-        $set: {
-          lastMessageTime: messageObj.creationTime,
-          lastMessageId: result.id.toString(),
+    // Check if sync already saved this message (race condition guard)
+    const alreadySaved = await conversationsCollection.findOne({
+      conversationId: conversationId,
+      'messages.id': result.id.toString(),
+    });
+
+    if (!alreadySaved) {
+      await conversationsCollection.updateOne(
+        { conversationId: conversationId },
+        {
+          $push: { 
+            messages: {
+              $each: [messageObj],
+              $sort: { creationTime: 1 }
+            }
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          } as any,
+          $set: {
+            lastMessageTime: messageObj.creationTime,
+            lastMessageId: result.id.toString(),
+          },
+          $setOnInsert: {
+            conversationId: conversationId,
+            phoneNumber: formattedPhones[0],
+            participants: conversationId.split(','),
+            isGroup: isGroup,
+          },
         },
-        $setOnInsert: {
-          conversationId: conversationId,
-          phoneNumber: formattedPhones[0], // For backward compatibility (primary recipient)
-          participants: conversationId.split(','), // Array of all participants
-          isGroup: isGroup,
-        },
-      },
-      { upsert: true }
-    );
+        { upsert: true }
+      );
+    }
 
     console.log(`💾 Message saved to conversation ${conversationId} (group: ${isGroup})`);
 
