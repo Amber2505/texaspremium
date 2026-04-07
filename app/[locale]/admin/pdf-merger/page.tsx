@@ -9,12 +9,10 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
+  PlusCircle,
 } from "lucide-react";
 
 // ─── DOCUMENT SETS PER POLICY TYPE ───────────────────────────────────────────
-// Each entry maps to a file in /public/templates/<key>.pdf
-// Add/remove keys here when you have the actual PDFs for each policy type
-
 type TemplateEntry = { key: string; label: string };
 
 const DOCUMENT_SETS: Record<string, TemplateEntry[]> = {
@@ -29,42 +27,22 @@ const DOCUMENT_SETS: Record<string, TemplateEntry[]> = {
     { key: "Verification letter", label: "Verification of Policy Information" },
     // Recurring CC form added here only when autopay is ON
   ],
-  //   Home: [
-  //     // TODO: add home policy templates here
-  //     // { key: "Home Acknowledgement form", label: "Acknowledgement of Coverage" },
-  //   ],
-  //   Rental: [
-  //     // TODO: add rental policy templates here
-  //   ],
-  //   Commercial: [
-  //     // TODO: add commercial policy templates here
-  //   ],
-  //   Motorcycle: [
-  //     // TODO: add motorcycle policy templates here — likely same as Auto
-  //   ],
-  //   Boat: [
-  //     // TODO: add boat policy templates here
-  //   ],
-  //   Life: [
-  //     // TODO: add life policy templates here
-  //   ],
 };
 
-const POLICY_TYPES = [
-  { value: "Auto", emoji: "🚗" },
-  //   { value: "Home", emoji: "🏠" },
-  //   { value: "Rental", emoji: "🏢" },
-  //   { value: "Commercial", emoji: "🏭" },
-  //   { value: "Motorcycle", emoji: "🏍️" },
-  //   { value: "Boat", emoji: "⛵" },
-  //   { value: "Life", emoji: "❤️" },
-];
+const POLICY_TYPES = [{ value: "Auto", emoji: "🚗" }];
+
+interface ExtraDoc {
+  id: string;
+  file: File;
+  label: string;
+}
 
 export default function PdfMergerPage() {
   const [policyType, setPolicyType] = useState("Auto");
   const [autopay, setAutopay] = useState(true);
   const [customerName, setCustomerName] = useState("");
   const [companyApp, setCompanyApp] = useState<File | null>(null);
+  const [extraDocs, setExtraDocs] = useState<ExtraDoc[]>([]);
   const [officeReceipt, setOfficeReceipt] = useState<File | null>(null);
   const [ccReceipt, setCcReceipt] = useState<File | null>(null);
   const [merging, setMerging] = useState(false);
@@ -76,16 +54,39 @@ export default function PdfMergerPage() {
   const companyAppRef = useRef<HTMLInputElement>(null);
   const officeReceiptRef = useRef<HTMLInputElement>(null);
   const ccReceiptRef = useRef<HTMLInputElement>(null);
+  const extraDocRef = useRef<HTMLInputElement>(null);
 
   const templates = DOCUMENT_SETS[policyType] ?? [];
   const hasTemplates = templates.length > 0;
   const canMerge =
     customerName.trim() && companyApp && officeReceipt && ccReceipt;
 
+  const handleAddExtraDoc = (file: File) => {
+    setExtraDocs((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        file,
+        label: file.name.replace(/\.pdf$/i, ""),
+      },
+    ]);
+    if (extraDocRef.current) extraDocRef.current.value = "";
+  };
+
+  const handleRemoveExtraDoc = (id: string) => {
+    setExtraDocs((prev) => prev.filter((d) => d.id !== id));
+  };
+
+  const handleUpdateExtraLabel = (id: string, label: string) => {
+    setExtraDocs((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, label } : d)),
+    );
+  };
+
   // Build the ordered document list for display
   const displayDocs = [
     ...templates.map((t, i) => ({
-      num: i === 0 ? 1 : i + 2, // 1, then 3,4,5...
+      num: i === 0 ? 1 : i + 2 + extraDocs.length,
       label: t.label,
       type: "static" as const,
     })),
@@ -94,22 +95,27 @@ export default function PdfMergerPage() {
       label: "Company Application / Policy Package",
       type: "upload" as const,
     },
+    ...extraDocs.map((d, i) => ({
+      num: 3 + i,
+      label: d.label || `Extra Document ${i + 1}`,
+      type: "extra" as const,
+    })),
     ...(autopay
       ? [
           {
-            num: templates.length + 2,
+            num: templates.length + extraDocs.length + 2,
             label: "Recurring CC Authorization",
             type: "static" as const,
           },
         ]
       : []),
     {
-      num: templates.length + (autopay ? 3 : 2),
+      num: templates.length + extraDocs.length + (autopay ? 3 : 2),
       label: "Office Receipt",
       type: "upload" as const,
     },
     {
-      num: templates.length + (autopay ? 4 : 3),
+      num: templates.length + extraDocs.length + (autopay ? 4 : 3),
       label: "Credit Card Receipt",
       type: "upload" as const,
     },
@@ -125,12 +131,10 @@ export default function PdfMergerPage() {
       const merged = await PDFDocument.create();
       const font = await merged.embedFont(StandardFonts.Helvetica);
 
-      // Today's date formatted as MM/DD/YYYY
       const today = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
       const dateStr = `${today.getMonth() + 1}/${today.getDate()}/${today.getFullYear()}`;
 
-      // ── Date stamp positions per template (x, y from bottom-left, in PDF points) ──
       const DATE_STAMPS: Record<string, { x: number; y: number }[]> = {
         "Acknowledgement form": [{ x: 440, y: 96 }],
         "Discount form": [{ x: 345, y: 143 }],
@@ -142,13 +146,11 @@ export default function PdfMergerPage() {
         // 515A has no standalone date line — omitted intentionally
       };
 
-      // Helper: add all pages from a PDF bytes, optionally stamping date
       const addPdf = async (bytes: Uint8Array, templateKey?: string) => {
         const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
         const pages = await merged.copyPages(doc, doc.getPageIndices());
         pages.forEach((page, i) => {
           merged.addPage(page);
-          // Stamp date only on page 0 of template (first page)
           if (i === 0 && templateKey && DATE_STAMPS[templateKey]) {
             DATE_STAMPS[templateKey].forEach(({ x, y }) => {
               page.drawText(dateStr, {
@@ -183,16 +185,23 @@ export default function PdfMergerPage() {
 
       if (!hasTemplates) {
         await addPdf(await readFile(companyApp!));
+        for (const extra of extraDocs) {
+          await addPdf(await readFile(extra.file));
+        }
       } else {
         // 1. Acknowledgement (with date stamp)
         await addPdf(await fetchTemplate(templates[0].key), templates[0].key);
-        // 2. Company application (already has dates — no stamp)
+        // 2. Company application
         await addPdf(await readFile(companyApp!));
-        // 3+. Remaining static templates (each gets date stamp)
+        // 2b. Extra uploaded docs (right after company app)
+        for (const extra of extraDocs) {
+          await addPdf(await readFile(extra.file));
+        }
+        // 3+. Remaining static templates
         for (const t of templates.slice(1)) {
           await addPdf(await fetchTemplate(t.key), t.key);
         }
-        // Autopay form (only if autopay is ON)
+        // Autopay form
         if (autopay) {
           await addPdf(
             await fetchTemplate("Recurring CC form"),
@@ -201,11 +210,10 @@ export default function PdfMergerPage() {
         }
       }
 
-      // Receipts always last (already have dates — no stamp)
+      // Receipts always last
       await addPdf(await readFile(officeReceipt!));
       await addPdf(await readFile(ccReceipt!));
 
-      // Filename: CustomerName_PolicyType_MM-DD-YYYY_HH-MM.pdf
       const datePart = `${pad(today.getMonth() + 1)}-${pad(today.getDate())}-${today.getFullYear()}`;
       const timePart = `${pad(today.getHours())}-${pad(today.getMinutes())}`;
       const safeName = customerName.trim().replace(/\s+/g, "_");
@@ -242,6 +250,7 @@ export default function PdfMergerPage() {
     setPolicyType("Auto");
     setAutopay(true);
     setCompanyApp(null);
+    setExtraDocs([]);
     setOfficeReceipt(null);
     setCcReceipt(null);
     setStatus(null);
@@ -370,9 +379,19 @@ export default function PdfMergerPage() {
                   {item.label}
                 </span>
                 <span
-                  className={`text-xs px-2 py-0.5 rounded-full font-medium ${item.type === "static" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}
+                  className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                    item.type === "static"
+                      ? "bg-green-100 text-green-700"
+                      : item.type === "extra"
+                        ? "bg-yellow-100 text-yellow-700"
+                        : "bg-blue-100 text-blue-700"
+                  }`}
                 >
-                  {item.type === "static" ? "Auto" : "Upload"}
+                  {item.type === "static"
+                    ? "Auto"
+                    : item.type === "extra"
+                      ? "Extra"
+                      : "Upload"}
                 </span>
               </div>
             ))}
@@ -404,6 +423,7 @@ export default function PdfMergerPage() {
             )}
           </div>
 
+          {/* Company Application upload */}
           <FileUploadField
             label="Company Application / Policy Package"
             description="upload the original company PDF only"
@@ -413,6 +433,65 @@ export default function PdfMergerPage() {
             onFileChange={setCompanyApp}
             required
           />
+
+          {/* ── Extra Documents Section ── */}
+          <div>
+            {extraDocs.map((doc) => (
+              <div
+                key={doc.id}
+                className="flex items-start gap-3 mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg"
+              >
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-yellow-200 text-yellow-800 text-xs font-bold flex-shrink-0 mt-2">
+                  +
+                </span>
+                <div className="flex-1 min-w-0">
+                  <input
+                    type="text"
+                    value={doc.label}
+                    onChange={(e) =>
+                      handleUpdateExtraLabel(doc.id, e.target.value)
+                    }
+                    placeholder="Document label (optional)"
+                    className="w-full text-sm px-3 py-1.5 border border-yellow-300 rounded-md focus:ring-2 focus:ring-yellow-400 outline-none bg-white mb-1"
+                  />
+                  <p className="text-xs text-yellow-700 truncate flex items-center gap-1">
+                    <FileText className="w-3 h-3 flex-shrink-0" />
+                    {doc.file.name} · {(doc.file.size / 1024).toFixed(0)} KB
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleRemoveExtraDoc(doc.id)}
+                  className="text-yellow-600 hover:text-red-600 transition mt-1"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+
+            {/* Add extra doc button */}
+            <button
+              onClick={() => extraDocRef.current?.click()}
+              className="flex items-center gap-2 px-4 py-2.5 bg-green-50 border-2 border-dashed border-green-400 text-green-700 rounded-lg hover:bg-green-100 hover:border-green-500 transition font-medium text-sm w-full justify-center"
+            >
+              <PlusCircle className="w-5 h-5" />
+              Add Extra Document
+              <span className="text-xs font-normal text-green-600">
+                (inserted after company PDF)
+              </span>
+            </button>
+            <input
+              ref={extraDocRef}
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleAddExtraDoc(f);
+              }}
+            />
+          </div>
+
+          {/* Receipts */}
           <FileUploadField
             label="Office Receipt"
             description="The agency office receipt PDF from your system"

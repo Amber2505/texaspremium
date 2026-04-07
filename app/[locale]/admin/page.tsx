@@ -45,7 +45,7 @@ export default function AdminLoginPage() {
       23,
       59,
       59,
-      999
+      999,
     );
     return endOfDay.getTime();
   };
