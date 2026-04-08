@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Shield, Loader2, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -58,14 +58,12 @@ export default function AdminAutopayDashboard() {
   const [showData, setShowData] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [securityCode, setSecurityCode] = useState("");
-  const [isCodeVerified, setIsCodeVerified] = useState(false);
   const [showCodePrompt, setShowCodePrompt] = useState(false);
   const [pendingCustomer, setPendingCustomer] =
     useState<AutopayCustomer | null>(null);
   const [activeTab, setActiveTab] = useState<"pending" | "completed">(
     "pending",
   );
-  const [sortByNew, setSortByNew] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [totalCount, setTotalCount] = useState(0);
@@ -75,127 +73,141 @@ export default function AdminAutopayDashboard() {
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
-
-  const normalizePhoneNumber = (phone: string): string => {
-    // Strip all non-digit characters
-    return phone.replace(/\D/g, "");
-  };
+  // Keep a ref to the search input so we can blur it when modals open
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Authentication check
   useEffect(() => {
     const checkAuth = () => {
       const savedSession = localStorage.getItem("admin_session");
-
       if (!savedSession) {
         router.push("/admin");
         return;
       }
-
       try {
         const session: AdminSession = JSON.parse(savedSession);
-        const now = Date.now();
-
-        if (now >= session.expiresAt) {
+        if (Date.now() >= session.expiresAt) {
           localStorage.removeItem("admin_session");
           router.push("/admin");
           return;
         }
-
         setAdminName(session.username || "Admin");
         setIsCheckingAuth(false);
-      } catch (error) {
-        console.error("Error checking session:", error);
+      } catch {
         localStorage.removeItem("admin_session");
         router.push("/admin");
       }
     };
-
     checkAuth();
-
-    // Check every minute
     const interval = setInterval(checkAuth, 60000);
     return () => clearInterval(interval);
   }, [router]);
 
-  useEffect(() => {
-    if (!isCheckingAuth) {
-      fetchCustomers(false, currentPage, pageSize, true); // refresh counts on tab/page change
+  // ── fetchCustomers — never sets loading=true when silent ─────────────────
+  const fetchCustomers = useCallback(
+    async (
+      silent = false,
+      page = currentPage,
+      size = pageSize,
+      refreshCounts = false,
+    ) => {
+      if (!silent) setLoading(true);
+      try {
+        const skip = size === 0 ? 0 : (page - 1) * size;
+        const params = new URLSearchParams({
+          skip: skip.toString(),
+          limit: size.toString(),
+          tab: activeTab,
+          search: searchQuery,
+        });
+        const response = await fetch(`/api/autopay/list?${params}`);
+        const data = await response.json();
+        setCustomers(data.customers || []);
+        setTotalCount(data.total || 0);
+        setNewCount(data.newCount || 0);
 
-      intervalRef.current = setInterval(() => {
-        if (!showData) {
-          fetchCustomers(true, currentPage, pageSize, false); // silent poll, no count refresh
+        if (refreshCounts) {
+          const [pendingRes, completedRes] = await Promise.all([
+            fetch(
+              `/api/autopay/list?skip=0&limit=1&tab=pending&search=${encodeURIComponent(searchQuery)}`,
+            ),
+            fetch(
+              `/api/autopay/list?skip=0&limit=1&tab=completed&search=${encodeURIComponent(searchQuery)}`,
+            ),
+          ]);
+          const [pendingData, completedData] = await Promise.all([
+            pendingRes.json(),
+            completedRes.json(),
+          ]);
+          setPendingTotal(pendingData.total || 0);
+          setCompletedTotal(completedData.total || 0);
+        } else {
+          if (activeTab === "pending") setPendingTotal(data.total || 0);
+          else setCompletedTotal(data.total || 0);
         }
-      }, 15000); // increase to 15s to reduce flicker
+      } catch (error) {
+        console.error("Failed to fetch customers:", error);
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeTab, currentPage, pageSize, searchQuery],
+  );
 
-      return () => {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-      };
-    }
-  }, [showData, isCheckingAuth, activeTab, currentPage, pageSize]);
-
-  // Separate effect for search — always silent so input keeps focus
-  // Separate effect for search — debounced + always silent so input keeps focus
-  // Separate effect for search — debounced + always silent so input keeps focus
+  // Main polling effect — does NOT depend on showData, so modal state never
+  // triggers a re-fetch or loading flash
   useEffect(() => {
-    if (!isCheckingAuth) {
-      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-      searchDebounceRef.current = setTimeout(() => {
-        fetchCustomers(true, 1, pageSize, true); // refresh counts on search
-        setCurrentPage(1);
-      }, 500);
-    }
+    if (isCheckingAuth) return;
+
+    fetchCustomers(false, currentPage, pageSize, true);
+
+    intervalRef.current = setInterval(() => {
+      fetchCustomers(true, currentPage, pageSize, false);
+    }, 15000);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCheckingAuth, activeTab, currentPage, pageSize]);
+
+  // Debounced search — always silent so the input never loses focus
+  useEffect(() => {
+    if (isCheckingAuth) return;
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      fetchCustomers(true, 1, pageSize, true);
+      setCurrentPage(1);
+    }, 500);
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
 
-  const fetchCustomers = async (
-    silent = false,
-    page = currentPage,
-    size = pageSize,
-    refreshCounts = false,
-  ) => {
-    if (!silent) setLoading(true);
-    try {
-      const skip = size === 0 ? 0 : (page - 1) * size;
-      const params = new URLSearchParams({
-        skip: skip.toString(),
-        limit: size.toString(),
-        tab: activeTab,
-        search: searchQuery,
-      });
-      const response = await fetch(`/api/autopay/list?${params}`);
-      const data = await response.json();
-      setCustomers(data.customers || []);
-      setTotalCount(data.total || 0);
-      setNewCount(data.newCount || 0);
+  // ── Modal helpers — blur the search bar before opening any modal ──────────
+  const openCodePrompt = (customer: AutopayCustomer) => {
+    // Blur the search input so it never receives stray keypresses after modal closes
+    searchInputRef.current?.blur();
+    setPendingCustomer(customer);
+    setSecurityCode("");
+    setShowCodePrompt(true);
+  };
 
-      // Only fetch both tab counts when needed (tab change, search, or explicit refresh)
-      if (refreshCounts) {
-        const [pendingRes, completedRes] = await Promise.all([
-          fetch(
-            `/api/autopay/list?skip=0&limit=1&tab=pending&search=${encodeURIComponent(searchQuery)}`,
-          ),
-          fetch(
-            `/api/autopay/list?skip=0&limit=1&tab=completed&search=${encodeURIComponent(searchQuery)}`,
-          ),
-        ]);
-        const [pendingData, completedData] = await Promise.all([
-          pendingRes.json(),
-          completedRes.json(),
-        ]);
-        setPendingTotal(pendingData.total || 0);
-        setCompletedTotal(completedData.total || 0);
-      } else {
-        // Just update the current active tab count
-        if (activeTab === "pending") setPendingTotal(data.total || 0);
-        else setCompletedTotal(data.total || 0);
-      }
-    } catch (error) {
-      console.error("Failed to fetch customers:", error);
-    } finally {
-      setLoading(false);
-    }
+  const closeModal = () => {
+    setShowData(false);
+    setDecryptedData(null);
+    setSelectedCustomer(null);
+    // Explicitly keep focus away from the search input
+    (document.activeElement as HTMLElement)?.blur();
+  };
+
+  const closeCodePrompt = () => {
+    setShowCodePrompt(false);
+    setPendingCustomer(null);
+    setSecurityCode("");
+    (document.activeElement as HTMLElement)?.blur();
   };
 
   const handleDecrypt = async (customer: AutopayCustomer) => {
@@ -203,11 +215,7 @@ export default function AdminAutopayDashboard() {
       alert("Please enter your name for audit logging before viewing data.");
       return;
     }
-
-    // Show code prompt first
-    setPendingCustomer(customer);
-    setSecurityCode("");
-    setShowCodePrompt(true);
+    openCodePrompt(customer);
   };
 
   const handleCodeSubmit = async () => {
@@ -218,7 +226,6 @@ export default function AdminAutopayDashboard() {
         body: JSON.stringify({ code: securityCode }),
       });
       const data = await res.json();
-
       if (!data.valid) {
         alert("Invalid security code.");
         setSecurityCode("");
@@ -231,8 +238,6 @@ export default function AdminAutopayDashboard() {
     }
 
     setShowCodePrompt(false);
-    setIsCodeVerified(true);
-
     if (!pendingCustomer) return;
     setSelectedCustomer(pendingCustomer);
 
@@ -245,7 +250,6 @@ export default function AdminAutopayDashboard() {
           adminName: adminName.trim(),
         }),
       });
-
       const data = await response.json();
       if (data.success) {
         setDecryptedData(data.decryptedData);
@@ -253,12 +257,11 @@ export default function AdminAutopayDashboard() {
       } else {
         alert(data.error);
       }
-    } catch (_error) {
-      console.error("Failed to decrypt data:", _error);
+    } catch {
       alert("Failed to decrypt data");
     } finally {
       setPendingCustomer(null);
-      setIsCodeVerified(false);
+      setSecurityCode("");
     }
   };
 
@@ -266,23 +269,18 @@ export default function AdminAutopayDashboard() {
     const confirmed = window.confirm(
       `Are you sure you want to delete autopay info for ${name}? This action cannot be undone.`,
     );
-
     if (!confirmed) return;
-
     try {
       const response = await fetch(`/api/autopay/delete?id=${id}`, {
         method: "DELETE",
       });
-
       if (response.ok) {
-        setCustomers(customers.filter((c) => c._id !== id));
+        setCustomers((prev) => prev.filter((c) => c._id !== id));
         alert("Record deleted successfully");
       } else {
-        console.log(response);
         alert("Failed to delete record");
       }
-    } catch (_error) {
-      console.error("Error connecting to server:", _error);
+    } catch {
       alert("Error connecting to server");
     }
   };
@@ -297,12 +295,6 @@ export default function AdminAutopayDashboard() {
     alert("Copied!");
   };
 
-  const closeModal = () => {
-    setShowData(false);
-    setDecryptedData(null);
-    setSelectedCustomer(null);
-  };
-
   const markAsUnviewed = async (id: string) => {
     try {
       await fetch("/api/autopay/mark-unviewed", {
@@ -313,14 +305,12 @@ export default function AdminAutopayDashboard() {
       setCustomers((prev) =>
         prev.map((c) => (c._id === id ? { ...c, viewed: false } : c)),
       );
-      // Refresh counts
       fetchCustomers(true, currentPage, pageSize, true);
     } catch {
       alert("Failed to mark as unviewed");
     }
   };
 
-  // Filter customers based on search input (name or phone)
   const toggleCompleted = async (id: string, completed: boolean) => {
     try {
       await fetch("/api/autopay/update-status", {
@@ -328,6 +318,7 @@ export default function AdminAutopayDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, completed }),
       });
+      // Update local state only — no re-fetch, no flash
       setCustomers((prev) =>
         prev.map((c) => (c._id === id ? { ...c, completed, viewed: true } : c)),
       );
@@ -336,10 +327,9 @@ export default function AdminAutopayDashboard() {
     }
   };
 
-  const filteredCustomers = customers;
   const totalPages = pageSize === 0 ? 1 : Math.ceil(totalCount / pageSize);
-  const pendingCount = pendingTotal;
-  const completedCount = completedTotal;
+
+  // ── Loading screens ───────────────────────────────────────────────────────
 
   if (isCheckingAuth) {
     return (
@@ -364,6 +354,8 @@ export default function AdminAutopayDashboard() {
       </div>
     );
   }
+
+  // ── Main UI ───────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
@@ -399,20 +391,20 @@ export default function AdminAutopayDashboard() {
 
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
           <input
+            ref={searchInputRef}
             type="text"
             placeholder="Search Name or Phone..."
             value={searchQuery}
             autoComplete="off"
             autoCorrect="off"
             autoCapitalize="off"
-            spellCheck="false"
+            spellCheck={false}
             onChange={(e) => {
               setSearchQuery(e.target.value);
               setCurrentPage(1);
             }}
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-64"
           />
-
           <button
             onClick={handleLogout}
             className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
@@ -424,8 +416,8 @@ export default function AdminAutopayDashboard() {
       </div>
 
       {/* Tabs */}
-      <div className="max-w-7xl mx-auto mb-4 flex items-center justify-between gap-4">
-        <div className="flex bg-white rounded-xl border border-gray-200 p-1 shadow-sm gap-1">
+      <div className="max-w-7xl mx-auto mb-4">
+        <div className="flex bg-white rounded-xl border border-gray-200 p-1 shadow-sm gap-1 w-fit">
           <button
             onClick={() => {
               setActiveTab("pending");
@@ -445,7 +437,7 @@ export default function AdminAutopayDashboard() {
                   : "bg-gray-100 text-gray-600"
               }`}
             >
-              {pendingCount}
+              {pendingTotal}
             </span>
             {newCount > 0 && activeTab === "pending" && (
               <span className="px-1.5 py-0.5 text-[9px] font-black bg-red-500 text-white rounded animate-pulse">
@@ -472,7 +464,7 @@ export default function AdminAutopayDashboard() {
                   : "bg-gray-100 text-gray-600"
               }`}
             >
-              {completedCount}
+              {completedTotal}
             </span>
           </button>
         </div>
@@ -482,7 +474,7 @@ export default function AdminAutopayDashboard() {
       <div className="max-w-7xl mx-auto">
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 transition-opacity duration-200">
+            <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50 text-gray-500 text-xs font-semibold uppercase tracking-wider">
                 <tr>
                   <th className="px-6 py-4 text-left">Customer / Phone</th>
@@ -492,8 +484,8 @@ export default function AdminAutopayDashboard() {
                   <th className="px-6 py-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-100 transition-all duration-150">
-                {filteredCustomers.map((customer) => {
+              <tbody className="bg-white divide-y divide-gray-100">
+                {customers.map((customer) => {
                   const isNew = !customer.viewed;
                   return (
                     <tr
@@ -545,7 +537,6 @@ export default function AdminAutopayDashboard() {
                           <button
                             onClick={() => markAsUnviewed(customer._id)}
                             className="text-purple-500 hover:text-purple-700 text-sm font-bold transition-all"
-                            title="Mark as unread"
                           >
                             UNREAD
                           </button>
@@ -578,7 +569,7 @@ export default function AdminAutopayDashboard() {
             </table>
           </div>
 
-          {/* Pagination Controls */}
+          {/* Pagination */}
           {totalCount > 0 && (
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50">
               <div className="flex items-center gap-2 text-sm text-gray-500">
@@ -668,7 +659,7 @@ export default function AdminAutopayDashboard() {
             </div>
           )}
 
-          {filteredCustomers.length === 0 && (
+          {customers.length === 0 && (
             <div className="text-center py-20">
               <div className="text-4xl mb-4">📂</div>
               <div className="text-gray-400 font-medium">
@@ -713,11 +704,7 @@ export default function AdminAutopayDashboard() {
                 />
                 <div className="flex gap-3">
                   <button
-                    onClick={() => {
-                      setShowCodePrompt(false);
-                      setPendingCustomer(null);
-                      setSecurityCode("");
-                    }}
+                    onClick={closeCodePrompt}
                     className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition"
                   >
                     Cancel
@@ -736,7 +723,7 @@ export default function AdminAutopayDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Modal Backdrop & Content */}
+      {/* Decrypted Data Modal */}
       <AnimatePresence>
         {showData && decryptedData && selectedCustomer && (
           <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">

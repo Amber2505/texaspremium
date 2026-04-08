@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   FileText,
   Upload,
@@ -10,6 +10,9 @@ import {
   CheckCircle,
   AlertCircle,
   PlusCircle,
+  CreditCard,
+  Landmark,
+  Ban,
 } from "lucide-react";
 
 // ─── DOCUMENT SETS PER POLICY TYPE ───────────────────────────────────────────
@@ -18,18 +21,18 @@ type TemplateEntry = { key: string; label: string };
 const DOCUMENT_SETS: Record<string, TemplateEntry[]> = {
   Auto: [
     { key: "Acknowledgement form", label: "Acknowledgement of Coverage" },
-    // company app inserted here (position 2 — uploaded)
     { key: "515A Exclusion form", label: "Form 515A – Driver Exclusion" },
     { key: "Discount form", label: "Discount & Document Compliance" },
     { key: "Non Business use", label: "Statement of Non-Business Use" },
     { key: "PIP Rejection form", label: "Texas PIP Coverage" },
     { key: "Uninsured Rejection form", label: "Texas UM/UIM Coverage" },
     { key: "Verification letter", label: "Verification of Policy Information" },
-    // Recurring CC form added here only when autopay is ON
   ],
 };
 
 const POLICY_TYPES = [{ value: "Auto", emoji: "🚗" }];
+
+type PaymentMethod = "none" | "cc" | "eft";
 
 interface ExtraDoc {
   id: string;
@@ -38,8 +41,33 @@ interface ExtraDoc {
 }
 
 export default function PdfMergerPage() {
+  // ── Auth guard ────────────────────────────────────────────────────────────
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    const savedSession = localStorage.getItem("admin_session");
+    if (!savedSession) {
+      window.location.href = "/admin";
+      return;
+    }
+    try {
+      const session = JSON.parse(savedSession);
+      if (Date.now() >= session.expiresAt) {
+        localStorage.removeItem("admin_session");
+        window.location.href = "/admin";
+        return;
+      }
+      setIsCheckingAuth(false);
+    } catch {
+      localStorage.removeItem("admin_session");
+      window.location.href = "/admin";
+    }
+  }, []);
+
+  // ── State ─────────────────────────────────────────────────────────────────
   const [policyType, setPolicyType] = useState("Auto");
-  const [autopay, setAutopay] = useState(true);
+  const [nonOwner, setNonOwner] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cc");
   const [customerName, setCustomerName] = useState("");
   const [companyApp, setCompanyApp] = useState<File | null>(null);
   const [extraDocs, setExtraDocs] = useState<ExtraDoc[]>([]);
@@ -83,13 +111,22 @@ export default function PdfMergerPage() {
     );
   };
 
-  // Build the ordered document list for display
+  const paymentFormLabel =
+    paymentMethod === "cc"
+      ? "Recurring CC Authorization"
+      : paymentMethod === "eft"
+        ? "EFT Authorization (Bank on File)"
+        : null;
+
+  const baseCount = hasTemplates ? templates.length : 0;
+  const afterCompany = extraDocs.length;
+  const paymentOffset = paymentMethod !== "none" ? 1 : 0;
+  const nonOwnerOffset = nonOwner ? 1 : 0;
+
   const displayDocs = [
-    ...templates.map((t, i) => ({
-      num: i === 0 ? 1 : i + 2 + extraDocs.length,
-      label: t.label,
-      type: "static" as const,
-    })),
+    ...(hasTemplates
+      ? [{ num: 1, label: templates[0].label, type: "static" as const }]
+      : []),
     {
       num: 2,
       label: "Company Application / Policy Package",
@@ -100,22 +137,38 @@ export default function PdfMergerPage() {
       label: d.label || `Extra Document ${i + 1}`,
       type: "extra" as const,
     })),
-    ...(autopay
+    ...(hasTemplates
+      ? templates.slice(1).map((t, i) => ({
+          num: 2 + afterCompany + 1 + i,
+          label: t.label,
+          type: "static" as const,
+        }))
+      : []),
+    ...(paymentFormLabel
       ? [
           {
-            num: templates.length + extraDocs.length + 2,
-            label: "Recurring CC Authorization",
+            num: baseCount + afterCompany + 2,
+            label: paymentFormLabel,
+            type: "static" as const,
+          },
+        ]
+      : []),
+    ...(nonOwner
+      ? [
+          {
+            num: baseCount + afterCompany + 2 + paymentOffset,
+            label: "Non-Owner Policy Consent Form",
             type: "static" as const,
           },
         ]
       : []),
     {
-      num: templates.length + extraDocs.length + (autopay ? 3 : 2),
+      num: baseCount + afterCompany + 2 + paymentOffset + nonOwnerOffset,
       label: "Office Receipt",
       type: "upload" as const,
     },
     {
-      num: templates.length + extraDocs.length + (autopay ? 4 : 3),
+      num: baseCount + afterCompany + 3 + paymentOffset + nonOwnerOffset,
       label: "Credit Card Receipt",
       type: "upload" as const,
     },
@@ -143,7 +196,8 @@ export default function PdfMergerPage() {
         "Uninsured Rejection form": [{ x: 132, y: 102 }],
         "Verification letter": [{ x: 395, y: 137 }],
         "Recurring CC form": [{ x: 415, y: 128 }],
-        // 515A has no standalone date line — omitted intentionally
+        "EFT form general": [{ x: 438, y: 102 }],
+        "Non owner policy consent form": [{ x: 450, y: 95 }],
       };
 
       const addPdf = async (bytes: Uint8Array, templateKey?: string) => {
@@ -185,39 +239,41 @@ export default function PdfMergerPage() {
 
       if (!hasTemplates) {
         await addPdf(await readFile(companyApp!));
-        for (const extra of extraDocs) {
-          await addPdf(await readFile(extra.file));
-        }
+        for (const extra of extraDocs) await addPdf(await readFile(extra.file));
       } else {
-        // 1. Acknowledgement (with date stamp)
         await addPdf(await fetchTemplate(templates[0].key), templates[0].key);
-        // 2. Company application
         await addPdf(await readFile(companyApp!));
-        // 2b. Extra uploaded docs (right after company app)
-        for (const extra of extraDocs) {
-          await addPdf(await readFile(extra.file));
-        }
-        // 3+. Remaining static templates
+        for (const extra of extraDocs) await addPdf(await readFile(extra.file));
         for (const t of templates.slice(1)) {
           await addPdf(await fetchTemplate(t.key), t.key);
         }
-        // Autopay form
-        if (autopay) {
+        if (paymentMethod === "cc") {
           await addPdf(
             await fetchTemplate("Recurring CC form"),
             "Recurring CC form",
           );
+        } else if (paymentMethod === "eft") {
+          await addPdf(
+            await fetchTemplate("EFT form general"),
+            "EFT form general",
+          );
+        }
+        if (nonOwner) {
+          await addPdf(
+            await fetchTemplate("Non owner policy consent form"),
+            "Non owner policy consent form",
+          );
         }
       }
 
-      // Receipts always last
       await addPdf(await readFile(officeReceipt!));
       await addPdf(await readFile(ccReceipt!));
 
       const datePart = `${pad(today.getMonth() + 1)}-${pad(today.getDate())}-${today.getFullYear()}`;
       const timePart = `${pad(today.getHours())}-${pad(today.getMinutes())}`;
       const safeName = customerName.trim().replace(/\s+/g, "_");
-      const filename = `${safeName}_${policyType}_${datePart}_${timePart}.pdf`;
+      const policyLabel = nonOwner ? `${policyType}_NonOwner` : policyType;
+      const filename = `${safeName}_${policyLabel}_${datePart}_${timePart}.pdf`;
 
       const pdfBytes = await merged.save();
       const blob = new Blob([pdfBytes as Uint8Array<ArrayBuffer>], {
@@ -248,7 +304,8 @@ export default function PdfMergerPage() {
   const handleReset = () => {
     setCustomerName("");
     setPolicyType("Auto");
-    setAutopay(true);
+    setNonOwner(false);
+    setPaymentMethod("cc");
     setCompanyApp(null);
     setExtraDocs([]);
     setOfficeReceipt(null);
@@ -263,6 +320,22 @@ export default function PdfMergerPage() {
   const pad = (n: number) => String(n).padStart(2, "0");
   const datePreview = `${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${now.getFullYear()}`;
 
+  // ── Auth loading screen ───────────────────────────────────────────────────
+  if (isCheckingAuth) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gradient-to-r from-red-700 to-blue-800 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+            <FileText className="w-8 h-8 text-white" />
+          </div>
+          <Loader2 className="w-6 h-6 animate-spin text-blue-600 mx-auto mb-2" />
+          <p className="text-gray-600 text-sm">Checking authentication…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Main UI ───────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-6">
       <div className="max-w-2xl mx-auto">
@@ -302,57 +375,127 @@ export default function PdfMergerPage() {
           </div>
         </div>
 
-        {/* Policy Type Badges */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-          <h2 className="font-semibold text-gray-800 mb-3 text-sm uppercase tracking-wide">
-            Policy Type
-          </h2>
-          <div className="flex flex-wrap gap-2">
-            {POLICY_TYPES.map((pt) => {
-              const configured = (DOCUMENT_SETS[pt.value] ?? []).length > 0;
-              const selected = policyType === pt.value;
-              return (
-                <button
-                  key={pt.value}
-                  onClick={() => setPolicyType(pt.value)}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold border-2 transition ${
-                    selected
-                      ? "border-blue-600 bg-blue-600 text-white"
-                      : configured
-                        ? "border-gray-200 bg-white text-gray-700 hover:border-blue-300"
-                        : "border-dashed border-gray-300 bg-gray-50 text-gray-400 hover:border-gray-400"
-                  }`}
-                >
-                  <span>{pt.emoji}</span>
-                  <span>{pt.value}</span>
-                  {!configured && (
-                    <span className="text-[10px] opacity-60">(soon)</span>
-                  )}
-                </button>
-              );
-            })}
+        {/* Policy Type + Options */}
+        <div className="bg-white rounded-xl shadow-sm p-6 mb-6 space-y-5">
+          <div>
+            <h2 className="font-semibold text-gray-800 mb-3 text-sm uppercase tracking-wide">
+              Policy Type
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {POLICY_TYPES.map((pt) => {
+                const configured = (DOCUMENT_SETS[pt.value] ?? []).length > 0;
+                const selected = policyType === pt.value;
+                return (
+                  <button
+                    key={pt.value}
+                    onClick={() => setPolicyType(pt.value)}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-semibold border-2 transition ${
+                      selected
+                        ? "border-blue-600 bg-blue-600 text-white"
+                        : configured
+                          ? "border-gray-200 bg-white text-gray-700 hover:border-blue-300"
+                          : "border-dashed border-gray-300 bg-gray-50 text-gray-400 hover:border-gray-400"
+                    }`}
+                  >
+                    <span>{pt.emoji}</span>
+                    <span>{pt.value}</span>
+                    {!configured && (
+                      <span className="text-[10px] opacity-60">(soon)</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          {/* Autopay toggle */}
-          <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
+          {/* Non-Owner Toggle */}
+          <div className="flex items-center justify-between pt-4 border-t border-gray-100">
             <div>
               <p className="text-sm font-medium text-gray-700">
-                Autopay / Recurring CC Form
+                Policy Subtype
               </p>
               <p className="text-xs text-gray-400 mt-0.5">
-                {autopay
-                  ? "Recurring CC Authorization will be included"
-                  : "Recurring CC Authorization will be skipped"}
+                {nonOwner
+                  ? "Non-Owner — consent form will be added before receipts"
+                  : "Regular policy"}
               </p>
             </div>
-            <button
-              onClick={() => setAutopay((v) => !v)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${autopay ? "bg-blue-600" : "bg-gray-300"}`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${autopay ? "translate-x-6" : "translate-x-1"}`}
-              />
-            </button>
+            <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1">
+              <button
+                onClick={() => setNonOwner(false)}
+                className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${
+                  !nonOwner
+                    ? "bg-blue-600 text-white shadow"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                Regular
+              </button>
+              <button
+                onClick={() => setNonOwner(true)}
+                className={`px-4 py-1.5 rounded-full text-sm font-semibold transition ${
+                  nonOwner
+                    ? "bg-purple-600 text-white shadow"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                Non-Owner
+              </button>
+            </div>
+          </div>
+
+          {/* Payment Method */}
+          <div className="pt-4 border-t border-gray-100">
+            <p className="text-sm font-medium text-gray-700 mb-1">
+              Payment Method on File
+            </p>
+            <p className="text-xs text-gray-400 mb-3">
+              Choose which recurring payment form to include
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPaymentMethod("cc")}
+                className={`flex-1 flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 text-sm font-semibold transition ${
+                  paymentMethod === "cc"
+                    ? "border-blue-600 bg-blue-50 text-blue-700"
+                    : "border-gray-200 bg-white text-gray-500 hover:border-blue-300"
+                }`}
+              >
+                <CreditCard className="w-5 h-5" />
+                <span>Credit Card</span>
+                <span className="text-[10px] font-normal opacity-70">
+                  Recurring CC Form
+                </span>
+              </button>
+              <button
+                onClick={() => setPaymentMethod("eft")}
+                className={`flex-1 flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 text-sm font-semibold transition ${
+                  paymentMethod === "eft"
+                    ? "border-green-600 bg-green-50 text-green-700"
+                    : "border-gray-200 bg-white text-gray-500 hover:border-green-300"
+                }`}
+              >
+                <Landmark className="w-5 h-5" />
+                <span>Bank (EFT)</span>
+                <span className="text-[10px] font-normal opacity-70">
+                  EFT Form General
+                </span>
+              </button>
+              <button
+                onClick={() => setPaymentMethod("none")}
+                className={`flex-1 flex flex-col items-center gap-1.5 px-3 py-3 rounded-xl border-2 text-sm font-semibold transition ${
+                  paymentMethod === "none"
+                    ? "border-gray-500 bg-gray-100 text-gray-700"
+                    : "border-gray-200 bg-white text-gray-400 hover:border-gray-400"
+                }`}
+              >
+                <Ban className="w-5 h-5" />
+                <span>None</span>
+                <span className="text-[10px] font-normal opacity-70">
+                  No payment form
+                </span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -360,11 +503,6 @@ export default function PdfMergerPage() {
         <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
           <h2 className="font-semibold text-gray-800 mb-4 text-sm uppercase tracking-wide">
             Final Document Order
-            {!hasTemplates && (
-              <span className="ml-2 text-xs font-normal text-amber-600 normal-case">
-                — no templates configured for {policyType} yet
-              </span>
-            )}
           </h2>
           <div className="space-y-2">
             {displayDocs.map((item) => (
@@ -409,24 +547,24 @@ export default function PdfMergerPage() {
               type="text"
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="e.g. Dawood Mustafa"
+              placeholder="e.g. John Doe"
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             />
             {customerName && (
               <p className="text-xs text-gray-500 mt-1">
                 Filename preview:{" "}
                 <span className="font-mono text-gray-700">
-                  {customerName.trim().replace(/\s+/g, "_")}_{policyType}_
+                  {customerName.trim().replace(/\s+/g, "_")}_
+                  {nonOwner ? `${policyType}_NonOwner` : policyType}_
                   {datePreview}_HH-MM.pdf
                 </span>
               </p>
             )}
           </div>
 
-          {/* Company Application upload */}
           <FileUploadField
             label="Company Application / Policy Package"
-            description="upload the original company PDF only"
+            description="Upload the original company PDF only"
             position="2"
             file={companyApp}
             inputRef={companyAppRef}
@@ -434,7 +572,7 @@ export default function PdfMergerPage() {
             required
           />
 
-          {/* ── Extra Documents Section ── */}
+          {/* Extra Documents */}
           <div>
             {extraDocs.map((doc) => (
               <div
@@ -467,8 +605,6 @@ export default function PdfMergerPage() {
                 </button>
               </div>
             ))}
-
-            {/* Add extra doc button */}
             <button
               onClick={() => extraDocRef.current?.click()}
               className="flex items-center gap-2 px-4 py-2.5 bg-green-50 border-2 border-dashed border-green-400 text-green-700 rounded-lg hover:bg-green-100 hover:border-green-500 transition font-medium text-sm w-full justify-center"
@@ -491,7 +627,6 @@ export default function PdfMergerPage() {
             />
           </div>
 
-          {/* Receipts */}
           <FileUploadField
             label="Office Receipt"
             description="The agency office receipt PDF from your system"
@@ -515,7 +650,11 @@ export default function PdfMergerPage() {
         {/* Status */}
         {status && (
           <div
-            className={`rounded-xl p-4 mb-6 flex items-center gap-3 ${status.type === "success" ? "bg-green-50 border border-green-200" : "bg-red-50 border border-red-200"}`}
+            className={`rounded-xl p-4 mb-6 flex items-center gap-3 ${
+              status.type === "success"
+                ? "bg-green-50 border border-green-200"
+                : "bg-red-50 border border-red-200"
+            }`}
           >
             {status.type === "success" ? (
               <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
@@ -523,7 +662,9 @@ export default function PdfMergerPage() {
               <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
             )}
             <p
-              className={`text-sm font-medium ${status.type === "success" ? "text-green-800" : "text-red-800"}`}
+              className={`text-sm font-medium ${
+                status.type === "success" ? "text-green-800" : "text-red-800"
+              }`}
             >
               {status.message}
             </p>
@@ -546,7 +687,7 @@ export default function PdfMergerPage() {
             {merging ? (
               <>
                 <Loader2 className="w-5 h-5 animate-spin" />
-                Merging...
+                Merging…
               </>
             ) : (
               <>
@@ -567,6 +708,8 @@ export default function PdfMergerPage() {
     </div>
   );
 }
+
+// ── FileUploadField component ─────────────────────────────────────────────────
 
 interface FileUploadFieldProps {
   label: string;

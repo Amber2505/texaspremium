@@ -3,14 +3,16 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { useParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 export default function HomePage() {
   const t = useTranslations("home");
   const params = useParams();
   const locale = params.locale as string;
+  const router = useRouter();
 
   const images = [
     { src: "/car.png", alt: "Car" },
@@ -21,6 +23,39 @@ export default function HomePage() {
   ];
 
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  // ── Hidden admin trigger ──────────────────────────────────────────────────
+  // Secret sequence: dot 0 → dot 4 → dot 0 → dot 4  (first, last, first, last)
+  const SECRET_SEQUENCE = [0, 4, 0, 4];
+  const dotSequence = useRef<number[]>([]);
+  const dotClickTimer = useRef<NodeJS.Timeout | null>(null);
+
+  const handleDotClick = (i: number) => {
+    // Normal carousel behaviour
+    setCurrentImageIndex(i);
+
+    // Append click to sequence buffer
+    dotSequence.current = [...dotSequence.current, i].slice(
+      -SECRET_SEQUENCE.length,
+    );
+
+    // Reset buffer after 4 s of inactivity
+    if (dotClickTimer.current) clearTimeout(dotClickTimer.current);
+    dotClickTimer.current = setTimeout(() => {
+      dotSequence.current = [];
+    }, 4000);
+
+    // Check if the last N taps match the secret sequence exactly
+    if (
+      dotSequence.current.length === SECRET_SEQUENCE.length &&
+      dotSequence.current.every((v, idx) => v === SECRET_SEQUENCE[idx])
+    ) {
+      dotSequence.current = [];
+      if (dotClickTimer.current) clearTimeout(dotClickTimer.current);
+      router.push("/admin");
+    }
+  };
+  // ─────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -40,7 +75,7 @@ export default function HomePage() {
     }
   }, []);
 
-  // ✅ NEW: Scroll to contact section if hash is present
+  // Scroll to contact section if hash is present
   useEffect(() => {
     if (typeof window !== "undefined" && window.location.hash === "#contact") {
       setTimeout(() => {
@@ -63,7 +98,6 @@ export default function HomePage() {
   return (
     <>
       {/* ===== SECTION 1: HERO ===== */}
-      {/* MOBILE: py-8 (32px) | TABLET+: py-12 (48px) */}
       <div className="relative bg-[#E5E5E5] py-8 md:py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between">
           {/* Left side: Text and Button */}
@@ -90,16 +124,17 @@ export default function HomePage() {
               className="object-contain"
             />
 
-            {/* Cursor Indicator */}
+            {/* Cursor Indicator — secret admin trigger on 5 clicks */}
             <div className="flex justify-center mt-4 space-x-2">
               {images.map((_, i) => (
                 <span
                   key={i}
-                  className={`w-4 h-1 ${
+                  onClick={() => handleDotClick(i)}
+                  className={`w-4 h-1 cursor-pointer select-none ${
                     i === currentImageIndex ? "bg-[#A0103D]" : "bg-gray-400"
                   }`}
                   style={{ borderRadius: "2px" }}
-                ></span>
+                />
               ))}
             </div>
           </div>
@@ -293,7 +328,7 @@ export default function HomePage() {
               </div>
             </Link>
 
-            {/* Other Card - KEEP AS IS (phone link) */}
+            {/* Other Card */}
             <Link
               href="tel:+14697295185"
               className="group bg-white rounded-2xl shadow-md p-6 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
@@ -323,7 +358,6 @@ export default function HomePage() {
       </div>
 
       {/* ===== SECTION 4: READY TO START SAVING (CTA) ===== */}
-      {/* ✅ ADDED: id="contact-section" for scroll targeting */}
       <div
         id="contact-section"
         className="relative bg-[#E5E5E5] py-8 md:py-12 px-4 sm:px-6 lg:px-8"
@@ -337,7 +371,7 @@ export default function HomePage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-            {/* Box 1: Call - KEEP AS IS (phone link) */}
+            {/* Box 1: Call */}
             <Link
               href="tel:+14697295185"
               className="group bg-white rounded-2xl shadow-lg p-10 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
@@ -371,7 +405,7 @@ export default function HomePage() {
               </div>
             </Link>
 
-            {/* Box 2: Text - KEEP AS IS (SMS link) */}
+            {/* Box 2: Text */}
             <Link
               href="sms:+14697295185"
               className="group bg-white rounded-2xl shadow-lg p-10 text-center flex flex-col items-center hover:shadow-xl hover:-translate-y-1 transition-all duration-300 cursor-pointer"
