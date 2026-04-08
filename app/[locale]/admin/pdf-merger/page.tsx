@@ -33,6 +33,7 @@ const DOCUMENT_SETS: Record<string, TemplateEntry[]> = {
 const POLICY_TYPES = [{ value: "Auto", emoji: "🚗" }];
 
 type PaymentMethod = "none" | "cc" | "eft";
+type ReceiptType = "card" | "cash";
 
 interface ExtraDoc {
   id: string;
@@ -68,6 +69,7 @@ export default function PdfMergerPage() {
   const [policyType, setPolicyType] = useState("Auto");
   const [nonOwner, setNonOwner] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cc");
+  const [receiptType, setReceiptType] = useState<ReceiptType>("card");
   const [customerName, setCustomerName] = useState("");
   const [companyApp, setCompanyApp] = useState<File | null>(null);
   const [extraDocs, setExtraDocs] = useState<ExtraDoc[]>([]);
@@ -86,8 +88,13 @@ export default function PdfMergerPage() {
 
   const templates = DOCUMENT_SETS[policyType] ?? [];
   const hasTemplates = templates.length > 0;
+
+  // CC receipt only required when card payment
   const canMerge =
-    customerName.trim() && companyApp && officeReceipt && ccReceipt;
+    customerName.trim() &&
+    companyApp &&
+    officeReceipt &&
+    (receiptType === "cash" || ccReceipt);
 
   const handleAddExtraDoc = (file: File) => {
     setExtraDocs((prev) => [
@@ -167,11 +174,16 @@ export default function PdfMergerPage() {
       label: "Office Receipt",
       type: "upload" as const,
     },
-    {
-      num: baseCount + afterCompany + 3 + paymentOffset + nonOwnerOffset,
-      label: "Credit Card Receipt",
-      type: "upload" as const,
-    },
+    // Only show CC Receipt row when card is selected
+    ...(receiptType === "card"
+      ? [
+          {
+            num: baseCount + afterCompany + 3 + paymentOffset + nonOwnerOffset,
+            label: "Credit Card Receipt",
+            type: "upload" as const,
+          },
+        ]
+      : []),
   ].sort((a, b) => a.num - b.num);
 
   const handleMerge = async () => {
@@ -267,13 +279,18 @@ export default function PdfMergerPage() {
       }
 
       await addPdf(await readFile(officeReceipt!));
-      await addPdf(await readFile(ccReceipt!));
+
+      // Only append CC receipt when card payment
+      if (receiptType === "card" && ccReceipt) {
+        await addPdf(await readFile(ccReceipt));
+      }
 
       const datePart = `${pad(today.getMonth() + 1)}-${pad(today.getDate())}-${today.getFullYear()}`;
       const timePart = `${pad(today.getHours())}-${pad(today.getMinutes())}`;
       const safeName = customerName.trim().replace(/\s+/g, "_");
       const policyLabel = nonOwner ? `${policyType}_NonOwner` : policyType;
-      const filename = `${safeName}_${policyLabel}_${datePart}_${timePart}.pdf`;
+      const receiptLabel = receiptType === "cash" ? "_Cash" : "";
+      const filename = `${safeName}_${policyLabel}${receiptLabel}_${datePart}_${timePart}.pdf`;
 
       const pdfBytes = await merged.save();
       const blob = new Blob([pdfBytes as Uint8Array<ArrayBuffer>], {
@@ -306,6 +323,7 @@ export default function PdfMergerPage() {
     setPolicyType("Auto");
     setNonOwner(false);
     setPaymentMethod("cc");
+    setReceiptType("card");
     setCompanyApp(null);
     setExtraDocs([]);
     setOfficeReceipt(null);
@@ -555,8 +573,9 @@ export default function PdfMergerPage() {
                 Filename preview:{" "}
                 <span className="font-mono text-gray-700">
                   {customerName.trim().replace(/\s+/g, "_")}_
-                  {nonOwner ? `${policyType}_NonOwner` : policyType}_
-                  {datePreview}_HH-MM.pdf
+                  {nonOwner ? `${policyType}_NonOwner` : policyType}
+                  {receiptType === "cash" ? "_Cash" : ""}_{datePreview}
+                  _HH-MM.pdf
                 </span>
               </p>
             )}
@@ -636,15 +655,65 @@ export default function PdfMergerPage() {
             onFileChange={setOfficeReceipt}
             required
           />
-          <FileUploadField
-            label="Credit Card Receipt"
-            description="The Square / terminal CC receipt PDF"
-            position="11"
-            file={ccReceipt}
-            inputRef={ccReceiptRef}
-            onFileChange={setCcReceipt}
-            required
-          />
+
+          {/* ── Receipt Type Toggle + CC Upload ───────────────────────────── */}
+          <div className="pt-1">
+            <p className="text-sm font-medium text-gray-700 mb-2">
+              Sale Receipt Type
+            </p>
+            <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1 mb-4 w-fit">
+              <button
+                onClick={() => setReceiptType("card")}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition ${
+                  receiptType === "card"
+                    ? "bg-blue-600 text-white shadow"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                Card / Square
+              </button>
+              <button
+                onClick={() => {
+                  setReceiptType("cash");
+                  setCcReceipt(null);
+                  if (ccReceiptRef.current) ccReceiptRef.current.value = "";
+                }}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition ${
+                  receiptType === "cash"
+                    ? "bg-emerald-600 text-white shadow"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                💵 Cash / In-Office
+              </button>
+            </div>
+
+            {receiptType === "card" ? (
+              <FileUploadField
+                label="Credit Card Receipt"
+                description="The Square / terminal CC receipt PDF"
+                position="11"
+                file={ccReceipt}
+                inputRef={ccReceiptRef}
+                onFileChange={setCcReceipt}
+                required
+              />
+            ) : (
+              <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                <span className="text-emerald-600 text-lg">💵</span>
+                <div>
+                  <p className="text-sm font-medium text-emerald-800">
+                    Cash / In-Office Sale
+                  </p>
+                  <p className="text-xs text-emerald-600 mt-0.5">
+                    No CC receipt needed — package will end after the office
+                    receipt
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Status */}
@@ -700,8 +769,9 @@ export default function PdfMergerPage() {
 
         {!canMerge && !merging && (
           <p className="text-center text-xs text-gray-400 mt-3">
-            Fill in customer name and upload all 3 required files to enable
-            merge
+            {receiptType === "cash"
+              ? "Fill in customer name and upload company app + office receipt to enable merge"
+              : "Fill in customer name and upload all 3 required files to enable merge"}
           </p>
         )}
       </div>
