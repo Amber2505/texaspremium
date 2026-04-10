@@ -1660,6 +1660,8 @@
   "autopay": {
     "title": "Configuración del pago automático",
     "subtitle": "Seguro • Cifrado • Protegido",
+    "checking": "Comprobando...",
+    "pleaseWait": "Por favor, espere un momento",
     "tabs": {
       "card": "Tarjeta",
       "bank": "Cuenta bancaria"

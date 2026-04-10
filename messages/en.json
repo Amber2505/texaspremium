@@ -1659,6 +1659,8 @@
 "autopay": {
     "title": "Automatic Payment Setup",
     "subtitle": "Safe • Encrypted • Secure",
+    "checking": "Checking...",
+    "pleaseWait": "Please wait a moment",
     "tabs": {
       "card": "Card",
       "bank": "Bank Account"

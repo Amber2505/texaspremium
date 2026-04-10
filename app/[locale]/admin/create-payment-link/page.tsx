@@ -77,6 +77,7 @@ export default function CreatePaymentLink() {
   const [editingDescValue, setEditingDescValue] = useState("");
   const [savingDescId, setSavingDescId] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const generatedLinkRef = useRef<HTMLDivElement>(null);
 
   const formatPhoneDisplay = (phone: string): string => {
     const cleaned = phone.replace(/\D/g, "");
@@ -229,6 +230,14 @@ export default function CreatePaymentLink() {
         });
 
         setGeneratedLink(autopayDirectLink);
+        setTimeout(
+          () =>
+            generatedLinkRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            }),
+          100,
+        );
         setLoading(false);
         return;
       }
@@ -287,6 +296,14 @@ export default function CreatePaymentLink() {
         });
 
         setGeneratedLink(proxyLink);
+        setTimeout(
+          () =>
+            generatedLinkRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            }),
+          100,
+        );
       } else {
         setError(data.error || "Failed to create payment link");
       }
@@ -817,80 +834,85 @@ export default function CreatePaymentLink() {
 
             {/* Generated Link */}
             {generatedLink && (
-              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6">
-                <div className="flex items-center gap-2 mb-3">
-                  <Check className="w-5 h-5 text-green-600" />
-                  <h3 className="font-semibold text-green-900">
-                    {linkType === "payment"
-                      ? "Payment Link Created!"
-                      : "Autopay Setup Link Created!"}
-                  </h3>
-                </div>
+              <div
+                ref={generatedLinkRef}
+                className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6"
+              >
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-6">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Check className="w-5 h-5 text-green-600" />
+                    <h3 className="font-semibold text-green-900">
+                      {linkType === "payment"
+                        ? "Payment Link Created!"
+                        : "Autopay Setup Link Created!"}
+                    </h3>
+                  </div>
 
-                <div className="bg-white rounded-lg p-4 mb-4 border border-green-200">
-                  <p className="text-sm text-gray-600 mb-2 font-medium">
-                    {linkType === "payment"
-                      ? "Payment Link:"
-                      : "Autopay Setup Link:"}
-                  </p>
-                  <p className="text-sm text-gray-800 break-all font-mono bg-gray-50 p-3 rounded">
-                    {generatedLink}
-                  </p>
-                </div>
+                  <div className="bg-white rounded-lg p-4 mb-4 border border-green-200">
+                    <p className="text-sm text-gray-600 mb-2 font-medium">
+                      {linkType === "payment"
+                        ? "Payment Link:"
+                        : "Autopay Setup Link:"}
+                    </p>
+                    <p className="text-sm text-gray-800 break-all font-mono bg-gray-50 p-3 rounded">
+                      {generatedLink}
+                    </p>
+                  </div>
 
-                <button
-                  onClick={handleCopyLink}
-                  className="w-full px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition flex items-center justify-center gap-2"
-                >
-                  {copied ? (
-                    <>
-                      <Check className="w-5 h-5" />
-                      Copied!
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-5 h-5" />
-                      Copy Link
-                    </>
-                  )}
-                </button>
-
-                <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <p className="text-xs text-blue-800">
-                    <strong>ℹ️ Next Steps:</strong> Share this link with your
-                    customer.{" "}
-                    {linkType === "autopay-only" ? (
+                  <button
+                    onClick={handleCopyLink}
+                    className="w-full px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition flex items-center justify-center gap-2"
+                  >
+                    {copied ? (
                       <>
-                        They will setup{" "}
-                        <strong>
-                          {paymentMethod === "card" ? "card" : "bank"} autopay
-                        </strong>{" "}
-                        in{" "}
-                        <strong>
-                          {language === "en" ? "English" : "Spanish"}
-                        </strong>
-                        .
-                      </>
-                    ) : paymentMethod === "direct-bill" ? (
-                      <>
-                        After payment, they&apos;ll see a confirmation message
-                        in{" "}
-                        <strong>
-                          {language === "en" ? "English" : "Spanish"}
-                        </strong>{" "}
-                        with <strong>no autopay setup required</strong>.
+                        <Check className="w-5 h-5" />
+                        Copied!
                       </>
                     ) : (
                       <>
-                        After payment, they&apos;ll setup{" "}
-                        <strong>{getPaymentMethodLabel()}</strong> in{" "}
-                        <strong>
-                          {language === "en" ? "English" : "Spanish"}
-                        </strong>
-                        . Customer email will be captured during checkout.
+                        <Copy className="w-5 h-5" />
+                        Copy Link
                       </>
                     )}
-                  </p>
+                  </button>
+
+                  <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <p className="text-xs text-blue-800">
+                      <strong>ℹ️ Next Steps:</strong> Share this link with your
+                      customer.{" "}
+                      {linkType === "autopay-only" ? (
+                        <>
+                          They will setup{" "}
+                          <strong>
+                            {paymentMethod === "card" ? "card" : "bank"} autopay
+                          </strong>{" "}
+                          in{" "}
+                          <strong>
+                            {language === "en" ? "English" : "Spanish"}
+                          </strong>
+                          .
+                        </>
+                      ) : paymentMethod === "direct-bill" ? (
+                        <>
+                          After payment, they&apos;ll see a confirmation message
+                          in{" "}
+                          <strong>
+                            {language === "en" ? "English" : "Spanish"}
+                          </strong>{" "}
+                          with <strong>no autopay setup required</strong>.
+                        </>
+                      ) : (
+                        <>
+                          After payment, they&apos;ll setup{" "}
+                          <strong>{getPaymentMethodLabel()}</strong> in{" "}
+                          <strong>
+                            {language === "en" ? "English" : "Spanish"}
+                          </strong>
+                          . Customer email will be captured during checkout.
+                        </>
+                      )}
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
