@@ -96,6 +96,30 @@ export default function PdfMergerPage() {
     officeReceipt &&
     (receiptType === "cash" || ccReceipt);
 
+  // ── Company App: multi-file handler ──────────────────────────────────────
+  const handleCompanyAppFiles = (files: FileList) => {
+    const arr = Array.from(files).filter(
+      (f) =>
+        f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
+    );
+    if (arr.length === 0) return;
+
+    // First file → company app slot
+    setCompanyApp(arr[0]);
+
+    // Remaining files → append to extraDocs
+    if (arr.length > 1) {
+      const newExtras: ExtraDoc[] = arr.slice(1).map((f) => ({
+        id: crypto.randomUUID(),
+        file: f,
+        label: f.name.replace(/\.pdf$/i, ""),
+      }));
+      setExtraDocs((prev) => [...prev, ...newExtras]);
+    }
+
+    if (companyAppRef.current) companyAppRef.current.value = "";
+  };
+
   const handleAddExtraDoc = (file: File) => {
     setExtraDocs((prev) => [
       ...prev,
@@ -581,15 +605,84 @@ export default function PdfMergerPage() {
             )}
           </div>
 
-          <FileUploadField
-            label="Company Application / Policy Package"
-            description="Upload the original company PDF only"
-            position="2"
-            file={companyApp}
-            inputRef={companyAppRef}
-            onFileChange={setCompanyApp}
-            required
-          />
+          {/* ── Company Application: multi-file upload ────────────────────── */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-2">
+                2
+              </span>
+              Company Application / Policy Package{" "}
+              <span className="text-red-500">*</span>
+            </label>
+            <p className="text-xs text-gray-500 mb-2 ml-7">
+              Select one or more PDFs — first file is the company app, any
+              additional files are added as extras automatically
+            </p>
+
+            {companyApp ? (
+              <div className="space-y-2">
+                {/* Primary file */}
+                <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
+                  <FileText className="w-5 h-5 text-green-600 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-green-800 truncate">
+                      {companyApp.name}
+                    </p>
+                    <p className="text-xs text-green-600">
+                      {(companyApp.size / 1024).toFixed(0)} KB · Company App
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setCompanyApp(null);
+                      if (companyAppRef.current)
+                        companyAppRef.current.value = "";
+                    }}
+                    className="text-green-600 hover:text-red-600 transition"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                {/* Add more button */}
+                <button
+                  onClick={() => companyAppRef.current?.click()}
+                  className="flex items-center gap-2 px-4 py-2 border border-dashed border-blue-300 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 hover:border-blue-400 transition text-sm font-medium w-full justify-center"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  Add more PDFs to this package
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => companyAppRef.current?.click()}
+                className="w-full flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition text-left"
+              >
+                <Upload className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                <div>
+                  <span className="text-sm text-gray-500 block">
+                    Click to upload PDF(s)
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    You can select multiple files at once
+                  </span>
+                </div>
+              </button>
+            )}
+
+            {/* Hidden multi-file input */}
+            <input
+              ref={companyAppRef}
+              type="file"
+              accept="application/pdf"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  handleCompanyAppFiles(e.target.files);
+                }
+              }}
+            />
+          </div>
 
           {/* Extra Documents */}
           <div>
