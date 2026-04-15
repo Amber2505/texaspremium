@@ -74,7 +74,7 @@ export default function PdfMergerPage() {
   const [companyApp, setCompanyApp] = useState<File | null>(null);
   const [extraDocs, setExtraDocs] = useState<ExtraDoc[]>([]);
   const [officeReceipt, setOfficeReceipt] = useState<File | null>(null);
-  const [ccReceipt, setCcReceipt] = useState<File | null>(null);
+  const [ccReceipts, setCcReceipts] = useState<File[]>([]);
   const [merging, setMerging] = useState(false);
   const [status, setStatus] = useState<{
     type: "success" | "error";
@@ -84,17 +84,15 @@ export default function PdfMergerPage() {
   const companyAppRef = useRef<HTMLInputElement>(null);
   const officeReceiptRef = useRef<HTMLInputElement>(null);
   const ccReceiptRef = useRef<HTMLInputElement>(null);
-  const extraDocRef = useRef<HTMLInputElement>(null);
 
   const templates = DOCUMENT_SETS[policyType] ?? [];
   const hasTemplates = templates.length > 0;
 
-  // CC receipt only required when card payment
   const canMerge =
     customerName.trim() &&
     companyApp &&
     officeReceipt &&
-    (receiptType === "cash" || ccReceipt);
+    (receiptType === "cash" || ccReceipts.length > 0);
 
   // ── Company App: multi-file handler ──────────────────────────────────────
   const handleCompanyAppFiles = (files: FileList) => {
@@ -104,32 +102,28 @@ export default function PdfMergerPage() {
     );
     if (arr.length === 0) return;
 
-    // First file → company app slot
-    setCompanyApp(arr[0]);
-
-    // Remaining files → append to extraDocs
-    if (arr.length > 1) {
-      const newExtras: ExtraDoc[] = arr.slice(1).map((f) => ({
+    if (companyApp) {
+      // Already have a primary file — add everything as extras
+      const newExtras: ExtraDoc[] = arr.map((f) => ({
         id: crypto.randomUUID(),
         file: f,
         label: f.name.replace(/\.pdf$/i, ""),
       }));
       setExtraDocs((prev) => [...prev, ...newExtras]);
+    } else {
+      // No primary file yet — first goes to companyApp, rest to extras
+      setCompanyApp(arr[0]);
+      if (arr.length > 1) {
+        const newExtras: ExtraDoc[] = arr.slice(1).map((f) => ({
+          id: crypto.randomUUID(),
+          file: f,
+          label: f.name.replace(/\.pdf$/i, ""),
+        }));
+        setExtraDocs((prev) => [...prev, ...newExtras]);
+      }
     }
 
     if (companyAppRef.current) companyAppRef.current.value = "";
-  };
-
-  const handleAddExtraDoc = (file: File) => {
-    setExtraDocs((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        file,
-        label: file.name.replace(/\.pdf$/i, ""),
-      },
-    ]);
-    if (extraDocRef.current) extraDocRef.current.value = "";
   };
 
   const handleRemoveExtraDoc = (id: string) => {
@@ -198,15 +192,22 @@ export default function PdfMergerPage() {
       label: "Office Receipt",
       type: "upload" as const,
     },
-    // Only show CC Receipt row when card is selected
     ...(receiptType === "card"
-      ? [
-          {
-            num: baseCount + afterCompany + 3 + paymentOffset + nonOwnerOffset,
-            label: "Credit Card Receipt",
+      ? ccReceipts.length > 0
+        ? ccReceipts.map((f, i) => ({
+            num:
+              baseCount + afterCompany + 3 + paymentOffset + nonOwnerOffset + i,
+            label: `CC Receipt${ccReceipts.length > 1 ? ` (Card ${i + 1})` : ""} — ${f.name}`,
             type: "upload" as const,
-          },
-        ]
+          }))
+        : [
+            {
+              num:
+                baseCount + afterCompany + 3 + paymentOffset + nonOwnerOffset,
+              label: "Credit Card Receipt",
+              type: "upload" as const,
+            },
+          ]
       : []),
   ].sort((a, b) => a.num - b.num);
 
@@ -304,9 +305,11 @@ export default function PdfMergerPage() {
 
       await addPdf(await readFile(officeReceipt!));
 
-      // Only append CC receipt when card payment
-      if (receiptType === "card" && ccReceipt) {
-        await addPdf(await readFile(ccReceipt));
+      // Append all CC receipts in order
+      if (receiptType === "card") {
+        for (const receipt of ccReceipts) {
+          await addPdf(await readFile(receipt));
+        }
       }
 
       const datePart = `${pad(today.getMonth() + 1)}-${pad(today.getDate())}-${today.getFullYear()}`;
@@ -351,7 +354,7 @@ export default function PdfMergerPage() {
     setCompanyApp(null);
     setExtraDocs([]);
     setOfficeReceipt(null);
-    setCcReceipt(null);
+    setCcReceipts([]);
     setStatus(null);
     if (companyAppRef.current) companyAppRef.current.value = "";
     if (officeReceiptRef.current) officeReceiptRef.current.value = "";
@@ -621,7 +624,6 @@ export default function PdfMergerPage() {
 
             {companyApp ? (
               <div className="space-y-2">
-                {/* Primary file */}
                 <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
                   <FileText className="w-5 h-5 text-green-600 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
@@ -643,7 +645,6 @@ export default function PdfMergerPage() {
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-                {/* Add more button */}
                 <button
                   onClick={() => companyAppRef.current?.click()}
                   className="flex items-center gap-2 px-4 py-2 border border-dashed border-blue-300 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 hover:border-blue-400 transition text-sm font-medium w-full justify-center"
@@ -669,7 +670,6 @@ export default function PdfMergerPage() {
               </button>
             )}
 
-            {/* Hidden multi-file input */}
             <input
               ref={companyAppRef}
               type="file"
@@ -685,59 +685,41 @@ export default function PdfMergerPage() {
           </div>
 
           {/* Extra Documents */}
-          <div>
-            {extraDocs.map((doc) => (
-              <div
-                key={doc.id}
-                className="flex items-start gap-3 mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg"
-              >
-                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-yellow-200 text-yellow-800 text-xs font-bold flex-shrink-0 mt-2">
-                  +
-                </span>
-                <div className="flex-1 min-w-0">
-                  <input
-                    type="text"
-                    value={doc.label}
-                    onChange={(e) =>
-                      handleUpdateExtraLabel(doc.id, e.target.value)
-                    }
-                    placeholder="Document label (optional)"
-                    className="w-full text-sm px-3 py-1.5 border border-yellow-300 rounded-md focus:ring-2 focus:ring-yellow-400 outline-none bg-white mb-1"
-                  />
-                  <p className="text-xs text-yellow-700 truncate flex items-center gap-1">
-                    <FileText className="w-3 h-3 flex-shrink-0" />
-                    {doc.file.name} · {(doc.file.size / 1024).toFixed(0)} KB
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleRemoveExtraDoc(doc.id)}
-                  className="text-yellow-600 hover:text-red-600 transition mt-1"
+          {extraDocs.length > 0 && (
+            <div>
+              {extraDocs.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="flex items-start gap-3 mb-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg"
                 >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={() => extraDocRef.current?.click()}
-              className="flex items-center gap-2 px-4 py-2.5 bg-green-50 border-2 border-dashed border-green-400 text-green-700 rounded-lg hover:bg-green-100 hover:border-green-500 transition font-medium text-sm w-full justify-center"
-            >
-              <PlusCircle className="w-5 h-5" />
-              Add Extra Document
-              <span className="text-xs font-normal text-green-600">
-                (inserted after company PDF)
-              </span>
-            </button>
-            <input
-              ref={extraDocRef}
-              type="file"
-              accept="application/pdf"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleAddExtraDoc(f);
-              }}
-            />
-          </div>
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-yellow-200 text-yellow-800 text-xs font-bold flex-shrink-0 mt-2">
+                    +
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <input
+                      type="text"
+                      value={doc.label}
+                      onChange={(e) =>
+                        handleUpdateExtraLabel(doc.id, e.target.value)
+                      }
+                      placeholder="Document label (optional)"
+                      className="w-full text-sm px-3 py-1.5 border border-yellow-300 rounded-md focus:ring-2 focus:ring-yellow-400 outline-none bg-white mb-1"
+                    />
+                    <p className="text-xs text-yellow-700 truncate flex items-center gap-1">
+                      <FileText className="w-3 h-3 flex-shrink-0" />
+                      {doc.file.name} · {(doc.file.size / 1024).toFixed(0)} KB
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleRemoveExtraDoc(doc.id)}
+                    className="text-yellow-600 hover:text-red-600 transition mt-1"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           <FileUploadField
             label="Office Receipt"
@@ -749,7 +731,7 @@ export default function PdfMergerPage() {
             required
           />
 
-          {/* ── Receipt Type Toggle + CC Upload ───────────────────────────── */}
+          {/* ── Receipt Type Toggle + CC Receipts ─────────────────────────── */}
           <div className="pt-1">
             <p className="text-sm font-medium text-gray-700 mb-2">
               Sale Receipt Type
@@ -769,7 +751,7 @@ export default function PdfMergerPage() {
               <button
                 onClick={() => {
                   setReceiptType("cash");
-                  setCcReceipt(null);
+                  setCcReceipts([]);
                   if (ccReceiptRef.current) ccReceiptRef.current.value = "";
                 }}
                 className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition ${
@@ -783,15 +765,89 @@ export default function PdfMergerPage() {
             </div>
 
             {receiptType === "card" ? (
-              <FileUploadField
-                label="Credit Card Receipt"
-                description="The Square / terminal CC receipt PDF"
-                position="11"
-                file={ccReceipt}
-                inputRef={ccReceiptRef}
-                onFileChange={setCcReceipt}
-                required
-              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-2">
+                    11
+                  </span>
+                  Credit Card Receipt(s) <span className="text-red-500">*</span>
+                </label>
+                <p className="text-xs text-gray-500 mb-3 ml-7">
+                  Add one receipt per card — multiple cards supported
+                </p>
+
+                {/* Uploaded receipts list */}
+                {ccReceipts.map((f, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-lg mb-2"
+                  >
+                    <CreditCard className="w-5 h-5 text-green-600 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-green-800 truncate">
+                        {f.name}
+                      </p>
+                      <p className="text-xs text-green-600 flex items-center gap-2">
+                        {(f.size / 1024).toFixed(0)} KB
+                        {ccReceipts.length > 1 && (
+                          <span className="px-1.5 py-0.5 bg-green-200 text-green-800 rounded text-[10px] font-semibold">
+                            Card {i + 1}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() =>
+                        setCcReceipts((prev) =>
+                          prev.filter((_, idx) => idx !== i),
+                        )
+                      }
+                      className="text-green-600 hover:text-red-600 transition"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+
+                {/* Upload button */}
+                <button
+                  onClick={() => ccReceiptRef.current?.click()}
+                  className="w-full flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition text-left"
+                >
+                  <Upload className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                  <div className="flex-1">
+                    <span className="text-sm text-gray-500 block">
+                      {ccReceipts.length > 0
+                        ? "Add another card receipt"
+                        : "Click to upload CC receipt"}
+                    </span>
+                    {ccReceipts.length === 0 && (
+                      <span className="text-xs text-gray-400">
+                        Upload one receipt per card if split payment
+                      </span>
+                    )}
+                  </div>
+                  {ccReceipts.length > 0 && (
+                    <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
+                      {ccReceipts.length} added
+                    </span>
+                  )}
+                </button>
+
+                <input
+                  ref={ccReceiptRef}
+                  type="file"
+                  accept="application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) {
+                      setCcReceipts((prev) => [...prev, f]);
+                      if (ccReceiptRef.current) ccReceiptRef.current.value = "";
+                    }
+                  }}
+                />
+              </div>
             ) : (
               <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg">
                 <span className="text-emerald-600 text-lg">💵</span>
@@ -864,7 +920,7 @@ export default function PdfMergerPage() {
           <p className="text-center text-xs text-gray-400 mt-3">
             {receiptType === "cash"
               ? "Fill in customer name and upload company app + office receipt to enable merge"
-              : "Fill in customer name and upload all 3 required files to enable merge"}
+              : "Fill in customer name and upload all required files to enable merge"}
           </p>
         )}
       </div>
