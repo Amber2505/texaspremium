@@ -1094,6 +1094,12 @@ async function processScheduledMessages() {
     return;
   }
 
+  if (rateLimitedUntil && Date.now() < rateLimitedUntil) {
+    const wait = Math.ceil((rateLimitedUntil - Date.now()) / 1000);
+    console.log(`⏳ Scheduled processor skipping - rate limited for ${wait}s`);
+    return;
+  }
+
   isProcessingScheduled = true;
   const now = new Date();
 
@@ -1111,9 +1117,17 @@ async function processScheduledMessages() {
       console.log(`♻️ Reset ${stuckResult.modifiedCount} stuck scheduled job(s)`);
     }
 
+    // Authenticate ONCE before the loop
+    let platform;
+    try {
+      platform = await getRingCentralPlatform();
+    } catch (authError) {
+      console.error('❌ Failed to authenticate with RingCentral:', authError.message);
+      isProcessingScheduled = false;
+      return;
+    }
+
     while (true) {
-      // Atomic claim - find pending job and mark processing in one operation
-      // prevents double-send if this somehow runs twice simultaneously
       const job = await scheduleCollection.findOneAndUpdate(
         {
           status: 'pending',
@@ -1153,7 +1167,6 @@ async function processScheduledMessages() {
 
 
       try {
-        const platform = await getRingCentralPlatform();
         const FormData = require('form-data');
         const formData = new FormData();
 
@@ -1244,6 +1257,16 @@ async function processScheduledMessages() {
 
       } catch (sendError) {
         console.error(`❌ Scheduled job ${jobId} failed:`, sendError.message);
+
+        if (sendError.message?.includes('429') || sendError.message?.includes('rate')) {
+          rateLimitedUntil = Date.now() + 60000;
+          console.log('🚫 Rate limited during scheduled send - stopping processor');
+          await scheduleCollection.updateOne(
+            { _id: job._id },
+            { $set: { status: 'pending', processingStartedAt: null } }
+          );
+          break;
+        }
 
         await scheduleCollection.updateOne(
           { _id: job._id },
