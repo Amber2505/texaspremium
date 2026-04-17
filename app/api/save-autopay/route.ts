@@ -1,6 +1,8 @@
+// api/save-autopay/route.ts
 import { NextResponse } from 'next/server';
 import connectToDatabase from "@/lib/mongodb";
 import { encrypt, validateCardNumber, validateRoutingNumber } from '@/lib/encryption';
+import { sendAutopayNotification } from '@/lib/email';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export async function POST(request: Request) {
@@ -80,6 +82,30 @@ export async function POST(request: Request) {
 
     // Insert new record
     const result = await autopayCollection.insertOne(recordToSave);
+
+    // ✅ Send notification email (fire-and-forget — don't fail the request if email fails)
+    try {
+      await sendAutopayNotification({
+        customerName: recordToSave.customerName,
+        customerPhone: recordToSave.customerPhone,
+        method: method,
+        timestamp: new Date(),
+        // Card fields (undefined if bank)
+        cardBrand: recordToSave.cardBrand,
+        cardLast4: recordToSave.cardLast4,
+        expiryMonth: recordToSave.expiryMonth,
+        expiryYear: recordToSave.expiryYear,
+        zipCode: recordToSave.zipCode,
+        // Bank fields (undefined if card)
+        accountLast4: recordToSave.accountLast4,
+        accountType: recordToSave.accountType,
+        accountHolderType: recordToSave.accountHolderType,
+      });
+      console.log(`✅ Autopay notification email sent for ${recordToSave.customerName}`);
+    } catch (emailError: any) {
+      // Log but don't fail — autopay is already saved in MongoDB
+      console.error('❌ Autopay email failed:', emailError.message);
+    }
 
     return NextResponse.json({ 
       success: true, 

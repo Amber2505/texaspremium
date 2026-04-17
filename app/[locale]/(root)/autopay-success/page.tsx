@@ -1,3 +1,4 @@
+// app/[locale]/(root)/autopay-success/page.tsx
 "use client";
 
 import { motion } from "framer-motion";
