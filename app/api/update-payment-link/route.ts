@@ -4,11 +4,21 @@ import { MongoClient, ObjectId } from "mongodb";
 
 const uri = process.env.MONGODB_URI!;
 
+// ✅ Helper: accepts both publicLinkId and legacy ObjectId
+function buildLinkQuery(linkId: string) {
+  if (/^[a-f0-9]{32}$/i.test(linkId)) {
+    return { publicLinkId: linkId };
+  }
+  if (linkId.length === 24 && ObjectId.isValid(linkId)) {
+    return { _id: new ObjectId(linkId) };
+  }
+  return null;
+}
+
 async function updateSquareDescription(squareLinkId: string, description: string) {
   try {
     if (!squareLinkId) return;
 
-    // First fetch current link to get required version field
     const getRes = await fetch(
       `https://connect.squareup.com/v2/online-checkout/payment-links/${squareLinkId}`,
       {
@@ -28,7 +38,14 @@ async function updateSquareDescription(squareLinkId: string, description: string
       return;
     }
 
-    console.log("Updating Square link:", squareLinkId, "with description:", description, "version:", version);
+    console.log(
+      "Updating Square link:",
+      squareLinkId,
+      "with description:",
+      description,
+      "version:",
+      version
+    );
 
     const updateRes = await fetch(
       `https://connect.squareup.com/v2/online-checkout/payment-links/${squareLinkId}`,
@@ -42,9 +59,7 @@ async function updateSquareDescription(squareLinkId: string, description: string
         body: JSON.stringify({
           payment_link: {
             version,
-            quick_pay: {
-              name: description,
-            },
+            quick_pay: { name: description },
           },
         }),
       }
@@ -65,7 +80,14 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { linkId, generatedLink, squareLink, squareLinkId, squareTransactionId, description } = body;
+    const {
+      linkId,
+      generatedLink,
+      squareLink,
+      squareLinkId,
+      squareTransactionId,
+      description,
+    } = body;
     let existingSquareLinkId: string | null = null;
 
     if (!linkId) {
@@ -75,11 +97,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const query = buildLinkQuery(linkId);
+    if (!query) {
+      return NextResponse.json(
+        { error: "Invalid linkId format" },
+        { status: 400 }
+      );
+    }
+
     client = await MongoClient.connect(uri);
     const db = client.db("db");
     const collection = db.collection("payment_link_generated");
 
-    // Build update object dynamically
     const updateFields: Record<string, string> = {};
     if (generatedLink) updateFields.generatedLink = generatedLink;
     if (squareLink) updateFields.squareLink = squareLink;
@@ -95,17 +124,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (description !== undefined) {
-      const existing = await collection.findOne(
-        { _id: new ObjectId(linkId) },
-        { projection: { squareLinkId: 1 } }
-      );
+      const existing = await collection.findOne(query, {
+        projection: { squareLinkId: 1 },
+      });
       existingSquareLinkId = existing?.squareLinkId || null;
     }
 
-    const result = await collection.updateOne(
-      { _id: new ObjectId(linkId) },
-      { $set: updateFields }
-    );
+    const result = await collection.updateOne(query, { $set: updateFields });
 
     if (result.matchedCount === 0) {
       return NextResponse.json({ error: "Link not found" }, { status: 404 });

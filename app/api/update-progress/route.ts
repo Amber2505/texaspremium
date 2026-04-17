@@ -1,14 +1,21 @@
 // app/api/update-progress/route.ts
-// ✅ IMPORTANT: This file must be at /api/update-progress/route.ts
-//    Your consent page and pay proxy call "/api/update-progress"
-//    If your file is at /api/update-payment-progress/route.ts, RENAME IT
-//    or create this file as a copy.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextResponse } from "next/server";
 import { MongoClient, ObjectId } from "mongodb";
 
 const uri = process.env.MONGODB_URI!;
+
+// ✅ Helper: accepts both publicLinkId and legacy ObjectId
+function buildLinkQuery(linkId: string) {
+  if (/^[a-f0-9]{32}$/i.test(linkId)) {
+    return { publicLinkId: linkId };
+  }
+  if (linkId.length === 24 && ObjectId.isValid(linkId)) {
+    return { _id: new ObjectId(linkId) };
+  }
+  return null;
+}
 
 export async function POST(request: Request) {
   let client: MongoClient | null = null;
@@ -18,7 +25,6 @@ export async function POST(request: Request) {
 
     console.log("🔄 Updating progress:", { linkId, step });
 
-    // Validate inputs
     if (!linkId || !step) {
       return NextResponse.json(
         { success: false, error: "Missing linkId or step" },
@@ -26,7 +32,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate step
     const validSteps = ["payment", "consent", "autopay"];
     if (!validSteps.includes(step)) {
       return NextResponse.json(
@@ -35,23 +40,18 @@ export async function POST(request: Request) {
       );
     }
 
-    client = await MongoClient.connect(uri);
-    const db = client.db("db");
-    const collection = db.collection("payment_link_generated");
-
-    // ✅ Find by MongoDB _id
-    let query = {};
-
-    if (ObjectId.isValid(linkId)) {
-      query = { _id: new ObjectId(linkId) };
-    } else {
+    const query = buildLinkQuery(linkId);
+    if (!query) {
       return NextResponse.json(
         { success: false, error: "Invalid linkId format" },
         { status: 400 }
       );
     }
 
-    // Get current link
+    client = await MongoClient.connect(uri);
+    const db = client.db("db");
+    const collection = db.collection("payment_link_generated");
+
     const link = await collection.findOne(query);
 
     if (!link) {
@@ -64,7 +64,6 @@ export async function POST(request: Request) {
 
     console.log("✅ Found link, current stages:", link.completedStages);
 
-    // ✅ Map step names to YOUR field names
     const stepFieldMap: Record<string, string> = {
       payment: "payment",
       consent: "consent",
@@ -73,7 +72,6 @@ export async function POST(request: Request) {
 
     const fieldName = stepFieldMap[step];
 
-    // Update the specific stage
     const updateData: any = {
       [`completedStages.${fieldName}`]: true,
       [`timestamps.${fieldName}`]: new Date().toISOString(),
@@ -83,7 +81,6 @@ export async function POST(request: Request) {
 
     const paymentMethod = link.paymentMethod;
 
-    // Determine if all steps are complete
     if (step === "autopay") {
       updateData["timestamps.completed"] = new Date().toISOString();
       updateData["currentStage"] = "complete";
@@ -94,7 +91,6 @@ export async function POST(request: Request) {
 
     console.log("📝 Updating with:", updateData);
 
-    // Update MongoDB
     const result = await collection.updateOne(query, { $set: updateData });
 
     if (result.matchedCount === 0) {
@@ -109,15 +105,14 @@ export async function POST(request: Request) {
     // Notify Railway to broadcast to admin clients
     try {
       await fetch(`${process.env.NEXT_PUBLIC_RAILWAY_URL}/notify/payment-progress`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ linkId }),
       });
     } catch (e) {
-      console.log('Could not notify Railway of progress update');
+      console.log("Could not notify Railway of progress update");
     }
 
-    // Fetch updated document to verify
     const updatedLink = await collection.findOne(query);
     console.log("✅ Updated completedStages:", updatedLink?.completedStages);
 

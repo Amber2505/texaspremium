@@ -4,6 +4,17 @@ import { MongoClient, ObjectId } from "mongodb";
 
 const uri = process.env.MONGODB_URI!;
 
+// ✅ Helper: accepts both publicLinkId and legacy ObjectId
+function buildLinkQuery(linkId: string) {
+  if (/^[a-f0-9]{32}$/i.test(linkId)) {
+    return { publicLinkId: linkId };
+  }
+  if (linkId.length === 24 && ObjectId.isValid(linkId)) {
+    return { _id: new ObjectId(linkId) };
+  }
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   let client: MongoClient | null = null;
 
@@ -18,15 +29,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const query = buildLinkQuery(linkId);
+    if (!query) {
+      return NextResponse.json(
+        { error: "Invalid linkId format" },
+        { status: 400 }
+      );
+    }
+
     client = await MongoClient.connect(uri);
     const db = client.db("db");
     const collection = db.collection("payment_link_generated");
 
-    // Update the disabled status
-    const result = await collection.updateOne(
-      { _id: new ObjectId(linkId) },
-      { $set: { disabled: disabled, updatedAt: new Date() } }
-    );
+    const result = await collection.updateOne(query, {
+      $set: { disabled: disabled, updatedAt: new Date() },
+    });
 
     if (result.matchedCount === 0) {
       return NextResponse.json({ error: "Link not found" }, { status: 404 });
