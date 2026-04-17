@@ -75,6 +75,7 @@ export default function SignConsentPage({ params }: PageProps) {
     });
   };
 
+  // ✅ Poll check-progress until the card number arrives from Square webhook
   useEffect(() => {
     if (!linkId) {
       setIsCheckingProgress(false);
@@ -82,47 +83,38 @@ export default function SignConsentPage({ params }: PageProps) {
       return;
     }
 
-    let attempts = 0;
-    const MAX_ATTEMPTS = 20; // 20 × 1.5s = 30 seconds max wait
     let mounted = true;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 20; // 20 × 1.5s = 30s max wait
     let timeoutId: NodeJS.Timeout | null = null;
 
     const fetchOnce = async (): Promise<boolean> => {
       try {
-        // 1. check-progress first — it backfills card/email from completed_payments
-        const progressRes = await fetch(`/api/check-progress?linkId=${linkId}`);
-        const progressData = await progressRes.json();
+        const res = await fetch(`/api/check-progress?linkId=${linkId}`);
+        const data = await res.json();
 
         if (!mounted) return true;
 
-        // If consent already signed, skip ahead
-        if (progressData.success && progressData.progress?.consent) {
-          router.push(progressData.redirectTo);
+        // Consent already signed? Skip ahead.
+        if (data.success && data.progress?.consent) {
+          router.push(data.redirectTo);
           return true;
         }
 
-        // 2. Now read the (possibly just-backfilled) link details
-        const detailsRes = await fetch(
-          `/api/get-link-details?linkId=${linkId}`,
-        );
-        const detailsData = await detailsRes.json();
+        if (data.success && data.linkData) {
+          const { amount: amt, customerEmail, cardLast4: card } = data.linkData;
 
-        if (!mounted) return true;
-
-        if (detailsData.success) {
-          if (detailsData.email) setResolvedEmail(detailsData.email);
-          if (detailsData.amount) {
-            setResolvedAmount((detailsData.amount / 100).toFixed(2));
-          }
-          if (detailsData.cardLast4) {
-            setResolvedCard(detailsData.cardLast4);
+          if (customerEmail) setResolvedEmail(customerEmail);
+          if (amt) setResolvedAmount((amt / 100).toFixed(2));
+          if (card) {
+            setResolvedCard(card);
             return true; // ✅ got the card — stop polling
           }
         }
 
-        return false; // card still missing — try again
+        return false; // card still missing — poll again
       } catch (err) {
-        console.error("Error fetching details:", err);
+        console.error("Error fetching progress:", err);
         return false;
       }
     };
@@ -131,7 +123,7 @@ export default function SignConsentPage({ params }: PageProps) {
       const gotCard = await fetchOnce();
       if (!mounted) return;
 
-      // Show the form immediately after first fetch — don't make user wait
+      // Show form immediately; don't block on card
       setIsCheckingProgress(false);
 
       if (gotCard || attempts >= MAX_ATTEMPTS) {
@@ -296,11 +288,11 @@ export default function SignConsentPage({ params }: PageProps) {
     let finalEmail = resolvedEmail;
     if (!finalEmail && linkId) {
       try {
-        const res = await fetch(`/api/get-link-details?linkId=${linkId}`);
+        const res = await fetch(`/api/check-progress?linkId=${linkId}`);
         const data = await res.json();
-        if (data.success && data.email) {
-          finalEmail = data.email;
-          setResolvedEmail(data.email);
+        if (data.success && data.linkData?.customerEmail) {
+          finalEmail = data.linkData.customerEmail;
+          setResolvedEmail(data.linkData.customerEmail);
         }
       } catch {
         // Will fall back to server-side lookup in generate-signed-consent
