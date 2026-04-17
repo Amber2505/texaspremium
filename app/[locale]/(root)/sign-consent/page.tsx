@@ -82,37 +82,73 @@ export default function SignConsentPage({ params }: PageProps) {
       return;
     }
 
-    const init = async () => {
-      try {
-        const [progressRes, detailsRes] = await Promise.all([
-          fetch(`/api/check-progress?linkId=${linkId}`),
-          fetch(`/api/get-link-details?linkId=${linkId}`),
-        ]);
+    let attempts = 0;
+    const MAX_ATTEMPTS = 20; // 20 × 1.5s = 30 seconds max wait
+    let mounted = true;
+    let timeoutId: NodeJS.Timeout | null = null;
 
+    const fetchOnce = async (): Promise<boolean> => {
+      try {
+        // 1. check-progress first — it backfills card/email from completed_payments
+        const progressRes = await fetch(`/api/check-progress?linkId=${linkId}`);
         const progressData = await progressRes.json();
+
+        if (!mounted) return true;
+
+        // If consent already signed, skip ahead
+        if (progressData.success && progressData.progress?.consent) {
+          router.push(progressData.redirectTo);
+          return true;
+        }
+
+        // 2. Now read the (possibly just-backfilled) link details
+        const detailsRes = await fetch(
+          `/api/get-link-details?linkId=${linkId}`,
+        );
         const detailsData = await detailsRes.json();
+
+        if (!mounted) return true;
 
         if (detailsData.success) {
           if (detailsData.email) setResolvedEmail(detailsData.email);
-          if (detailsData.cardLast4) setResolvedCard(detailsData.cardLast4);
           if (detailsData.amount) {
             setResolvedAmount((detailsData.amount / 100).toFixed(2));
           }
+          if (detailsData.cardLast4) {
+            setResolvedCard(detailsData.cardLast4);
+            return true; // ✅ got the card — stop polling
+          }
         }
 
-        if (progressData.success && progressData.progress?.consent) {
-          router.push(progressData.redirectTo);
-          return;
-        }
+        return false; // card still missing — try again
       } catch (err) {
-        console.error("Error initializing:", err);
-      } finally {
-        setIsCheckingProgress(false);
-        setIsLoadingDetails(false);
+        console.error("Error fetching details:", err);
+        return false;
       }
     };
 
-    init();
+    const poll = async () => {
+      const gotCard = await fetchOnce();
+      if (!mounted) return;
+
+      // Show the form immediately after first fetch — don't make user wait
+      setIsCheckingProgress(false);
+
+      if (gotCard || attempts >= MAX_ATTEMPTS) {
+        setIsLoadingDetails(false);
+        return;
+      }
+
+      attempts++;
+      timeoutId = setTimeout(poll, 1500);
+    };
+
+    poll();
+
+    return () => {
+      mounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [linkId, router]);
 
   useEffect(() => {

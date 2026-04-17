@@ -138,12 +138,13 @@ export async function GET(request: Request) {
       nextStep,
       redirectTo,
       linkData: {
-        amount: link.amount,
-        description: link.description,
-        customerPhone: link.customerPhone,
-        customerEmail: link.customerEmail,
-        language: link.language,
-      },
+      amount: link.amount,
+      description: link.description,
+      customerPhone: link.customerPhone,
+      customerEmail,
+      cardLast4,
+      language: link.language,
+    },
     });
   } catch (error) {
     console.error("❌ Error checking progress:", error);
