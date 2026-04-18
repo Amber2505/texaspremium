@@ -52,6 +52,7 @@ export default function SignConsentPage({ params }: PageProps) {
   const [isSigned, setIsSigned] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [avsAttested, setAvsAttested] = useState(false); // ✅ NEW: AVS zip attestation
   const [clientIP, setClientIP] = useState("");
   const [isCheckingProgress, setIsCheckingProgress] = useState(true);
 
@@ -64,6 +65,11 @@ export default function SignConsentPage({ params }: PageProps) {
   );
   const [isLoadingDetails, setIsLoadingDetails] = useState(!!linkId);
 
+  // ✅ NEW: Behavioral tracking refs (no re-renders)
+  const pageLoadTimeRef = useRef<number>(Date.now());
+  const maxScrollDepthRef = useRef<number>(0);
+  const fieldInteractionsRef = useRef<Record<string, number>>({});
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const signatureSectionRef = useRef<HTMLDivElement>(null);
@@ -75,7 +81,29 @@ export default function SignConsentPage({ params }: PageProps) {
     });
   };
 
-  // ✅ Poll check-progress until the card number arrives from Square webhook
+  // ✅ NEW: Track max scroll depth (percentage of page scrolled)
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.scrollY;
+      const docHeight =
+        document.documentElement.scrollHeight - window.innerHeight;
+      if (docHeight <= 0) return;
+      const pct = Math.min(100, Math.round((scrollTop / docHeight) * 100));
+      if (pct > maxScrollDepthRef.current) {
+        maxScrollDepthRef.current = pct;
+      }
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // ✅ NEW: Track field interactions
+  const trackFieldFocus = (fieldName: string) => {
+    fieldInteractionsRef.current[fieldName] =
+      (fieldInteractionsRef.current[fieldName] || 0) + 1;
+  };
+
+  // Poll check-progress until the card number arrives from Square webhook
   useEffect(() => {
     if (!linkId) {
       setIsCheckingProgress(false);
@@ -85,7 +113,7 @@ export default function SignConsentPage({ params }: PageProps) {
 
     let mounted = true;
     let attempts = 0;
-    const MAX_ATTEMPTS = 20; // 20 × 1.5s = 30s max wait
+    const MAX_ATTEMPTS = 20;
     let timeoutId: NodeJS.Timeout | null = null;
 
     const fetchOnce = async (): Promise<boolean> => {
@@ -95,7 +123,6 @@ export default function SignConsentPage({ params }: PageProps) {
 
         if (!mounted) return true;
 
-        // Consent already signed? Skip ahead.
         if (data.success && data.progress?.consent) {
           router.push(data.redirectTo);
           return true;
@@ -108,11 +135,11 @@ export default function SignConsentPage({ params }: PageProps) {
           if (amt) setResolvedAmount((amt / 100).toFixed(2));
           if (card) {
             setResolvedCard(card);
-            return true; // ✅ got the card — stop polling
+            return true;
           }
         }
 
-        return false; // card still missing — poll again
+        return false;
       } catch (err) {
         console.error("Error fetching progress:", err);
         return false;
@@ -123,7 +150,6 @@ export default function SignConsentPage({ params }: PageProps) {
       const gotCard = await fetchOnce();
       if (!mounted) return;
 
-      // Show form immediately; don't block on card
       setIsCheckingProgress(false);
 
       if (gotCard || attempts >= MAX_ATTEMPTS) {
@@ -252,6 +278,10 @@ export default function SignConsentPage({ params }: PageProps) {
       alert(t("agreeTerms"));
       return;
     }
+    if (!avsAttested) {
+      alert(t("confirmAvs"));
+      return;
+    }
     if (!resolvedCard) {
       alert(t("cardLoading"));
       return;
@@ -295,12 +325,46 @@ export default function SignConsentPage({ params }: PageProps) {
           setResolvedEmail(data.linkData.customerEmail);
         }
       } catch {
-        // Will fall back to server-side lookup in generate-signed-consent
+        // Fall back to server-side lookup in generate-signed-consent
       }
     }
 
     const userAgent =
       typeof window !== "undefined" ? navigator.userAgent : "Unknown";
+
+    // ✅ NEW: Collect behavioral evidence
+    const timeOnPageSeconds = Math.round(
+      (Date.now() - pageLoadTimeRef.current) / 1000,
+    );
+
+    const browserFingerprint = {
+      screenResolution:
+        typeof window !== "undefined"
+          ? `${window.screen.width}x${window.screen.height}`
+          : "Unknown",
+      viewport:
+        typeof window !== "undefined"
+          ? `${window.innerWidth}x${window.innerHeight}`
+          : "Unknown",
+      timezone:
+        typeof Intl !== "undefined"
+          ? Intl.DateTimeFormat().resolvedOptions().timeZone
+          : "Unknown",
+      language:
+        typeof navigator !== "undefined" ? navigator.language : "Unknown",
+      platform:
+        typeof navigator !== "undefined" ? navigator.platform : "Unknown",
+      colorDepth: typeof window !== "undefined" ? window.screen.colorDepth : 0,
+    };
+
+    const behavioralEvidence = {
+      timeOnPageSeconds,
+      maxScrollDepthPct: maxScrollDepthRef.current,
+      fieldInteractions: fieldInteractionsRef.current,
+      browserFingerprint,
+      avsAttested,
+      agreedToTerms,
+    };
 
     try {
       const response = await fetch("/api/generate-signed-consent", {
@@ -320,6 +384,7 @@ export default function SignConsentPage({ params }: PageProps) {
           cardholderEmail: cardholderEmail.trim(),
           billingZip: billingZip.trim(),
           userAgent,
+          behavioralEvidence, // ✅ NEW
         }),
       });
 
@@ -605,7 +670,13 @@ export default function SignConsentPage({ params }: PageProps) {
                 {t("terms")}
               </p>
               <div className="space-y-2.5">
-                {[t("term1"), t("term2"), t("term3")].map((term, i) => (
+                {[
+                  t("term1"),
+                  t("term2"),
+                  t("term3"),
+                  t("term4"),
+                  t("term5"),
+                ].map((term, i) => (
                   <div key={i} className="flex items-start gap-2.5">
                     <div
                       className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5"
@@ -664,7 +735,10 @@ export default function SignConsentPage({ params }: PageProps) {
                 placeholder={t("enterFullName")}
                 className={inputClass}
                 style={{ boxShadow: "none" }}
-                onFocus={inputFocus}
+                onFocus={(e) => {
+                  trackFieldFocus("customerName");
+                  inputFocus(e);
+                }}
                 onBlur={inputBlur}
                 required
               />
@@ -687,7 +761,10 @@ export default function SignConsentPage({ params }: PageProps) {
                   placeholder={t("cardholderEmailPlaceholder")}
                   className={inputClass}
                   style={{ boxShadow: "none" }}
-                  onFocus={inputFocus}
+                  onFocus={(e) => {
+                    trackFieldFocus("cardholderEmail");
+                    inputFocus(e);
+                  }}
                   onBlur={inputBlur}
                   required
                 />
@@ -716,7 +793,10 @@ export default function SignConsentPage({ params }: PageProps) {
                   maxLength={5}
                   className={inputClass}
                   style={{ boxShadow: "none" }}
-                  onFocus={inputFocus}
+                  onFocus={(e) => {
+                    trackFieldFocus("billingZip");
+                    inputFocus(e);
+                  }}
                   onBlur={inputBlur}
                   required
                 />
@@ -882,6 +962,20 @@ export default function SignConsentPage({ params }: PageProps) {
               )}
             </div>
 
+            {/* ✅ NEW: AVS Zip Attestation */}
+            <label className="flex items-start gap-3 cursor-pointer mb-4 p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition-all bg-blue-50/30">
+              <input
+                type="checkbox"
+                checked={avsAttested}
+                onChange={(e) => setAvsAttested(e.target.checked)}
+                className="mt-0.5 w-5 h-5 border-gray-300 rounded cursor-pointer"
+                style={{ accentColor: "#1E3A5F" }}
+              />
+              <span className="text-xs text-gray-700 leading-relaxed">
+                {t("avsAttestation")}
+              </span>
+            </label>
+
             {/* Agreement Checkbox */}
             <label className="flex items-start gap-3 cursor-pointer mb-6 p-4 rounded-lg border border-gray-200 hover:border-gray-300 transition-all">
               <input
@@ -902,6 +996,7 @@ export default function SignConsentPage({ params }: PageProps) {
               disabled={
                 !customerName.trim() ||
                 !agreedToTerms ||
+                !avsAttested ||
                 !cardholderEmail.trim() ||
                 billingZip.length !== 5 ||
                 isSubmitting
