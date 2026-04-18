@@ -367,8 +367,8 @@ By signing this form, I represent and confirm the following:
     yPosition -= 4;
 
     const sigBoxX = leftX;
-    const sigBoxWidth = 260;
-    const sigBoxHeight = 58;
+    const sigBoxWidth = 320;
+    const sigBoxHeight = 80;
     const sigBoxY = yPosition - sigBoxHeight;
 
     page.drawRectangle({
@@ -426,20 +426,27 @@ By signing this form, I represent and confirm the following:
     let cy = pageHeight - 36;
 
     // ── HEADER ──
+    // Draw title on the left
     cert.drawText("Certificate Of Completion", {
       x: margin, y: cy, size: 14, font: boldFont, color: rgb(0.1, 0.1, 0.1),
     });
+    // Draw logo on the right, vertically centered with the title
     if (logoImage) {
       try {
-        const logoDims = logoImage.scale(0.16);
+        const logoDims = logoImage.scale(0.14);
         cert.drawImage(logoImage, {
           x: pageWidth - margin - logoDims.width,
-          y: cy - logoDims.height + 12,
+          y: cy - (logoDims.height - 14) / 2,
           width: logoDims.width, height: logoDims.height,
         });
-      } catch (e) {}
+        // Push cy down enough so the divider clears the logo
+        cy -= Math.max(logoDims.height + 4, 20);
+      } catch (e) {
+        cy -= 20;
+      }
+    } else {
+      cy -= 20;
     }
-    cy -= 10;
     cert.drawLine({
       start: { x: margin, y: cy }, end: { x: pageWidth - margin, y: cy },
       thickness: 0.5, color: rgb(0.7, 0.7, 0.7),
@@ -643,9 +650,9 @@ By signing this form, I represent and confirm the following:
     // Check if we need a new page
     const legalText = `By electronically signing this document, the signer acknowledges and agrees that: (1) their electronic signature is legally equivalent to a handwritten signature under the E-SIGN Act (15 U.S.C. 7001 et seq.) and UETA; (2) they had full opportunity to review the document before signing; (3) they are the authorized cardholder of the payment card identified herein; (4) they consented to conduct this transaction electronically; and (5) the policy premium is earned upon binding per Texas insurance law. This certificate is cryptographically sealed; any modification to the document will invalidate the signature.`;
 
-    // Estimate legal text height: ~6 lines at 6.8px + 2.5 spacing = ~56px
-    // Crypto seal: ~50px. Footer: 30px. Total needed: ~136px
-    const neededSpace = 150;
+    // Estimate legal text height: ~6 lines at 7px + 2.5 spacing = ~58px
+    // Crypto seal: ~48px. Section header: 20px. Footer: 30px. Total needed: ~156px
+    const neededSpace = 170;
 
     if (cy < neededSpace + 30) {
       // Add footer to cert page and continue on page 3
