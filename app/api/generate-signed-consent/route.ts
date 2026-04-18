@@ -613,38 +613,44 @@ By signing this form, I represent and confirm the following:
     ];
 
     // Audit table headers
-    cert.drawText("Event", { x: margin + 4, y: cy, size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
-    cert.drawText("Actor / Details", { x: margin + 140, y: cy, size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
-    cert.drawText("IP Address", { x: margin + 340, y: cy, size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
-    cert.drawText("Timestamp (CST)", { x: margin + 420, y: cy, size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
-    cy -= 4;
-    cert.drawLine({
-      start: { x: margin, y: cy }, end: { x: pageWidth - margin, y: cy },
-      thickness: 0.3, color: rgb(0.8, 0.8, 0.8),
+    cert.drawRectangle({
+      x: margin, y: cy - 4, width: contentWidth, height: 14,
+      color: rgb(0.88, 0.88, 0.88), borderWidth: 0,
     });
-    cy -= 4;
+    cert.drawText("Event", { x: margin + 4, y: cy + 2, size: 7.5, font: boldFont, color: rgb(0.2, 0.2, 0.2) });
+    cert.drawText("Actor / Details", { x: margin + 145, y: cy + 2, size: 7.5, font: boldFont, color: rgb(0.2, 0.2, 0.2) });
+    cert.drawText("IP Address", { x: margin + 340, y: cy + 2, size: 7.5, font: boldFont, color: rgb(0.2, 0.2, 0.2) });
+    cert.drawText("Timestamp (CST)", { x: margin + 420, y: cy + 2, size: 7.5, font: boldFont, color: rgb(0.2, 0.2, 0.2) });
+    cy -= 16; // clear below the header bar before first row
 
     for (let i = 0; i < events.length; i++) {
       const ev = events[i];
-      const rowHeight = 22;
+      const rowHeight = 26; // taller rows so 2 lines of text don't overlap
+
+      // Alternating background
       if (i % 2 === 0) {
         cert.drawRectangle({
-          x: margin, y: cy - rowHeight + 6, width: contentWidth, height: rowHeight,
+          x: margin, y: cy - rowHeight + 8, width: contentWidth, height: rowHeight,
           color: rgb(0.97, 0.97, 0.97), borderWidth: 0,
         });
       }
-      cert.drawText(ev.action, { x: margin + 4, y: cy + 4, size: 8, font: boldFont, color: rgb(0.15, 0.15, 0.15) });
-      cert.drawText(truncateToWidth(ev.actor, 190, font, 7), { x: margin + 4, y: cy - 4, size: 7, font, color: rgb(0.4, 0.4, 0.4) });
 
-      cert.drawText(truncateToWidth(ev.detail, 190, font, 7.5), { x: margin + 140, y: cy + 4, size: 7.5, font, color: rgb(0.25, 0.25, 0.25) });
+      // Line 1: action name (bold) + detail + ip + timestamp — all at same top baseline
+      const topY = cy + 6;
+      const subY = cy - 4; // line 2: actor (sub-label)
 
-      cert.drawText(ev.ip, { x: margin + 340, y: cy + 4, size: 7, font, color: rgb(0.35, 0.35, 0.35) });
+      cert.drawText(ev.action, { x: margin + 4, y: topY, size: 8, font: boldFont, color: rgb(0.15, 0.15, 0.15) });
+      cert.drawText(truncateToWidth(ev.actor, 135, font, 6.5), { x: margin + 4, y: subY, size: 6.5, font, color: rgb(0.45, 0.45, 0.45) });
 
-      cert.drawText(formatCSTTimestamp(ev.ts), { x: margin + 420, y: cy + 4, size: 7, font, color: rgb(0.25, 0.25, 0.25) });
+      cert.drawText(truncateToWidth(ev.detail, 185, font, 7.5), { x: margin + 145, y: topY, size: 7.5, font, color: rgb(0.25, 0.25, 0.25) });
+
+      cert.drawText(truncateToWidth(ev.ip, 72, font, 7), { x: margin + 340, y: topY, size: 7, font, color: rgb(0.35, 0.35, 0.35) });
+
+      cert.drawText(formatCSTTimestamp(ev.ts), { x: margin + 420, y: topY, size: 7, font, color: rgb(0.25, 0.25, 0.25) });
 
       cy -= rowHeight;
     }
-    cy -= 8;
+    cy -= 10;
 
     // ── LEGAL DISCLOSURE ──
     // Check if we need a new page
