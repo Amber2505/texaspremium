@@ -17,14 +17,15 @@ function drawWrappedText(
   maxWidth: number,
   fontSize: number,
   fontObj: PDFFont,
-  color: any
+  color: any,
+  lineSpacing = 3
 ): number {
   const paragraphs = text.split("\n");
   let currentY = y;
 
   for (const paragraph of paragraphs) {
     if (paragraph.trim() === "") {
-      currentY -= fontSize + 4;
+      currentY -= fontSize + lineSpacing;
       continue;
     }
 
@@ -39,7 +40,7 @@ function drawWrappedText(
         page.drawText(currentLine.trim(), {
           x, y: currentY, size: fontSize, font: fontObj, color,
         });
-        currentY -= fontSize + 3;
+        currentY -= fontSize + lineSpacing;
         currentLine = word + " ";
       } else {
         currentLine = testLine;
@@ -50,7 +51,7 @@ function drawWrappedText(
       page.drawText(currentLine.trim(), {
         x, y: currentY, size: fontSize, font: fontObj, color,
       });
-      currentY -= fontSize + 2;
+      currentY -= fontSize + lineSpacing;
     }
 
     currentY -= 1;
@@ -82,6 +83,29 @@ function drawSectionHeader(page: PDFPage, x: number, y: number, width: number, t
   });
 }
 
+// Helper: draw a two-column metadata row
+function drawMetaRow(
+  page: PDFPage,
+  y: number,
+  l1: string, v1: string,
+  l2: string, v2: string,
+  col1X: number, col2X: number,
+  labelW: number, margin: number,
+  font: PDFFont, boldFont: PDFFont,
+  contentWidth: number
+) {
+  page.drawText(l1, { x: col1X, y, size: 8, font: boldFont, color: rgb(0.25, 0.25, 0.25) });
+  page.drawText(truncateToWidth(v1, contentWidth / 2 - labelW - 15, font, 8), {
+    x: col1X + labelW, y, size: 8, font, color: rgb(0.2, 0.2, 0.2),
+  });
+  if (l2) {
+    page.drawText(l2, { x: col2X, y, size: 8, font: boldFont, color: rgb(0.25, 0.25, 0.25) });
+    page.drawText(truncateToWidth(v2, 612 - margin - col2X - labelW, font, 8), {
+      x: col2X + labelW, y, size: 8, font, color: rgb(0.2, 0.2, 0.2),
+    });
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -96,7 +120,7 @@ export async function POST(request: Request) {
       cardholderEmail,
       billingZip,
       userAgent,
-      behavioralEvidence, // ✅ NEW
+      behavioralEvidence,
     } = body;
 
     let email = body.email || "";
@@ -179,46 +203,56 @@ export async function POST(request: Request) {
       month: "long", day: "numeric", year: "numeric",
     });
 
-    // ============================================================
-    // PAGE 1: Payment Authorization
-    // ============================================================
-    let page = pdfDoc.addPage([612, 792]);
     const pageWidth = 612;
     const pageHeight = 792;
-    let yPosition = pageHeight - 50;
 
+    // ============================================================
+    // PAGE 1: Payment Authorization — compact, all on one page
+    // ============================================================
+    const page = pdfDoc.addPage([pageWidth, pageHeight]);
+    let yPosition = pageHeight - 36; // tighter top margin
+
+    // --- Logo (smaller) ---
     let logoImage: any = null;
     try {
       const logoPath = `${process.cwd()}/public/logo.png`;
       const fs = require("fs");
       const logoBytes = fs.readFileSync(logoPath);
       logoImage = await pdfDoc.embedPng(logoBytes);
-      const logoDims = logoImage.scale(0.3);
+      const logoDims = logoImage.scale(0.22); // smaller scale
       page.drawImage(logoImage, {
         x: (pageWidth - logoDims.width) / 2,
         y: yPosition - logoDims.height,
         width: logoDims.width, height: logoDims.height,
       });
-      yPosition -= logoDims.height + 15;
+      yPosition -= logoDims.height + 8; // tighter gap
     } catch (error) {
-      yPosition -= 15;
+      yPosition -= 8;
     }
 
+    // --- Title ---
     const titleText = isSpanish ? "FORMULARIO DE AUTORIZACION DE PAGO" : "PAYMENT AUTHORIZATION FORM";
     page.drawText(titleText, {
-      x: (pageWidth - boldFont.widthOfTextAtSize(titleText, 15)) / 2,
-      y: yPosition, size: 15, font: boldFont, color: rgb(0, 0, 0),
+      x: (pageWidth - boldFont.widthOfTextAtSize(titleText, 13)) / 2,
+      y: yPosition, size: 13, font: boldFont, color: rgb(0, 0, 0),
     });
-    yPosition -= 18;
+    yPosition -= 14;
 
     const dateText = `Date: ${todayDate}`;
     page.drawText(dateText, {
-      x: (pageWidth - font.widthOfTextAtSize(dateText, 10)) / 2,
-      y: yPosition, size: 10, font, color: rgb(0, 0, 0),
+      x: (pageWidth - font.widthOfTextAtSize(dateText, 9)) / 2,
+      y: yPosition, size: 9, font, color: rgb(0.3, 0.3, 0.3),
     });
-    yPosition -= 20;
+    yPosition -= 14;
 
-    // ✅ UPDATED: Complete authorization text with all legal clauses
+    // Thin divider
+    page.drawLine({
+      start: { x: 45, y: yPosition }, end: { x: pageWidth - 45, y: yPosition },
+      thickness: 0.5, color: rgb(0.8, 0.8, 0.8),
+    });
+    yPosition -= 10;
+
+    // --- Auth text (compact font & line spacing) ---
     const authText = isSpanish
       ? `Yo, ${customerName}, confirmo que soy la persona cuyo nombre aparece en la tarjeta de credito/debito que termina en ****${cardLast4}. Confirmo que soy el titular autorizado de esta tarjeta y que estoy realizando esta transaccion de mi propia voluntad.
 
@@ -263,51 +297,78 @@ By signing this form, I represent and confirm the following:
 
 8. I confirm that all information provided, including my name, email address, and billing zip code, is true and accurate.`;
 
-    yPosition = drawWrappedText(page, authText, 45, yPosition, pageWidth - 90, 8.3, font, rgb(0, 0, 0));
-    yPosition -= 6;
-
-    // If we're too close to bottom, start a new page
-    if (yPosition < 240) {
-      page.drawText(`Document ID: ${documentId}`, {
-        x: 50, y: 30, size: 8, font, color: rgb(0.5, 0.5, 0.5),
-      });
-      page = pdfDoc.addPage([612, 792]);
-      yPosition = pageHeight - 60;
-    }
-
-    // Details grid
-    const detailRows = [
-      { label: isSpanish ? "Nombre:" : "Name:", value: customerName },
-      { label: isSpanish ? "Tarjeta:" : "Card:", value: `****${cardLast4}` },
-      { label: isSpanish ? "Monto:" : "Amount:", value: `$${amount} USD`, bold: true, color: rgb(0, 0, 0.6) },
-      { label: isSpanish ? "Correo Titular:" : "Cardholder Email:", value: cardholderEmail || "(not provided)" },
-      { label: isSpanish ? "Codigo Postal:" : "Billing Zip Code:", value: billingZip || "(not provided)" },
-      { label: isSpanish ? "Correo (Cuenta):" : "Account Email:", value: email },
-      { label: isSpanish ? "Fecha:" : "Date Signed:", value: todayDate },
-    ];
-
-    for (const row of detailRows) {
-      page.drawText(row.label, {
-        x: 50, y: yPosition, size: 10, font: boldFont, color: rgb(0, 0, 0),
-      });
-      page.drawText(row.value, {
-        x: 200, y: yPosition, size: 10,
-        font: row.bold ? boldFont : font,
-        color: (row as any).color || rgb(0, 0, 0),
-      });
-      yPosition -= 16;
-    }
+    // Use fontSize 8.0 with tight line spacing to keep compact
+    yPosition = drawWrappedText(page, authText, 45, yPosition, pageWidth - 90, 8.0, font, rgb(0, 0, 0), 2.5);
     yPosition -= 8;
 
-    // Signature section
+    // Divider before details
+    page.drawLine({
+      start: { x: 45, y: yPosition }, end: { x: pageWidth - 45, y: yPosition },
+      thickness: 0.5, color: rgb(0.8, 0.8, 0.8),
+    });
+    yPosition -= 10;
+
+    // --- Details grid (2-column layout to save vertical space) ---
+    const leftX = 45;
+    const midX = 310;
+    const labelWidth = 110;
+    const rowH = 13; // compact row height
+
+    const col1Rows = [
+      { label: isSpanish ? "Nombre:" : "Name:", value: customerName },
+      { label: isSpanish ? "Tarjeta:" : "Card:", value: `****${cardLast4}` },
+      { label: isSpanish ? "Monto:" : "Amount:", value: `$${amount} USD`, bold: true, blue: true },
+      { label: isSpanish ? "Fecha:" : "Date Signed:", value: todayDate },
+    ];
+    const col2Rows = [
+      { label: isSpanish ? "Correo Titular:" : "Cardholder Email:", value: cardholderEmail || "(not provided)" },
+      { label: isSpanish ? "Codigo Postal:" : "Billing Zip:", value: billingZip || "(not provided)" },
+      { label: isSpanish ? "Correo (Cuenta):" : "Account Email:", value: email },
+    ];
+
+    const maxRows = Math.max(col1Rows.length, col2Rows.length);
+    for (let i = 0; i < maxRows; i++) {
+      const rowY = yPosition - i * rowH;
+
+      if (col1Rows[i]) {
+        page.drawText(col1Rows[i].label, {
+          x: leftX, y: rowY, size: 9, font: boldFont, color: rgb(0, 0, 0),
+        });
+        page.drawText(col1Rows[i].value, {
+          x: leftX + labelWidth, y: rowY, size: 9,
+          font: (col1Rows[i] as any).bold ? boldFont : font,
+          color: (col1Rows[i] as any).blue ? rgb(0, 0, 0.6) : rgb(0, 0, 0),
+        });
+      }
+
+      if (col2Rows[i]) {
+        page.drawText(col2Rows[i].label, {
+          x: midX, y: rowY, size: 9, font: boldFont, color: rgb(0, 0, 0),
+        });
+        const val2 = truncateToWidth(col2Rows[i].value, pageWidth - 45 - midX - 90, font, 9);
+        page.drawText(val2, {
+          x: midX + labelWidth - 10, y: rowY, size: 9, font, color: rgb(0, 0, 0),
+        });
+      }
+    }
+    yPosition -= maxRows * rowH + 10;
+
+    // Divider before signature
+    page.drawLine({
+      start: { x: 45, y: yPosition }, end: { x: pageWidth - 45, y: yPosition },
+      thickness: 0.5, color: rgb(0.8, 0.8, 0.8),
+    });
+    yPosition -= 10;
+
+    // --- Signature section ---
     page.drawText(isSpanish ? "Firma:" : "Signature:", {
-      x: 50, y: yPosition, size: 10, font: boldFont, color: rgb(0, 0, 0),
+      x: leftX, y: yPosition, size: 9, font: boldFont, color: rgb(0, 0, 0),
     });
     yPosition -= 4;
 
-    const sigBoxX = 50;
-    const sigBoxWidth = 300;
-    const sigBoxHeight = 70;
+    const sigBoxX = leftX;
+    const sigBoxWidth = 260;
+    const sigBoxHeight = 58;
     const sigBoxY = yPosition - sigBoxHeight;
 
     page.drawRectangle({
@@ -328,7 +389,7 @@ By signing this form, I represent and confirm the following:
       const maxSigHeight = sigBoxHeight - 25;
       const scale = Math.min(maxSigWidth / signatureImage.width, maxSigHeight / signatureImage.height);
       page.drawImage(signatureImage, {
-        x: sigBoxX + 10, y: sigBoxY + 12,
+        x: sigBoxX + 10, y: sigBoxY + 10,
         width: signatureImage.width * scale,
         height: signatureImage.height * scale,
       });
@@ -336,21 +397,33 @@ By signing this form, I represent and confirm the following:
       console.error("Error embedding signature:", error);
     }
 
-    const verCodeY = sigBoxY - 10;
-    page.drawText(envelopeId, { x: sigBoxX + 8, y: verCodeY, size: 7, font, color: rgb(0.45, 0.45, 0.45) });
-    page.drawText(`IP: ${signerIP}`, { x: sigBoxX + 8, y: verCodeY - 10, size: 7, font, color: rgb(0.45, 0.45, 0.45) });
+    // Envelope ID and IP to the right of the sig box
+    const infoX = sigBoxX + sigBoxWidth + 16;
+    page.drawText(`Envelope ID:`, { x: infoX, y: sigBoxY + sigBoxHeight - 10, size: 7, font: boldFont, color: rgb(0.35, 0.35, 0.35) });
+    page.drawText(envelopeId, { x: infoX, y: sigBoxY + sigBoxHeight - 20, size: 6.5, font, color: rgb(0.45, 0.45, 0.45) });
+    page.drawText(`IP: ${signerIP}`, { x: infoX, y: sigBoxY + sigBoxHeight - 30, size: 7, font, color: rgb(0.45, 0.45, 0.45) });
+    page.drawText(`Signed: ${formatCSTTimestamp(documentSignedAt)}`, { x: infoX, y: sigBoxY + sigBoxHeight - 40, size: 7, font, color: rgb(0.45, 0.45, 0.45) });
 
+    // Document ID footer
     page.drawText(`Document ID: ${documentId}`, {
-      x: 50, y: 30, size: 8, font, color: rgb(0.5, 0.5, 0.5),
+      x: 45, y: 22, size: 7.5, font, color: rgb(0.5, 0.5, 0.5),
+    });
+    const copyright1 = `© ${new Date().getFullYear()} Texas Premium Insurance Services, LLC. All rights reserved.`;
+    page.drawText(copyright1, {
+      x: pageWidth - 45 - font.widthOfTextAtSize(copyright1, 7),
+      y: 22, size: 7, font, color: rgb(0.5, 0.5, 0.5),
     });
 
     // ============================================================
-    // PAGE 2: CERTIFICATE OF COMPLETION — SINGLE PAGE
+    // PAGE 2: CERTIFICATE OF COMPLETION
     // ============================================================
-    const cert = pdfDoc.addPage([612, 792]);
+    const cert = pdfDoc.addPage([pageWidth, pageHeight]);
     const margin = 40;
-    const contentWidth = 612 - margin * 2;
-    let cy = 792 - 40;
+    const contentWidth = pageWidth - margin * 2;
+    const col1X = margin;
+    const col2X = margin + contentWidth / 2 + 10;
+    const labelW = 110;
+    let cy = pageHeight - 36;
 
     // ── HEADER ──
     cert.drawText("Certificate Of Completion", {
@@ -358,9 +431,9 @@ By signing this form, I represent and confirm the following:
     });
     if (logoImage) {
       try {
-        const logoDims = logoImage.scale(0.18);
+        const logoDims = logoImage.scale(0.16);
         cert.drawImage(logoImage, {
-          x: 612 - margin - logoDims.width,
+          x: pageWidth - margin - logoDims.width,
           y: cy - logoDims.height + 12,
           width: logoDims.width, height: logoDims.height,
         });
@@ -368,126 +441,119 @@ By signing this form, I represent and confirm the following:
     }
     cy -= 10;
     cert.drawLine({
-      start: { x: margin, y: cy }, end: { x: 612 - margin, y: cy },
+      start: { x: margin, y: cy }, end: { x: pageWidth - margin, y: cy },
       thickness: 0.5, color: rgb(0.7, 0.7, 0.7),
     });
     cy -= 14;
 
-    // ── ENVELOPE METADATA (2-column grid) ──
-    const col1X = margin;
-    const col2X = margin + contentWidth / 2 + 10;
-    const labelW = 110;
-
-    const drawMetaRow = (y: number, l1: string, v1: string, l2: string, v2: string) => {
-      cert.drawText(l1, { x: col1X, y, size: 8, font: boldFont, color: rgb(0.25, 0.25, 0.25) });
-      cert.drawText(truncateToWidth(v1, contentWidth / 2 - labelW - 15, font, 8), {
-        x: col1X + labelW, y, size: 8, font, color: rgb(0.2, 0.2, 0.2),
-      });
-      if (l2) {
-        cert.drawText(l2, { x: col2X, y, size: 8, font: boldFont, color: rgb(0.25, 0.25, 0.25) });
-        cert.drawText(truncateToWidth(v2, 612 - margin - col2X - labelW, font, 8), {
-          x: col2X + labelW, y, size: 8, font, color: rgb(0.2, 0.2, 0.2),
-        });
-      }
+    // Helper scoped to cert page
+    const certMetaRow = (y: number, l1: string, v1: string, l2: string, v2: string) => {
+      drawMetaRow(cert, y, l1, v1, l2, v2, col1X, col2X, labelW, margin, font, boldFont, contentWidth);
     };
 
-    drawMetaRow(cy, "Envelope ID:", envelopeId, "Status:", "Completed");
-    cy -= 11;
-    drawMetaRow(cy, "Subject:", "Payment Authorization", "Signatures:", "1");
-    cy -= 11;
-    drawMetaRow(cy, "Document Pages:", "1", "Envelope Originator:", "Texas Premium Insurance");
-    cy -= 11;
-    drawMetaRow(cy, "Certificate Pages:", "1", "", "Services, LLC");
-    cy -= 11;
-    drawMetaRow(cy, "AutoNav:", "Enabled", "", "2317 N Josey Ln Ste 104");
-    cy -= 11;
-    drawMetaRow(cy, "Envelope Stamping:", "Enabled", "", "Carrollton, TX 75006");
-    cy -= 11;
-    drawMetaRow(cy, "Time Zone:", "(UTC-06:00) Central Time (US)", "", "support@texaspremiumins.com");
-    cy -= 11;
-    drawMetaRow(cy, "Document ID:", documentId.substring(0, 28), "IP Address:", adminIP);
-    cy -= 14;
+    // ── ENVELOPE METADATA ──
+    certMetaRow(cy, "Envelope ID:", envelopeId, "Status:", "Completed");
+    cy -= 12;
+    certMetaRow(cy, "Subject:", "Payment Authorization", "Signatures:", "1");
+    cy -= 12;
+    certMetaRow(cy, "Document Pages:", "1", "Envelope Originator:", "Texas Premium Insurance");
+    cy -= 12;
+    certMetaRow(cy, "Certificate Pages:", "1", "", "Services, LLC");
+    cy -= 12;
+    certMetaRow(cy, "AutoNav:", "Enabled", "", "2317 N Josey Ln Ste 104");
+    cy -= 12;
+    certMetaRow(cy, "Envelope Stamping:", "Enabled", "", "Carrollton, TX 75006");
+    cy -= 12;
+    certMetaRow(cy, "Time Zone:", "(UTC-06:00) Central Time (US)", "", "support@texaspremiumins.com");
+    cy -= 12;
+    certMetaRow(cy, "Document ID:", documentId.substring(0, 28), "IP Address:", adminIP);
+    cy -= 16;
 
     // ── RECORD TRACKING ──
     drawSectionHeader(cert, margin, cy, contentWidth, "Record Tracking", boldFont);
-    cy -= 18;
-    drawMetaRow(cy, "Status:", "Original", "Holder:", "Texas Premium Insurance");
-    cy -= 11;
-    drawMetaRow(cy, "Created:", formatCSTTimestamp(documentCreatedAt), "Email:", "support@texaspremiumins.com");
-    cy -= 11;
-    drawMetaRow(cy, "Signing Method:", "Electronic (E-SIGN / UETA)", "Location:", "Web - Self-Service Portal");
-    cy -= 14;
+    cy -= 20;
+    certMetaRow(cy, "Status:", "Original", "Holder:", "Texas Premium Insurance");
+    cy -= 12;
+    certMetaRow(cy, "Created:", formatCSTTimestamp(documentCreatedAt), "Email:", "support@texaspremiumins.com");
+    cy -= 12;
+    certMetaRow(cy, "Signing Method:", "Electronic (E-SIGN / UETA)", "Location:", "Web - Self-Service Portal");
+    cy -= 16;
 
     // ── SIGNER EVENTS ──
     drawSectionHeader(cert, margin, cy, contentWidth, "Signer Events", boldFont);
-    cy -= 4;
-    cy -= 12;
+    cy -= 16;
+
+    // Column headers
     cert.drawText("Signer", { x: margin + 4, y: cy, size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
-    cert.drawText("Signature", { x: margin + 180, y: cy, size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
-    cert.drawText("Timestamp", { x: margin + 360, y: cy, size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
-    cy -= 8;
+    cert.drawText("Signature", { x: margin + 190, y: cy, size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
+    cert.drawText("Timestamp", { x: margin + 390, y: cy, size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
+    cy -= 6;
     cert.drawLine({
-      start: { x: margin, y: cy }, end: { x: 612 - margin, y: cy },
+      start: { x: margin, y: cy }, end: { x: pageWidth - margin, y: cy },
       thickness: 0.3, color: rgb(0.8, 0.8, 0.8),
     });
     cy -= 4;
 
     const signerStartY = cy;
+
+    // Signer info (left column)
     cy -= 10;
     cert.drawText(customerName, { x: margin + 4, y: cy, size: 9, font: boldFont, color: rgb(0.15, 0.15, 0.15) });
-    cy -= 10;
-    cert.drawText(truncateToWidth(email, 170, font, 8), { x: margin + 4, y: cy, size: 8, font, color: rgb(0.35, 0.35, 0.35) });
-    cy -= 10;
+    cy -= 11;
+    cert.drawText(truncateToWidth(email, 175, font, 8), { x: margin + 4, y: cy, size: 8, font, color: rgb(0.35, 0.35, 0.35) });
+    cy -= 11;
     cert.drawText(`Security: Email + AVS Zip + IP`, { x: margin + 4, y: cy, size: 7.5, font, color: rgb(0.45, 0.45, 0.45) });
-    cy -= 9;
+    cy -= 10;
     cert.drawText(`Verified cardholder attestation`, { x: margin + 4, y: cy, size: 7.5, font, color: rgb(0.45, 0.45, 0.45) });
 
+    // Signature image (middle column)
     try {
       const base64Data = signatureDataUrl.split(",")[1];
       const signatureBytes = Buffer.from(base64Data, "base64");
       const sigImg = await pdfDoc.embedPng(signatureBytes);
       const maxW = 150;
-      const maxH = 40;
+      const maxH = 38;
       const sc = Math.min(maxW / sigImg.width, maxH / sigImg.height);
       cert.drawImage(sigImg, {
-        x: margin + 180, y: signerStartY - 36,
+        x: margin + 190, y: signerStartY - 40,
         width: sigImg.width * sc, height: sigImg.height * sc,
       });
       cert.drawText(`Method: ${signatureMethod}`, {
-        x: margin + 180, y: signerStartY - 46, size: 7, font, color: rgb(0.45, 0.45, 0.45),
+        x: margin + 190, y: signerStartY - 48, size: 7, font, color: rgb(0.45, 0.45, 0.45),
       });
       cert.drawText(`Using IP: ${signerIP}`, {
-        x: margin + 180, y: signerStartY - 55, size: 7, font, color: rgb(0.45, 0.45, 0.45),
+        x: margin + 190, y: signerStartY - 58, size: 7, font, color: rgb(0.45, 0.45, 0.45),
       });
     } catch (e) {}
 
+    // Timestamps (right column)
     cert.drawText(`Sent: ${formatCSTTimestamp(documentSentAt)}`, {
-      x: margin + 360, y: signerStartY - 10, size: 7.5, font, color: rgb(0.3, 0.3, 0.3),
+      x: margin + 390, y: signerStartY - 12, size: 7.5, font, color: rgb(0.3, 0.3, 0.3),
     });
     cert.drawText(`Viewed: ${formatCSTTimestamp(documentViewedAt)}`, {
-      x: margin + 360, y: signerStartY - 20, size: 7.5, font, color: rgb(0.3, 0.3, 0.3),
+      x: margin + 390, y: signerStartY - 24, size: 7.5, font, color: rgb(0.3, 0.3, 0.3),
     });
     cert.drawText(`Signed: ${formatCSTTimestamp(documentSignedAt)}`, {
-      x: margin + 360, y: signerStartY - 30, size: 7.5, font: boldFont, color: rgb(0.15, 0.4, 0.15),
+      x: margin + 390, y: signerStartY - 36, size: 7.5, font: boldFont, color: rgb(0.15, 0.4, 0.15),
     });
 
-    cy = signerStartY - 65;
+    cy = signerStartY - 72;
 
     // ── IDENTITY VERIFICATION ──
     drawSectionHeader(cert, margin, cy, contentWidth, "Identity Verification", boldFont);
-    cy -= 18;
-    drawMetaRow(cy, "Cardholder Name:", customerName, "Billing Zip (AVS):", billingZip || "(not provided)");
-    cy -= 11;
-    drawMetaRow(cy, "Cardholder Email:", cardholderEmail || "(not provided)", "Card Last 4:", `****${cardLast4}`);
-    cy -= 11;
-    drawMetaRow(cy, "Account Email:", email, "Amount Authorized:", `$${amount} USD`);
-    cy -= 11;
-    drawMetaRow(cy, "Signer IP Address:", signerIP, "AVS Zip Attestation:", behavioralEvidence?.avsAttested ? "Confirmed" : "Not Confirmed");
-    cy -= 14;
+    cy -= 20;
+    certMetaRow(cy, "Cardholder Name:", customerName, "Billing Zip (AVS):", billingZip || "(not provided)");
+    cy -= 12;
+    certMetaRow(cy, "Cardholder Email:", cardholderEmail || "(not provided)", "Card Last 4:", `****${cardLast4}`);
+    cy -= 12;
+    certMetaRow(cy, "Account Email:", email, "Amount Authorized:", `$${amount} USD`);
+    cy -= 12;
+    certMetaRow(cy, "Signer IP Address:", signerIP, "AVS Zip Attestation:", behavioralEvidence?.avsAttested ? "Confirmed" : "Not Confirmed");
+    cy -= 16;
 
-    // ── ✅ NEW: BEHAVIORAL EVIDENCE ──
+    // ── SIGNING BEHAVIOR & DEVICE EVIDENCE ──
     drawSectionHeader(cert, margin, cy, contentWidth, "Signing Behavior & Device Evidence", boldFont);
-    cy -= 18;
+    cy -= 20;
 
     const be = behavioralEvidence || {};
     const fp = be.browserFingerprint || {};
@@ -496,40 +562,40 @@ By signing this form, I represent and confirm the following:
       (sum: number, v: any) => sum + (typeof v === "number" ? v : 0), 0
     );
 
-    drawMetaRow(cy,
+    certMetaRow(cy,
       "Time on Page:", be.timeOnPageSeconds ? `${be.timeOnPageSeconds} seconds` : "N/A",
       "Max Scroll Depth:", be.maxScrollDepthPct != null ? `${be.maxScrollDepthPct}%` : "N/A"
     );
-    cy -= 11;
-    drawMetaRow(cy,
+    cy -= 12;
+    certMetaRow(cy,
       "Field Interactions:", `${totalFieldFocuses} total focus events`,
       "Terms Agreed:", be.agreedToTerms ? "Yes" : "No"
     );
-    cy -= 11;
-    drawMetaRow(cy,
+    cy -= 12;
+    certMetaRow(cy,
       "Screen Resolution:", fp.screenResolution || "Unknown",
       "Viewport:", fp.viewport || "Unknown"
     );
-    cy -= 11;
-    drawMetaRow(cy,
+    cy -= 12;
+    certMetaRow(cy,
       "Timezone:", fp.timezone || "Unknown",
       "Language:", fp.language || "Unknown"
     );
-    cy -= 11;
-    drawMetaRow(cy,
+    cy -= 12;
+    certMetaRow(cy,
       "Platform:", fp.platform || "Unknown",
       "Color Depth:", fp.colorDepth ? `${fp.colorDepth}-bit` : "Unknown"
     );
-    cy -= 11;
+    cy -= 12;
     cert.drawText("Browser/Device:", { x: col1X, y: cy, size: 8, font: boldFont, color: rgb(0.25, 0.25, 0.25) });
     cert.drawText(truncateToWidth(userAgent || "Unknown", contentWidth - labelW, font, 7.5), {
       x: col1X + labelW, y: cy, size: 7.5, font, color: rgb(0.2, 0.2, 0.2),
     });
-    cy -= 14;
+    cy -= 16;
 
-    // ── AUDIT TRAIL TIMELINE ──
+    // ── AUDIT TRAIL ──
     drawSectionHeader(cert, margin, cy, contentWidth, "Audit Trail", boldFont);
-    cy -= 4;
+    cy -= 14;
 
     const events = [
       { action: "Envelope Created", actor: "Texas Premium Insurance Services", detail: "support@texaspremiumins.com", ip: adminIP, ts: documentCreatedAt },
@@ -539,80 +605,127 @@ By signing this form, I represent and confirm the following:
       { action: "Envelope Completed", actor: "System", detail: "All signatures collected", ip: "System", ts: documentSignedAt },
     ];
 
-    cy -= 12;
+    // Audit table headers
     cert.drawText("Event", { x: margin + 4, y: cy, size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
-    cert.drawText("Details", { x: margin + 140, y: cy, size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
-    cert.drawText("Timestamp (CST)", { x: margin + 360, y: cy, size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
+    cert.drawText("Actor / Details", { x: margin + 140, y: cy, size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
+    cert.drawText("IP Address", { x: margin + 340, y: cy, size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
+    cert.drawText("Timestamp (CST)", { x: margin + 420, y: cy, size: 8, font: boldFont, color: rgb(0.3, 0.3, 0.3) });
     cy -= 4;
     cert.drawLine({
-      start: { x: margin, y: cy }, end: { x: 612 - margin, y: cy },
+      start: { x: margin, y: cy }, end: { x: pageWidth - margin, y: cy },
       thickness: 0.3, color: rgb(0.8, 0.8, 0.8),
     });
-    cy -= 10;
+    cy -= 4;
 
     for (let i = 0; i < events.length; i++) {
       const ev = events[i];
+      const rowHeight = 22;
       if (i % 2 === 0) {
         cert.drawRectangle({
-          x: margin, y: cy - 3, width: contentWidth, height: 16,
+          x: margin, y: cy - rowHeight + 6, width: contentWidth, height: rowHeight,
           color: rgb(0.97, 0.97, 0.97), borderWidth: 0,
         });
       }
-      cert.drawText(ev.action, { x: margin + 4, y: cy + 3, size: 8, font: boldFont, color: rgb(0.15, 0.15, 0.15) });
-      cert.drawText(truncateToWidth(ev.actor, 130, font, 7), { x: margin + 4, y: cy - 4, size: 6.5, font, color: rgb(0.4, 0.4, 0.4) });
+      cert.drawText(ev.action, { x: margin + 4, y: cy + 4, size: 8, font: boldFont, color: rgb(0.15, 0.15, 0.15) });
+      cert.drawText(truncateToWidth(ev.actor, 190, font, 7), { x: margin + 4, y: cy - 4, size: 7, font, color: rgb(0.4, 0.4, 0.4) });
 
-      cert.drawText(truncateToWidth(ev.detail, 210, font, 7.5), { x: margin + 140, y: cy + 3, size: 7.5, font, color: rgb(0.25, 0.25, 0.25) });
-      cert.drawText(`IP: ${ev.ip}`, { x: margin + 140, y: cy - 4, size: 6.5, font, color: rgb(0.45, 0.45, 0.45) });
+      cert.drawText(truncateToWidth(ev.detail, 190, font, 7.5), { x: margin + 140, y: cy + 4, size: 7.5, font, color: rgb(0.25, 0.25, 0.25) });
 
-      cert.drawText(formatCSTTimestamp(ev.ts), { x: margin + 360, y: cy + 3, size: 7.5, font, color: rgb(0.25, 0.25, 0.25) });
+      cert.drawText(ev.ip, { x: margin + 340, y: cy + 4, size: 7, font, color: rgb(0.35, 0.35, 0.35) });
 
-      cy -= 16;
+      cert.drawText(formatCSTTimestamp(ev.ts), { x: margin + 420, y: cy + 4, size: 7, font, color: rgb(0.25, 0.25, 0.25) });
+
+      cy -= rowHeight;
     }
-    cy -= 4;
+    cy -= 8;
 
     // ── LEGAL DISCLOSURE ──
-    drawSectionHeader(cert, margin, cy, contentWidth, "Electronic Record and Signature Disclosure", boldFont);
-    cy -= 14;
-
+    // Check if we need a new page
     const legalText = `By electronically signing this document, the signer acknowledges and agrees that: (1) their electronic signature is legally equivalent to a handwritten signature under the E-SIGN Act (15 U.S.C. 7001 et seq.) and UETA; (2) they had full opportunity to review the document before signing; (3) they are the authorized cardholder of the payment card identified herein; (4) they consented to conduct this transaction electronically; and (5) the policy premium is earned upon binding per Texas insurance law. This certificate is cryptographically sealed; any modification to the document will invalidate the signature.`;
-    cy = drawWrappedText(cert, legalText, margin + 4, cy, contentWidth - 8, 6.8, font, rgb(0.35, 0.35, 0.35));
-    cy -= 6;
 
-    // ── CRYPTOGRAPHIC SEAL ──
-    // ✅ Include behavioral evidence in hash for tamper-evidence
-    const behaviorHashInput = JSON.stringify({
-      time: be.timeOnPageSeconds,
-      scroll: be.maxScrollDepthPct,
-      fp: fp,
-    });
-    const verificationHash = crypto
-      .createHash("sha256")
-      .update(`${documentId}-${envelopeId}-${customerName}-${amount}-${cardLast4}-${signerIP}-${billingZip || ""}-${cardholderEmail || ""}-${behaviorHashInput}-${documentSignedAt.toISOString()}`)
-      .digest("hex");
+    // Estimate legal text height: ~6 lines at 6.8px + 2.5 spacing = ~56px
+    // Crypto seal: ~50px. Footer: 30px. Total needed: ~136px
+    const neededSpace = 150;
 
-    cert.drawRectangle({
-      x: margin, y: cy - 30, width: contentWidth, height: 32,
-      color: rgb(0.97, 0.97, 0.99), borderColor: rgb(0.7, 0.75, 0.85), borderWidth: 0.5,
-    });
-    cert.drawText("CRYPTOGRAPHIC SEAL (SHA-256)", {
-      x: margin + 6, y: cy - 10, size: 7, font: boldFont, color: rgb(0.2, 0.3, 0.5),
-    });
-    cert.drawText(verificationHash, {
-      x: margin + 6, y: cy - 20, size: 6.5, font, color: rgb(0.3, 0.3, 0.3),
-    });
-    cert.drawText(`Generated: ${formatUTCTimestamp(documentSignedAt)}  |  Envelope: ${envelopeId}`, {
-      x: margin + 6, y: cy - 28, size: 6.5, font, color: rgb(0.45, 0.45, 0.45),
-    });
+    if (cy < neededSpace + 30) {
+      // Add footer to cert page and continue on page 3
+      cert.drawText(`Document ID: ${documentId}`, {
+        x: margin, y: 20, size: 6.5, font, color: rgb(0.5, 0.5, 0.5),
+      });
+      const cp = `© ${new Date().getFullYear()} Texas Premium Insurance Services, LLC. All rights reserved.`;
+      cert.drawText(cp, {
+        x: pageWidth - margin - font.widthOfTextAtSize(cp, 6.5),
+        y: 20, size: 6.5, font, color: rgb(0.5, 0.5, 0.5),
+      });
 
-    // Footer
-    cert.drawText(`Document ID: ${documentId}`, {
-      x: margin, y: 20, size: 6.5, font, color: rgb(0.5, 0.5, 0.5),
-    });
-    const copyrightText = `© ${new Date().getFullYear()} Texas Premium Insurance Services, LLC. All rights reserved.`;
-    cert.drawText(copyrightText, {
-      x: 612 - margin - font.widthOfTextAtSize(copyrightText, 6.5),
-      y: 20, size: 6.5, font, color: rgb(0.5, 0.5, 0.5),
-    });
+      // Page 3 for disclosure + seal
+      const certP3 = pdfDoc.addPage([pageWidth, pageHeight]);
+      cy = pageHeight - 50;
+
+      drawSectionHeader(certP3, margin, cy, contentWidth, "Electronic Record and Signature Disclosure", boldFont);
+      cy -= 14;
+      cy = drawWrappedText(certP3, legalText, margin + 4, cy, contentWidth - 8, 7, font, rgb(0.35, 0.35, 0.35), 2.5);
+      cy -= 12;
+
+      // Crypto seal
+      const behaviorHashInput = JSON.stringify({ time: be.timeOnPageSeconds, scroll: be.maxScrollDepthPct, fp });
+      const verificationHash = crypto.createHash("sha256")
+        .update(`${documentId}-${envelopeId}-${customerName}-${amount}-${cardLast4}-${signerIP}-${billingZip || ""}-${cardholderEmail || ""}-${behaviorHashInput}-${documentSignedAt.toISOString()}`)
+        .digest("hex");
+
+      certP3.drawRectangle({
+        x: margin, y: cy - 36, width: contentWidth, height: 38,
+        color: rgb(0.97, 0.97, 0.99), borderColor: rgb(0.7, 0.75, 0.85), borderWidth: 0.5,
+      });
+      certP3.drawText("CRYPTOGRAPHIC SEAL (SHA-256)", {
+        x: margin + 6, y: cy - 10, size: 7.5, font: boldFont, color: rgb(0.2, 0.3, 0.5),
+      });
+      certP3.drawText(verificationHash, {
+        x: margin + 6, y: cy - 22, size: 6.5, font, color: rgb(0.3, 0.3, 0.3),
+      });
+      certP3.drawText(`Generated: ${formatUTCTimestamp(documentSignedAt)}  |  Envelope: ${envelopeId}`, {
+        x: margin + 6, y: cy - 32, size: 6.5, font, color: rgb(0.45, 0.45, 0.45),
+      });
+
+      certP3.drawText(`Document ID: ${documentId}`, { x: margin, y: 20, size: 6.5, font, color: rgb(0.5, 0.5, 0.5) });
+      const cp3 = `© ${new Date().getFullYear()} Texas Premium Insurance Services, LLC. All rights reserved.`;
+      certP3.drawText(cp3, {
+        x: pageWidth - margin - font.widthOfTextAtSize(cp3, 6.5),
+        y: 20, size: 6.5, font, color: rgb(0.5, 0.5, 0.5),
+      });
+    } else {
+      // Everything fits on cert page
+      drawSectionHeader(cert, margin, cy, contentWidth, "Electronic Record and Signature Disclosure", boldFont);
+      cy -= 14;
+      cy = drawWrappedText(cert, legalText, margin + 4, cy, contentWidth - 8, 7, font, rgb(0.35, 0.35, 0.35), 2.5);
+      cy -= 12;
+
+      const behaviorHashInput = JSON.stringify({ time: be.timeOnPageSeconds, scroll: be.maxScrollDepthPct, fp });
+      const verificationHash = crypto.createHash("sha256")
+        .update(`${documentId}-${envelopeId}-${customerName}-${amount}-${cardLast4}-${signerIP}-${billingZip || ""}-${cardholderEmail || ""}-${behaviorHashInput}-${documentSignedAt.toISOString()}`)
+        .digest("hex");
+
+      cert.drawRectangle({
+        x: margin, y: cy - 36, width: contentWidth, height: 38,
+        color: rgb(0.97, 0.97, 0.99), borderColor: rgb(0.7, 0.75, 0.85), borderWidth: 0.5,
+      });
+      cert.drawText("CRYPTOGRAPHIC SEAL (SHA-256)", {
+        x: margin + 6, y: cy - 10, size: 7.5, font: boldFont, color: rgb(0.2, 0.3, 0.5),
+      });
+      cert.drawText(verificationHash, {
+        x: margin + 6, y: cy - 22, size: 6.5, font, color: rgb(0.3, 0.3, 0.3),
+      });
+      cert.drawText(`Generated: ${formatUTCTimestamp(documentSignedAt)}  |  Envelope: ${envelopeId}`, {
+        x: margin + 6, y: cy - 32, size: 6.5, font, color: rgb(0.45, 0.45, 0.45),
+      });
+
+      cert.drawText(`Document ID: ${documentId}`, { x: margin, y: 20, size: 6.5, font, color: rgb(0.5, 0.5, 0.5) });
+      const cp = `© ${new Date().getFullYear()} Texas Premium Insurance Services, LLC. All rights reserved.`;
+      cert.drawText(cp, {
+        x: pageWidth - margin - font.widthOfTextAtSize(cp, 6.5),
+        y: 20, size: 6.5, font, color: rgb(0.5, 0.5, 0.5),
+      });
+    }
 
     // Save PDF
     const pdfBytes = await pdfDoc.save();
@@ -681,7 +794,7 @@ By signing this form, I represent and confirm the following:
       }],
     });
 
-    // Internal notification with behavioral summary
+    // Internal notification
     const beSummary = be.timeOnPageSeconds
       ? `Time on page: ${be.timeOnPageSeconds}s | Scroll: ${be.maxScrollDepthPct}% | Fields focused: ${totalFieldFocuses}x | AVS attested: ${be.avsAttested ? "Yes" : "No"}`
       : "Not captured";
