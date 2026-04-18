@@ -2315,6 +2315,7 @@
     "cardholderFullName": "Cardholder Full Name",
     "enterFullName": "Enter your full name",
     "signatureMethod": "Signature Method",
+    "reviewTimeRequired": "Please take a moment to carefully review the authorization before signing.",
     "type": "Type",
     "draw": "Draw",
     "upload": "Upload",

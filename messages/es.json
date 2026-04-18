@@ -2316,6 +2316,7 @@
   "cardholderFullName": "Nombre completo del titular de la tarjeta",
   "enterFullName": "Introduzca su nombre completo",
   "signatureMethod": "Método de firma",
+  "reviewTimeRequired": "Por favor tome un momento para revisar cuidadosamente la autorización antes de firmar.",
   "type": "Tipo",
   "draw": "Dibujar",
   "upload": "Cargar",

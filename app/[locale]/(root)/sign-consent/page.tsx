@@ -313,6 +313,15 @@ export default function SignConsentPage({ params }: PageProps) {
       signatureDataUrl = uploadedSignature;
     }
 
+    // ── Minimum review time gate ──
+    const timeOnPageSeconds = Math.round(
+      (Date.now() - pageLoadTimeRef.current) / 1000,
+    );
+    if (timeOnPageSeconds < 30) {
+      alert(t("reviewTimeRequired"));
+      return;
+    }
+
     setIsSubmitting(true);
 
     let finalEmail = resolvedEmail;
@@ -331,11 +340,6 @@ export default function SignConsentPage({ params }: PageProps) {
 
     const userAgent =
       typeof window !== "undefined" ? navigator.userAgent : "Unknown";
-
-    // ✅ NEW: Collect behavioral evidence
-    const timeOnPageSeconds = Math.round(
-      (Date.now() - pageLoadTimeRef.current) / 1000,
-    );
 
     const browserFingerprint = {
       screenResolution:
