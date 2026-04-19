@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     const mongoClient = await MongoClient.connect(process.env.MONGODB_URI!);
     const db = mongoClient.db("db");
 
-    const query = documentId ? { documentId } : { email };
+    const query = documentId ? { documentId } : { email, ...(email ? {} : {}) };
     const record = await db.collection("consent_audit_log").findOne(
       query,
       { sort: { createdAt: -1 } }
