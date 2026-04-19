@@ -29,7 +29,7 @@ type TabType = "create" | "history";
 
 interface LinkHistory {
   _id: string;
-  consentDocumentId?: string;
+  consentDocumentId?: string; // ← session-specific PDF lookup
   linkType: LinkType;
   amount: number | null;
   description: string | null;
@@ -99,19 +99,17 @@ export default function CreatePaymentLink() {
   };
 
   // Filter history by search query (phone, email, description, amount)
-  const filteredLinks = historyLinks
-    .slice(0, 25) // top 25 only
-    .filter((link) => {
-      if (!searchQuery.trim()) return true;
-      const q = searchQuery.toLowerCase().trim();
-      return (
-        formatPhoneDisplay(link.customerPhone).toLowerCase().includes(q) ||
-        link.customerPhone.includes(q.replace(/\D/g, "")) ||
-        (link.customerEmail?.toLowerCase().includes(q) ?? false) ||
-        (link.description?.toLowerCase().includes(q) ?? false) ||
-        (link.amount ? `${(link.amount / 100).toFixed(2)}`.includes(q) : false)
-      );
-    });
+  const filteredLinks = historyLinks.slice(0, 25).filter((link) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    return (
+      formatPhoneDisplay(link.customerPhone).toLowerCase().includes(q) ||
+      link.customerPhone.includes(q.replace(/\D/g, "")) ||
+      (link.customerEmail?.toLowerCase().includes(q) ?? false) ||
+      (link.description?.toLowerCase().includes(q) ?? false) ||
+      (link.amount ? `${(link.amount / 100).toFixed(2)}`.includes(q) : false)
+    );
+  });
 
   useEffect(() => {
     const checkAuth = () => {
@@ -382,34 +380,39 @@ export default function CreatePaymentLink() {
     }
   };
 
-  // Download consent PDF for a given link's documentId or email
+  // Download consent PDF
+  // Uses consentDocumentId (session-specific) when available → exact match
+  // Falls back to email (returns most recent) for older records without consentDocumentId
   const handleDownloadConsentPdf = async (link: LinkHistory) => {
     setDownloadingPdfId(link._id);
     try {
-      // Look up by email (most reliable cross-reference)
-      const email = link.customerEmail;
-      if (!email) {
-        alert("No email on file for this link — cannot retrieve consent PDF.");
+      if (!link.consentDocumentId && !link.customerEmail) {
+        alert("No consent record found for this link.");
+        setDownloadingPdfId(null);
         return;
       }
 
-      const response = await fetch(
-        `/api/consent-pdf?email=${encodeURIComponent(email)}`,
-        { headers: { "x-admin-key": process.env.NEXT_PUBLIC_ADMIN_KEY || "" } },
-      );
+      const param = link.consentDocumentId
+        ? `documentId=${encodeURIComponent(link.consentDocumentId)}`
+        : `email=${encodeURIComponent(link.customerEmail!)}`;
+
+      const response = await fetch(`/api/admin/consent-pdf?${param}`, {
+        headers: { "x-admin-key": process.env.NEXT_PUBLIC_ADMIN_KEY || "" },
+      });
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        alert(err.error || "Consent PDF not found for this customer.");
+        alert(err.error || "Consent PDF not found for this link.");
         return;
       }
 
-      // Trigger browser download
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Consent_${email}.pdf`;
+      a.download = link.consentDocumentId
+        ? `Consent_${link.consentDocumentId.slice(0, 8)}.pdf`
+        : `Consent_${link.customerEmail}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -528,7 +531,6 @@ export default function CreatePaymentLink() {
         {/* ── CREATE TAB ── */}
         {activeTab === "create" && (
           <>
-            {/* Link Type Toggle */}
             <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-3">
                 Link Type
@@ -592,7 +594,6 @@ export default function CreatePaymentLink() {
               </div>
             )}
 
-            {/* Form */}
             <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
               <form onSubmit={handleCreateLink} className="space-y-4">
                 {linkType === "payment" && (
@@ -621,7 +622,7 @@ export default function CreatePaymentLink() {
                       </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                      <label className="block text-sm font-medium text-gray/700 mb-2">
                         Description <span className="text-red-500">*</span>
                       </label>
                       <input
@@ -1004,14 +1005,18 @@ export default function CreatePaymentLink() {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          {/* Consent PDF download button — only shown when consent is complete */}
+                        <div className="flex items-center gap-2 flex-wrap justify-end">
+                          {/* Consent PDF button — only shown when consent done */}
                           {link.completedStages?.consent &&
-                            link.customerEmail && (
+                            (link.consentDocumentId || link.customerEmail) && (
                               <button
                                 onClick={() => handleDownloadConsentPdf(link)}
                                 disabled={downloadingPdfId === link._id}
-                                title="Download signed consent PDF"
+                                title={
+                                  link.consentDocumentId
+                                    ? "Download exact PDF for this signing session"
+                                    : "Download latest consent PDF for this customer (patch consentDocumentId for session-specific)"
+                                }
                                 className="px-3 py-1.5 text-sm rounded-lg transition flex items-center gap-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-50"
                               >
                                 {downloadingPdfId === link._id ? (
@@ -1216,20 +1221,10 @@ export default function CreatePaymentLink() {
                           </p>
                           <div className="flex items-center gap-1">
                             {[
-                              {
-                                key: "payment",
-                                label: "Payment",
-                                icon: "clock",
-                              },
-                              { key: "consent", label: "Consent", icon: "doc" },
+                              { key: "payment", label: "Payment" },
+                              { key: "consent", label: "Consent" },
                               ...(link.paymentMethod !== "direct-bill"
-                                ? [
-                                    {
-                                      key: "autopaySetup",
-                                      label: "Autopay",
-                                      icon: "card",
-                                    },
-                                  ]
+                                ? [{ key: "autopaySetup", label: "Autopay" }]
                                 : []),
                             ].map(({ key, label }, idx, arr) => {
                               const done =
