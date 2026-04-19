@@ -744,6 +744,45 @@ By signing this form, I represent and confirm the following:
     const pdfBytes = await pdfDoc.save();
     const pdfBase64 = Buffer.from(pdfBytes).toString("base64");
 
+    // ── Save audit record to MongoDB ──
+    try {
+      const { MongoClient } = await import("mongodb");
+      const mongoClient = await MongoClient.connect(process.env.MONGODB_URI!);
+      const db = mongoClient.db("db");
+
+      await db.collection("consent_audit_log").insertOne({
+        documentId,
+        envelopeId,
+        customerName,
+        amount,
+        cardLast4,
+        email,
+        cardholderEmail: cardholderEmail || null,
+        billingZip: billingZip || null,
+        signerIP,
+        signatureMethod,
+        language,
+        behavioralEvidence: be,
+        timestamps: {
+          documentCreatedAt,
+          documentSentAt,
+          documentViewedAt,
+          documentSignedAt,
+        },
+        verificationHash: crypto
+          .createHash("sha256")
+          .update(`${documentId}-${envelopeId}-${customerName}-${amount}-${cardLast4}-${signerIP}-${billingZip || ""}-${cardholderEmail || ""}-${documentSignedAt.toISOString()}`)
+          .digest("hex"),
+        pdfBase64,          // full PDF stored for retrieval
+        createdAt: new Date(),
+      });
+
+      await mongoClient.close();
+    } catch (err) {
+      console.error("⚠️ Failed to save consent audit log:", err);
+      // Don't block — email still sends even if DB write fails
+    }
+
     // Send email
     const transporter = nodemailer.createTransport({
       service: "gmail",
