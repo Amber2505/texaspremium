@@ -29,6 +29,7 @@ type TabType = "create" | "history";
 
 interface LinkHistory {
   _id: string;
+  consentDocumentId?: string;
   linkType: LinkType;
   amount: number | null;
   description: string | null;
@@ -393,7 +394,7 @@ export default function CreatePaymentLink() {
       }
 
       const response = await fetch(
-        `/api/admin/consent-pdf?email=${encodeURIComponent(email)}`,
+        `/api/consent-pdf?email=${encodeURIComponent(email)}`,
         { headers: { "x-admin-key": process.env.NEXT_PUBLIC_ADMIN_KEY || "" } },
       );
 

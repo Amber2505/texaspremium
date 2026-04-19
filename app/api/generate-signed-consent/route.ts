@@ -777,6 +777,19 @@ By signing this form, I represent and confirm the following:
         createdAt: new Date(),
       });
 
+      // Link documentId back to the payment link record for session-specific lookup
+      const linkId = body.linkId || "";
+      if (linkId) {
+        try {
+          await db.collection("payment_link_generated").updateOne(
+            { publicLinkId: linkId },
+            { $set: { consentDocumentId: documentId } }
+          );
+        } catch (err) {
+          console.error("⚠️ Failed to store consentDocumentId on payment link:", err);
+        }
+      }
+
       await mongoClient.close();
     } catch (err) {
       console.error("⚠️ Failed to save consent audit log:", err);
