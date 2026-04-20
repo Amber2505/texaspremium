@@ -1,4 +1,5 @@
 // app/admin/create-payment-link/page.tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useEffect, useState, useRef } from "react";
@@ -20,7 +21,7 @@ import {
   Mail,
   Info,
   Search,
-  FileDown,
+  Eye,
   X,
 } from "lucide-react";
 
@@ -380,9 +381,10 @@ export default function CreatePaymentLink() {
     }
   };
 
-  // Download consent PDF
-  // Uses consentDocumentId (session-specific) when available → exact match
-  // Falls back to email (returns most recent) for older records without consentDocumentId
+  // Download / preview consent PDF
+  // Priority: (1) consentDocumentId on the link = exact match
+  //           (2) email + consent timestamp = closest-in-time match
+  //           (3) email alone = returns ambiguity list if multiple records exist
   const handleDownloadConsentPdf = async (link: LinkHistory) => {
     setDownloadingPdfId(link._id);
     try {
@@ -392,13 +394,53 @@ export default function CreatePaymentLink() {
         return;
       }
 
-      const param = link.consentDocumentId
-        ? `documentId=${encodeURIComponent(link.consentDocumentId)}`
-        : `email=${encodeURIComponent(link.customerEmail!)}`;
+      // Build query params by priority
+      const params = new URLSearchParams();
+      if (link.consentDocumentId) {
+        params.set("documentId", link.consentDocumentId);
+      } else if (link.customerEmail) {
+        params.set("email", link.customerEmail);
+        if (link.timestamps?.consent) {
+          params.set("nearTimestamp", link.timestamps.consent);
+        }
+        if (link.customerPhone) {
+          params.set("phone", link.customerPhone);
+        }
+      }
 
-      const response = await fetch(`/api/admin/consent-pdf?${param}`, {
-        headers: { "x-admin-key": process.env.NEXT_PUBLIC_ADMIN_KEY || "" },
-      });
+      const response = await fetch(`/api/consent-pdf?${params.toString()}`);
+
+      // Handle ambiguity — multiple records for this email
+      if (response.status === 409) {
+        const err = await response.json();
+        if (err.ambiguous && err.records?.length > 0) {
+          const options = err.records
+            .map(
+              (r: any, i: number) =>
+                `${i + 1}. ${new Date(r.createdAt).toLocaleString()} — $${r.amount} — ****${r.cardLast4}`,
+            )
+            .join("\n");
+          const choice = prompt(
+            `Multiple consent records found for this email.\nWhich one do you want?\n\n${options}\n\nEnter the number:`,
+          );
+          const idx = parseInt(choice || "0", 10) - 1;
+          if (idx >= 0 && idx < err.records.length) {
+            const chosenDocId = err.records[idx].documentId;
+            const retry = await fetch(
+              `/api/consent-pdf?documentId=${encodeURIComponent(chosenDocId)}`,
+            );
+            if (!retry.ok) {
+              alert("Failed to open the selected PDF.");
+              return;
+            }
+            const blob = await retry.blob();
+            triggerPreview(blob, `Consent_${chosenDocId.slice(0, 8)}.pdf`);
+            return;
+          } else {
+            return;
+          }
+        }
+      }
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
@@ -407,22 +449,40 @@ export default function CreatePaymentLink() {
       }
 
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = link.consentDocumentId
+      const filename = link.consentDocumentId
         ? `Consent_${link.consentDocumentId.slice(0, 8)}.pdf`
         : `Consent_${link.customerEmail}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      triggerPreview(blob, filename);
     } catch (err) {
-      console.error("Error downloading PDF:", err);
-      alert("Failed to download consent PDF.");
+      console.error("Error opening PDF:", err);
+      alert("Failed to open consent PDF.");
     } finally {
       setDownloadingPdfId(null);
     }
+  };
+
+  // Helper: trigger browser download of a blob
+  // Helper: open PDF in a new tab for preview (user can download from there if needed)
+  const triggerPreview = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const newTab = window.open(url, "_blank");
+
+    if (!newTab) {
+      // Popup blocker caught it — fall back to download so user still gets the file
+      alert(
+        "Popup blocked. Please allow popups for this site, or the PDF will download instead.",
+      );
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    // Revoke the blob URL after a delay to let the new tab load it
+    // (If we revoke too early, the new tab can't render the PDF)
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
   const getPaymentMethodLabel = () => {
@@ -1007,6 +1067,8 @@ export default function CreatePaymentLink() {
 
                         <div className="flex items-center gap-2 flex-wrap justify-end">
                           {/* Consent PDF button — only shown when consent done */}
+                          {/* Consent PDF button — only shown when consent done */}
+                          {/* View Consent PDF button — only shown when consent done */}
                           {link.completedStages?.consent &&
                             (link.consentDocumentId || link.customerEmail) && (
                               <button
@@ -1014,18 +1076,18 @@ export default function CreatePaymentLink() {
                                 disabled={downloadingPdfId === link._id}
                                 title={
                                   link.consentDocumentId
-                                    ? "Download exact PDF for this signing session"
-                                    : "Download latest consent PDF for this customer (patch consentDocumentId for session-specific)"
+                                    ? "View the exact signed PDF for this session"
+                                    : "View the latest consent PDF for this customer"
                                 }
                                 className="px-3 py-1.5 text-sm rounded-lg transition flex items-center gap-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-50"
                               >
                                 {downloadingPdfId === link._id ? (
                                   <Loader2 className="w-4 h-4 animate-spin" />
                                 ) : (
-                                  <FileDown className="w-4 h-4" />
+                                  <Eye className="w-4 h-4" />
                                 )}
                                 <span className="hidden sm:inline">
-                                  Consent PDF
+                                  View PDF
                                 </span>
                               </button>
                             )}

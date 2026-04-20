@@ -109,7 +109,7 @@ export default function AdminLoginPage() {
       const res = await fetch("/api/verify-security-code", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: securityCode }),
+        body: JSON.stringify({ code: securityCode, username: username.trim() }),
       });
       const data = await res.json();
       if (!data.valid) {
