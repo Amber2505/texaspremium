@@ -1,3 +1,4 @@
+// app/[locale]/admin/pdf-merger/page.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
@@ -43,6 +44,14 @@ interface ExtraDoc {
   id: string;
   file: File;
   label: string;
+}
+
+interface ExtractedInfo {
+  policyNumber: string | null;
+  companyName: string | null;
+  insuredName: string | null;
+  effectiveDate: string | null;
+  expirationDate: string | null;
 }
 
 // ─── STAMP COORDINATES FOR OFFICE RECEIPT ────────────────────────────────────
@@ -96,6 +105,11 @@ export default function PdfMergerPage() {
   const [nextDueDate, setNextDueDate] = useState("");
   const [monthlyAmount, setMonthlyAmount] = useState("");
   const [noReceipt, setNoReceipt] = useState(false);
+  const [paidInFull, setPaidInFull] = useState(false);
+  const [extractedInfo, setExtractedInfo] = useState<ExtractedInfo | null>(
+    null,
+  );
+  const [extractingPolicy, setExtractingPolicy] = useState(false);
   const [extractingTotal, setExtractingTotal] = useState(false);
   const [extractionNote, setExtractionNote] = useState<string | null>(null);
 
@@ -116,26 +130,30 @@ export default function PdfMergerPage() {
     (noReceipt || (officeReceipt && receiptFieldsReady)) &&
     (noReceipt || receiptType === "cash" || ccReceipts.length > 0);
 
+  // ─── Load pdf.js once, cache result ──────────────────────────────────────
+  const loadPdfJs = async () => {
+    await new Promise<void>((resolve, reject) => {
+      if ((window as any).pdfjsLib) {
+        resolve();
+        return;
+      }
+      const script = document.createElement("script");
+      script.src =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      script.onload = () => resolve();
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+    const pdfjsLib = (window as any).pdfjsLib;
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    return pdfjsLib;
+  };
+
   // ─── Auto-extract Total from office receipt ──────────────────────────────
   const extractTotalFromPdf = async (file: File): Promise<string | null> => {
     try {
-      await new Promise<void>((resolve, reject) => {
-        if ((window as any).pdfjsLib) {
-          resolve();
-          return;
-        }
-        const script = document.createElement("script");
-        script.src =
-          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-        script.onload = () => resolve();
-        script.onerror = reject;
-        document.head.appendChild(script);
-      });
-
-      const pdfjsLib = (window as any).pdfjsLib;
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-
+      const pdfjsLib = await loadPdfJs();
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       const page = await pdf.getPage(1);
@@ -156,6 +174,231 @@ export default function PdfMergerPage() {
       return null;
     }
   };
+
+  // ─── Extract policy info from Company App PDF ───────────────────────────
+  const extractPolicyInfoFromPdf = async (
+    file: File,
+  ): Promise<ExtractedInfo> => {
+    try {
+      const pdfjsLib = await loadPdfJs();
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+      // Scan first 8 pages — Named Insured label often appears on dec page (p. 5-10)
+      let fullText = "";
+      const pagesToScan = Math.min(8, pdf.numPages);
+      for (let i = 1; i <= pagesToScan; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        fullText += " " + content.items.map((item: any) => item.str).join(" ");
+      }
+      fullText = fullText.replace(/\s+/g, " ").trim();
+
+      // ════════ POLICY NUMBER ════════
+      let policyNumber: string | null = null;
+      const policyPatterns = [
+        /Policy\s*(?:No\.?|Number|#)\s*:?\s*([A-Z0-9][A-Z0-9\-_\/]{5,40})/i,
+        /Binder\s*Number\s*:?\s*([A-Z0-9][A-Z0-9\-_\/]{5,40})/i,
+        /Certificate\s*(?:No\.?|Number|#)\s*:?\s*([A-Z0-9][A-Z0-9\-_\/]{5,40})/i,
+      ];
+      for (const pattern of policyPatterns) {
+        const m = fullText.match(pattern);
+        if (m && m[1]) {
+          const candidate = m[1].trim();
+          if (
+            candidate.length >= 6 &&
+            /[A-Z0-9]/i.test(candidate) &&
+            !/^(of|the|is|no|date|yes|applicant|insured)$/i.test(candidate) &&
+            !/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(candidate)
+          ) {
+            policyNumber = candidate;
+            break;
+          }
+        }
+      }
+
+      // ════════ COMPANY / CARRIER NAME ════════
+      // Strategy: companies always brand the top of page 1 (header/logo area).
+      // Extract ONLY from first 600 chars of page 1 to avoid policy numbers,
+      // insured names, and body text polluting the match.
+      let companyName: string | null = null;
+
+      // Get page 1 text separately for company extraction
+      let page1Text = "";
+      try {
+        const page1 = await pdf.getPage(1);
+        const page1Content = await page1.getTextContent();
+        page1Text = page1Content.items
+          .map((item: any) => item.str)
+          .join(" ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .substring(0, 600); // Only top of page — where the header/logo lives
+      } catch {
+        page1Text = fullText.substring(0, 600);
+      }
+
+      const companyPatterns = [
+        // "Underwritten by X" — most explicit carrier statement
+        /Underwritten\s+by\s+([A-Z][A-Za-z0-9\s,.&'\-]+?(?:Company|Insurance|Agency|LLC|Inc|Corp|Co\.))/,
+        // "X Insurance Company" — core pattern, must start with a proper word
+        /\b([A-Z][a-z][A-Za-z&'\-]*(?:\s+[A-Z][a-z][A-Za-z&'\-]*){0,2}\s+Insurance\s+Company)\b/,
+        // "X General Agency"
+        /\b([A-Z][a-z][A-Za-z&'\-]*(?:\s+[A-Z][a-z][A-Za-z&'\-]*){0,2}\s+General\s+Agency(?:,?\s+LLC)?)\b/,
+        // "X Risk Insurance Agency"
+        /\b([A-Z][a-z][A-Za-z&'\-]*\s+Risk\s+Insurance\s+Agency(?:,?\s+LLC)?)\b/,
+        // "X Mutual Fire Insurance Company"
+        /\b((?:[A-Z][a-z][A-Za-z]*\s+){1,3}Mutual\s+(?:Fire\s+)?Insurance\s+Company)\b/,
+        // "X Specialty Insurance Company"
+        /\b([A-Z][a-z][A-Za-z&'\-]*\s+Specialty\s+Insurance(?:\s+Company)?)\b/,
+        // "X Insurance" — fallback, fewer suffixes (e.g. "SAFEWAY INSURANCE")
+        /\b([A-Z][A-Z&'\-]+(?:\s+[A-Z][A-Z&'\-]+){0,2}\s+INSURANCE)(?:\s|$)/,
+      ];
+
+      for (const pattern of companyPatterns) {
+        const m = page1Text.match(pattern);
+        if (m) {
+          let candidate = (m[1] || m[0]).trim().replace(/\s+/g, " ");
+
+          // Reject if candidate contains digits, hyphens surrounded by letters
+          // (catches policy-number contamination like "TX-PP-001 Safeway")
+          if (/\d|[A-Z]-[A-Z]/.test(candidate)) {
+            // Try to strip a leading policy-number-looking prefix
+            const strip = candidate.match(/^\S+\s+([A-Z][a-zA-Z].*)/);
+            if (strip) {
+              candidate = strip[1];
+            } else {
+              continue; // skip this match entirely
+            }
+          }
+
+          // Reject agent/producer names
+          if (
+            /^(Texas\s+Premium|NOORIE|Producer|Agent|Agency\s+Name)/i.test(
+              candidate,
+            )
+          ) {
+            continue;
+          }
+
+          // Reject if too short or too long
+          if (candidate.length < 6 || candidate.length > 80) continue;
+
+          // Normalize "SAFEWAY INSURANCE" → "Safeway Insurance Company"
+          // when we know it's a common carrier pattern
+          if (
+            /^[A-Z\s&'\-]+$/.test(candidate) &&
+            !candidate.includes("Company")
+          ) {
+            candidate =
+              candidate.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) +
+              " Company";
+          }
+
+          companyName = candidate;
+          break;
+        }
+      }
+
+      // ════════ INSURED / APPLICANT NAME ════════
+      let insuredName: string | null = null;
+      const namePatterns = [
+        /(?:Named\s+Insured|Applicant|Insured\s+Name|Legal\s+Name)\s*:?\s+([A-Z]{2,}(?:\s+[A-Z][A-Z\.]{0,}){1,5})(?=\s{2,}|\s+\d|\s+Policy|\s+DOB|\s+Phone|\s+Address|$)/,
+        /(?:Named\s+Insured|Applicant|Insured\s+Name|Legal\s+Name)\s*:?\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){1,4})(?=\s+\d|\s+Policy|\s+DOB|\s{2,}|$)/,
+        /Insured\s*:\s+([A-Z][A-Za-z\.\s]{3,60}?)(?=\s{2,}|\s+\d|$)/,
+      ];
+      for (const pattern of namePatterns) {
+        const m = fullText.match(pattern);
+        if (m && m[1]) {
+          const candidate = m[1].trim().replace(/\s+/g, " ");
+          if (
+            candidate.split(" ").length >= 2 &&
+            candidate.length < 80 &&
+            /^[A-Za-z\s\.]+$/.test(candidate) &&
+            !/(Company|Insurance|Agency|LLC|Inc|Corp)/i.test(candidate)
+          ) {
+            insuredName = candidate;
+            break;
+          }
+        }
+      }
+
+      // ════════ EFFECTIVE DATE ════════
+      let effectiveDate: string | null = null;
+      const effPatterns = [
+        /(?:Policy\s+)?Effective\s+Date(?:\s+and\s+Time)?\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+        /Policy\s+Period\s*:?\s*(?:from\s+)?(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+        /Inception\s+Date\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+      ];
+      for (const pattern of effPatterns) {
+        const m = fullText.match(pattern);
+        if (m && m[1]) {
+          effectiveDate = m[1].trim();
+          break;
+        }
+      }
+
+      // ════════ EXPIRATION DATE ════════
+      let expirationDate: string | null = null;
+      const expPatterns = [
+        /(?:Expiration|Expires?)\s+Date\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+        /Policy\s+Period[\s\S]*?\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}[\s\S]*?to\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+        /Effective[\s\S]*?\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}[\s\S]*?to\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+        /(?:from|:)\s*\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}[\s\S]*?to\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+      ];
+      for (const pattern of expPatterns) {
+        const m = fullText.match(pattern);
+        if (m && m[1]) {
+          expirationDate = m[1].trim();
+          break;
+        }
+      }
+
+      return {
+        policyNumber,
+        companyName,
+        insuredName,
+        effectiveDate,
+        expirationDate,
+      };
+    } catch (err) {
+      console.error("Extract policy info failed:", err);
+      return {
+        policyNumber: null,
+        companyName: null,
+        insuredName: null,
+        effectiveDate: null,
+        expirationDate: null,
+      };
+    }
+  };
+
+  // Given MM/DD/YYYY expiration → return YYYY-MM-DD for (expiration - 1 day)
+  const computePifDueDate = (expirationDateStr: string): string | null => {
+    try {
+      const parts = expirationDateStr.split(/[\/\-]/);
+      if (parts.length !== 3) return null;
+      const [m, d] = parts;
+      let y = parts[2];
+      if (y.length === 2) y = `20${y}`;
+      const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+      if (isNaN(date.getTime())) return null;
+      date.setDate(date.getDate() - 1);
+      const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+      return iso;
+    } catch {
+      return null;
+    }
+  };
+
+  // When PIF is toggled ON, auto-fill due date from expiration and zero monthly
+  useEffect(() => {
+    if (paidInFull && extractedInfo?.expirationDate) {
+      const computed = computePifDueDate(extractedInfo.expirationDate);
+      if (computed) setNextDueDate(computed);
+      setMonthlyAmount("0.00");
+    }
+  }, [paidInFull, extractedInfo]);
 
   const handleOfficeReceiptChange = async (file: File | null) => {
     setOfficeReceipt(file);
@@ -179,7 +422,7 @@ export default function PdfMergerPage() {
   };
 
   // ── Company App: multi-file handler ──────────────────────────────────────
-  const handleCompanyAppFiles = (files: FileList) => {
+  const handleCompanyAppFiles = async (files: FileList) => {
     const arr = Array.from(files).filter(
       (f) =>
         f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
@@ -203,6 +446,13 @@ export default function PdfMergerPage() {
         }));
         setExtraDocs((prev) => [...prev, ...newExtras]);
       }
+
+      // Extract policy info from the primary company app immediately
+      setExtractingPolicy(true);
+      const info = await extractPolicyInfoFromPdf(arr[0]);
+      setExtractedInfo(info);
+      setExtractingPolicy(false);
+      console.log("📄 Extracted policy info:", info);
     }
 
     if (companyAppRef.current) companyAppRef.current.value = "";
@@ -422,7 +672,6 @@ export default function PdfMergerPage() {
         }
       }
 
-      // Add office receipt only if not skipped
       if (!noReceipt) {
         await addOfficeReceipt(await readFile(officeReceipt!));
         if (receiptType === "card") {
@@ -441,7 +690,8 @@ export default function PdfMergerPage() {
         : receiptType === "cash"
           ? "_Cash"
           : "";
-      const filename = `${safeName}_${policyLabel}${receiptLabel}_${datePart}_${timePart}.pdf`;
+      const pifLabel = paidInFull ? "_PIF" : "";
+      const filename = `${safeName}_${policyLabel}${receiptLabel}${pifLabel}_${datePart}_${timePart}.pdf`;
 
       const pdfBytes = await merged.save();
       const blob = new Blob([pdfBytes as Uint8Array<ArrayBuffer>], {
@@ -453,6 +703,34 @@ export default function PdfMergerPage() {
       a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
+
+      // Save to MongoDB — uses already-extracted info
+      try {
+        await fetch("/api/save-merger-info", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            customerName: customerName.trim(),
+            policyNumber: extractedInfo?.policyNumber || null,
+            companyName: extractedInfo?.companyName || null,
+            insuredNameFromPdf: extractedInfo?.insuredName || null,
+            effectiveDate: extractedInfo?.effectiveDate || null,
+            expirationDate: extractedInfo?.expirationDate || null,
+            paidAmount: paidAmount.trim() || null,
+            nextDueDate: nextDueDate || null,
+            monthlyAmount: monthlyAmount.trim() || null,
+            paidInFull,
+            policyType,
+            nonOwner,
+            paymentMethod,
+            receiptType,
+            noReceipt,
+            mergedFilename: filename,
+          }),
+        });
+      } catch (saveErr) {
+        console.warn("Failed to save merger info to MongoDB:", saveErr);
+      }
 
       setStatus({ type: "success", message: `Downloaded: ${filename}` });
     } catch (err) {
@@ -485,6 +763,8 @@ export default function PdfMergerPage() {
     setExtractionNote(null);
     setStatus(null);
     setNoReceipt(false);
+    setPaidInFull(false);
+    setExtractedInfo(null);
     if (companyAppRef.current) companyAppRef.current.value = "";
     if (officeReceiptRef.current) officeReceiptRef.current.value = "";
     if (ccReceiptRef.current) ccReceiptRef.current.value = "";
@@ -735,7 +1015,7 @@ export default function PdfMergerPage() {
                     : receiptType === "cash"
                       ? "_Cash"
                       : ""}
-                  _{datePreview}_HH-MM.pdf
+                  {paidInFull ? "_PIF" : ""}_{datePreview}_HH-MM.pdf
                 </span>
               </p>
             )}
@@ -770,6 +1050,7 @@ export default function PdfMergerPage() {
                   <button
                     onClick={() => {
                       setCompanyApp(null);
+                      setExtractedInfo(null);
                       if (companyAppRef.current)
                         companyAppRef.current.value = "";
                     }}
@@ -778,6 +1059,55 @@ export default function PdfMergerPage() {
                     <X className="w-4 h-4" />
                   </button>
                 </div>
+
+                {/* Extracted info preview */}
+                {(extractingPolicy || extractedInfo) && (
+                  <div className="p-3 bg-blue-50/50 border border-blue-200 rounded-lg text-xs">
+                    {extractingPolicy ? (
+                      <p className="text-blue-700 flex items-center gap-1.5">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Reading policy document...
+                      </p>
+                    ) : extractedInfo ? (
+                      <div className="space-y-0.5 text-gray-700">
+                        <p className="font-semibold text-blue-900 mb-1">
+                          <Sparkles className="w-3 h-3 inline mr-1" />
+                          Extracted from PDF:
+                        </p>
+                        <p>
+                          <span className="text-gray-500">Insured:</span>{" "}
+                          {extractedInfo.insuredName || (
+                            <em className="text-amber-600">not found</em>
+                          )}
+                        </p>
+                        <p>
+                          <span className="text-gray-500">Policy #:</span>{" "}
+                          {extractedInfo.policyNumber || (
+                            <em className="text-amber-600">not found</em>
+                          )}
+                        </p>
+                        <p>
+                          <span className="text-gray-500">Company:</span>{" "}
+                          {extractedInfo.companyName || (
+                            <em className="text-amber-600">not found</em>
+                          )}
+                        </p>
+                        <p>
+                          <span className="text-gray-500">Effective:</span>{" "}
+                          {extractedInfo.effectiveDate || (
+                            <em className="text-amber-600">not found</em>
+                          )}{" "}
+                          <span className="text-gray-400">→</span>{" "}
+                          <span className="text-gray-500">Expires:</span>{" "}
+                          {extractedInfo.expirationDate || (
+                            <em className="text-amber-600">not found</em>
+                          )}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
                 <button
                   onClick={() => companyAppRef.current?.click()}
                   className="flex items-center gap-2 px-4 py-2 border border-dashed border-blue-300 text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 hover:border-blue-400 transition text-sm font-medium w-full justify-center"
@@ -855,7 +1185,6 @@ export default function PdfMergerPage() {
 
           {/* ── Office Receipt Section ── */}
           <div>
-            {/* Label row with No Receipt toggle */}
             <div className="flex items-center justify-between mb-1">
               <label className="block text-sm font-medium text-gray-700">
                 <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-2">
@@ -871,6 +1200,7 @@ export default function PdfMergerPage() {
                   if (!noReceipt) {
                     handleOfficeReceiptChange(null);
                     setCcReceipts([]);
+                    setPaidInFull(false);
                     if (officeReceiptRef.current)
                       officeReceiptRef.current.value = "";
                     if (ccReceiptRef.current) ccReceiptRef.current.value = "";
@@ -886,14 +1216,12 @@ export default function PdfMergerPage() {
               </button>
             </div>
 
-            {/* Everything below is hidden when noReceipt is true */}
             {!noReceipt && (
               <>
                 <p className="text-xs text-gray-500 mb-2 ml-7">
                   The agency office receipt PDF from your system
                 </p>
 
-                {/* Office receipt upload */}
                 {officeReceipt ? (
                   <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
                     <FileText className="w-5 h-5 text-green-600 flex-shrink-0" />
@@ -963,6 +1291,56 @@ export default function PdfMergerPage() {
                   </div>
 
                   <div className="space-y-3">
+                    {/* PIF toggle */}
+                    {/* PIF toggle — entire card is clickable */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = !paidInFull;
+                        setPaidInFull(next);
+                        if (!next) {
+                          setMonthlyAmount("");
+                        }
+                      }}
+                      disabled={!receiptFieldsEnabled}
+                      className={`w-full flex items-center justify-between p-3 border rounded-lg text-left transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                        paidInFull
+                          ? "bg-emerald-50 border-emerald-300 hover:bg-emerald-100"
+                          : "bg-white border-blue-200 hover:bg-blue-50 hover:border-blue-300"
+                      }`}
+                    >
+                      <div className="flex-1">
+                        <p
+                          className={`text-xs font-semibold uppercase tracking-wider ${
+                            paidInFull ? "text-emerald-800" : "text-gray-700"
+                          }`}
+                        >
+                          Paid in Full
+                        </p>
+                        <p
+                          className={`text-[11px] mt-0.5 ${
+                            paidInFull ? "text-emerald-700" : "text-gray-500"
+                          }`}
+                        >
+                          {paidInFull
+                            ? extractedInfo?.expirationDate
+                              ? `Due date auto-set to day before expiration (${extractedInfo.expirationDate})`
+                              : "No expiration date found — enter due date manually"
+                            : "Toggle on if customer paid the full policy premium"}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-xs px-3 py-1.5 rounded-full font-semibold border flex-shrink-0 ml-3 ${
+                          paidInFull
+                            ? "bg-emerald-600 text-white border-emerald-600"
+                            : "bg-white text-gray-500 border-gray-300"
+                        }`}
+                      >
+                        {paidInFull ? "✓ PIF" : "PIF"}
+                      </span>
+                    </button>
+
+                    {/* Paid Amount */}
                     <div>
                       <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
                         Paid Amount <span className="text-red-500">*</span>
@@ -1012,12 +1390,17 @@ export default function PdfMergerPage() {
                         <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
                           <Calendar className="w-3 h-3 inline mr-1" />
                           Next Due Date <span className="text-red-500">*</span>
+                          {paidInFull && (
+                            <span className="ml-2 text-[10px] text-emerald-600 font-normal normal-case">
+                              Auto (PIF)
+                            </span>
+                          )}
                         </label>
                         <input
                           type="date"
                           value={nextDueDate}
                           onChange={(e) => setNextDueDate(e.target.value)}
-                          disabled={!receiptFieldsEnabled}
+                          disabled={!receiptFieldsEnabled || paidInFull}
                           className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"
                         />
                       </div>
@@ -1026,6 +1409,11 @@ export default function PdfMergerPage() {
                           <DollarSign className="w-3 h-3 inline mr-1" />
                           Monthly Payment{" "}
                           <span className="text-red-500">*</span>
+                          {paidInFull && (
+                            <span className="ml-2 text-[10px] text-emerald-600 font-normal normal-case">
+                              N/A (PIF)
+                            </span>
+                          )}
                         </label>
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
@@ -1040,7 +1428,7 @@ export default function PdfMergerPage() {
                                 e.target.value.replace(/[^\d.,]/g, ""),
                               )
                             }
-                            disabled={!receiptFieldsEnabled}
+                            disabled={!receiptFieldsEnabled || paidInFull}
                             placeholder="0.00"
                             className="w-full pl-7 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"
                           />
@@ -1186,7 +1574,6 @@ export default function PdfMergerPage() {
               </>
             )}
 
-            {/* No Receipt confirmation banner */}
             {noReceipt && (
               <div className="mt-2 flex items-center gap-3 px-4 py-3 bg-gray-100 border border-gray-300 rounded-lg">
                 <span className="text-gray-500 text-lg">🚫</span>
