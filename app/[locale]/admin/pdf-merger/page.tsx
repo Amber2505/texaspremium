@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -13,6 +14,9 @@ import {
   CreditCard,
   Landmark,
   Ban,
+  Calendar,
+  DollarSign,
+  Sparkles,
 } from "lucide-react";
 
 // ─── DOCUMENT SETS PER POLICY TYPE ───────────────────────────────────────────
@@ -40,6 +44,13 @@ interface ExtraDoc {
   file: File;
   label: string;
 }
+
+// ─── STAMP COORDINATES FOR OFFICE RECEIPT ────────────────────────────────────
+const OFFICE_RECEIPT_STAMPS = {
+  paidAmount: { x: 90, y: 360 },
+  dueDate: { x: 198, y: 335 },
+  monthlyAmount: { x: 320, y: 338 },
+};
 
 export default function PdfMergerPage() {
   // ── Auth guard ────────────────────────────────────────────────────────────
@@ -81,6 +92,13 @@ export default function PdfMergerPage() {
     message: string;
   } | null>(null);
 
+  const [paidAmount, setPaidAmount] = useState("");
+  const [nextDueDate, setNextDueDate] = useState("");
+  const [monthlyAmount, setMonthlyAmount] = useState("");
+  const [noReceipt, setNoReceipt] = useState(false);
+  const [extractingTotal, setExtractingTotal] = useState(false);
+  const [extractionNote, setExtractionNote] = useState<string | null>(null);
+
   const companyAppRef = useRef<HTMLInputElement>(null);
   const officeReceiptRef = useRef<HTMLInputElement>(null);
   const ccReceiptRef = useRef<HTMLInputElement>(null);
@@ -88,11 +106,77 @@ export default function PdfMergerPage() {
   const templates = DOCUMENT_SETS[policyType] ?? [];
   const hasTemplates = templates.length > 0;
 
+  const receiptFieldsReady =
+    !officeReceipt ||
+    (paidAmount.trim() && nextDueDate.trim() && monthlyAmount.trim());
+
   const canMerge =
     customerName.trim() &&
     companyApp &&
-    officeReceipt &&
-    (receiptType === "cash" || ccReceipts.length > 0);
+    (noReceipt || (officeReceipt && receiptFieldsReady)) &&
+    (noReceipt || receiptType === "cash" || ccReceipts.length > 0);
+
+  // ─── Auto-extract Total from office receipt ──────────────────────────────
+  const extractTotalFromPdf = async (file: File): Promise<string | null> => {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        if ((window as any).pdfjsLib) {
+          resolve();
+          return;
+        }
+        const script = document.createElement("script");
+        script.src =
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+        script.onload = () => resolve();
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+
+      const pdfjsLib = (window as any).pdfjsLib;
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const page = await pdf.getPage(1);
+      const content = await page.getTextContent();
+      const text = content.items.map((item: any) => item.str).join(" ");
+
+      const dualMatch = text.match(
+        /Total\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/i,
+      );
+      if (dualMatch) return dualMatch[2].replace(/,/g, "");
+
+      const singleMatch = text.match(/Total\s+([\d,]+\.\d{2})/i);
+      if (singleMatch) return singleMatch[1].replace(/,/g, "");
+
+      return null;
+    } catch (err) {
+      console.error("Extract total failed:", err);
+      return null;
+    }
+  };
+
+  const handleOfficeReceiptChange = async (file: File | null) => {
+    setOfficeReceipt(file);
+    setExtractionNote(null);
+
+    if (!file) {
+      setPaidAmount("");
+      return;
+    }
+
+    setExtractingTotal(true);
+    const total = await extractTotalFromPdf(file);
+    setExtractingTotal(false);
+
+    if (total) {
+      setPaidAmount(total);
+      setExtractionNote(`Auto-filled from receipt`);
+    } else {
+      setExtractionNote(`Could not auto-read total — please enter it manually`);
+    }
+  };
 
   // ── Company App: multi-file handler ──────────────────────────────────────
   const handleCompanyAppFiles = (files: FileList) => {
@@ -103,7 +187,6 @@ export default function PdfMergerPage() {
     if (arr.length === 0) return;
 
     if (companyApp) {
-      // Already have a primary file — add everything as extras
       const newExtras: ExtraDoc[] = arr.map((f) => ({
         id: crypto.randomUUID(),
         file: f,
@@ -111,7 +194,6 @@ export default function PdfMergerPage() {
       }));
       setExtraDocs((prev) => [...prev, ...newExtras]);
     } else {
-      // No primary file yet — first goes to companyApp, rest to extras
       setCompanyApp(arr[0]);
       if (arr.length > 1) {
         const newExtras: ExtraDoc[] = arr.slice(1).map((f) => ({
@@ -187,12 +269,16 @@ export default function PdfMergerPage() {
           },
         ]
       : []),
-    {
-      num: baseCount + afterCompany + 2 + paymentOffset + nonOwnerOffset,
-      label: "Office Receipt",
-      type: "upload" as const,
-    },
-    ...(receiptType === "card"
+    ...(!noReceipt
+      ? [
+          {
+            num: baseCount + afterCompany + 2 + paymentOffset + nonOwnerOffset,
+            label: "Office Receipt",
+            type: "upload" as const,
+          },
+        ]
+      : []),
+    ...(!noReceipt && receiptType === "card"
       ? ccReceipts.length > 0
         ? ccReceipts.map((f, i) => ({
             num:
@@ -256,6 +342,39 @@ export default function PdfMergerPage() {
         });
       };
 
+      const addOfficeReceipt = async (bytes: Uint8Array) => {
+        const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        const pages = await merged.copyPages(doc, doc.getPageIndices());
+        pages.forEach((page, i) => {
+          merged.addPage(page);
+          if (i === 0) {
+            page.drawText(`$${paidAmount.trim()}`, {
+              x: OFFICE_RECEIPT_STAMPS.paidAmount.x,
+              y: OFFICE_RECEIPT_STAMPS.paidAmount.y,
+              size: 10,
+              font,
+              color: rgb(0, 0, 0),
+            });
+            const [y, m, d] = nextDueDate.split("-");
+            const formattedDate = `${parseInt(m, 10)}/${parseInt(d, 10)}/${y}`;
+            page.drawText(formattedDate, {
+              x: OFFICE_RECEIPT_STAMPS.dueDate.x,
+              y: OFFICE_RECEIPT_STAMPS.dueDate.y,
+              size: 10,
+              font,
+              color: rgb(0, 0, 0),
+            });
+            page.drawText(`$${monthlyAmount.trim()}`, {
+              x: OFFICE_RECEIPT_STAMPS.monthlyAmount.x,
+              y: OFFICE_RECEIPT_STAMPS.monthlyAmount.y,
+              size: 10,
+              font,
+              color: rgb(0, 0, 0),
+            });
+          }
+        });
+      };
+
       const fetchTemplate = async (key: string): Promise<Uint8Array> => {
         const res = await fetch(`/templates/${encodeURIComponent(key)}.pdf`);
         if (!res.ok)
@@ -303,12 +422,13 @@ export default function PdfMergerPage() {
         }
       }
 
-      await addPdf(await readFile(officeReceipt!));
-
-      // Append all CC receipts in order
-      if (receiptType === "card") {
-        for (const receipt of ccReceipts) {
-          await addPdf(await readFile(receipt));
+      // Add office receipt only if not skipped
+      if (!noReceipt) {
+        await addOfficeReceipt(await readFile(officeReceipt!));
+        if (receiptType === "card") {
+          for (const receipt of ccReceipts) {
+            await addPdf(await readFile(receipt));
+          }
         }
       }
 
@@ -316,7 +436,11 @@ export default function PdfMergerPage() {
       const timePart = `${pad(today.getHours())}-${pad(today.getMinutes())}`;
       const safeName = customerName.trim().replace(/\s+/g, "_");
       const policyLabel = nonOwner ? `${policyType}_NonOwner` : policyType;
-      const receiptLabel = receiptType === "cash" ? "_Cash" : "";
+      const receiptLabel = noReceipt
+        ? "_NoReceipt"
+        : receiptType === "cash"
+          ? "_Cash"
+          : "";
       const filename = `${safeName}_${policyLabel}${receiptLabel}_${datePart}_${timePart}.pdf`;
 
       const pdfBytes = await merged.save();
@@ -355,7 +479,12 @@ export default function PdfMergerPage() {
     setExtraDocs([]);
     setOfficeReceipt(null);
     setCcReceipts([]);
+    setPaidAmount("");
+    setNextDueDate("");
+    setMonthlyAmount("");
+    setExtractionNote(null);
     setStatus(null);
+    setNoReceipt(false);
     if (companyAppRef.current) companyAppRef.current.value = "";
     if (officeReceiptRef.current) officeReceiptRef.current.value = "";
     if (ccReceiptRef.current) ccReceiptRef.current.value = "";
@@ -365,7 +494,6 @@ export default function PdfMergerPage() {
   const pad = (n: number) => String(n).padStart(2, "0");
   const datePreview = `${pad(now.getMonth() + 1)}-${pad(now.getDate())}-${now.getFullYear()}`;
 
-  // ── Auth loading screen ───────────────────────────────────────────────────
   if (isCheckingAuth) {
     return (
       <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50">
@@ -380,7 +508,8 @@ export default function PdfMergerPage() {
     );
   }
 
-  // ── Main UI ───────────────────────────────────────────────────────────────
+  const receiptFieldsEnabled = !!officeReceipt;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-6">
       <div className="max-w-2xl mx-auto">
@@ -601,14 +730,18 @@ export default function PdfMergerPage() {
                 <span className="font-mono text-gray-700">
                   {customerName.trim().replace(/\s+/g, "_")}_
                   {nonOwner ? `${policyType}_NonOwner` : policyType}
-                  {receiptType === "cash" ? "_Cash" : ""}_{datePreview}
-                  _HH-MM.pdf
+                  {noReceipt
+                    ? "_NoReceipt"
+                    : receiptType === "cash"
+                      ? "_Cash"
+                      : ""}
+                  _{datePreview}_HH-MM.pdf
                 </span>
               </p>
             )}
           </div>
 
-          {/* ── Company Application: multi-file upload ────────────────────── */}
+          {/* Company Application */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-2">
@@ -677,9 +810,8 @@ export default function PdfMergerPage() {
               multiple
               className="hidden"
               onChange={(e) => {
-                if (e.target.files && e.target.files.length > 0) {
+                if (e.target.files && e.target.files.length > 0)
                   handleCompanyAppFiles(e.target.files);
-                }
               }}
             />
           </div>
@@ -721,143 +853,350 @@ export default function PdfMergerPage() {
             </div>
           )}
 
-          <FileUploadField
-            label="Office Receipt"
-            description="The agency office receipt PDF from your system"
-            position="10"
-            file={officeReceipt}
-            inputRef={officeReceiptRef}
-            onFileChange={setOfficeReceipt}
-            required
-          />
-
-          {/* ── Receipt Type Toggle + CC Receipts ─────────────────────────── */}
-          <div className="pt-1">
-            <p className="text-sm font-medium text-gray-700 mb-2">
-              Sale Receipt Type
-            </p>
-            <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1 mb-4 w-fit">
+          {/* ── Office Receipt Section ── */}
+          <div>
+            {/* Label row with No Receipt toggle */}
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium text-gray-700">
+                <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-2">
+                  10
+                </span>
+                Office Receipt{" "}
+                {!noReceipt && <span className="text-red-500">*</span>}
+              </label>
               <button
-                onClick={() => setReceiptType("card")}
-                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition ${
-                  receiptType === "card"
-                    ? "bg-blue-600 text-white shadow"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                <CreditCard className="w-3.5 h-3.5" />
-                Card / Square
-              </button>
-              <button
+                type="button"
                 onClick={() => {
-                  setReceiptType("cash");
-                  setCcReceipts([]);
-                  if (ccReceiptRef.current) ccReceiptRef.current.value = "";
+                  setNoReceipt((v) => !v);
+                  if (!noReceipt) {
+                    handleOfficeReceiptChange(null);
+                    setCcReceipts([]);
+                    if (officeReceiptRef.current)
+                      officeReceiptRef.current.value = "";
+                    if (ccReceiptRef.current) ccReceiptRef.current.value = "";
+                  }
                 }}
-                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition ${
-                  receiptType === "cash"
-                    ? "bg-emerald-600 text-white shadow"
-                    : "text-gray-500 hover:text-gray-700"
+                className={`text-xs px-3 py-1 rounded-full font-semibold border transition ${
+                  noReceipt
+                    ? "bg-gray-700 text-white border-gray-700"
+                    : "bg-white text-gray-500 border-gray-300 hover:border-gray-400"
                 }`}
               >
-                💵 Cash / In-Office
+                {noReceipt ? "✓ No Receipt" : "No Receipt"}
               </button>
             </div>
 
-            {receiptType === "card" ? (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-2">
-                    11
-                  </span>
-                  Credit Card Receipt(s) <span className="text-red-500">*</span>
-                </label>
-                <p className="text-xs text-gray-500 mb-3 ml-7">
-                  Add one receipt per card — multiple cards supported
+            {/* Everything below is hidden when noReceipt is true */}
+            {!noReceipt && (
+              <>
+                <p className="text-xs text-gray-500 mb-2 ml-7">
+                  The agency office receipt PDF from your system
                 </p>
 
-                {/* Uploaded receipts list */}
-                {ccReceipts.map((f, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-lg mb-2"
-                  >
-                    <CreditCard className="w-5 h-5 text-green-600 flex-shrink-0" />
+                {/* Office receipt upload */}
+                {officeReceipt ? (
+                  <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
+                    <FileText className="w-5 h-5 text-green-600 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-green-800 truncate">
-                        {f.name}
+                        {officeReceipt.name}
                       </p>
-                      <p className="text-xs text-green-600 flex items-center gap-2">
-                        {(f.size / 1024).toFixed(0)} KB
-                        {ccReceipts.length > 1 && (
-                          <span className="px-1.5 py-0.5 bg-green-200 text-green-800 rounded text-[10px] font-semibold">
-                            Card {i + 1}
-                          </span>
-                        )}
+                      <p className="text-xs text-green-600">
+                        {(officeReceipt.size / 1024).toFixed(0)} KB
                       </p>
                     </div>
                     <button
-                      onClick={() =>
-                        setCcReceipts((prev) =>
-                          prev.filter((_, idx) => idx !== i),
-                        )
-                      }
+                      onClick={() => {
+                        handleOfficeReceiptChange(null);
+                        if (officeReceiptRef.current)
+                          officeReceiptRef.current.value = "";
+                      }}
                       className="text-green-600 hover:text-red-600 transition"
                     >
                       <X className="w-4 h-4" />
                     </button>
                   </div>
-                ))}
-
-                {/* Upload button */}
-                <button
-                  onClick={() => ccReceiptRef.current?.click()}
-                  className="w-full flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition text-left"
-                >
-                  <Upload className="w-5 h-5 text-gray-400 flex-shrink-0" />
-                  <div className="flex-1">
-                    <span className="text-sm text-gray-500 block">
-                      {ccReceipts.length > 0
-                        ? "Add another card receipt"
-                        : "Click to upload CC receipt"}
+                ) : (
+                  <button
+                    onClick={() => officeReceiptRef.current?.click()}
+                    className="w-full flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition text-left"
+                  >
+                    <Upload className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                    <span className="text-sm text-gray-500">
+                      Click to upload PDF
                     </span>
-                    {ccReceipts.length === 0 && (
-                      <span className="text-xs text-gray-400">
-                        Upload one receipt per card if split payment
-                      </span>
-                    )}
-                  </div>
-                  {ccReceipts.length > 0 && (
-                    <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
-                      {ccReceipts.length} added
-                    </span>
-                  )}
-                </button>
-
+                  </button>
+                )}
                 <input
-                  ref={ccReceiptRef}
+                  ref={officeReceiptRef}
                   type="file"
                   accept="application/pdf"
                   className="hidden"
                   onChange={(e) => {
                     const f = e.target.files?.[0];
-                    if (f) {
-                      setCcReceipts((prev) => [...prev, f]);
-                      if (ccReceiptRef.current) ccReceiptRef.current.value = "";
-                    }
+                    if (f) handleOfficeReceiptChange(f);
                   }}
                 />
-              </div>
-            ) : (
-              <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg">
-                <span className="text-emerald-600 text-lg">💵</span>
-                <div>
-                  <p className="text-sm font-medium text-emerald-800">
-                    Cash / In-Office Sale
+
+                {/* Receipt stamp fields */}
+                <div
+                  className={`rounded-xl border p-4 transition mt-4 ${
+                    receiptFieldsEnabled
+                      ? "border-blue-200 bg-blue-50/30"
+                      : "border-gray-200 bg-gray-50 opacity-60"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <DollarSign
+                      className={`w-4 h-4 ${receiptFieldsEnabled ? "text-blue-600" : "text-gray-400"}`}
+                    />
+                    <p
+                      className={`text-sm font-semibold ${receiptFieldsEnabled ? "text-blue-900" : "text-gray-500"}`}
+                    >
+                      Receipt Details
+                    </p>
+                    {!receiptFieldsEnabled && (
+                      <span className="text-[10px] text-gray-400 italic">
+                        (upload an office receipt to enable)
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
+                        Paid Amount <span className="text-red-500">*</span>
+                        {extractingTotal && (
+                          <span className="ml-2 text-[10px] text-blue-600 font-normal normal-case">
+                            <Loader2 className="w-3 h-3 inline animate-spin mr-1" />
+                            Reading receipt…
+                          </span>
+                        )}
+                        {extractionNote && !extractingTotal && (
+                          <span
+                            className={`ml-2 text-[10px] font-normal normal-case ${paidAmount ? "text-green-600" : "text-amber-600"}`}
+                          >
+                            {paidAmount && (
+                              <Sparkles className="w-3 h-3 inline mr-1" />
+                            )}
+                            {extractionNote}
+                          </span>
+                        )}
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+                          $
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={paidAmount}
+                          onChange={(e) =>
+                            setPaidAmount(
+                              e.target.value.replace(/[^\d.,]/g, ""),
+                            )
+                          }
+                          disabled={!receiptFieldsEnabled}
+                          placeholder="0.00"
+                          className="w-full pl-7 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        />
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-1">
+                        Total from the receipt — stamped next to &quot;Paid
+                        $&quot;
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
+                          <Calendar className="w-3 h-3 inline mr-1" />
+                          Next Due Date <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={nextDueDate}
+                          onChange={(e) => setNextDueDate(e.target.value)}
+                          disabled={!receiptFieldsEnabled}
+                          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1">
+                          <DollarSign className="w-3 h-3 inline mr-1" />
+                          Monthly Payment{" "}
+                          <span className="text-red-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+                            $
+                          </span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={monthlyAmount}
+                            onChange={(e) =>
+                              setMonthlyAmount(
+                                e.target.value.replace(/[^\d.,]/g, ""),
+                              )
+                            }
+                            disabled={!receiptFieldsEnabled}
+                            placeholder="0.00"
+                            className="w-full pl-7 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-100 disabled:cursor-not-allowed"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Sale Receipt Type Toggle + CC Receipts */}
+                <div className="pt-4">
+                  <p className="text-sm font-medium text-gray-700 mb-2">
+                    Sale Receipt Type
                   </p>
-                  <p className="text-xs text-emerald-600 mt-0.5">
-                    No CC receipt needed — package will end after the office
-                    receipt
+                  <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1 mb-4 w-fit">
+                    <button
+                      onClick={() => setReceiptType("card")}
+                      className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition ${
+                        receiptType === "card"
+                          ? "bg-blue-600 text-white shadow"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      <CreditCard className="w-3.5 h-3.5" />
+                      Card / Square
+                    </button>
+                    <button
+                      onClick={() => {
+                        setReceiptType("cash");
+                        setCcReceipts([]);
+                        if (ccReceiptRef.current)
+                          ccReceiptRef.current.value = "";
+                      }}
+                      className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition ${
+                        receiptType === "cash"
+                          ? "bg-emerald-600 text-white shadow"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      💵 Cash / In-Office
+                    </button>
+                  </div>
+
+                  {receiptType === "card" ? (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-2">
+                          11
+                        </span>
+                        Credit Card Receipt(s){" "}
+                        <span className="text-red-500">*</span>
+                      </label>
+                      <p className="text-xs text-gray-500 mb-3 ml-7">
+                        Add one receipt per card — multiple cards supported
+                      </p>
+
+                      {ccReceipts.map((f, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-lg mb-2"
+                        >
+                          <CreditCard className="w-5 h-5 text-green-600 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-green-800 truncate">
+                              {f.name}
+                            </p>
+                            <p className="text-xs text-green-600 flex items-center gap-2">
+                              {(f.size / 1024).toFixed(0)} KB
+                              {ccReceipts.length > 1 && (
+                                <span className="px-1.5 py-0.5 bg-green-200 text-green-800 rounded text-[10px] font-semibold">
+                                  Card {i + 1}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() =>
+                              setCcReceipts((prev) =>
+                                prev.filter((_, idx) => idx !== i),
+                              )
+                            }
+                            className="text-green-600 hover:text-red-600 transition"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+
+                      <button
+                        onClick={() => ccReceiptRef.current?.click()}
+                        className="w-full flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition text-left"
+                      >
+                        <Upload className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                        <div className="flex-1">
+                          <span className="text-sm text-gray-500 block">
+                            {ccReceipts.length > 0
+                              ? "Add another card receipt"
+                              : "Click to upload CC receipt"}
+                          </span>
+                          {ccReceipts.length === 0 && (
+                            <span className="text-xs text-gray-400">
+                              Upload one receipt per card if split payment
+                            </span>
+                          )}
+                        </div>
+                        {ccReceipts.length > 0 && (
+                          <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
+                            {ccReceipts.length} added
+                          </span>
+                        )}
+                      </button>
+
+                      <input
+                        ref={ccReceiptRef}
+                        type="file"
+                        accept="application/pdf"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) {
+                            setCcReceipts((prev) => [...prev, f]);
+                            if (ccReceiptRef.current)
+                              ccReceiptRef.current.value = "";
+                          }
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <span className="text-emerald-600 text-lg">💵</span>
+                      <div>
+                        <p className="text-sm font-medium text-emerald-800">
+                          Cash / In-Office Sale
+                        </p>
+                        <p className="text-xs text-emerald-600 mt-0.5">
+                          No CC receipt needed — package will end after the
+                          office receipt
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* No Receipt confirmation banner */}
+            {noReceipt && (
+              <div className="mt-2 flex items-center gap-3 px-4 py-3 bg-gray-100 border border-gray-300 rounded-lg">
+                <span className="text-gray-500 text-lg">🚫</span>
+                <div>
+                  <p className="text-sm font-medium text-gray-700">
+                    No Receipt — skipped
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    The PDF package will not include an office receipt or CC
+                    receipt.
                   </p>
                 </div>
               </div>
@@ -880,9 +1219,7 @@ export default function PdfMergerPage() {
               <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
             )}
             <p
-              className={`text-sm font-medium ${
-                status.type === "success" ? "text-green-800" : "text-red-800"
-              }`}
+              className={`text-sm font-medium ${status.type === "success" ? "text-green-800" : "text-red-800"}`}
             >
               {status.message}
             </p>
@@ -918,86 +1255,20 @@ export default function PdfMergerPage() {
 
         {!canMerge && !merging && (
           <p className="text-center text-xs text-gray-400 mt-3">
-            {receiptType === "cash"
-              ? "Fill in customer name and upload company app + office receipt to enable merge"
-              : "Fill in customer name and upload all required files to enable merge"}
+            {!customerName.trim()
+              ? "Enter customer name to get started"
+              : !companyApp
+                ? "Upload the company application to continue"
+                : noReceipt
+                  ? "Ready to merge — no receipt needed"
+                  : !officeReceipt
+                    ? "Upload the office receipt or toggle No Receipt"
+                    : !receiptFieldsReady
+                      ? "Enter paid amount, next due date, and monthly payment"
+                      : "Upload a CC receipt or switch to Cash"}
           </p>
         )}
       </div>
-    </div>
-  );
-}
-
-// ── FileUploadField component ─────────────────────────────────────────────────
-
-interface FileUploadFieldProps {
-  label: string;
-  description: string;
-  position: string;
-  file: File | null;
-  inputRef: React.RefObject<HTMLInputElement | null>;
-  onFileChange: (f: File | null) => void;
-  required?: boolean;
-}
-
-function FileUploadField({
-  label,
-  description,
-  position,
-  file,
-  inputRef,
-  onFileChange,
-  required,
-}: FileUploadFieldProps) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
-        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 text-blue-700 text-xs font-bold mr-2">
-          {position}
-        </span>
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <p className="text-xs text-gray-500 mb-2 ml-7">{description}</p>
-      {file ? (
-        <div className="flex items-center gap-3 px-4 py-3 bg-green-50 border border-green-200 rounded-lg">
-          <FileText className="w-5 h-5 text-green-600 flex-shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-green-800 truncate">
-              {file.name}
-            </p>
-            <p className="text-xs text-green-600">
-              {(file.size / 1024).toFixed(0)} KB
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              onFileChange(null);
-              if (inputRef.current) inputRef.current.value = "";
-            }}
-            className="text-green-600 hover:text-red-600 transition"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      ) : (
-        <button
-          onClick={() => inputRef.current?.click()}
-          className="w-full flex items-center gap-3 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition text-left"
-        >
-          <Upload className="w-5 h-5 text-gray-400 flex-shrink-0" />
-          <span className="text-sm text-gray-500">Click to upload PDF</span>
-        </button>
-      )}
-      <input
-        ref={inputRef}
-        type="file"
-        accept="application/pdf"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) onFileChange(f);
-        }}
-      />
     </div>
   );
 }
