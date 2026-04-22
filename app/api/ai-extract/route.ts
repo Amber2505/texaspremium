@@ -69,8 +69,19 @@ Return a JSON object: {"companyName": "Full Company Name"}. If you cannot identi
         .map((f) => `- ${f}: ${fieldDescriptions[f]}`)
         .join("\n");
 
-      systemPrompt = `You are a data extractor for insurance policy documents. You will be shown page 1 of an insurance policy package. Extract ONLY the fields requested. Pay special attention to company logos — many carriers show their name only as a logo image, not as text. Return a JSON object with the field names as keys and extracted values as strings. If a field truly cannot be found, set its value to null. Do not guess. Do not include any other text or explanation — only the JSON object.`;
-      userPrompt = `Extract these fields from the document image:\n${requestedFields}\n\nReturn ONLY a JSON object like {"fieldName": "value"} with no additional text, markdown, or code fences.`;
+      systemPrompt = `You are a precision data extractor for insurance policy documents. You will be shown page 1 of an insurance policy package. Your job is to extract specific fields with 100% character accuracy — this data will be used for legal and billing purposes, so mistakes cost real money.
+
+CRITICAL ACCURACY RULES:
+1. Read every character EXACTLY as printed. Do not interpret, guess, or normalize.
+2. For DATES: read each digit individually. Confusable digits include 6↔8, 2↔7, 0↔O, 1↔l↔I, 3↔8, 5↔6. When in doubt, prefer the digit that makes the date internally consistent (effective and expiration dates are usually 6 or 12 months apart — if you see "04/17/2022" and "10/17/2026", one is wrong).
+3. For POLICY NUMBERS: these are alphanumeric with dashes/slashes. Read each character; do not omit dashes.
+4. For NAMES: preserve capitalization exactly.
+5. For COMPANY NAMES: may appear ONLY as a logo image. Identify from the logo if needed. Common carriers: Safeway, State Farm, GEICO, Allstate, Progressive, Farmers, Wellington, Venture, InsureMax, Connect MGA, Safeco, Kemper, Bristol West, Infinity, National General, The General.
+6. If you truly cannot find a field, return null — DO NOT GUESS.
+7. If you see a date that doesn't make sense given the other date (e.g., expiration before effective, or years >10 apart), re-read both dates carefully.
+
+Return ONLY a JSON object with the requested field names. No markdown, no code fences, no commentary.`;
+      userPrompt = `Extract these fields from the document image:\n${requestedFields}\n\nReturn ONLY a JSON object like {"fieldName": "value"}. Read every character exactly — especially digits in dates and policy numbers. If dates are both present, verify they make sense together (effective should be before expiration, typically 6 or 12 months apart).`;
     }
 
     const response = await fetch("https://api.openai.com/v1/chat/completions", {

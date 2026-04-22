@@ -1,5 +1,6 @@
 // app/[locale]/admin/pdf-merger/page.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -63,6 +64,9 @@ interface ExtractedInfo {
   carrierFingerprint: string | null;
   carrierLabel: string | null;
   rawChunks: string[];
+  // Perceptual hashes of every logo on page 1. Used when saving
+  // AI-identified company names so the hash travels with the rule.
+  logoHashes: string[];
 }
 
 interface SavedRule {
@@ -73,9 +77,13 @@ interface SavedRule {
   contextAfter: string;
   createdAt: string;
   version: number;
-  // NEW: static rules (e.g. logo-identified company name) have isStatic=true
-  // and are matched purely by carrier fingerprint — no chunk needed.
+  // Static rules (e.g. logo-identified company name) match purely by
+  // carrier fingerprint or logo hash — no PDF-text chunk needed.
   isStatic?: boolean;
+  // Perceptual hash of the logo. When present, this rule can be applied by
+  // finding a visually similar logo on a future PDF — robust across
+  // carriers whose text content varies per customer.
+  logoHash?: string;
 }
 
 interface SavedCarrierRules {
@@ -139,6 +147,7 @@ const FIELD_VALIDATORS: Record<
     hint: "Policy numbers are 6+ chars, letters and numbers (e.g. '4368264-TX-PP-001')",
   },
   effectiveDate: {
+    // Accept any text that CONTAINS a date — handles "04/17/2026 12:01 AM" etc.
     test: (s) => /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(s.trim()),
     hint: "Look for a date like 'MM/DD/YYYY' (e.g. '04/17/2026')",
   },
@@ -204,11 +213,69 @@ const mergeAdjacentTextItems = (
   return regions.map(({ topY, ...rest }) => rest);
 };
 
-// ─── Fingerprint: canonicalize the top of page 1 into a stable key ───────
+// ─── Extract the top of page 1 as a PNG, send to Vision API ──────────────
+// Only called when text-based company name extraction fails. Renders the top
+// ~25% of page 1 (the header/logo area) into a canvas, converts to base64 PNG,
+// sends to our server-side route which calls OpenAI Vision.
+const extractCompanyFromLogo = async (
+  pdfDoc: any,
+  loadPdfJsFn: () => Promise<any>,
+): Promise<string | null> => {
+  try {
+    await loadPdfJsFn(); // ensure lib is loaded
+    const page = await pdfDoc.getPage(1);
+    const viewport = page.getViewport({ scale: 1.5 }); // sharper for OCR
+
+    const canvas = document.createElement("canvas");
+    // Only render top 30% — where logos live
+    const headerHeight = Math.round(viewport.height * 0.3);
+    canvas.width = viewport.width;
+    canvas.height = headerHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+
+    // White background (some PDFs render transparent)
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Render page but clip to top region by translating canvas
+    await page.render({
+      canvasContext: ctx,
+      viewport,
+      // no intent param needed — we'll just crop via canvas size
+    }).promise;
+
+    const base64 = canvas.toDataURL("image/png");
+
+    const res = await fetch("/api/extract-logo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageBase64: base64 }),
+    });
+    const data = await res.json();
+
+    if (data.success && data.companyName) {
+      console.log(`🤖 Vision identified carrier: ${data.companyName}`);
+      return data.companyName;
+    }
+    console.log("🤖 Vision could not identify carrier");
+    return null;
+  } catch (err) {
+    console.error("Logo extraction failed:", err);
+    return null;
+  }
+};
+
+// ─── Fingerprint: build a STABLE key tied to the carrier's document template,
+// not to per-customer data. Previous approach used raw page1Text which
+// changed per customer (different agent/address) causing learned rules to
+// miss on subsequent uploads. New approach extracts structural anchors.
 const computeCarrierFingerprint = (
   page1Text: string,
 ): { fingerprint: string; label: string } => {
-  const head = page1Text.substring(0, 300);
+  const head = page1Text.substring(0, 400);
+
+  // Extract a human-readable label (same as before)
   let label = "Unknown carrier";
   const labelMatch =
     head.match(
@@ -223,25 +290,101 @@ const computeCarrierFingerprint = (
     if (!/Company|Agency|Mutual/i.test(label)) label = label + " Company";
   }
 
-  const fingerprint = page1Text
-    .substring(0, 120)
+  // Build a STABLE fingerprint from STRUCTURAL anchors that appear in every
+  // policy from this carrier regardless of customer:
+  // - Carrier name fragments ("Safeway", "Connect MGA", etc.)
+  // - Form codes (e.g. "TX-734SIC", "TXCOV 0713")
+  // - NAIC numbers
+  // - P.O. Box / address patterns specific to the carrier's home office
+  // - Standard phrases like "Policy Number:", "Agent / Broker:"
+  const anchors: string[] = [];
+
+  // 1. Carrier-name-like strings in head
+  const carrierTokens = head.match(
+    /[A-Z][A-Za-z&'\-]+(?:\s+[A-Z][A-Za-z&'\-]+){0,2}\s+(?:Insurance|Mutual|Specialty|Risk|Company|Agency|MGA)/g,
+  );
+  if (carrierTokens) anchors.push(...carrierTokens.slice(0, 3));
+
+  // 2. Form / document codes (e.g. TX-734SIC, TXCOV 0713, #201)
+  const formCodes = page1Text.match(
+    /\b(?:TX[A-Z]?[\-\s]?\d{2,}[A-Z]*|#\d{3,}|[A-Z]{2,}[\-\s]?\d{4,})\b/g,
+  );
+  if (formCodes) anchors.push(...formCodes.slice(0, 5));
+
+  // 3. NAIC identifier
+  const naic = page1Text.match(/NAIC:?\s*(\d{4,6})/i);
+  if (naic) anchors.push(`NAIC${naic[1]}`);
+
+  // 4. Carrier home-office city/state patterns like "Lafayette, LA 70509"
+  //    Strip the street/number portion so it's stable across agents
+  const cityStateZip = page1Text.match(
+    /(?:P\.?O\.?\s*Box\s+\d+,?\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?,?\s+[A-Z]{2}\s+\d{5})/g,
+  );
+  if (cityStateZip) anchors.push(...cityStateZip.slice(0, 2));
+
+  // 5. Standard headers (helps distinguish templates)
+  const standardHeaders = page1Text.match(
+    /(?:Policy\s+(?:Number|Period)|Agent\s*\/\s*Broker|Named\s+Insured|Effective\s+Date|Declarations?\s+Page)/gi,
+  );
+  if (standardHeaders) anchors.push(...standardHeaders.slice(0, 3));
+
+  // If we got structural anchors, use them. Otherwise fall back to the old
+  // method so fingerprinting still works on unusual documents.
+  let fingerprintSource: string;
+  if (anchors.length >= 3) {
+    fingerprintSource = anchors.join("|");
+  } else {
+    fingerprintSource = page1Text.substring(0, 120);
+  }
+
+  const fingerprint = fingerprintSource
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "")
-    .substring(0, 80);
+    .substring(0, 100);
 
   return { fingerprint, label };
 };
 
+// ─── Perceptual hash for a logo image ──────────────────────────────────
+// Takes a canvas or cropped canvas, downscales to 16x16 grayscale, averages,
+// and returns a 64-char hex string where each char represents brightness.
+// Two logos from the same carrier will produce nearly-identical hashes.
+const computeImageHash = (canvas: HTMLCanvasElement): string => {
+  const HASH_SIZE = 16;
+  const tmp = document.createElement("canvas");
+  tmp.width = HASH_SIZE;
+  tmp.height = HASH_SIZE;
+  const ctx = tmp.getContext("2d");
+  if (!ctx) return "";
+  // Disable smoothing for consistent sampling
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(canvas, 0, 0, HASH_SIZE, HASH_SIZE);
+  const data = ctx.getImageData(0, 0, HASH_SIZE, HASH_SIZE).data;
+  let hex = "";
+  for (let i = 0; i < data.length; i += 4) {
+    // Grayscale average of RGB, bucketed to 16 levels (0-f)
+    const lum = (data[i] + data[i + 1] + data[i + 2]) / 3;
+    const bucket = Math.floor(lum / 16);
+    hex += bucket.toString(16);
+  }
+  return hex;
+};
+
+// Hamming distance between two hex-encoded hashes of the same length
+const hashDistance = (a: string, b: string): number => {
+  if (a.length !== b.length) return Infinity;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) d++;
+  }
+  return d;
+};
+
 // ─── Apply a saved rule to current PDF text ──────────────────────────────
-// NEW: Static rules (isStatic=true) bypass all text matching and return
-// their stored value immediately — used for logo-identified company names
-// and any other field where the value doesn't appear in extracted text.
 const applyRule = (fullText: string, rule: SavedRule): string | null => {
-  // Static rules: matched purely by fingerprint — always return the stored value
+  // Static rules (logo-identified, fingerprint-only, etc.) always return the
+  // stored value — no PDF text matching needed.
   if (rule.isStatic) {
-    console.log(
-      `  ✓ Static rule hit for ${rule.field}: ${rule.extractedValue}`,
-    );
     return rule.extractedValue;
   }
 
@@ -445,50 +588,6 @@ export default function PdfMergerPage() {
     }
   };
 
-  // ─── Save a single extraction rule to the API ────────────────────────────
-  // Centralised helper so both the main extractor and the correction modal
-  // use the exact same logic.  Pass isStatic=true for logo / fingerprint-only
-  // rules where there is no matching text chunk in the PDF.
-  const saveExtractionRule = async ({
-    carrierFingerprint,
-    carrierLabel,
-    field,
-    matchedChunk,
-    extractedValue,
-    contextBefore,
-    contextAfter,
-    isStatic,
-  }: {
-    carrierFingerprint: string;
-    carrierLabel: string | null;
-    field: ExtractionField;
-    matchedChunk: string;
-    extractedValue: string;
-    contextBefore: string;
-    contextAfter: string;
-    isStatic?: boolean;
-  }): Promise<boolean> => {
-    try {
-      const res = await fetch("/api/extraction-rules", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          carrierFingerprint,
-          carrierLabel,
-          field,
-          matchedChunk,
-          extractedValue,
-          contextBefore,
-          contextAfter,
-          isStatic: isStatic ?? false,
-        }),
-      });
-      return res.ok;
-    } catch {
-      return false;
-    }
-  };
-
   // ─── Extract policy info from Company App PDF ───────────────────────────
   const extractPolicyInfoFromPdf = async (
     file: File,
@@ -518,19 +617,116 @@ export default function PdfMergerPage() {
       }
       fullText = fullText.replace(/\s+/g, " ").trim();
 
+      // ════════ Render page 1 + compute logo hashes ════════
+      // We do this upfront so saved logo-hash rules can be applied BEFORE
+      // calling the AI. This is the key to skipping repeat API calls.
+      const page1LogoHashes: string[] = [];
+      try {
+        const page1 = await pdf.getPage(1);
+        const viewport = page1.getViewport({ scale: 1.5 });
+        const renderCanvas = document.createElement("canvas");
+        renderCanvas.width = viewport.width;
+        renderCanvas.height = viewport.height;
+        const renderCtx = renderCanvas.getContext("2d");
+        if (renderCtx) {
+          await page1.render({
+            canvasContext: renderCtx,
+            viewport,
+          }).promise;
+
+          // Walk operator list to find image regions
+          const opList = await page1.getOperatorList();
+          const OPS = pdfjsLib.OPS;
+          const transformStack: number[][] = [[1, 0, 0, 1, 0, 0]];
+          const imgRegions: Array<{
+            x: number;
+            y: number;
+            w: number;
+            h: number;
+          }> = [];
+
+          for (let i = 0; i < opList.fnArray.length; i++) {
+            const fn = opList.fnArray[i];
+            const args = opList.argsArray[i];
+            if (fn === OPS.save) {
+              transformStack.push([
+                ...transformStack[transformStack.length - 1],
+              ]);
+            } else if (fn === OPS.restore) {
+              if (transformStack.length > 1) transformStack.pop();
+            } else if (fn === OPS.transform) {
+              const current = transformStack[transformStack.length - 1];
+              const [a, b, c, d, e, f] = args;
+              const [ca, cb, cc, cd, ce, cf] = current;
+              transformStack[transformStack.length - 1] = [
+                ca * a + cc * b,
+                cb * a + cd * b,
+                ca * c + cc * d,
+                cb * c + cd * d,
+                ca * e + cc * f + ce,
+                cb * e + cd * f + cf,
+              ];
+            } else if (
+              fn === OPS.paintImageXObject ||
+              fn === OPS.paintJpegXObject ||
+              fn === OPS.paintInlineImageXObject
+            ) {
+              const t = transformStack[transformStack.length - 1];
+              const imgW = Math.abs(t[0]);
+              const imgH = Math.abs(t[3]);
+              const pdfX = t[4];
+              const pdfYBot = t[5];
+              const cx = pdfX * 1.5;
+              const cy = viewport.height - (pdfYBot + imgH) * 1.5;
+              const cw = imgW * 1.5;
+              const ch = imgH * 1.5;
+              if (cw < 30 || ch < 15) continue;
+              if (cw > viewport.width * 0.9 && ch > viewport.height * 0.9)
+                continue;
+              imgRegions.push({ x: cx, y: cy, w: cw, h: ch });
+            }
+          }
+
+          // Compute hash for each logo region
+          for (const r of imgRegions) {
+            const cropCanvas = document.createElement("canvas");
+            cropCanvas.width = r.w;
+            cropCanvas.height = r.h;
+            const cropCtx = cropCanvas.getContext("2d");
+            if (!cropCtx) continue;
+            cropCtx.drawImage(renderCanvas, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+            const hash = computeImageHash(cropCanvas);
+            if (hash) page1LogoHashes.push(hash);
+          }
+          if (page1LogoHashes.length > 0) {
+            console.log(
+              `🖼️  Computed ${page1LogoHashes.length} logo hash(es) from page 1`,
+            );
+          }
+        }
+      } catch (err) {
+        console.warn("Could not compute logo hashes:", err);
+      }
+
       const { fingerprint, label } = computeCarrierFingerprint(page1Text);
 
-      // ── Load saved rules for this carrier fingerprint ─────────────────
+      // ════════ Load saved rules ════════
+      // Strategy: try fingerprint match first. If that misses AND we have
+      // logo hashes, ask the server to find any carrier with a matching logo
+      // hash — this handles the case where fingerprint drifted but logo is
+      // identical (same carrier, different agent).
       let savedRules: SavedCarrierRules | null = null;
       try {
-        const res = await fetch(
-          `/api/extraction-rules?fingerprint=${encodeURIComponent(fingerprint)}`,
-        );
+        const params = new URLSearchParams({ fingerprint });
+        if (page1LogoHashes.length > 0) {
+          params.set("logoHashes", page1LogoHashes.join(","));
+        }
+        const res = await fetch(`/api/extraction-rules?${params.toString()}`);
         const data = await res.json();
         if (data.success && data.rules) {
           savedRules = data.rules as SavedCarrierRules;
           console.log(
-            `📚 Loaded ${savedRules.rules.length} saved rule(s) for ${savedRules.carrierLabel}`,
+            `📚 Loaded ${savedRules.rules.length} saved rule(s) for ${savedRules.carrierLabel}${data.matchedBy ? ` (matched by ${data.matchedBy})` : ""}`,
           );
         } else {
           console.log(`📚 No saved rules for fingerprint: ${fingerprint}`);
@@ -543,13 +739,45 @@ export default function PdfMergerPage() {
         if (!savedRules) return null;
         const fieldRules = savedRules.rules
           .filter((r) => r.field === field)
-          // Static rules first, then by version descending
+          // Logo-hash rules first, then static rules, then by version descending
           .sort((a, b) => {
-            if (a.isStatic && !b.isStatic) return -1;
-            if (!a.isStatic && b.isStatic) return 1;
+            const aLogo = a.logoHash ? 1 : 0;
+            const bLogo = b.logoHash ? 1 : 0;
+            if (aLogo !== bLogo) return bLogo - aLogo;
+            const aStatic = a.isStatic ? 1 : 0;
+            const bStatic = b.isStatic ? 1 : 0;
+            if (aStatic !== bStatic) return bStatic - aStatic;
             return b.version - a.version;
           });
         for (const rule of fieldRules) {
+          // Logo-hash rules: only fire if a logo on this page matches the hash.
+          // These are safe only for companyName — the logo identifies the
+          // carrier, which is stable. Never for per-customer fields.
+          if (rule.logoHash) {
+            if (field !== "companyName") continue;
+            const matched = page1LogoHashes.some(
+              (h) => hashDistance(h, rule.logoHash!) <= 12,
+            );
+            if (matched) {
+              console.log(
+                `  ✓ Logo-hash rule hit for ${field}: ${rule.extractedValue}`,
+              );
+              return rule.extractedValue;
+            }
+            continue;
+          }
+
+          // Static rules (no text match required) are only safe for the
+          // company name. For everything else (dates, policy numbers, insured
+          // names) the value MUST be found in this PDF's text — otherwise
+          // we'd be returning someone else's data. Skip static non-company rules.
+          if (rule.isStatic && field !== "companyName") {
+            console.warn(
+              `  ⏭️  Skipping unsafe static rule for ${field} — dates/policy/names must match current PDF text`,
+            );
+            continue;
+          }
+
           const result = applyRule(fullText, rule);
           if (result) {
             console.log(
@@ -561,180 +789,68 @@ export default function PdfMergerPage() {
         return null;
       };
 
-      // ── POLICY NUMBER ──────────────────────────────────────────────────
+      // ════════ FIELD EXTRACTION ════════
+      // Strategy: try saved rules only. Regex pattern matching has been
+      // REMOVED because it produced low-quality extractions (e.g. matching
+      // "Producer" as a policy number). Any field not found by rules falls
+      // through to the AI block below, which has much higher accuracy and
+      // saves its result as a rule for future uploads (zero-cost afterwards).
+
       let policyNumber: string | null = tryRulesFor("policyNumber");
       if (policyNumber) fieldSources.policyNumber = "rule";
-      else {
-        const policyPatterns = [
-          /Policy\s*(?:No\.?|Number|#)\s*:?\s*([A-Z0-9][A-Z0-9\-_\/]{5,40})/i,
-          /Binder\s*Number\s*:?\s*([A-Z0-9][A-Z0-9\-_\/]{5,40})/i,
-          /Certificate\s*(?:No\.?|Number|#)\s*:?\s*([A-Z0-9][A-Z0-9\-_\/]{5,40})/i,
-        ];
-        for (const pattern of policyPatterns) {
-          const m = fullText.match(pattern);
-          if (m && m[1]) {
-            const candidate = m[1].trim();
-            if (
-              candidate.length >= 6 &&
-              /[A-Z0-9]/i.test(candidate) &&
-              !/^(of|the|is|no|date|yes|applicant|insured)$/i.test(candidate) &&
-              !/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(candidate)
-            ) {
-              policyNumber = candidate;
-              fieldSources.policyNumber = "regex";
-              break;
-            }
-          }
-        }
-      }
 
-      // ── COMPANY / CARRIER NAME ─────────────────────────────────────────
       let companyName: string | null = tryRulesFor("companyName");
       if (companyName) fieldSources.companyName = "rule";
-      else {
-        const headText = page1Text.substring(0, 600);
-        const companyPatterns = [
-          /Underwritten\s+by\s+([A-Z][A-Za-z0-9\s,.&'\-]+?(?:Company|Insurance|Agency|LLC|Inc|Corp|Co\.))/,
-          /\b([A-Z][a-z][A-Za-z&'\-]*(?:\s+[A-Z][a-z][A-Za-z&'\-]*){0,2}\s+Insurance\s+Company)\b/,
-          /\b([A-Z][a-z][A-Za-z&'\-]*(?:\s+[A-Z][a-z][A-Za-z&'\-]*){0,2}\s+General\s+Agency(?:,?\s+LLC)?)\b/,
-          /\b([A-Z][a-z][A-Za-z&'\-]*\s+Risk\s+Insurance\s+Agency(?:,?\s+LLC)?)\b/,
-          /\b((?:[A-Z][a-z][A-Za-z]*\s+){1,3}Mutual\s+(?:Fire\s+)?Insurance\s+Company)\b/,
-          /\b([A-Z][a-z][A-Za-z&'\-]*\s+Specialty\s+Insurance(?:\s+Company)?)\b/,
-          /\b([A-Z][A-Z&'\-]+(?:\s+[A-Z][A-Z&'\-]+){0,2}\s+INSURANCE)(?:\s|$)/,
-        ];
-        for (const pattern of companyPatterns) {
-          const m = headText.match(pattern);
-          if (m) {
-            let candidate = (m[1] || m[0]).trim().replace(/\s+/g, " ");
-            if (/\d|[A-Z]-[A-Z]/.test(candidate)) {
-              const strip = candidate.match(/^\S+\s+([A-Z][a-zA-Z].*)/);
-              if (strip) {
-                candidate = strip[1];
-              } else {
-                continue;
-              }
-            }
-            if (
-              /^(Texas\s+Premium|NOORIE|Producer|Agent|Agency\s+Name)/i.test(
-                candidate,
-              )
-            )
-              continue;
-            if (candidate.length < 6 || candidate.length > 80) continue;
-            if (
-              /^[A-Z\s&'\-]+$/.test(candidate) &&
-              !candidate.includes("Company")
-            ) {
-              candidate =
-                candidate
-                  .toLowerCase()
-                  .replace(/\b\w/g, (c) => c.toUpperCase()) + " Company";
-            }
-            companyName = candidate;
-            fieldSources.companyName = "regex";
-            break;
-          }
-        }
-      }
 
-      // ── INSURED / APPLICANT NAME ───────────────────────────────────────
       let insuredName: string | null = tryRulesFor("insuredName");
       if (insuredName) fieldSources.insuredName = "rule";
-      else {
-        const namePatterns = [
-          /(?:Named\s+Insured|Applicant|Insured\s+Name|Legal\s+Name)\s*:?\s+([A-Z]{2,}(?:\s+[A-Z][A-Z\.]{0,}){1,5})(?=\s{2,}|\s+\d|\s+Policy|\s+DOB|\s+Phone|\s+Address|$)/,
-          /(?:Named\s+Insured|Applicant|Insured\s+Name|Legal\s+Name)\s*:?\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){1,4})(?=\s+\d|\s+Policy|\s+DOB|\s{2,}|$)/,
-          /Insured\s*:\s+([A-Z][A-Za-z\.\s]{3,60}?)(?=\s{2,}|\s+\d|$)/,
-        ];
-        for (const pattern of namePatterns) {
-          const m = fullText.match(pattern);
-          if (m && m[1]) {
-            const candidate = m[1].trim().replace(/\s+/g, " ");
-            if (
-              candidate.split(" ").length >= 2 &&
-              candidate.length < 80 &&
-              /^[A-Za-z\s\.]+$/.test(candidate) &&
-              !/(Company|Insurance|Agency|LLC|Inc|Corp)/i.test(candidate)
-            ) {
-              insuredName = candidate;
-              fieldSources.insuredName = "regex";
-              break;
-            }
-          }
-        }
-      }
 
-      // ── EFFECTIVE DATE ─────────────────────────────────────────────────
       let effectiveDate: string | null = tryRulesFor("effectiveDate");
       if (effectiveDate) fieldSources.effectiveDate = "rule";
-      else {
-        const effPatterns = [
-          /(?:Policy\s+)?Effective\s+Date(?:\s+and\s+Time)?\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-          /Policy\s+Period\s*:?\s*(?:from\s+)?(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-          /Inception\s+Date\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-        ];
-        for (const pattern of effPatterns) {
-          const m = fullText.match(pattern);
-          if (m && m[1]) {
-            effectiveDate = m[1].trim();
-            fieldSources.effectiveDate = "regex";
-            break;
-          }
-        }
-      }
 
-      // ── EXPIRATION DATE ────────────────────────────────────────────────
       let expirationDate: string | null = tryRulesFor("expirationDate");
       if (expirationDate) fieldSources.expirationDate = "rule";
-      else {
-        const expPatterns = [
-          /(?:Expiration|Expires?)\s+Date\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-          /Policy\s+Period[\s\S]*?\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}[\s\S]*?to\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-          /Effective[\s\S]*?\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}[\s\S]*?to\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-          /(?:from|:)\s*\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}[\s\S]*?to\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-        ];
-        for (const pattern of expPatterns) {
-          const m = fullText.match(pattern);
-          if (m && m[1]) {
-            expirationDate = m[1].trim();
-            fieldSources.expirationDate = "regex";
-            break;
-          }
-        }
-      }
 
-      // Split text into clickable chunks (used for context when saving rules)
+      // Split text into clickable chunks (still used for context when saving rules)
       const rawChunks = fullText
         .split(/(?:\s{2,}|(?<=[.:])\s+|\s+(?=[A-Z][A-Za-z]+\s*:))/)
         .map((s) => s.trim())
         .filter((s) => s.length >= 3 && s.length <= 100);
 
-      // ════════ AI FALLBACK ════════
-      // Only runs when regex + saved rules couldn't find a field.
-      // Fields marked "rule" or "regex" are SKIPPED — no redundant AI calls.
-      // Once AI finds a value it is immediately saved as a rule (static if the
-      // value doesn't appear in the extracted text) so future PDFs from the
-      // same carrier never reach this branch.
+      // ════════ AI EXTRACTION for any fields not covered by saved rules ════════
+      // This is the PRIMARY extraction path — regex was removed because it
+      // produced too many false positives (e.g. matching "Producer" as a
+      // policy number). Once AI extracts a field, it's saved as a rule so
+      // subsequent uploads from this carrier skip the API entirely.
       const missingAfterRegex = (
         Object.keys(fieldSources) as ExtractionField[]
       ).filter((f) => fieldSources[f] === "none");
 
       if (missingAfterRegex.length > 0) {
         console.log(
-          `🤖 Calling AI for ${missingAfterRegex.length} field(s): ${missingAfterRegex.join(", ")}`,
+          `🤖 Calling AI for ${missingAfterRegex.length} missing field(s): ${missingAfterRegex.join(", ")}`,
         );
         setAiExtracting(true);
         try {
+          // Render page 1 at 2.5x scale for the AI. Higher resolution =
+          // clearer characters = fewer OCR mistakes on fine-grained details
+          // (digit pairs like 6 vs 8, 2 vs 7, 0 vs O, 1 vs l vs I).
+          // At 2.5x a standard letter page is ~2100px wide — gpt-4o-mini
+          // handles this comfortably and dates come through correctly.
           const page1 = await pdf.getPage(1);
-          const viewport = page1.getViewport({ scale: 1.6 });
+          const viewport = page1.getViewport({ scale: 2.5 });
           const canvas = document.createElement("canvas");
           canvas.width = viewport.width;
           canvas.height = viewport.height;
           const ctx = canvas.getContext("2d");
           if (ctx) {
-            await page1.render({ canvasContext: ctx, viewport }).promise;
+            await page1.render({
+              canvasContext: ctx,
+              viewport,
+            }).promise;
+            // PNG is lossless; the quality arg is ignored for PNG anyway.
             const base64 = canvas
-              .toDataURL("image/png", 0.9)
+              .toDataURL("image/png")
               .replace(/^data:image\/png;base64,/, "");
 
             const aiRes = await fetch("/api/ai-extract", {
@@ -750,12 +866,51 @@ export default function PdfMergerPage() {
               if (aiData.success && aiData.extracted) {
                 const aiExtracted = aiData.extracted as Record<string, string>;
 
+                // ═══ SANITY CHECKS — guard against bad AI extractions ═══
+                // If dates don't pass these checks, we still SHOW them (so user
+                // sees what AI extracted), but we DON'T save as rules. The
+                // user can then click "Fix extraction" to correct manually,
+                // and THAT gets saved as the authoritative rule.
+                const parseDate = (s: string): Date | null => {
+                  const m = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+                  if (!m) return null;
+                  let y = parseInt(m[3], 10);
+                  if (y < 100) y += 2000;
+                  const d = new Date(
+                    y,
+                    parseInt(m[1], 10) - 1,
+                    parseInt(m[2], 10),
+                  );
+                  return isNaN(d.getTime()) ? null : d;
+                };
+
+                const suspiciousFields = new Set<string>();
+                const effStr = aiExtracted.effectiveDate;
+                const expStr = aiExtracted.expirationDate;
+                if (effStr && expStr) {
+                  const effD = parseDate(effStr);
+                  const expD = parseDate(expStr);
+                  if (effD && expD) {
+                    const diffDays =
+                      (expD.getTime() - effD.getTime()) / (1000 * 60 * 60 * 24);
+                    // Valid policy term: 30-400 days (covers 1mo through 13mo)
+                    if (diffDays < 30 || diffDays > 400) {
+                      console.warn(
+                        `⚠️  Dates look suspicious: ${effStr} → ${expStr} (${Math.round(diffDays)} days apart). Not saving as rules.`,
+                      );
+                      suspiciousFields.add("effectiveDate");
+                      suspiciousFields.add("expirationDate");
+                    }
+                  }
+                }
+
+                // Apply AI results + conditionally save as rules for future PDFs
                 for (const field of missingAfterRegex) {
                   const value = aiExtracted[field];
                   if (!value) continue;
                   const cleanValue = value.trim();
 
-                  // Assign extracted value
+                  // Assign to the right variable + mark source
                   if (field === "policyNumber") {
                     policyNumber = cleanValue;
                     fieldSources.policyNumber = "ai";
@@ -773,12 +928,39 @@ export default function PdfMergerPage() {
                     fieldSources.expirationDate = "ai";
                   }
 
-                  // Determine whether the value exists in the PDF text.
-                  // If it doesn't (e.g. company name from a logo image),
-                  // save as a STATIC rule tied purely to the fingerprint.
+                  // Skip saving this field as a rule if it failed sanity check
+                  if (suspiciousFields.has(field)) {
+                    console.warn(
+                      `  ⏭️  Skipped saving rule for ${field} — failed sanity check`,
+                    );
+                    continue;
+                  }
+
+                  // Determine whether this value exists in the PDF text.
+                  // If it doesn't (e.g. company name came only from a logo
+                  // image), save as a STATIC rule and tag it with the first
+                  // logo hash on the page so future uploads can match on
+                  // the logo even if fingerprint drifts.
                   const valueIdx = fullText.indexOf(cleanValue);
                   const appearsInText = valueIdx >= 0;
-                  const isStatic = !appearsInText;
+                  const isStaticRule = !appearsInText;
+
+                  // NEVER save date fields as static rules. Dates change per
+                  // policy — a "static" date rule would return the same value
+                  // for every future PDF. If AI's extracted date isn't in the
+                  // text, it was likely hallucinated; skip saving entirely.
+                  if (
+                    isStaticRule &&
+                    (field === "effectiveDate" ||
+                      field === "expirationDate" ||
+                      field === "policyNumber" ||
+                      field === "insuredName")
+                  ) {
+                    console.warn(
+                      `  ⏭️  Skipped saving ${field} rule — value "${cleanValue}" not found in PDF text (likely AI misread)`,
+                    );
+                    continue;
+                  }
 
                   const matchedChunk = appearsInText ? cleanValue : "";
                   const contextBefore = appearsInText
@@ -795,19 +977,40 @@ export default function PdfMergerPage() {
                         .trim()
                     : "";
 
-                  const saved = await saveExtractionRule({
-                    carrierFingerprint: fingerprint,
-                    carrierLabel: label,
-                    field,
-                    matchedChunk,
-                    extractedValue: cleanValue,
-                    contextBefore,
-                    contextAfter,
-                    isStatic,
-                  });
-                  console.log(
-                    `  💾 ${saved ? "Saved" : "Failed to save"} AI rule for ${field}${isStatic ? " [static/logo]" : ""}`,
-                  );
+                  // Attach a logo hash only for companyName when the value
+                  // isn't in the text (i.e. it definitely came from a logo)
+                  const logoHashForRule =
+                    field === "companyName" &&
+                    isStaticRule &&
+                    page1LogoHashes.length > 0
+                      ? page1LogoHashes[0]
+                      : undefined;
+
+                  try {
+                    await fetch("/api/extraction-rules", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        carrierFingerprint: fingerprint,
+                        carrierLabel: label,
+                        field,
+                        matchedChunk,
+                        extractedValue: cleanValue,
+                        contextBefore,
+                        contextAfter,
+                        isStatic: isStaticRule,
+                        logoHash: logoHashForRule,
+                      }),
+                    });
+                    console.log(
+                      `  💾 Saved AI rule for ${field}${isStaticRule ? " [static]" : ""}${logoHashForRule ? " [with logo hash]" : ""}`,
+                    );
+                  } catch (saveErr) {
+                    console.warn(
+                      `Failed to save AI rule for ${field}:`,
+                      saveErr,
+                    );
+                  }
                 }
               }
             } else {
@@ -818,10 +1021,6 @@ export default function PdfMergerPage() {
           console.warn("AI extraction skipped:", aiErr);
         }
         setAiExtracting(false);
-      } else {
-        console.log(
-          `✅ All fields resolved via rules/regex — AI not needed for this carrier`,
-        );
       }
 
       console.log(`📄 Extraction sources:`, fieldSources);
@@ -837,6 +1036,7 @@ export default function PdfMergerPage() {
         carrierFingerprint: fingerprint,
         carrierLabel: label,
         rawChunks,
+        logoHashes: page1LogoHashes,
       };
     } catch (err) {
       console.error("Extract policy info failed:", err);
@@ -850,6 +1050,7 @@ export default function PdfMergerPage() {
         carrierFingerprint: null,
         carrierLabel: null,
         rawChunks: [],
+        logoHashes: [],
       };
     }
   };
@@ -968,6 +1169,7 @@ export default function PdfMergerPage() {
     );
 
     // ════════ DETECT IMAGE REGIONS (logos) ════════
+    // Walk the PDF operator list to find where images are drawn and their bounds
     const imageRegions: Array<{
       x: number;
       y: number;
@@ -979,6 +1181,8 @@ export default function PdfMergerPage() {
       const pdfjsLib = (window as any).pdfjsLib;
       const OPS = pdfjsLib.OPS;
 
+      // The current transform matrix [a,b,c,d,e,f] — tracked as PDF walks ops
+      // e,f is translation; d is y-scale (height); a is x-scale (width)
       const transformStack: number[][] = [[1, 0, 0, 1, 0, 0]];
 
       for (let i = 0; i < opList.fnArray.length; i++) {
@@ -992,6 +1196,7 @@ export default function PdfMergerPage() {
         } else if (fn === OPS.transform) {
           const current = transformStack[transformStack.length - 1];
           const [a, b, c, d, e, f] = args;
+          // Matrix multiply: new = current * args
           const [ca, cb, cc, cd, ce, cf] = current;
           transformStack[transformStack.length - 1] = [
             ca * a + cc * b,
@@ -1006,18 +1211,26 @@ export default function PdfMergerPage() {
           fn === OPS.paintJpegXObject ||
           fn === OPS.paintInlineImageXObject
         ) {
+          // An image is painted at the current transform
           const t = transformStack[transformStack.length - 1];
+          // Image unit square (0,0)-(1,1) transformed by t gives image bounds
+          // Bottom-left in PDF coords: (e, f)
+          // Top-right: (a+c+e, b+d+f) — but for axis-aligned images b=c=0
           const imgWidth = Math.abs(t[0]);
           const imgHeight = Math.abs(t[3]);
           const pdfX = t[4];
+          // PDF y is from bottom; image occupies [f, f+d] in PDF coords
           const pdfYBottom = t[5];
 
+          // Convert to canvas coords (y from top)
           const canvasX = pdfX * scale;
           const canvasY = viewport.height - (pdfYBottom + imgHeight) * scale;
           const canvasW = imgWidth * scale;
           const canvasH = imgHeight * scale;
 
+          // Skip tiny images (background patterns, bullets, etc.)
           if (canvasW < 30 || canvasH < 15) continue;
+          // Skip images that cover the whole page (backgrounds)
           if (canvasW > viewport.width * 0.9 && canvasH > viewport.height * 0.9)
             continue;
 
@@ -1129,6 +1342,9 @@ export default function PdfMergerPage() {
     });
 
     // ════════ Render clickable LOGO regions ════════
+    // These are only useful for the companyName field (logos don't contain
+    // policy numbers, dates, or names). Show a teal tint when the active field
+    // is companyName; show a subtle grey tint otherwise with a "Logo" badge.
     imageRegions.forEach((region) => {
       const isCompanyActive = currentMissingField === "companyName";
       const btn = document.createElement("button");
@@ -1151,6 +1367,7 @@ export default function PdfMergerPage() {
         align-items: flex-start;
         justify-content: flex-end;
       `;
+      // Small badge in corner
       const badge = document.createElement("span");
       badge.textContent = isCompanyActive ? "Click to identify" : "Logo";
       badge.style.cssText = `
@@ -1188,6 +1405,8 @@ export default function PdfMergerPage() {
       btn.onclick = async (e) => {
         e.preventDefault();
         if (!isCompanyActive) {
+          // Gentle nudge: if user clicks a logo while asking for something
+          // non-company, show a hint in the pending-click UI
           handlePdfItemClick(
             "(logo — only use for company name)",
             region,
@@ -1195,6 +1414,7 @@ export default function PdfMergerPage() {
           );
           return;
         }
+        // AI-identify the logo
         await identifyLogoWithAi(region);
       };
 
@@ -1202,9 +1422,10 @@ export default function PdfMergerPage() {
     });
   };
 
-  // Crop a region from the rendered canvas and send to AI for identification.
-  // The result is saved as a STATIC rule so this carrier's logo is never
-  // sent to the AI again.
+  // Crop a region from the rendered canvas, compute its perceptual hash,
+  // send it to OpenAI for identification, then auto-save a rule tagged with
+  // both the fingerprint AND the logo hash. Future uploads of the same
+  // carrier's PDF will match the logo hash and skip the API entirely.
   const identifyLogoWithAi = async (region: {
     x: number;
     y: number;
@@ -1214,6 +1435,7 @@ export default function PdfMergerPage() {
     const canvas = pdfCanvasRef.current;
     if (!canvas || !currentMissingField) return;
 
+    // Crop with a bit of padding around the logo
     const PAD = 10;
     const cropX = Math.max(0, region.x - PAD);
     const cropY = Math.max(0, region.y - PAD);
@@ -1228,10 +1450,15 @@ export default function PdfMergerPage() {
 
     cropCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
 
+    // Compute perceptual hash of this logo — this is what lets us recognize
+    // it on future uploads without calling the AI again
+    const logoHash = computeImageHash(cropCanvas);
+
     const base64 = cropCanvas
       .toDataURL("image/png")
       .replace(/^data:image\/png;base64,/, "");
 
+    // Show pending click immediately with a "recognizing..." placeholder
     setLastClickedBox(region);
     setPendingClick({
       field: currentMissingField,
@@ -1260,25 +1487,36 @@ export default function PdfMergerPage() {
           box: region,
           isInvalid: !FIELD_VALIDATORS.companyName.test(identified),
         });
-        // Save immediately as a static rule so this carrier's logo is
-        // never sent to the API again on future uploads
+
+        // Auto-save as a static rule with logo hash — next upload of this
+        // carrier's PDF will match via the hash and skip the AI entirely
         if (
           extractedInfo?.carrierFingerprint &&
-          FIELD_VALIDATORS.companyName.test(identified)
+          FIELD_VALIDATORS.companyName.test(identified) &&
+          logoHash
         ) {
-          const saved = await saveExtractionRule({
-            carrierFingerprint: extractedInfo.carrierFingerprint,
-            carrierLabel: extractedInfo.carrierLabel,
-            field: "companyName",
-            matchedChunk: "",
-            extractedValue: identified.trim(),
-            contextBefore: "",
-            contextAfter: "",
-            isStatic: true,
-          });
-          console.log(
-            `  💾 ${saved ? "Saved" : "Failed to save"} static logo rule for company: ${identified}`,
-          );
+          try {
+            const saveRes = await fetch("/api/extraction-rules", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                carrierFingerprint: extractedInfo.carrierFingerprint,
+                carrierLabel: extractedInfo.carrierLabel,
+                field: "companyName",
+                matchedChunk: "",
+                extractedValue: identified.trim(),
+                contextBefore: "",
+                contextAfter: "",
+                isStatic: true,
+                logoHash,
+              }),
+            });
+            console.log(
+              `  💾 ${saveRes.ok ? "Saved" : "Failed to save"} logo-hash rule for "${identified}"`,
+            );
+          } catch (saveErr) {
+            console.warn("Failed to save logo rule:", saveErr);
+          }
         }
       } else {
         setPendingClick({
@@ -1324,6 +1562,9 @@ export default function PdfMergerPage() {
   const confirmPendingClick = () => {
     if (!pendingClick) return;
 
+    // Build the updated corrections map synchronously so we can pass it
+    // directly to handleSaveCorrectionsFromModal if this was the last field
+    // (React state updates don't settle in time otherwise)
     const newCorrections: CorrectionMap = {
       ...corrections,
       [pendingClick.field]: {
@@ -1344,6 +1585,7 @@ export default function PdfMergerPage() {
       setCurrentMissingField(remaining[0]);
     } else {
       setCurrentMissingField(null);
+      // Pass the freshly-built corrections so the last field isn't lost
       handleSaveCorrectionsFromModal(newCorrections);
     }
   };
@@ -1450,12 +1692,8 @@ export default function PdfMergerPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pdfModalOpen, modalPdfDoc, modalPageNum, currentMissingField]);
 
-  // ─── Save user corrections as extraction rules ───────────────────────────
-  // For each corrected field we determine whether the value appears in the
-  // PDF text:
-  //   - If yes  → normal rule with chunk + context
-  //   - If no   → static rule (fingerprint-only) — covers logo-identified
-  //               company names that the user typed in manually
+  // Save user corrections as extraction rules
+  // Accepts optional override to bypass stale-state race condition on last field
   const handleSaveCorrectionsFromModal = async (
     overrideCorrections?: CorrectionMap,
   ) => {
@@ -1476,35 +1714,61 @@ export default function PdfMergerPage() {
         continue;
       }
 
-      const valueIdx = fullText.indexOf(correction.matchedChunk);
-      const appearsInText = valueIdx >= 0;
+      const idx = fullText.indexOf(correction.matchedChunk);
+      const appearsInText = idx >= 0;
       const isStatic = !appearsInText;
+
+      // Safety: never save date/policy/name fields as static rules.
+      // These vary per customer — a static rule would poison future uploads.
+      if (isStatic && field !== "companyName") {
+        console.warn(
+          `  ⏭️  Skipped saving ${field} correction — value "${correction.value.trim()}" not found in PDF text. Per-policy fields must match the text.`,
+        );
+        continue;
+      }
 
       let contextBefore = "";
       let contextAfter = "";
       if (appearsInText) {
-        contextBefore = fullText
-          .substring(Math.max(0, valueIdx - 30), valueIdx)
-          .trim();
+        contextBefore = fullText.substring(Math.max(0, idx - 30), idx).trim();
         contextAfter = fullText
           .substring(
-            valueIdx + correction.matchedChunk.length,
-            valueIdx + correction.matchedChunk.length + 30,
+            idx + correction.matchedChunk.length,
+            idx + correction.matchedChunk.length + 30,
           )
           .trim();
       }
 
-      const saved = await saveExtractionRule({
-        carrierFingerprint: extractedInfo.carrierFingerprint,
-        carrierLabel: extractedInfo.carrierLabel,
-        field,
-        matchedChunk: correction.matchedChunk,
-        extractedValue: correction.value.trim(),
-        contextBefore,
-        contextAfter,
-        isStatic,
-      });
-      if (saved) savedCount++;
+      // For companyName, if the value isn't in text, tag with the first
+      // logo hash on the page so future uploads match via the logo
+      const logoHashForRule =
+        field === "companyName" &&
+        isStatic &&
+        extractedInfo.logoHashes &&
+        extractedInfo.logoHashes.length > 0
+          ? extractedInfo.logoHashes[0]
+          : undefined;
+
+      try {
+        const res = await fetch("/api/extraction-rules", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            carrierFingerprint: extractedInfo.carrierFingerprint,
+            carrierLabel: extractedInfo.carrierLabel,
+            field,
+            matchedChunk: correction.matchedChunk,
+            extractedValue: correction.value.trim(),
+            contextBefore,
+            contextAfter,
+            isStatic,
+            logoHash: logoHashForRule,
+          }),
+        });
+        if (res.ok) savedCount++;
+      } catch (err) {
+        console.error(`Failed to save rule for ${field}:`, err);
+      }
     }
 
     const updated: ExtractedInfo = {
@@ -2270,6 +2534,7 @@ export default function PdfMergerPage() {
                           })}
                         </div>
 
+                        {/* Fix extraction button — only show if any field still MISSING or questionable */}
                         {Object.values(extractedInfo.fieldSources).some(
                           (s) => s === "none" || s === "regex",
                         ) && (
@@ -2476,7 +2741,7 @@ export default function PdfMergerPage() {
                   </div>
 
                   <div className="space-y-3">
-                    {/* PIF toggle */}
+                    {/* PIF toggle — entire card is clickable */}
                     <button
                       type="button"
                       onClick={() => {
@@ -2866,7 +3131,7 @@ export default function PdfMergerPage() {
                       {currentMissingField === "companyName" && (
                         <p className="text-[11px] mt-1 opacity-90">
                           💡 If the name is only a logo, click the logo — AI
-                          will identify it and remember it for this carrier
+                          will identify it
                         </p>
                       )}
                     </>

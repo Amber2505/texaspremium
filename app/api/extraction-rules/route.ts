@@ -15,18 +15,14 @@ type ExtractionField = (typeof FIELDS)[number];
 
 interface ExtractionRule {
   field: ExtractionField;
-  // The chunk of text the user clicked — we match this verbatim
-  // (after normalizing whitespace). The chunk IS the value, OR we extract
-  // a value from within it using a field-specific sub-pattern.
   matchedChunk: string;
-  // Normalized value the user confirmed (e.g. "4368264-TX-PP-001")
   extractedValue: string;
-  // A small amount of context before/after the chunk — helps disambiguate
-  // when the same text appears multiple times in a document
   contextBefore: string;
   contextAfter: string;
   createdAt: Date;
   version: number;
+  isStatic?: boolean;
+  logoHash?: string;
 }
 
 interface CarrierRuleDoc {
@@ -37,9 +33,19 @@ interface CarrierRuleDoc {
   updatedAt: Date;
 }
 
+// Hamming distance between two hex strings of equal length
+const hashDistance = (a: string, b: string): number => {
+  if (a.length !== b.length) return Infinity;
+  let d = 0;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) d++;
+  }
+  return d;
+};
+
 // ═════════════════════════════════════════════════════════════════════════
-// GET /api/extraction-rules?fingerprint=X
-// Returns the saved rules for a given carrier fingerprint, or null.
+// GET /api/extraction-rules?fingerprint=X&logoHashes=hash1,hash2,...
+// Returns saved rules, first trying fingerprint match, then logo-hash match.
 // ═════════════════════════════════════════════════════════════════════════
 export async function GET(request: Request) {
   const authFail = requireAdmin(request);
@@ -47,11 +53,15 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const fingerprint = searchParams.get("fingerprint");
+  const logoHashesParam = searchParams.get("logoHashes");
+  const logoHashes = logoHashesParam
+    ? logoHashesParam.split(",").filter((h) => h.length > 0)
+    : [];
 
   if (!fingerprint) {
     return NextResponse.json(
       { error: "Missing fingerprint parameter" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -61,7 +71,33 @@ export async function GET(request: Request) {
     const db = mongoClient.db("db");
     const collection = db.collection<CarrierRuleDoc>("pdf-extraction-rules");
 
-    const doc = await collection.findOne({ carrierFingerprint: fingerprint });
+    // 1. Try exact fingerprint match first
+    let doc = await collection.findOne({ carrierFingerprint: fingerprint });
+    let matchedBy: "fingerprint" | "logoHash" | null = doc
+      ? "fingerprint"
+      : null;
+
+    // 2. If no fingerprint match AND we have logo hashes, scan all carriers
+    //    for a logo-hash match. Hamming distance <= 12 (out of 256) = same logo.
+    if (!doc && logoHashes.length > 0) {
+      const allCarriers = await collection
+        .find({ "rules.logoHash": { $exists: true, $ne: "" } })
+        .toArray();
+      for (const carrier of allCarriers) {
+        for (const rule of carrier.rules) {
+          if (!rule.logoHash) continue;
+          for (const pageHash of logoHashes) {
+            if (hashDistance(pageHash, rule.logoHash) <= 12) {
+              doc = carrier;
+              matchedBy = "logoHash";
+              break;
+            }
+          }
+          if (doc) break;
+        }
+        if (doc) break;
+      }
+    }
 
     await mongoClient.close();
 
@@ -71,6 +107,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
+      matchedBy,
       rules: {
         carrierFingerprint: doc.carrierFingerprint,
         carrierLabel: doc.carrierLabel,
@@ -82,7 +119,7 @@ export async function GET(request: Request) {
     if (mongoClient) await mongoClient.close();
     return NextResponse.json(
       { success: false, error: "Failed to load rules" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -90,8 +127,9 @@ export async function GET(request: Request) {
 // ═════════════════════════════════════════════════════════════════════════
 // POST /api/extraction-rules
 // Body: { carrierFingerprint, carrierLabel, field, matchedChunk,
-//         extractedValue, contextBefore, contextAfter }
-// Appends a new rule for the field (versioned). Creates doc if needed.
+//         extractedValue, contextBefore, contextAfter,
+//         isStatic?, logoHash? }
+// Appends a new rule (versioned per field). Creates carrier doc if needed.
 // ═════════════════════════════════════════════════════════════════════════
 export async function POST(request: Request) {
   const authFail = requireAdmin(request);
@@ -108,6 +146,8 @@ export async function POST(request: Request) {
       extractedValue,
       contextBefore,
       contextAfter,
+      isStatic,
+      logoHash,
     } = body;
 
     if (!carrierFingerprint || !field || !extractedValue) {
@@ -117,14 +157,14 @@ export async function POST(request: Request) {
           error:
             "Missing required fields (carrierFingerprint, field, extractedValue)",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (!FIELDS.includes(field)) {
       return NextResponse.json(
         { success: false, error: `Unknown field: ${field}` },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -135,7 +175,6 @@ export async function POST(request: Request) {
     const now = new Date();
     const existing = await collection.findOne({ carrierFingerprint });
 
-    // Determine the next version number for this specific field
     const existingFieldRules =
       existing?.rules.filter((r) => r.field === field) || [];
     const nextVersion = existingFieldRules.length + 1;
@@ -148,10 +187,31 @@ export async function POST(request: Request) {
       contextAfter: (contextAfter || "").trim(),
       createdAt: now,
       version: nextVersion,
+      ...(isStatic ? { isStatic: true } : {}),
+      ...(logoHash ? { logoHash } : {}),
     };
 
     if (existing) {
-      // Append the new rule, update the carrier label if it changed
+      // Dedupe: if a static rule with same field + same logoHash already
+      // exists, skip the save (prevents growing the rules array on each
+      // identical upload)
+      const duplicate = existing.rules.find(
+        (r) =>
+          r.field === field &&
+          r.isStatic &&
+          r.logoHash &&
+          logoHash &&
+          r.logoHash === logoHash,
+      );
+      if (duplicate) {
+        await mongoClient.close();
+        return NextResponse.json({
+          success: true,
+          skipped: true,
+          reason: "Duplicate logo-hash rule already exists",
+        });
+      }
+
       await collection.updateOne(
         { carrierFingerprint },
         {
@@ -160,10 +220,9 @@ export async function POST(request: Request) {
             updatedAt: now,
             carrierLabel: carrierLabel || existing.carrierLabel,
           },
-        }
+        },
       );
     } else {
-      // Create a new carrier doc
       const newDoc: CarrierRuleDoc = {
         carrierFingerprint,
         carrierLabel: carrierLabel || "Unknown carrier",
@@ -186,7 +245,7 @@ export async function POST(request: Request) {
     if (mongoClient) await mongoClient.close();
     return NextResponse.json(
       { success: false, error: "Failed to save rule" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
