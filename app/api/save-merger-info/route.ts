@@ -19,6 +19,8 @@ export async function POST(request: Request) {
       insuredNameFromPdf,     // extracted (nullable — may differ from admin-entered)
       effectiveDate,          // extracted (nullable)
       expirationDate,         // extracted (nullable)
+      carrierFingerprint,   // ← ADD
+      carrierLabel, 
       paidAmount,             // auto-extracted from receipt
       nextDueDate,            // admin-entered or PIF-computed (REQUIRED to save)
       monthlyAmount,          // admin-entered (or "0.00" for PIF)
@@ -56,6 +58,8 @@ export async function POST(request: Request) {
       companyName: companyName || null,
       effectiveDate: effectiveDate || null,
       expirationDate: expirationDate || null,
+      carrierFingerprint: carrierFingerprint || null,  // ← ADD
+      carrierLabel: carrierLabel || null,     
       paidAmount: paidAmount || null,
       nextDueDate,
       monthlyAmount: monthlyAmount || null,

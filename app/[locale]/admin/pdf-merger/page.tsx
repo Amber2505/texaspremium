@@ -46,19 +46,253 @@ interface ExtraDoc {
   label: string;
 }
 
+type ExtractionField =
+  | "policyNumber"
+  | "companyName"
+  | "insuredName"
+  | "effectiveDate"
+  | "expirationDate";
+
 interface ExtractedInfo {
   policyNumber: string | null;
   companyName: string | null;
   insuredName: string | null;
   effectiveDate: string | null;
   expirationDate: string | null;
+  fieldSources: Record<string, "rule" | "regex" | "ai" | "none">;
+  carrierFingerprint: string | null;
+  carrierLabel: string | null;
+  rawChunks: string[];
 }
+
+interface SavedRule {
+  field: ExtractionField;
+  matchedChunk: string;
+  extractedValue: string;
+  contextBefore: string;
+  contextAfter: string;
+  createdAt: string;
+  version: number;
+  // NEW: static rules (e.g. logo-identified company name) have isStatic=true
+  // and are matched purely by carrier fingerprint — no chunk needed.
+  isStatic?: boolean;
+}
+
+interface SavedCarrierRules {
+  carrierFingerprint: string;
+  carrierLabel: string;
+  rules: SavedRule[];
+}
+
+type CorrectionMap = Record<
+  ExtractionField,
+  { value: string; matchedChunk: string } | null
+>;
 
 // ─── STAMP COORDINATES FOR OFFICE RECEIPT ────────────────────────────────────
 const OFFICE_RECEIPT_STAMPS = {
   paidAmount: { x: 90, y: 360 },
   dueDate: { x: 198, y: 335 },
   monthlyAmount: { x: 320, y: 338 },
+};
+
+// ─── Field validators — reject clicks that don't match expected shape ──
+const FIELD_VALIDATORS: Record<
+  ExtractionField,
+  { test: (s: string) => boolean; hint: string }
+> = {
+  insuredName: {
+    test: (s) => {
+      const clean = s.trim();
+      return (
+        /^[A-Za-z][A-Za-z\s\.'\-]{2,60}$/.test(clean) &&
+        clean.split(/\s+/).length >= 2 &&
+        !/\d/.test(clean) &&
+        !/(Company|Insurance|Agency|LLC|Inc|Corp)/i.test(clean)
+      );
+    },
+    hint: "Names should be 2+ words with letters only (e.g. 'John Smith')",
+  },
+  companyName: {
+    test: (s) => {
+      const clean = s.trim();
+      return (
+        clean.length >= 5 &&
+        clean.length <= 80 &&
+        /(Insurance|Company|Agency|Mutual|Specialty|Risk|LLC|Inc|Corp)/i.test(
+          clean,
+        ) &&
+        !/^\d/.test(clean) &&
+        !/[A-Z]-[A-Z]/.test(clean)
+      );
+    },
+    hint: "Company names usually contain 'Insurance', 'Company', 'Agency', etc.",
+  },
+  policyNumber: {
+    test: (s) => {
+      const clean = s.trim();
+      return (
+        /^[A-Z0-9][A-Z0-9\-_\/]{5,39}$/i.test(clean) &&
+        !/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(clean)
+      );
+    },
+    hint: "Policy numbers are 6+ chars, letters and numbers (e.g. '4368264-TX-PP-001')",
+  },
+  effectiveDate: {
+    test: (s) => /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(s.trim()),
+    hint: "Look for a date like 'MM/DD/YYYY' (e.g. '04/17/2026')",
+  },
+  expirationDate: {
+    test: (s) => /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/.test(s.trim()),
+    hint: "Look for a date like 'MM/DD/YYYY' (e.g. '10/17/2026')",
+  },
+};
+
+// ─── Merge adjacent text items into clickable regions ────────────────
+const mergeAdjacentTextItems = (
+  items: any[],
+  scale: number,
+  viewportHeight: number,
+): Array<{
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}> => {
+  const regions: Array<{
+    text: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    topY: number;
+  }> = [];
+
+  for (const item of items) {
+    if (!item.str || item.str.trim().length === 0) continue;
+    const tx = item.transform;
+    const fontSize = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
+    const x = tx[4] * scale;
+    const topY = viewportHeight - tx[5] * scale - fontSize * scale;
+    const width = item.width * scale;
+    const height = fontSize * scale * 1.2;
+
+    const last = regions[regions.length - 1];
+    if (
+      last &&
+      Math.abs(last.topY - topY) < height * 0.5 &&
+      x - (last.x + last.width) < fontSize * scale * 2
+    ) {
+      const mergedRight = x + width;
+      last.text = (last.text + " " + item.str).replace(/\s+/g, " ").trim();
+      last.width = mergedRight - last.x;
+      continue;
+    }
+
+    regions.push({
+      text: item.str.trim(),
+      x,
+      y: topY,
+      topY,
+      width,
+      height,
+    });
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  return regions.map(({ topY, ...rest }) => rest);
+};
+
+// ─── Fingerprint: canonicalize the top of page 1 into a stable key ───────
+const computeCarrierFingerprint = (
+  page1Text: string,
+): { fingerprint: string; label: string } => {
+  const head = page1Text.substring(0, 300);
+  let label = "Unknown carrier";
+  const labelMatch =
+    head.match(
+      /([A-Z][A-Za-z][A-Za-z&'\-]*(?:\s+[A-Z][A-Za-z&'\-]*){0,3}\s+(?:Insurance|Mutual|Specialty|Risk)(?:\s+Company|\s+Agency)?)/,
+    ) || head.match(/([A-Z][A-Z&\s]{4,30}\s+INSURANCE)/);
+  if (labelMatch) {
+    label = labelMatch[1]
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+    if (!/Company|Agency|Mutual/i.test(label)) label = label + " Company";
+  }
+
+  const fingerprint = page1Text
+    .substring(0, 120)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .substring(0, 80);
+
+  return { fingerprint, label };
+};
+
+// ─── Apply a saved rule to current PDF text ──────────────────────────────
+// NEW: Static rules (isStatic=true) bypass all text matching and return
+// their stored value immediately — used for logo-identified company names
+// and any other field where the value doesn't appear in extracted text.
+const applyRule = (fullText: string, rule: SavedRule): string | null => {
+  // Static rules: matched purely by fingerprint — always return the stored value
+  if (rule.isStatic) {
+    console.log(
+      `  ✓ Static rule hit for ${rule.field}: ${rule.extractedValue}`,
+    );
+    return rule.extractedValue;
+  }
+
+  if (rule.matchedChunk && fullText.includes(rule.matchedChunk)) {
+    return rule.extractedValue;
+  }
+
+  if (rule.contextBefore && rule.contextAfter) {
+    const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    try {
+      const pattern = new RegExp(
+        esc(rule.contextBefore) +
+          "\\s*([^\\s].{0,80}?)\\s*" +
+          esc(rule.contextAfter),
+        "i",
+      );
+      const m = fullText.match(pattern);
+      if (m && m[1]) {
+        const candidate = m[1].trim();
+        if (
+          Math.abs(candidate.length - rule.extractedValue.length) <=
+          Math.max(5, rule.extractedValue.length * 0.5)
+        ) {
+          return candidate;
+        }
+      }
+    } catch {
+      // regex failed, ignore
+    }
+  }
+
+  if (rule.contextBefore && fullText.includes(rule.contextBefore)) {
+    const idx = fullText.indexOf(rule.contextBefore);
+    const window = fullText.substring(
+      idx + rule.contextBefore.length,
+      idx + rule.contextBefore.length + 100,
+    );
+    const shape = rule.extractedValue
+      .replace(/[A-Z]/g, "[A-Z]")
+      .replace(/[a-z]/g, "[a-z]")
+      .replace(/\d/g, "\\d")
+      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    try {
+      const m = window.match(new RegExp(shape));
+      if (m) return m[0];
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
 };
 
 export default function PdfMergerPage() {
@@ -110,9 +344,45 @@ export default function PdfMergerPage() {
     null,
   );
   const [extractingPolicy, setExtractingPolicy] = useState(false);
+  const [aiExtracting, setAiExtracting] = useState(false);
   const [extractingTotal, setExtractingTotal] = useState(false);
   const [extractionNote, setExtractionNote] = useState<string | null>(null);
 
+  // Correction UI state
+  const [corrections, setCorrections] = useState<CorrectionMap>({
+    policyNumber: null,
+    companyName: null,
+    insuredName: null,
+    effectiveDate: null,
+    expirationDate: null,
+  });
+  const [savingCorrections, setSavingCorrections] = useState(false);
+
+  // PDF-click modal state
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [modalPageNum, setModalPageNum] = useState(1);
+  const [modalTotalPages, setModalTotalPages] = useState(1);
+  const [modalPdfDoc, setModalPdfDoc] = useState<any>(null);
+  const [currentMissingField, setCurrentMissingField] =
+    useState<ExtractionField | null>(null);
+  const [missingFieldsQueue, setMissingFieldsQueue] = useState<
+    ExtractionField[]
+  >([]);
+  const [lastClickedBox, setLastClickedBox] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
+  const [pendingClick, setPendingClick] = useState<{
+    field: ExtractionField;
+    value: string;
+    box: { x: number; y: number; width: number; height: number };
+    isInvalid: boolean;
+  } | null>(null);
+
+  const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
+  const pdfOverlayRef = useRef<HTMLDivElement>(null);
   const companyAppRef = useRef<HTMLInputElement>(null);
   const officeReceiptRef = useRef<HTMLInputElement>(null);
   const ccReceiptRef = useRef<HTMLInputElement>(null);
@@ -175,184 +445,387 @@ export default function PdfMergerPage() {
     }
   };
 
+  // ─── Save a single extraction rule to the API ────────────────────────────
+  // Centralised helper so both the main extractor and the correction modal
+  // use the exact same logic.  Pass isStatic=true for logo / fingerprint-only
+  // rules where there is no matching text chunk in the PDF.
+  const saveExtractionRule = async ({
+    carrierFingerprint,
+    carrierLabel,
+    field,
+    matchedChunk,
+    extractedValue,
+    contextBefore,
+    contextAfter,
+    isStatic,
+  }: {
+    carrierFingerprint: string;
+    carrierLabel: string | null;
+    field: ExtractionField;
+    matchedChunk: string;
+    extractedValue: string;
+    contextBefore: string;
+    contextAfter: string;
+    isStatic?: boolean;
+  }): Promise<boolean> => {
+    try {
+      const res = await fetch("/api/extraction-rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          carrierFingerprint,
+          carrierLabel,
+          field,
+          matchedChunk,
+          extractedValue,
+          contextBefore,
+          contextAfter,
+          isStatic: isStatic ?? false,
+        }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  };
+
   // ─── Extract policy info from Company App PDF ───────────────────────────
   const extractPolicyInfoFromPdf = async (
     file: File,
   ): Promise<ExtractedInfo> => {
+    const fieldSources: Record<string, "rule" | "regex" | "ai" | "none"> = {
+      policyNumber: "none",
+      companyName: "none",
+      insuredName: "none",
+      effectiveDate: "none",
+      expirationDate: "none",
+    };
+
     try {
       const pdfjsLib = await loadPdfJs();
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-      // Scan first 8 pages — Named Insured label often appears on dec page (p. 5-10)
       let fullText = "";
+      let page1Text = "";
       const pagesToScan = Math.min(8, pdf.numPages);
       for (let i = 1; i <= pagesToScan; i++) {
         const page = await pdf.getPage(i);
         const content = await page.getTextContent();
-        fullText += " " + content.items.map((item: any) => item.str).join(" ");
+        const pageText = content.items.map((item: any) => item.str).join(" ");
+        fullText += " " + pageText;
+        if (i === 1) page1Text = pageText.replace(/\s+/g, " ").trim();
       }
       fullText = fullText.replace(/\s+/g, " ").trim();
 
-      // ════════ POLICY NUMBER ════════
-      let policyNumber: string | null = null;
-      const policyPatterns = [
-        /Policy\s*(?:No\.?|Number|#)\s*:?\s*([A-Z0-9][A-Z0-9\-_\/]{5,40})/i,
-        /Binder\s*Number\s*:?\s*([A-Z0-9][A-Z0-9\-_\/]{5,40})/i,
-        /Certificate\s*(?:No\.?|Number|#)\s*:?\s*([A-Z0-9][A-Z0-9\-_\/]{5,40})/i,
-      ];
-      for (const pattern of policyPatterns) {
-        const m = fullText.match(pattern);
-        if (m && m[1]) {
-          const candidate = m[1].trim();
-          if (
-            candidate.length >= 6 &&
-            /[A-Z0-9]/i.test(candidate) &&
-            !/^(of|the|is|no|date|yes|applicant|insured)$/i.test(candidate) &&
-            !/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(candidate)
-          ) {
-            policyNumber = candidate;
-            break;
+      const { fingerprint, label } = computeCarrierFingerprint(page1Text);
+
+      // ── Load saved rules for this carrier fingerprint ─────────────────
+      let savedRules: SavedCarrierRules | null = null;
+      try {
+        const res = await fetch(
+          `/api/extraction-rules?fingerprint=${encodeURIComponent(fingerprint)}`,
+        );
+        const data = await res.json();
+        if (data.success && data.rules) {
+          savedRules = data.rules as SavedCarrierRules;
+          console.log(
+            `📚 Loaded ${savedRules.rules.length} saved rule(s) for ${savedRules.carrierLabel}`,
+          );
+        } else {
+          console.log(`📚 No saved rules for fingerprint: ${fingerprint}`);
+        }
+      } catch (err) {
+        console.warn("Could not load extraction rules:", err);
+      }
+
+      const tryRulesFor = (field: ExtractionField): string | null => {
+        if (!savedRules) return null;
+        const fieldRules = savedRules.rules
+          .filter((r) => r.field === field)
+          // Static rules first, then by version descending
+          .sort((a, b) => {
+            if (a.isStatic && !b.isStatic) return -1;
+            if (!a.isStatic && b.isStatic) return 1;
+            return b.version - a.version;
+          });
+        for (const rule of fieldRules) {
+          const result = applyRule(fullText, rule);
+          if (result) {
+            console.log(
+              `  ✓ Rule v${rule.version}${rule.isStatic ? " [static]" : ""} hit for ${field}: ${result}`,
+            );
+            return result;
           }
         }
-      }
+        return null;
+      };
 
-      // ════════ COMPANY / CARRIER NAME ════════
-      // Strategy: companies always brand the top of page 1 (header/logo area).
-      // Extract ONLY from first 600 chars of page 1 to avoid policy numbers,
-      // insured names, and body text polluting the match.
-      let companyName: string | null = null;
-
-      // Get page 1 text separately for company extraction
-      let page1Text = "";
-      try {
-        const page1 = await pdf.getPage(1);
-        const page1Content = await page1.getTextContent();
-        page1Text = page1Content.items
-          .map((item: any) => item.str)
-          .join(" ")
-          .replace(/\s+/g, " ")
-          .trim()
-          .substring(0, 600); // Only top of page — where the header/logo lives
-      } catch {
-        page1Text = fullText.substring(0, 600);
-      }
-
-      const companyPatterns = [
-        // "Underwritten by X" — most explicit carrier statement
-        /Underwritten\s+by\s+([A-Z][A-Za-z0-9\s,.&'\-]+?(?:Company|Insurance|Agency|LLC|Inc|Corp|Co\.))/,
-        // "X Insurance Company" — core pattern, must start with a proper word
-        /\b([A-Z][a-z][A-Za-z&'\-]*(?:\s+[A-Z][a-z][A-Za-z&'\-]*){0,2}\s+Insurance\s+Company)\b/,
-        // "X General Agency"
-        /\b([A-Z][a-z][A-Za-z&'\-]*(?:\s+[A-Z][a-z][A-Za-z&'\-]*){0,2}\s+General\s+Agency(?:,?\s+LLC)?)\b/,
-        // "X Risk Insurance Agency"
-        /\b([A-Z][a-z][A-Za-z&'\-]*\s+Risk\s+Insurance\s+Agency(?:,?\s+LLC)?)\b/,
-        // "X Mutual Fire Insurance Company"
-        /\b((?:[A-Z][a-z][A-Za-z]*\s+){1,3}Mutual\s+(?:Fire\s+)?Insurance\s+Company)\b/,
-        // "X Specialty Insurance Company"
-        /\b([A-Z][a-z][A-Za-z&'\-]*\s+Specialty\s+Insurance(?:\s+Company)?)\b/,
-        // "X Insurance" — fallback, fewer suffixes (e.g. "SAFEWAY INSURANCE")
-        /\b([A-Z][A-Z&'\-]+(?:\s+[A-Z][A-Z&'\-]+){0,2}\s+INSURANCE)(?:\s|$)/,
-      ];
-
-      for (const pattern of companyPatterns) {
-        const m = page1Text.match(pattern);
-        if (m) {
-          let candidate = (m[1] || m[0]).trim().replace(/\s+/g, " ");
-
-          // Reject if candidate contains digits, hyphens surrounded by letters
-          // (catches policy-number contamination like "TX-PP-001 Safeway")
-          if (/\d|[A-Z]-[A-Z]/.test(candidate)) {
-            // Try to strip a leading policy-number-looking prefix
-            const strip = candidate.match(/^\S+\s+([A-Z][a-zA-Z].*)/);
-            if (strip) {
-              candidate = strip[1];
-            } else {
-              continue; // skip this match entirely
+      // ── POLICY NUMBER ──────────────────────────────────────────────────
+      let policyNumber: string | null = tryRulesFor("policyNumber");
+      if (policyNumber) fieldSources.policyNumber = "rule";
+      else {
+        const policyPatterns = [
+          /Policy\s*(?:No\.?|Number|#)\s*:?\s*([A-Z0-9][A-Z0-9\-_\/]{5,40})/i,
+          /Binder\s*Number\s*:?\s*([A-Z0-9][A-Z0-9\-_\/]{5,40})/i,
+          /Certificate\s*(?:No\.?|Number|#)\s*:?\s*([A-Z0-9][A-Z0-9\-_\/]{5,40})/i,
+        ];
+        for (const pattern of policyPatterns) {
+          const m = fullText.match(pattern);
+          if (m && m[1]) {
+            const candidate = m[1].trim();
+            if (
+              candidate.length >= 6 &&
+              /[A-Z0-9]/i.test(candidate) &&
+              !/^(of|the|is|no|date|yes|applicant|insured)$/i.test(candidate) &&
+              !/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(candidate)
+            ) {
+              policyNumber = candidate;
+              fieldSources.policyNumber = "regex";
+              break;
             }
           }
-
-          // Reject agent/producer names
-          if (
-            /^(Texas\s+Premium|NOORIE|Producer|Agent|Agency\s+Name)/i.test(
-              candidate,
-            )
-          ) {
-            continue;
-          }
-
-          // Reject if too short or too long
-          if (candidate.length < 6 || candidate.length > 80) continue;
-
-          // Normalize "SAFEWAY INSURANCE" → "Safeway Insurance Company"
-          // when we know it's a common carrier pattern
-          if (
-            /^[A-Z\s&'\-]+$/.test(candidate) &&
-            !candidate.includes("Company")
-          ) {
-            candidate =
-              candidate.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) +
-              " Company";
-          }
-
-          companyName = candidate;
-          break;
         }
       }
 
-      // ════════ INSURED / APPLICANT NAME ════════
-      let insuredName: string | null = null;
-      const namePatterns = [
-        /(?:Named\s+Insured|Applicant|Insured\s+Name|Legal\s+Name)\s*:?\s+([A-Z]{2,}(?:\s+[A-Z][A-Z\.]{0,}){1,5})(?=\s{2,}|\s+\d|\s+Policy|\s+DOB|\s+Phone|\s+Address|$)/,
-        /(?:Named\s+Insured|Applicant|Insured\s+Name|Legal\s+Name)\s*:?\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){1,4})(?=\s+\d|\s+Policy|\s+DOB|\s{2,}|$)/,
-        /Insured\s*:\s+([A-Z][A-Za-z\.\s]{3,60}?)(?=\s{2,}|\s+\d|$)/,
-      ];
-      for (const pattern of namePatterns) {
-        const m = fullText.match(pattern);
-        if (m && m[1]) {
-          const candidate = m[1].trim().replace(/\s+/g, " ");
-          if (
-            candidate.split(" ").length >= 2 &&
-            candidate.length < 80 &&
-            /^[A-Za-z\s\.]+$/.test(candidate) &&
-            !/(Company|Insurance|Agency|LLC|Inc|Corp)/i.test(candidate)
-          ) {
-            insuredName = candidate;
+      // ── COMPANY / CARRIER NAME ─────────────────────────────────────────
+      let companyName: string | null = tryRulesFor("companyName");
+      if (companyName) fieldSources.companyName = "rule";
+      else {
+        const headText = page1Text.substring(0, 600);
+        const companyPatterns = [
+          /Underwritten\s+by\s+([A-Z][A-Za-z0-9\s,.&'\-]+?(?:Company|Insurance|Agency|LLC|Inc|Corp|Co\.))/,
+          /\b([A-Z][a-z][A-Za-z&'\-]*(?:\s+[A-Z][a-z][A-Za-z&'\-]*){0,2}\s+Insurance\s+Company)\b/,
+          /\b([A-Z][a-z][A-Za-z&'\-]*(?:\s+[A-Z][a-z][A-Za-z&'\-]*){0,2}\s+General\s+Agency(?:,?\s+LLC)?)\b/,
+          /\b([A-Z][a-z][A-Za-z&'\-]*\s+Risk\s+Insurance\s+Agency(?:,?\s+LLC)?)\b/,
+          /\b((?:[A-Z][a-z][A-Za-z]*\s+){1,3}Mutual\s+(?:Fire\s+)?Insurance\s+Company)\b/,
+          /\b([A-Z][a-z][A-Za-z&'\-]*\s+Specialty\s+Insurance(?:\s+Company)?)\b/,
+          /\b([A-Z][A-Z&'\-]+(?:\s+[A-Z][A-Z&'\-]+){0,2}\s+INSURANCE)(?:\s|$)/,
+        ];
+        for (const pattern of companyPatterns) {
+          const m = headText.match(pattern);
+          if (m) {
+            let candidate = (m[1] || m[0]).trim().replace(/\s+/g, " ");
+            if (/\d|[A-Z]-[A-Z]/.test(candidate)) {
+              const strip = candidate.match(/^\S+\s+([A-Z][a-zA-Z].*)/);
+              if (strip) {
+                candidate = strip[1];
+              } else {
+                continue;
+              }
+            }
+            if (
+              /^(Texas\s+Premium|NOORIE|Producer|Agent|Agency\s+Name)/i.test(
+                candidate,
+              )
+            )
+              continue;
+            if (candidate.length < 6 || candidate.length > 80) continue;
+            if (
+              /^[A-Z\s&'\-]+$/.test(candidate) &&
+              !candidate.includes("Company")
+            ) {
+              candidate =
+                candidate
+                  .toLowerCase()
+                  .replace(/\b\w/g, (c) => c.toUpperCase()) + " Company";
+            }
+            companyName = candidate;
+            fieldSources.companyName = "regex";
             break;
           }
         }
       }
 
-      // ════════ EFFECTIVE DATE ════════
-      let effectiveDate: string | null = null;
-      const effPatterns = [
-        /(?:Policy\s+)?Effective\s+Date(?:\s+and\s+Time)?\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-        /Policy\s+Period\s*:?\s*(?:from\s+)?(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-        /Inception\s+Date\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-      ];
-      for (const pattern of effPatterns) {
-        const m = fullText.match(pattern);
-        if (m && m[1]) {
-          effectiveDate = m[1].trim();
-          break;
+      // ── INSURED / APPLICANT NAME ───────────────────────────────────────
+      let insuredName: string | null = tryRulesFor("insuredName");
+      if (insuredName) fieldSources.insuredName = "rule";
+      else {
+        const namePatterns = [
+          /(?:Named\s+Insured|Applicant|Insured\s+Name|Legal\s+Name)\s*:?\s+([A-Z]{2,}(?:\s+[A-Z][A-Z\.]{0,}){1,5})(?=\s{2,}|\s+\d|\s+Policy|\s+DOB|\s+Phone|\s+Address|$)/,
+          /(?:Named\s+Insured|Applicant|Insured\s+Name|Legal\s+Name)\s*:?\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+){1,4})(?=\s+\d|\s+Policy|\s+DOB|\s{2,}|$)/,
+          /Insured\s*:\s+([A-Z][A-Za-z\.\s]{3,60}?)(?=\s{2,}|\s+\d|$)/,
+        ];
+        for (const pattern of namePatterns) {
+          const m = fullText.match(pattern);
+          if (m && m[1]) {
+            const candidate = m[1].trim().replace(/\s+/g, " ");
+            if (
+              candidate.split(" ").length >= 2 &&
+              candidate.length < 80 &&
+              /^[A-Za-z\s\.]+$/.test(candidate) &&
+              !/(Company|Insurance|Agency|LLC|Inc|Corp)/i.test(candidate)
+            ) {
+              insuredName = candidate;
+              fieldSources.insuredName = "regex";
+              break;
+            }
+          }
         }
       }
 
-      // ════════ EXPIRATION DATE ════════
-      let expirationDate: string | null = null;
-      const expPatterns = [
-        /(?:Expiration|Expires?)\s+Date\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-        /Policy\s+Period[\s\S]*?\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}[\s\S]*?to\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-        /Effective[\s\S]*?\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}[\s\S]*?to\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-        /(?:from|:)\s*\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}[\s\S]*?to\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
-      ];
-      for (const pattern of expPatterns) {
-        const m = fullText.match(pattern);
-        if (m && m[1]) {
-          expirationDate = m[1].trim();
-          break;
+      // ── EFFECTIVE DATE ─────────────────────────────────────────────────
+      let effectiveDate: string | null = tryRulesFor("effectiveDate");
+      if (effectiveDate) fieldSources.effectiveDate = "rule";
+      else {
+        const effPatterns = [
+          /(?:Policy\s+)?Effective\s+Date(?:\s+and\s+Time)?\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+          /Policy\s+Period\s*:?\s*(?:from\s+)?(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+          /Inception\s+Date\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+        ];
+        for (const pattern of effPatterns) {
+          const m = fullText.match(pattern);
+          if (m && m[1]) {
+            effectiveDate = m[1].trim();
+            fieldSources.effectiveDate = "regex";
+            break;
+          }
         }
       }
+
+      // ── EXPIRATION DATE ────────────────────────────────────────────────
+      let expirationDate: string | null = tryRulesFor("expirationDate");
+      if (expirationDate) fieldSources.expirationDate = "rule";
+      else {
+        const expPatterns = [
+          /(?:Expiration|Expires?)\s+Date\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+          /Policy\s+Period[\s\S]*?\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}[\s\S]*?to\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+          /Effective[\s\S]*?\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}[\s\S]*?to\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+          /(?:from|:)\s*\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}[\s\S]*?to\s+(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i,
+        ];
+        for (const pattern of expPatterns) {
+          const m = fullText.match(pattern);
+          if (m && m[1]) {
+            expirationDate = m[1].trim();
+            fieldSources.expirationDate = "regex";
+            break;
+          }
+        }
+      }
+
+      // Split text into clickable chunks (used for context when saving rules)
+      const rawChunks = fullText
+        .split(/(?:\s{2,}|(?<=[.:])\s+|\s+(?=[A-Z][A-Za-z]+\s*:))/)
+        .map((s) => s.trim())
+        .filter((s) => s.length >= 3 && s.length <= 100);
+
+      // ════════ AI FALLBACK ════════
+      // Only runs when regex + saved rules couldn't find a field.
+      // Fields marked "rule" or "regex" are SKIPPED — no redundant AI calls.
+      // Once AI finds a value it is immediately saved as a rule (static if the
+      // value doesn't appear in the extracted text) so future PDFs from the
+      // same carrier never reach this branch.
+      const missingAfterRegex = (
+        Object.keys(fieldSources) as ExtractionField[]
+      ).filter((f) => fieldSources[f] === "none");
+
+      if (missingAfterRegex.length > 0) {
+        console.log(
+          `🤖 Calling AI for ${missingAfterRegex.length} field(s): ${missingAfterRegex.join(", ")}`,
+        );
+        setAiExtracting(true);
+        try {
+          const page1 = await pdf.getPage(1);
+          const viewport = page1.getViewport({ scale: 1.6 });
+          const canvas = document.createElement("canvas");
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            await page1.render({ canvasContext: ctx, viewport }).promise;
+            const base64 = canvas
+              .toDataURL("image/png", 0.9)
+              .replace(/^data:image\/png;base64,/, "");
+
+            const aiRes = await fetch("/api/ai-extract", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                pageImageBase64: base64,
+                missingFields: missingAfterRegex,
+              }),
+            });
+            if (aiRes.ok) {
+              const aiData = await aiRes.json();
+              if (aiData.success && aiData.extracted) {
+                const aiExtracted = aiData.extracted as Record<string, string>;
+
+                for (const field of missingAfterRegex) {
+                  const value = aiExtracted[field];
+                  if (!value) continue;
+                  const cleanValue = value.trim();
+
+                  // Assign extracted value
+                  if (field === "policyNumber") {
+                    policyNumber = cleanValue;
+                    fieldSources.policyNumber = "ai";
+                  } else if (field === "companyName") {
+                    companyName = cleanValue;
+                    fieldSources.companyName = "ai";
+                  } else if (field === "insuredName") {
+                    insuredName = cleanValue;
+                    fieldSources.insuredName = "ai";
+                  } else if (field === "effectiveDate") {
+                    effectiveDate = cleanValue;
+                    fieldSources.effectiveDate = "ai";
+                  } else if (field === "expirationDate") {
+                    expirationDate = cleanValue;
+                    fieldSources.expirationDate = "ai";
+                  }
+
+                  // Determine whether the value exists in the PDF text.
+                  // If it doesn't (e.g. company name from a logo image),
+                  // save as a STATIC rule tied purely to the fingerprint.
+                  const valueIdx = fullText.indexOf(cleanValue);
+                  const appearsInText = valueIdx >= 0;
+                  const isStatic = !appearsInText;
+
+                  const matchedChunk = appearsInText ? cleanValue : "";
+                  const contextBefore = appearsInText
+                    ? fullText
+                        .substring(Math.max(0, valueIdx - 30), valueIdx)
+                        .trim()
+                    : "";
+                  const contextAfter = appearsInText
+                    ? fullText
+                        .substring(
+                          valueIdx + cleanValue.length,
+                          valueIdx + cleanValue.length + 30,
+                        )
+                        .trim()
+                    : "";
+
+                  const saved = await saveExtractionRule({
+                    carrierFingerprint: fingerprint,
+                    carrierLabel: label,
+                    field,
+                    matchedChunk,
+                    extractedValue: cleanValue,
+                    contextBefore,
+                    contextAfter,
+                    isStatic,
+                  });
+                  console.log(
+                    `  💾 ${saved ? "Saved" : "Failed to save"} AI rule for ${field}${isStatic ? " [static/logo]" : ""}`,
+                  );
+                }
+              }
+            } else {
+              console.warn("AI extract failed:", await aiRes.text());
+            }
+          }
+        } catch (aiErr) {
+          console.warn("AI extraction skipped:", aiErr);
+        }
+        setAiExtracting(false);
+      } else {
+        console.log(
+          `✅ All fields resolved via rules/regex — AI not needed for this carrier`,
+        );
+      }
+
+      console.log(`📄 Extraction sources:`, fieldSources);
+      console.log(`🏷️  Carrier: ${label} (${fingerprint})`);
 
       return {
         policyNumber,
@@ -360,6 +833,10 @@ export default function PdfMergerPage() {
         insuredName,
         effectiveDate,
         expirationDate,
+        fieldSources,
+        carrierFingerprint: fingerprint,
+        carrierLabel: label,
+        rawChunks,
       };
     } catch (err) {
       console.error("Extract policy info failed:", err);
@@ -369,6 +846,10 @@ export default function PdfMergerPage() {
         insuredName: null,
         effectiveDate: null,
         expirationDate: null,
+        fieldSources,
+        carrierFingerprint: null,
+        carrierLabel: null,
+        rawChunks: [],
       };
     }
   };
@@ -391,7 +872,6 @@ export default function PdfMergerPage() {
     }
   };
 
-  // When PIF is toggled ON, auto-fill due date from expiration and zero monthly
   useEffect(() => {
     if (paidInFull && extractedInfo?.expirationDate) {
       const computed = computePifDueDate(extractedInfo.expirationDate);
@@ -421,7 +901,6 @@ export default function PdfMergerPage() {
     }
   };
 
-  // ── Company App: multi-file handler ──────────────────────────────────────
   const handleCompanyAppFiles = async (files: FileList) => {
     const arr = Array.from(files).filter(
       (f) =>
@@ -447,7 +926,6 @@ export default function PdfMergerPage() {
         setExtraDocs((prev) => [...prev, ...newExtras]);
       }
 
-      // Extract policy info from the primary company app immediately
       setExtractingPolicy(true);
       const info = await extractPolicyInfoFromPdf(arr[0]);
       setExtractedInfo(info);
@@ -456,6 +934,619 @@ export default function PdfMergerPage() {
     }
 
     if (companyAppRef.current) companyAppRef.current.value = "";
+  };
+
+  // ─── Render a PDF page into the canvas + overlay clickable text AND image items ───
+  const renderPdfPageForPicking = async (pageNum: number) => {
+    if (!modalPdfDoc) return;
+    const canvas = pdfCanvasRef.current;
+    const overlay = pdfOverlayRef.current;
+    if (!canvas || !overlay) return;
+
+    const page = await modalPdfDoc.getPage(pageNum);
+
+    const baseViewport = page.getViewport({ scale: 1 });
+    const scale = Math.min(1100 / baseViewport.width, 1.8);
+    const viewport = page.getViewport({ scale });
+
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    overlay.style.width = `${viewport.width}px`;
+    overlay.style.height = `${viewport.height}px`;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    await page.render({ canvasContext: ctx, viewport }).promise;
+
+    overlay.innerHTML = "";
+    const textContent = await page.getTextContent();
+
+    const regions = mergeAdjacentTextItems(
+      textContent.items,
+      scale,
+      viewport.height,
+    );
+
+    // ════════ DETECT IMAGE REGIONS (logos) ════════
+    const imageRegions: Array<{
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }> = [];
+    try {
+      const opList = await page.getOperatorList();
+      const pdfjsLib = (window as any).pdfjsLib;
+      const OPS = pdfjsLib.OPS;
+
+      const transformStack: number[][] = [[1, 0, 0, 1, 0, 0]];
+
+      for (let i = 0; i < opList.fnArray.length; i++) {
+        const fn = opList.fnArray[i];
+        const args = opList.argsArray[i];
+
+        if (fn === OPS.save) {
+          transformStack.push([...transformStack[transformStack.length - 1]]);
+        } else if (fn === OPS.restore) {
+          if (transformStack.length > 1) transformStack.pop();
+        } else if (fn === OPS.transform) {
+          const current = transformStack[transformStack.length - 1];
+          const [a, b, c, d, e, f] = args;
+          const [ca, cb, cc, cd, ce, cf] = current;
+          transformStack[transformStack.length - 1] = [
+            ca * a + cc * b,
+            cb * a + cd * b,
+            ca * c + cc * d,
+            cb * c + cd * d,
+            ca * e + cc * f + ce,
+            cb * e + cd * f + cf,
+          ];
+        } else if (
+          fn === OPS.paintImageXObject ||
+          fn === OPS.paintJpegXObject ||
+          fn === OPS.paintInlineImageXObject
+        ) {
+          const t = transformStack[transformStack.length - 1];
+          const imgWidth = Math.abs(t[0]);
+          const imgHeight = Math.abs(t[3]);
+          const pdfX = t[4];
+          const pdfYBottom = t[5];
+
+          const canvasX = pdfX * scale;
+          const canvasY = viewport.height - (pdfYBottom + imgHeight) * scale;
+          const canvasW = imgWidth * scale;
+          const canvasH = imgHeight * scale;
+
+          if (canvasW < 30 || canvasH < 15) continue;
+          if (canvasW > viewport.width * 0.9 && canvasH > viewport.height * 0.9)
+            continue;
+
+          imageRegions.push({
+            x: canvasX,
+            y: canvasY,
+            width: canvasW,
+            height: canvasH,
+          });
+        }
+      }
+    } catch (err) {
+      console.warn("Could not walk operator list for images:", err);
+    }
+
+    // Build multi-word merged regions for names / multi-part values
+    const multiWordRegions: typeof regions = [];
+    for (let i = 0; i < regions.length; i++) {
+      const a = regions[i];
+      const b = regions[i + 1];
+      const c = regions[i + 2];
+      if (
+        b &&
+        Math.abs(a.y - b.y) < a.height * 0.5 &&
+        b.x - (a.x + a.width) < 30
+      ) {
+        multiWordRegions.push({
+          text: `${a.text} ${b.text}`,
+          x: a.x,
+          y: Math.min(a.y, b.y),
+          width: b.x + b.width - a.x,
+          height: Math.max(a.height, b.height),
+        });
+        if (
+          c &&
+          Math.abs(b.y - c.y) < b.height * 0.5 &&
+          c.x - (b.x + b.width) < 30
+        ) {
+          multiWordRegions.push({
+            text: `${a.text} ${b.text} ${c.text}`,
+            x: a.x,
+            y: Math.min(a.y, b.y, c.y),
+            width: c.x + c.width - a.x,
+            height: Math.max(a.height, b.height, c.height),
+          });
+        }
+      }
+    }
+
+    // Render clickable text regions
+    regions.forEach((region) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      const PADDING = 3;
+      btn.style.cssText = `
+        position: absolute;
+        left: ${region.x - PADDING}px;
+        top: ${region.y - PADDING}px;
+        width: ${region.width + PADDING * 2}px;
+        height: ${region.height + PADDING * 2}px;
+        background: transparent;
+        border: 1px solid transparent;
+        cursor: pointer;
+        padding: 0;
+        margin: 0;
+        border-radius: 3px;
+        transition: all 0.15s ease;
+      `;
+      btn.title = region.text;
+      btn.onmouseenter = () => {
+        btn.style.background = "rgba(139, 92, 246, 0.15)";
+        btn.style.border = "1px solid rgba(139, 92, 246, 0.5)";
+      };
+      btn.onmouseleave = () => {
+        btn.style.background = "transparent";
+        btn.style.border = "1px solid transparent";
+      };
+      btn.onclick = (e) => {
+        e.preventDefault();
+
+        const clickCenterX = region.x + region.width / 2;
+        const clickCenterY = region.y + region.height / 2;
+
+        if (currentMissingField) {
+          const validator = FIELD_VALIDATORS[currentMissingField];
+          if (validator.test(region.text)) {
+            handlePdfItemClick(region.text, region);
+            return;
+          }
+          const matchingMultiWord = multiWordRegions.find(
+            (m) =>
+              clickCenterX >= m.x &&
+              clickCenterX <= m.x + m.width &&
+              clickCenterY >= m.y &&
+              clickCenterY <= m.y + m.height &&
+              validator.test(m.text),
+          );
+          if (matchingMultiWord) {
+            handlePdfItemClick(matchingMultiWord.text, matchingMultiWord);
+            return;
+          }
+          handlePdfItemClick(region.text, region, true);
+          return;
+        }
+
+        handlePdfItemClick(region.text, region);
+      };
+      overlay.appendChild(btn);
+    });
+
+    // ════════ Render clickable LOGO regions ════════
+    imageRegions.forEach((region) => {
+      const isCompanyActive = currentMissingField === "companyName";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      const PADDING = 4;
+      btn.style.cssText = `
+        position: absolute;
+        left: ${region.x - PADDING}px;
+        top: ${region.y - PADDING}px;
+        width: ${region.width + PADDING * 2}px;
+        height: ${region.height + PADDING * 2}px;
+        background: ${isCompanyActive ? "rgba(20, 184, 166, 0.08)" : "transparent"};
+        border: ${isCompanyActive ? "2px dashed rgba(20, 184, 166, 0.5)" : "1px dashed rgba(156, 163, 175, 0.4)"};
+        cursor: ${isCompanyActive ? "pointer" : "help"};
+        padding: 0;
+        margin: 0;
+        border-radius: 6px;
+        transition: all 0.15s ease;
+        display: flex;
+        align-items: flex-start;
+        justify-content: flex-end;
+      `;
+      const badge = document.createElement("span");
+      badge.textContent = isCompanyActive ? "Click to identify" : "Logo";
+      badge.style.cssText = `
+        position: absolute;
+        top: -10px;
+        right: 4px;
+        background: ${isCompanyActive ? "rgb(20, 184, 166)" : "rgba(156, 163, 175, 0.8)"};
+        color: white;
+        font-size: 9px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 3px;
+        pointer-events: none;
+        white-space: nowrap;
+      `;
+      btn.appendChild(badge);
+
+      btn.title = isCompanyActive
+        ? "Click to identify this logo with AI"
+        : "This is a logo — useful for identifying the company";
+
+      btn.onmouseenter = () => {
+        if (isCompanyActive) {
+          btn.style.background = "rgba(20, 184, 166, 0.2)";
+          btn.style.border = "2px dashed rgba(20, 184, 166, 0.8)";
+        }
+      };
+      btn.onmouseleave = () => {
+        if (isCompanyActive) {
+          btn.style.background = "rgba(20, 184, 166, 0.08)";
+          btn.style.border = "2px dashed rgba(20, 184, 166, 0.5)";
+        }
+      };
+
+      btn.onclick = async (e) => {
+        e.preventDefault();
+        if (!isCompanyActive) {
+          handlePdfItemClick(
+            "(logo — only use for company name)",
+            region,
+            true,
+          );
+          return;
+        }
+        await identifyLogoWithAi(region);
+      };
+
+      overlay.appendChild(btn);
+    });
+  };
+
+  // Crop a region from the rendered canvas and send to AI for identification.
+  // The result is saved as a STATIC rule so this carrier's logo is never
+  // sent to the AI again.
+  const identifyLogoWithAi = async (region: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }) => {
+    const canvas = pdfCanvasRef.current;
+    if (!canvas || !currentMissingField) return;
+
+    const PAD = 10;
+    const cropX = Math.max(0, region.x - PAD);
+    const cropY = Math.max(0, region.y - PAD);
+    const cropW = Math.min(canvas.width - cropX, region.width + PAD * 2);
+    const cropH = Math.min(canvas.height - cropY, region.height + PAD * 2);
+
+    const cropCanvas = document.createElement("canvas");
+    cropCanvas.width = cropW;
+    cropCanvas.height = cropH;
+    const cropCtx = cropCanvas.getContext("2d");
+    if (!cropCtx) return;
+
+    cropCtx.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+    const base64 = cropCanvas
+      .toDataURL("image/png")
+      .replace(/^data:image\/png;base64,/, "");
+
+    setLastClickedBox(region);
+    setPendingClick({
+      field: currentMissingField,
+      value: "Recognizing logo...",
+      box: region,
+      isInvalid: false,
+    });
+
+    try {
+      const res = await fetch("/api/ai-extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pageImageBase64: base64,
+          missingFields: [],
+          logoOnly: true,
+        }),
+      });
+      if (!res.ok) throw new Error(`AI returned ${res.status}`);
+      const data = await res.json();
+      const identified = data?.extracted?.companyName;
+      if (identified && typeof identified === "string") {
+        setPendingClick({
+          field: currentMissingField,
+          value: identified,
+          box: region,
+          isInvalid: !FIELD_VALIDATORS.companyName.test(identified),
+        });
+        // Save immediately as a static rule so this carrier's logo is
+        // never sent to the API again on future uploads
+        if (
+          extractedInfo?.carrierFingerprint &&
+          FIELD_VALIDATORS.companyName.test(identified)
+        ) {
+          const saved = await saveExtractionRule({
+            carrierFingerprint: extractedInfo.carrierFingerprint,
+            carrierLabel: extractedInfo.carrierLabel,
+            field: "companyName",
+            matchedChunk: "",
+            extractedValue: identified.trim(),
+            contextBefore: "",
+            contextAfter: "",
+            isStatic: true,
+          });
+          console.log(
+            `  💾 ${saved ? "Saved" : "Failed to save"} static logo rule for company: ${identified}`,
+          );
+        }
+      } else {
+        setPendingClick({
+          field: currentMissingField,
+          value: "",
+          box: region,
+          isInvalid: true,
+        });
+      }
+    } catch (err) {
+      console.error("Logo identification failed:", err);
+      setPendingClick({
+        field: currentMissingField,
+        value: "",
+        box: region,
+        isInvalid: true,
+      });
+    }
+  };
+
+  // ─── User clicked a text item on the PDF ────────────────────────────────
+  const handlePdfItemClick = (
+    clickedText: string,
+    box: { x: number; y: number; width: number; height: number },
+    forceInvalid = false,
+  ) => {
+    if (!currentMissingField) return;
+
+    const validator = FIELD_VALIDATORS[currentMissingField];
+    const isValid = !forceInvalid && validator.test(clickedText);
+
+    setLastClickedBox(box);
+
+    setPendingClick({
+      field: currentMissingField,
+      value: clickedText,
+      box,
+      isInvalid: !isValid,
+    });
+  };
+
+  // User confirms the pending click → save + advance
+  const confirmPendingClick = () => {
+    if (!pendingClick) return;
+
+    const newCorrections: CorrectionMap = {
+      ...corrections,
+      [pendingClick.field]: {
+        value: pendingClick.value.trim(),
+        matchedChunk: pendingClick.value.trim(),
+      },
+    };
+    setCorrections(newCorrections);
+
+    const remaining = missingFieldsQueue.filter(
+      (f) => f !== pendingClick.field,
+    );
+    setMissingFieldsQueue(remaining);
+    setPendingClick(null);
+    setLastClickedBox(null);
+
+    if (remaining.length > 0) {
+      setCurrentMissingField(remaining[0]);
+    } else {
+      setCurrentMissingField(null);
+      handleSaveCorrectionsFromModal(newCorrections);
+    }
+  };
+
+  const rejectPendingClick = () => {
+    setPendingClick(null);
+    setLastClickedBox(null);
+  };
+
+  const updatePendingValue = (newValue: string) => {
+    if (!pendingClick) return;
+    setPendingClick({ ...pendingClick, value: newValue });
+  };
+
+  const goBackOneField = () => {
+    if (!currentMissingField || !extractedInfo) return;
+
+    const fieldOrder: ExtractionField[] = [
+      "insuredName",
+      "policyNumber",
+      "companyName",
+      "effectiveDate",
+      "expirationDate",
+    ];
+    const allMissing = fieldOrder.filter(
+      (f) =>
+        extractedInfo.fieldSources[f] === "none" ||
+        extractedInfo.fieldSources[f] === "regex",
+    );
+
+    const currentIdx = allMissing.indexOf(currentMissingField);
+    if (currentIdx <= 0) return;
+
+    const previousField = allMissing[currentIdx - 1];
+    setCorrections((prev) => ({ ...prev, [previousField]: null }));
+    setMissingFieldsQueue([previousField, ...missingFieldsQueue]);
+    setCurrentMissingField(previousField);
+    setPendingClick(null);
+    setLastClickedBox(null);
+  };
+
+  // ─── Open the PDF modal ──────────────────────────────────────────────────
+  const openCorrectionModal = async () => {
+    if (!companyApp || !extractedInfo) return;
+
+    const fieldOrder: ExtractionField[] = [
+      "insuredName",
+      "policyNumber",
+      "companyName",
+      "effectiveDate",
+      "expirationDate",
+    ];
+    const queue = fieldOrder.filter(
+      (f) =>
+        extractedInfo.fieldSources[f] === "none" ||
+        extractedInfo.fieldSources[f] === "regex",
+    );
+
+    if (queue.length === 0) return;
+
+    setCorrections({
+      policyNumber: {
+        value: extractedInfo.policyNumber || "",
+        matchedChunk: "",
+      },
+      companyName: {
+        value: extractedInfo.companyName || "",
+        matchedChunk: "",
+      },
+      insuredName: {
+        value: extractedInfo.insuredName || "",
+        matchedChunk: "",
+      },
+      effectiveDate: {
+        value: extractedInfo.effectiveDate || "",
+        matchedChunk: "",
+      },
+      expirationDate: {
+        value: extractedInfo.expirationDate || "",
+        matchedChunk: "",
+      },
+    });
+
+    try {
+      const pdfjsLib = await loadPdfJs();
+      const arrayBuffer = await companyApp.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      setModalPdfDoc(pdf);
+      setModalTotalPages(pdf.numPages);
+      setModalPageNum(1);
+      setMissingFieldsQueue(queue);
+      setCurrentMissingField(queue[0]);
+      setPdfModalOpen(true);
+    } catch (err) {
+      console.error("Failed to load PDF for modal:", err);
+    }
+  };
+
+  // Re-render the PDF when modal opens or page changes or active field changes
+  useEffect(() => {
+    if (pdfModalOpen && modalPdfDoc) {
+      renderPdfPageForPicking(modalPageNum);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfModalOpen, modalPdfDoc, modalPageNum, currentMissingField]);
+
+  // ─── Save user corrections as extraction rules ───────────────────────────
+  // For each corrected field we determine whether the value appears in the
+  // PDF text:
+  //   - If yes  → normal rule with chunk + context
+  //   - If no   → static rule (fingerprint-only) — covers logo-identified
+  //               company names that the user typed in manually
+  const handleSaveCorrectionsFromModal = async (
+    overrideCorrections?: CorrectionMap,
+  ) => {
+    if (!extractedInfo || !extractedInfo.carrierFingerprint) {
+      setPdfModalOpen(false);
+      return;
+    }
+
+    const correctionsToSave = overrideCorrections || corrections;
+
+    setSavingCorrections(true);
+    const fullText = extractedInfo.rawChunks.join(" ");
+    let savedCount = 0;
+
+    for (const field of Object.keys(correctionsToSave) as ExtractionField[]) {
+      const correction = correctionsToSave[field];
+      if (!correction || !correction.value.trim() || !correction.matchedChunk) {
+        continue;
+      }
+
+      const valueIdx = fullText.indexOf(correction.matchedChunk);
+      const appearsInText = valueIdx >= 0;
+      const isStatic = !appearsInText;
+
+      let contextBefore = "";
+      let contextAfter = "";
+      if (appearsInText) {
+        contextBefore = fullText
+          .substring(Math.max(0, valueIdx - 30), valueIdx)
+          .trim();
+        contextAfter = fullText
+          .substring(
+            valueIdx + correction.matchedChunk.length,
+            valueIdx + correction.matchedChunk.length + 30,
+          )
+          .trim();
+      }
+
+      const saved = await saveExtractionRule({
+        carrierFingerprint: extractedInfo.carrierFingerprint,
+        carrierLabel: extractedInfo.carrierLabel,
+        field,
+        matchedChunk: correction.matchedChunk,
+        extractedValue: correction.value.trim(),
+        contextBefore,
+        contextAfter,
+        isStatic,
+      });
+      if (saved) savedCount++;
+    }
+
+    const updated: ExtractedInfo = {
+      ...extractedInfo,
+      policyNumber:
+        correctionsToSave.policyNumber?.value.trim() ||
+        extractedInfo.policyNumber,
+      companyName:
+        correctionsToSave.companyName?.value.trim() ||
+        extractedInfo.companyName,
+      insuredName:
+        correctionsToSave.insuredName?.value.trim() ||
+        extractedInfo.insuredName,
+      effectiveDate:
+        correctionsToSave.effectiveDate?.value.trim() ||
+        extractedInfo.effectiveDate,
+      expirationDate:
+        correctionsToSave.expirationDate?.value.trim() ||
+        extractedInfo.expirationDate,
+      fieldSources: { ...extractedInfo.fieldSources },
+    };
+    for (const field of Object.keys(correctionsToSave) as ExtractionField[]) {
+      const c = correctionsToSave[field];
+      if (c?.matchedChunk && c.value.trim()) {
+        updated.fieldSources[field] = "rule";
+      }
+    }
+    setExtractedInfo(updated);
+    setCorrections({
+      policyNumber: null,
+      companyName: null,
+      insuredName: null,
+      effectiveDate: null,
+      expirationDate: null,
+    });
+    setPdfModalOpen(false);
+    setCurrentMissingField(null);
+    setMissingFieldsQueue([]);
+    setPendingClick(null);
+    setLastClickedBox(null);
+    setSavingCorrections(false);
+    console.log(`✅ Saved ${savedCount} extraction rule(s)`);
   };
 
   const handleRemoveExtraDoc = (id: string) => {
@@ -704,7 +1795,6 @@ export default function PdfMergerPage() {
       a.click();
       URL.revokeObjectURL(url);
 
-      // Save to MongoDB — uses already-extracted info
       try {
         await fetch("/api/save-merger-info", {
           method: "POST",
@@ -716,6 +1806,8 @@ export default function PdfMergerPage() {
             insuredNameFromPdf: extractedInfo?.insuredName || null,
             effectiveDate: extractedInfo?.effectiveDate || null,
             expirationDate: extractedInfo?.expirationDate || null,
+            carrierFingerprint: extractedInfo?.carrierFingerprint || null,
+            carrierLabel: extractedInfo?.carrierLabel || null,
             paidAmount: paidAmount.trim() || null,
             nextDueDate: nextDueDate || null,
             monthlyAmount: monthlyAmount.trim() || null,
@@ -765,6 +1857,18 @@ export default function PdfMergerPage() {
     setNoReceipt(false);
     setPaidInFull(false);
     setExtractedInfo(null);
+    setPdfModalOpen(false);
+    setCurrentMissingField(null);
+    setMissingFieldsQueue([]);
+    setLastClickedBox(null);
+    setPendingClick(null);
+    setCorrections({
+      policyNumber: null,
+      companyName: null,
+      insuredName: null,
+      effectiveDate: null,
+      expirationDate: null,
+    });
     if (companyAppRef.current) companyAppRef.current.value = "";
     if (officeReceiptRef.current) officeReceiptRef.current.value = "";
     if (ccReceiptRef.current) ccReceiptRef.current.value = "";
@@ -789,6 +1893,17 @@ export default function PdfMergerPage() {
   }
 
   const receiptFieldsEnabled = !!officeReceipt;
+
+  const missingFieldLabel = (f: ExtractionField) =>
+    f === "policyNumber"
+      ? "policy number"
+      : f === "companyName"
+        ? "company name"
+        : f === "insuredName"
+          ? "insured name"
+          : f === "effectiveDate"
+            ? "effective date"
+            : "expiration date";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-6">
@@ -862,7 +1977,6 @@ export default function PdfMergerPage() {
             </div>
           </div>
 
-          {/* Non-Owner Toggle */}
           <div className="flex items-center justify-between pt-4 border-t border-gray-100">
             <div>
               <p className="text-sm font-medium text-gray-700">
@@ -898,7 +2012,6 @@ export default function PdfMergerPage() {
             </div>
           </div>
 
-          {/* Payment Method */}
           <div className="pt-4 border-t border-gray-100">
             <p className="text-sm font-medium text-gray-700 mb-1">
               Payment Method on File
@@ -1051,6 +2164,8 @@ export default function PdfMergerPage() {
                     onClick={() => {
                       setCompanyApp(null);
                       setExtractedInfo(null);
+                      setPdfModalOpen(false);
+                      setPendingClick(null);
                       if (companyAppRef.current)
                         companyAppRef.current.value = "";
                     }}
@@ -1066,44 +2181,114 @@ export default function PdfMergerPage() {
                     {extractingPolicy ? (
                       <p className="text-blue-700 flex items-center gap-1.5">
                         <Loader2 className="w-3 h-3 animate-spin" />
-                        Reading policy document...
+                        {aiExtracting
+                          ? "Reading logos and text with AI..."
+                          : "Reading policy document..."}
                       </p>
                     ) : extractedInfo ? (
-                      <div className="space-y-0.5 text-gray-700">
-                        <p className="font-semibold text-blue-900 mb-1">
-                          <Sparkles className="w-3 h-3 inline mr-1" />
-                          Extracted from PDF:
-                        </p>
-                        <p>
-                          <span className="text-gray-500">Insured:</span>{" "}
-                          {extractedInfo.insuredName || (
-                            <em className="text-amber-600">not found</em>
-                          )}
-                        </p>
-                        <p>
-                          <span className="text-gray-500">Policy #:</span>{" "}
-                          {extractedInfo.policyNumber || (
-                            <em className="text-amber-600">not found</em>
-                          )}
-                        </p>
-                        <p>
-                          <span className="text-gray-500">Company:</span>{" "}
-                          {extractedInfo.companyName || (
-                            <em className="text-amber-600">not found</em>
-                          )}
-                        </p>
-                        <p>
-                          <span className="text-gray-500">Effective:</span>{" "}
-                          {extractedInfo.effectiveDate || (
-                            <em className="text-amber-600">not found</em>
-                          )}{" "}
-                          <span className="text-gray-400">→</span>{" "}
-                          <span className="text-gray-500">Expires:</span>{" "}
-                          {extractedInfo.expirationDate || (
-                            <em className="text-amber-600">not found</em>
-                          )}
-                        </p>
-                      </div>
+                      <>
+                        <div className="space-y-0.5 text-gray-700">
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="font-semibold text-blue-900">
+                              <Sparkles className="w-3 h-3 inline mr-1" />
+                              Extracted from PDF:
+                            </p>
+                            {extractedInfo.carrierLabel && (
+                              <span className="text-[10px] text-gray-500 italic">
+                                Carrier: {extractedInfo.carrierLabel}
+                              </span>
+                            )}
+                          </div>
+
+                          {(
+                            [
+                              [
+                                "Insured",
+                                "insuredName",
+                                extractedInfo.insuredName,
+                              ],
+                              [
+                                "Policy #",
+                                "policyNumber",
+                                extractedInfo.policyNumber,
+                              ],
+                              [
+                                "Company",
+                                "companyName",
+                                extractedInfo.companyName,
+                              ],
+                              [
+                                "Effective",
+                                "effectiveDate",
+                                extractedInfo.effectiveDate,
+                              ],
+                              [
+                                "Expires",
+                                "expirationDate",
+                                extractedInfo.expirationDate,
+                              ],
+                            ] as const
+                          ).map(([label, key, value]) => {
+                            const source = extractedInfo.fieldSources[key];
+                            return (
+                              <div
+                                key={key}
+                                className="flex items-center gap-2"
+                              >
+                                <span className="text-gray-500 min-w-[70px]">
+                                  {label}:
+                                </span>
+                                <span className="flex-1">
+                                  {value || (
+                                    <em className="text-amber-600">
+                                      not found
+                                    </em>
+                                  )}
+                                </span>
+                                {source === "rule" && (
+                                  <span className="text-[9px] px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded font-semibold">
+                                    LEARNED
+                                  </span>
+                                )}
+                                {source === "ai" && (
+                                  <span className="text-[9px] px-1.5 py-0.5 bg-teal-100 text-teal-700 rounded font-semibold">
+                                    AI
+                                  </span>
+                                )}
+                                {source === "regex" && (
+                                  <span className="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-semibold">
+                                    AUTO
+                                  </span>
+                                )}
+                                {source === "none" && (
+                                  <span className="text-[9px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-semibold">
+                                    MISSING
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {Object.values(extractedInfo.fieldSources).some(
+                          (s) => s === "none" || s === "regex",
+                        ) && (
+                          <div className="mt-3 pt-3 border-t border-blue-200">
+                            <button
+                              type="button"
+                              onClick={openCorrectionModal}
+                              className="w-full text-xs px-3 py-2 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition flex items-center justify-center gap-1.5"
+                            >
+                              <Sparkles className="w-3 h-3" />
+                              Fix extraction — click values on the PDF
+                            </button>
+                            <p className="text-[10px] text-gray-500 mt-1 text-center">
+                              Help the system learn this carrier&apos;s format —
+                              next time it&apos;ll extract automatically
+                            </p>
+                          </div>
+                        )}
+                      </>
                     ) : null}
                   </div>
                 )}
@@ -1292,7 +2477,6 @@ export default function PdfMergerPage() {
 
                   <div className="space-y-3">
                     {/* PIF toggle */}
-                    {/* PIF toggle — entire card is clickable */}
                     <button
                       type="button"
                       onClick={() => {
@@ -1656,6 +2840,276 @@ export default function PdfMergerPage() {
           </p>
         )}
       </div>
+
+      {/* ═══════ PDF Click-to-Teach Modal ═══════ */}
+      {pdfModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[95vh] flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="p-4 border-b bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-2xl">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  {currentMissingField ? (
+                    <>
+                      <p className="text-xs uppercase tracking-wider opacity-80">
+                        Click the text{" "}
+                        {currentMissingField === "companyName" ? "or logo" : ""}{" "}
+                        on the PDF:
+                      </p>
+                      <h3 className="text-lg font-bold mt-0.5">
+                        Where is the{" "}
+                        <span className="underline decoration-white/50 underline-offset-4">
+                          {missingFieldLabel(currentMissingField)}
+                        </span>
+                        ?
+                      </h3>
+                      {currentMissingField === "companyName" && (
+                        <p className="text-[11px] mt-1 opacity-90">
+                          💡 If the name is only a logo, click the logo — AI
+                          will identify it and remember it for this carrier
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm font-semibold">
+                      Saving your corrections…
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPdfModalOpen(false);
+                    setCurrentMissingField(null);
+                    setMissingFieldsQueue([]);
+                    setLastClickedBox(null);
+                    setPendingClick(null);
+                  }}
+                  className="ml-4 p-2 hover:bg-white/20 rounded-lg transition"
+                  title="Close without saving"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Progress indicator */}
+              {(missingFieldsQueue.length > 0 || currentMissingField) && (
+                <div className="flex items-center gap-1.5 mt-3">
+                  {(
+                    [
+                      "insuredName",
+                      "policyNumber",
+                      "companyName",
+                      "effectiveDate",
+                      "expirationDate",
+                    ] as ExtractionField[]
+                  )
+                    .filter((f) => {
+                      const source = extractedInfo?.fieldSources[f];
+                      return source === "none" || source === "regex";
+                    })
+                    .map((f) => {
+                      const isDone = !missingFieldsQueue.includes(f);
+                      const isActive = f === currentMissingField;
+                      const label =
+                        f === "policyNumber"
+                          ? "Policy #"
+                          : f === "companyName"
+                            ? "Company"
+                            : f === "insuredName"
+                              ? "Insured"
+                              : f === "effectiveDate"
+                                ? "Effective"
+                                : "Expires";
+                      return (
+                        <div
+                          key={f}
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-semibold transition ${
+                            isDone && !isActive
+                              ? "bg-emerald-400 text-emerald-900"
+                              : isActive
+                                ? "bg-white text-indigo-700 ring-2 ring-white"
+                                : "bg-white/20 text-white"
+                          }`}
+                        >
+                          {isDone && !isActive ? "✓ " : ""}
+                          {label}
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+
+              {/* Pending click confirmation */}
+              {pendingClick && (
+                <div className="mt-3 bg-white rounded-lg p-3 text-gray-900 shadow-inner">
+                  {pendingClick.isInvalid ? (
+                    <>
+                      <div className="flex items-start gap-2 mb-2">
+                        <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <span className="text-red-600 text-xs font-bold">
+                            !
+                          </span>
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs font-semibold text-red-700">
+                            That doesn&apos;t look right for this field
+                          </p>
+                          <p className="text-[11px] text-gray-600 mt-0.5">
+                            {FIELD_VALIDATORS[pendingClick.field].hint}
+                          </p>
+                          <p className="text-[11px] text-gray-500 mt-1">
+                            You clicked:{" "}
+                            <span className="font-mono bg-red-50 px-1.5 py-0.5 rounded text-red-700">
+                              {pendingClick.value}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={rejectPendingClick}
+                          className="flex-1 text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md font-semibold hover:bg-gray-200 transition"
+                        >
+                          Try again
+                        </button>
+                        <button
+                          type="button"
+                          onClick={confirmPendingClick}
+                          className="flex-1 text-xs px-3 py-1.5 bg-amber-500 text-white rounded-md font-semibold hover:bg-amber-600 transition"
+                        >
+                          Use it anyway
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-start gap-2 mb-2">
+                        <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <span className="text-emerald-600 text-xs font-bold">
+                            ✓
+                          </span>
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-xs font-semibold text-emerald-700">
+                            Captured — edit if needed
+                          </p>
+                          <input
+                            type="text"
+                            value={pendingClick.value}
+                            onChange={(e) => updatePendingValue(e.target.value)}
+                            className="w-full mt-1.5 text-sm px-2.5 py-1.5 border border-emerald-300 rounded-md focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none font-mono"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={rejectPendingClick}
+                          className="flex-1 text-xs px-3 py-1.5 bg-gray-100 text-gray-700 rounded-md font-semibold hover:bg-gray-200 transition"
+                        >
+                          ← Click different text
+                        </button>
+                        <button
+                          type="button"
+                          onClick={confirmPendingClick}
+                          className="flex-1 text-xs px-3 py-1.5 bg-emerald-600 text-white rounded-md font-semibold hover:bg-emerald-700 transition"
+                        >
+                          ✓ Yes, save this
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* PDF viewer area */}
+            <div className="flex-1 overflow-auto p-4 bg-gray-100 relative">
+              <div
+                className="relative inline-block mx-auto"
+                style={{ minWidth: "100%" }}
+              >
+                <div className="relative inline-block">
+                  <canvas
+                    ref={pdfCanvasRef}
+                    className="block shadow-lg rounded"
+                    style={{ display: "block" }}
+                  />
+                  <div
+                    ref={pdfOverlayRef}
+                    className="absolute top-0 left-0"
+                    style={{ pointerEvents: "auto" }}
+                  />
+                  {/* Click highlight box */}
+                  {lastClickedBox && pendingClick && (
+                    <div
+                      className="absolute pointer-events-none"
+                      style={{
+                        left: `${lastClickedBox.x - 3}px`,
+                        top: `${lastClickedBox.y - 3}px`,
+                        width: `${lastClickedBox.width + 6}px`,
+                        height: `${lastClickedBox.height + 6}px`,
+                        background: pendingClick.isInvalid
+                          ? "rgba(239, 68, 68, 0.25)"
+                          : "rgba(139, 92, 246, 0.25)",
+                        border: `2px solid ${pendingClick.isInvalid ? "rgb(239, 68, 68)" : "rgb(139, 92, 246)"}`,
+                        borderRadius: "4px",
+                        boxShadow: `0 0 0 4px ${pendingClick.isInvalid ? "rgba(239, 68, 68, 0.15)" : "rgba(139, 92, 246, 0.15)"}`,
+                      }}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t p-3 bg-gray-50 rounded-b-2xl flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setModalPageNum((p) => Math.max(1, p - 1))}
+                disabled={modalPageNum <= 1}
+                className="text-xs px-3 py-1.5 bg-white border border-gray-300 rounded-md font-semibold hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                ← Previous
+              </button>
+
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-600 font-medium">
+                  Page {modalPageNum} of {modalTotalPages}
+                </span>
+                {savingCorrections && (
+                  <span className="text-xs text-indigo-600 flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Saving rules…
+                  </span>
+                )}
+                {currentMissingField && !pendingClick && (
+                  <button
+                    type="button"
+                    onClick={goBackOneField}
+                    className="text-[11px] px-2 py-1 bg-gray-200 text-gray-700 rounded font-semibold hover:bg-gray-300 transition"
+                  >
+                    ↶ Redo previous field
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setModalPageNum((p) => Math.min(modalTotalPages, p + 1))
+                }
+                disabled={modalPageNum >= modalTotalPages}
+                className="text-xs px-3 py-1.5 bg-white border border-gray-300 rounded-md font-semibold hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
