@@ -52,7 +52,7 @@ export default function SignConsentPage({ params }: PageProps) {
   const [isSigned, setIsSigned] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
-  const [avsAttested, setAvsAttested] = useState(false); // ✅ NEW: AVS zip attestation
+  const [avsAttested, setAvsAttested] = useState(false);
   const [clientIP, setClientIP] = useState("");
   const [isCheckingProgress, setIsCheckingProgress] = useState(true);
 
@@ -65,7 +65,26 @@ export default function SignConsentPage({ params }: PageProps) {
   );
   const [isLoadingDetails, setIsLoadingDetails] = useState(!!linkId);
 
-  // ✅ NEW: Behavioral tracking refs (no re-renders)
+  // ── 30-second review progress (0 → 100) ──────────────────────────────────
+  const REVIEW_SECONDS = 30;
+  const [reviewProgress, setReviewProgress] = useState(0);
+  const reviewReadyRef = useRef(false);
+
+  useEffect(() => {
+    let elapsed = 0;
+    const interval = setInterval(() => {
+      elapsed += 1;
+      const pct = Math.min(100, Math.round((elapsed / REVIEW_SECONDS) * 100));
+      setReviewProgress(pct);
+      if (pct >= 100) {
+        reviewReadyRef.current = true;
+        clearInterval(interval);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Behavioral tracking refs (no re-renders)
   const pageLoadTimeRef = useRef<number>(Date.now());
   const maxScrollDepthRef = useRef<number>(0);
   const fieldInteractionsRef = useRef<Record<string, number>>({});
@@ -81,7 +100,7 @@ export default function SignConsentPage({ params }: PageProps) {
     });
   };
 
-  // ✅ NEW: Track max scroll depth (percentage of page scrolled)
+  // Track max scroll depth
   useEffect(() => {
     const handleScroll = () => {
       const scrollTop = window.scrollY;
@@ -97,7 +116,6 @@ export default function SignConsentPage({ params }: PageProps) {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // ✅ NEW: Track field interactions
   const trackFieldFocus = (fieldName: string) => {
     fieldInteractionsRef.current[fieldName] =
       (fieldInteractionsRef.current[fieldName] || 0) + 1;
@@ -313,11 +331,11 @@ export default function SignConsentPage({ params }: PageProps) {
       signatureDataUrl = uploadedSignature;
     }
 
-    // ── Minimum review time gate ──
+    // Minimum review time gate
     const timeOnPageSeconds = Math.round(
       (Date.now() - pageLoadTimeRef.current) / 1000,
     );
-    if (timeOnPageSeconds < 30) {
+    if (timeOnPageSeconds < REVIEW_SECONDS) {
       alert(t("reviewTimeRequired"));
       return;
     }
@@ -334,7 +352,7 @@ export default function SignConsentPage({ params }: PageProps) {
           setResolvedEmail(data.linkData.customerEmail);
         }
       } catch {
-        // Fall back to server-side lookup in generate-signed-consent
+        // Fall back to server-side lookup
       }
     }
 
@@ -388,7 +406,7 @@ export default function SignConsentPage({ params }: PageProps) {
           cardholderEmail: cardholderEmail.trim(),
           billingZip: billingZip.trim(),
           userAgent,
-          behavioralEvidence, // ✅ NEW
+          behavioralEvidence,
         }),
       });
 
@@ -457,7 +475,21 @@ export default function SignConsentPage({ params }: PageProps) {
     { month: "long", day: "numeric", year: "numeric" },
   );
 
-  // ── Loading State ──
+  // Derived state for submit button
+  const formReady =
+    !!customerName.trim() &&
+    agreedToTerms &&
+    avsAttested &&
+    !!cardholderEmail.trim() &&
+    billingZip.length === 5;
+  const reviewDone = reviewProgress >= 100;
+  const canSubmit = formReady && reviewDone && !isSubmitting;
+  const secondsLeft = Math.max(
+    0,
+    REVIEW_SECONDS - Math.round((reviewProgress / 100) * REVIEW_SECONDS),
+  );
+
+  // Loading State
   if (isCheckingProgress) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-white">
@@ -480,7 +512,7 @@ export default function SignConsentPage({ params }: PageProps) {
     );
   }
 
-  // ── Success State ──
+  // Success State
   if (isSigned) {
     return (
       <div
@@ -511,7 +543,7 @@ export default function SignConsentPage({ params }: PageProps) {
     );
   }
 
-  // ── Main Form ──
+  // Main Form
   return (
     <div
       className="min-h-screen"
@@ -966,7 +998,7 @@ export default function SignConsentPage({ params }: PageProps) {
               )}
             </div>
 
-            {/* ✅ NEW: AVS Zip Attestation */}
+            {/* AVS Zip Attestation */}
             <label className="flex items-start gap-3 cursor-pointer mb-4 p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition-all bg-blue-50/30">
               <input
                 type="checkbox"
@@ -994,35 +1026,87 @@ export default function SignConsentPage({ params }: PageProps) {
               </span>
             </label>
 
-            {/* Submit Button */}
-            <button
-              onClick={handleSubmit}
-              disabled={
-                !customerName.trim() ||
-                !agreedToTerms ||
-                !avsAttested ||
-                !cardholderEmail.trim() ||
-                billingZip.length !== 5 ||
-                isSubmitting
-              }
-              className="w-full py-4 text-white rounded-lg font-semibold text-base transition-opacity disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2.5 hover:opacity-90"
-              style={{
-                background:
-                  "linear-gradient(135deg, #1E3A5F 0%, #2B4C7E 40%, #6B1D3A 80%, #8B1A3D 100%)",
-              }}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>{t("processing")}</span>
-                </>
-              ) : (
-                <>
-                  <FileSignature className="w-5 h-5" />
-                  <span>{t("signAndContinue")}</span>
-                </>
+            {/* ── Submit Button: simple left-to-right gradient progress fill ── */}
+            <>
+              <div
+                className="relative w-full rounded-lg overflow-hidden"
+                style={{ height: "56px", backgroundColor: "#e2e8f0" }}
+              >
+                {/* Gradient fill — grows from 0% to 100% width */}
+                {!reviewDone && (
+                  <div
+                    className="absolute left-0 top-0 bottom-0 transition-[width] duration-1000 ease-linear"
+                    style={{
+                      width: `${reviewProgress}%`,
+                      background:
+                        "linear-gradient(135deg, #1E3A5F 0%, #2B4C7E 40%, #6B1D3A 80%, #8B1A3D 100%)",
+                      backgroundSize: "400px 100%",
+                      backgroundRepeat: "no-repeat",
+                    }}
+                  />
+                )}
+
+                {/* Fully filled — same gradient, full width */}
+                {reviewDone && (
+                  <div
+                    className="absolute inset-0"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, #1E3A5F 0%, #2B4C7E 40%, #6B1D3A 80%, #8B1A3D 100%)",
+                      opacity: canSubmit ? 1 : 0.6,
+                    }}
+                  />
+                )}
+
+                <button
+                  onClick={handleSubmit}
+                  disabled={!canSubmit}
+                  className="absolute inset-0 w-full font-semibold text-base flex items-center justify-between px-6"
+                  style={{
+                    cursor: canSubmit ? "pointer" : "not-allowed",
+                    background: "transparent",
+                  }}
+                >
+                  {isSubmitting ? (
+                    <span className="flex items-center gap-2.5 w-full justify-center text-white">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>{t("processing")}</span>
+                    </span>
+                  ) : reviewDone ? (
+                    <span className="flex items-center gap-2.5 w-full justify-center text-white">
+                      <FileSignature className="w-5 h-5" />
+                      <span>{t("signAndContinue")}</span>
+                    </span>
+                  ) : (
+                    <>
+                      <span
+                        className="tabular-nums text-sm font-semibold"
+                        style={{
+                          color: reviewProgress > 15 ? "#fff" : "#64748b",
+                        }}
+                      >
+                        {t("signAndContinue")}
+                      </span>
+                      <span
+                        className="tabular-nums text-sm font-bold"
+                        style={{
+                          color: reviewProgress > 85 ? "#fff" : "#64748b",
+                        }}
+                      >
+                        {reviewProgress}%
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Helper text below button while waiting */}
+              {!reviewDone && (
+                <p className="text-center text-xs text-gray-400 mt-2">
+                  Please review the document above before signing
+                </p>
               )}
-            </button>
+            </>
           </div>
         </div>
 
