@@ -449,14 +449,28 @@ export default function PdfMergerPage() {
   };
 
   // ─── Paid-in-full due date helper ───────────────────────────────────────────
+  // Handles both HTML date input format (YYYY-MM-DD) and MM/DD/YYYY.
   const computePifDueDate = (expirationDateStr: string): string | null => {
     try {
       const parts = expirationDateStr.split(/[\/\-]/);
       if (parts.length !== 3) return null;
-      const [m, d] = parts;
-      let y = parts[2];
-      if (y.length === 2) y = `20${y}`;
-      const date = new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+
+      let y: number, m: number, d: number;
+
+      if (parts[0].length === 4) {
+        // YYYY-MM-DD (from HTML date input)
+        y = parseInt(parts[0]);
+        m = parseInt(parts[1]);
+        d = parseInt(parts[2]);
+      } else {
+        // MM/DD/YYYY or MM-DD-YYYY
+        m = parseInt(parts[0]);
+        d = parseInt(parts[1]);
+        y = parseInt(parts[2]);
+        if (y < 100) y += 2000;
+      }
+
+      const date = new Date(y, m - 1, d);
       if (isNaN(date.getTime())) return null;
       date.setDate(date.getDate() - 1);
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -1303,27 +1317,32 @@ export default function PdfMergerPage() {
                         <div className="w-px flex-1 bg-gray-100" />
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const next = !paidInFull;
-                          setPaidInFull(next);
-                          if (!next) {
-                            setMonthlyAmount("");
-                            setNextDueDate("");
-                          } else {
-                            setMonthlyAmount("0.00");
-                            if (expirationDate) {
-                              const computed =
-                                computePifDueDate(expirationDate);
-                              if (computed) setNextDueDate(computed);
-                            }
-                          }
-                        }}
-                        disabled={!officeReceipt}
-                        className={`p-5 text-left transition flex flex-col justify-center disabled:opacity-40 disabled:cursor-not-allowed ${paidInFull ? "bg-emerald-50" : "hover:bg-gray-50"}`}
+                      {/* PIF panel — outer div, NOT a button, so date input never bubbles */}
+                      <div
+                        className={`flex flex-col justify-start transition ${paidInFull ? "bg-emerald-50" : ""} ${!officeReceipt ? "opacity-40 pointer-events-none" : ""}`}
                       >
-                        <div className="flex items-start gap-3">
+                        {/* Clickable toggle row only */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = !paidInFull;
+                            setPaidInFull(next);
+                            if (!next) {
+                              setMonthlyAmount("");
+                              setNextDueDate("");
+                              setExpirationDate("");
+                            } else {
+                              setMonthlyAmount("0.00");
+                              if (expirationDate) {
+                                const computed =
+                                  computePifDueDate(expirationDate);
+                                if (computed) setNextDueDate(computed);
+                              }
+                            }
+                          }}
+                          disabled={!officeReceipt}
+                          className={`p-5 pb-3 text-left w-full flex items-start gap-3 disabled:cursor-not-allowed ${paidInFull ? "" : "hover:bg-gray-50"}`}
+                        >
                           <div
                             className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition ${paidInFull ? "border-emerald-500 bg-emerald-500" : "border-gray-300"}`}
                           >
@@ -1353,45 +1372,45 @@ export default function PdfMergerPage() {
                               className={`text-xs mt-1 leading-relaxed ${paidInFull ? "text-emerald-600" : "text-gray-400"}`}
                             >
                               {paidInFull
-                                ? "Monthly → $0.00. Enter expiration date to auto-fill due date."
+                                ? "Monthly → $0.00. Enter expiration date below."
                                 : "Toggle if customer paid the full premium upfront."}
                             </p>
-                            {paidInFull && (
-                              <div className="mt-2.5 space-y-2">
-                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[11px] font-semibold">
-                                  <Calendar className="w-3 h-3" />
-                                  PIF active
-                                </div>
-                                <div>
-                                  <p className="text-[11px] text-emerald-700 font-semibold mb-1">
-                                    Policy expiration date
-                                  </p>
-                                  <input
-                                    type="date"
-                                    value={expirationDate}
-                                    onChange={(e) =>
-                                      setExpirationDate(e.target.value)
-                                    }
-                                    className="w-full px-3 py-2 text-sm bg-white border border-emerald-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition"
-                                  />
-                                  {nextDueDate && (
-                                    <p className="text-[11px] text-emerald-600 mt-1">
-                                      Due date set to{" "}
-                                      {new Date(
-                                        nextDueDate + "T00:00:00",
-                                      ).toLocaleDateString("en-US", {
-                                        month: "numeric",
-                                        day: "numeric",
-                                        year: "numeric",
-                                      })}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
+                          </div>
+                        </button>
+
+                        {/* Expiration date — outside the toggle button, no bubbling possible */}
+                        {paidInFull && (
+                          <div className="px-5 pb-5">
+                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 mb-3 bg-emerald-100 text-emerald-700 rounded-lg text-[11px] font-semibold">
+                              <Calendar className="w-3 h-3" />
+                              PIF active
+                            </div>
+                            <p className="text-[11px] text-emerald-700 font-semibold mb-1">
+                              Policy expiration date
+                            </p>
+                            <input
+                              type="date"
+                              value={expirationDate}
+                              onChange={(e) =>
+                                setExpirationDate(e.target.value)
+                              }
+                              className="w-full px-3 py-2 text-sm bg-white border border-emerald-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition"
+                            />
+                            {nextDueDate && (
+                              <p className="text-[11px] text-emerald-600 mt-1">
+                                Due date set to{" "}
+                                {new Date(
+                                  nextDueDate + "T00:00:00",
+                                ).toLocaleDateString("en-US", {
+                                  month: "numeric",
+                                  day: "numeric",
+                                  year: "numeric",
+                                })}
+                              </p>
                             )}
                           </div>
-                        </div>
-                      </button>
+                        )}
+                      </div>
                     </div>
                   </div>
 
