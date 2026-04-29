@@ -254,8 +254,7 @@ export default function PdfMergerPage() {
   };
 
   // ─── Extract all info from the Texas Premium receipt ────────────────────────
-  // Receipt format is consistent: customer name, policy number, company, and
-  // total amount are always present in the same positions.
+  // Coordinate-based: anchor on known fixed items (email, column headers).
   const extractFromReceipt = async (file: File): Promise<ReceiptInfo> => {
     const empty: ReceiptInfo = {
       customerName: null,
@@ -268,36 +267,104 @@ export default function PdfMergerPage() {
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       const page = await pdf.getPage(1);
-      const content = await page.getTextContent();
-      const text = content.items.map((item: any) => item.str).join(" ");
+      const rawContent = await page.getTextContent();
 
-      // ── Amount: last Total row value ──────────────────────────────────────
-      const dualMatch = text.match(
-        /Total\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/i,
-      );
-      const singleMatch = text.match(/Total\s+([\d,]+\.\d{2})/i);
-      const paidAmount = dualMatch
-        ? dualMatch[2].replace(/,/g, "")
-        : singleMatch
-          ? singleMatch[1].replace(/,/g, "")
-          : null;
+      // Build positioned items — PDF y is bottom-up (higher = higher on page)
+      const items: Array<{ text: string; x: number; y: number }> = [];
+      for (const item of rawContent.items as any[]) {
+        if (!item.str?.trim()) continue;
+        const tx = item.transform;
+        items.push({ text: item.str.trim(), x: tx[4], y: tx[5] });
+      }
 
-      // ── Policy number + company: table row after "Billed Paid" ────────────
-      // Row looks like: "Safeway Insurance Comp 4371975-TX-PP-001 RWR CC 04659C"
-      const rowMatch = text.match(
-        /Billed\s+Paid\s+([A-Za-z][A-Za-z\s\.&']{3,60}?)\s+([A-Z0-9][A-Z0-9\-_\/]{4,39})\s+(?:RWR|NB|RN|EN|XL|RP|RW)/i,
+      // ── Customer name ─────────────────────────────────────────────────────
+      // Strategy: find the "Description" table header (reliable table boundary),
+      // then find items that are ABOVE it (higher y) and BELOW the email,
+      // in the left half of the page only. The customer name is the topmost of those.
+      let customerName: string | null = null;
+      const emailItem = items.find((it) =>
+        it.text.toLowerCase().includes("support@texaspremiumins"),
       );
-      const companyName = rowMatch ? rowMatch[1].trim() : null;
-      const policyNumber = rowMatch ? rowMatch[2].trim() : null;
+      const descHeaderForName = items.find((it) => it.text === "Description");
+      if (emailItem && descHeaderForName) {
+        const candidates = items
+          .filter(
+            (it) =>
+              it.y < emailItem.y - 1 && // below email
+              it.y > descHeaderForName.y + 1 && // above the table
+              it.x < 200 && // left half of page only
+              /^[A-Za-z]/.test(it.text) && // starts with a letter
+              !it.text.includes("@") &&
+              !/^\d/.test(it.text) && // not a number/address line
+              it.text.length > 2 &&
+              // exclude known non-name strings
+              !/^(Phone|Fax|Email|Texas Premium|Farmers|Dallas|Carrollton|Arlington)/i.test(
+                it.text,
+              ),
+          )
+          .sort((a, b) => b.y - a.y); // closest below email first
+        customerName = candidates[0]?.text ?? null;
+      }
 
-      // ── Customer name: between office email and street address ────────────
-      // Pattern: after "support@texaspremiumins.com" → all-caps name → digit (street #)
-      const nameMatch = text.match(
-        /support@texaspremiumins\.com\s+([A-Z][A-Z\s\-']{2,60}?)\s+\d{1,5}\s+[A-Z]/,
-      );
-      const customerName = nameMatch
-        ? nameMatch[1].trim().replace(/\s+/g, " ")
-        : null;
+      // ── Policy number ─────────────────────────────────────────────────────
+      // Policy numbers are directly below the "Policy No" column header.
+      // Accept any alphanumeric token with 6+ chars (covers both formats:
+      // "4362963-TX-PP-001" and "CCB01461797").
+      let policyNumber: string | null = null;
+      const policyColHeader = items.find((it) => it.text === "Policy No");
+      if (policyColHeader) {
+        const below = items
+          .filter(
+            (it) =>
+              it.y < policyColHeader.y - 2 &&
+              it.x >= policyColHeader.x - 10 &&
+              it.x <= policyColHeader.x + 100 &&
+              /^[A-Z0-9][A-Z0-9\-]{5,}$/i.test(it.text), // 6+ alphanumeric/dash chars
+          )
+          .sort((a, b) => b.y - a.y);
+        policyNumber = below[0]?.text ?? null;
+      }
+
+      // ── Company name ──────────────────────────────────────────────────────
+      // Anchor: "Description" column header (in the table, left-most column).
+      // Company name is the first text item directly below it.
+      let companyName: string | null = null;
+      const descHeader = items.find((it) => it.text === "Description");
+      if (descHeader) {
+        const below = items
+          .filter(
+            (it) =>
+              it.y < descHeader.y - 2 &&
+              it.x >= descHeader.x - 10 && // same left-column x
+              it.x <= descHeader.x + 120 &&
+              /^[A-Za-z]/.test(it.text) &&
+              it.text !== "Description",
+          )
+          .sort((a, b) => b.y - a.y); // closest below first
+        companyName = below[0]?.text ?? null;
+      }
+
+      // ── Amount paid ───────────────────────────────────────────────────────
+      // Anchor: "Paid" column header (right-most column in table).
+      // First number below it in ##.## format = the amount for this transaction.
+      let paidAmount: string | null = null;
+      // There may be two "Paid" items (header + label) — pick the one in the table
+      // (lower on page = lower y value)
+      const paidHeaders = items
+        .filter((it) => it.text === "Paid")
+        .sort((a, b) => b.y - a.y); // topmost first = table header
+      const paidHeader = paidHeaders[0] ?? null;
+      if (paidHeader) {
+        const below = items
+          .filter(
+            (it) =>
+              it.y < paidHeader.y - 2 &&
+              Math.abs(it.x - paidHeader.x) < 40 &&
+              /^\d[\d,]*\.\d{2}$/.test(it.text),
+          )
+          .sort((a, b) => b.y - a.y); // first data row below header
+        paidAmount = below[0]?.text?.replace(/,/g, "") ?? null;
+      }
 
       return { customerName, policyNumber, companyName, paidAmount };
     } catch {
