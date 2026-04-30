@@ -18,7 +18,6 @@ import {
   Calendar,
   DollarSign,
   ChevronLeft,
-  Car,
   Sparkles,
 } from "lucide-react";
 
@@ -35,9 +34,21 @@ const DOCUMENT_SETS: Record<string, TemplateEntry[]> = {
     { key: "Uninsured Rejection form", label: "Texas UM/UIM Coverage" },
     { key: "Verification letter", label: "Verification of Policy Information" },
   ],
+  // Commercial Auto: identical to Auto but WITHOUT Non-Business Use form
+  CommercialAuto: [
+    { key: "Acknowledgement form", label: "Acknowledgement of Coverage" },
+    { key: "515A Exclusion form", label: "Form 515A – Driver Exclusion" },
+    { key: "Discount form", label: "Discount & Document Compliance" },
+    { key: "PIP Rejection form", label: "Texas PIP Coverage" },
+    { key: "Uninsured Rejection form", label: "Texas UM/UIM Coverage" },
+    { key: "Verification letter", label: "Verification of Policy Information" },
+  ],
 };
 
-const POLICY_TYPES = [{ value: "Auto", emoji: "🚗" }];
+const POLICY_TYPES = [
+  { value: "Auto", emoji: "🚗", label: "Personal Auto" },
+  { value: "CommercialAuto", emoji: "🚛", label: "Commercial Auto" },
+];
 
 type PaymentMethod = "none" | "cc" | "eft";
 type ReceiptType = "card" | "cash";
@@ -53,6 +64,7 @@ interface ReceiptInfo {
   policyNumber: string | null;
   companyName: string | null;
   paidAmount: string | null;
+  notAReceipt?: boolean;
 }
 
 const OFFICE_RECEIPT_STAMPS = {
@@ -230,7 +242,8 @@ export default function PdfMergerPage() {
     customerName.trim() &&
     companyApp &&
     !isPolicyTbd &&
-    (noReceipt || (officeReceipt && receiptFieldsReady)) &&
+    (noReceipt ||
+      (officeReceipt && receiptFieldsReady && !receiptInfo?.notAReceipt)) &&
     (noReceipt || receiptType === "cash" || ccReceipts.length > 0);
 
   // ─── PDF.js loader ──────────────────────────────────────────────────────────
@@ -364,6 +377,13 @@ export default function PdfMergerPage() {
           )
           .sort((a, b) => b.y - a.y); // first data row below header
         paidAmount = below[0]?.text?.replace(/,/g, "") ?? null;
+      }
+
+      // ── Validate this is a Texas Premium receipt ─────────────────────────
+      // Only the Office Copy is accepted — Customer Copy is not allowed.
+      const isOfficeCopy = items.some((it) => /^OFFICE COPY$/i.test(it.text));
+      if (!isOfficeCopy) {
+        return { ...empty, notAReceipt: true };
       }
 
       return { customerName, policyNumber, companyName, paidAmount };
@@ -618,7 +638,9 @@ export default function PdfMergerPage() {
       const datePart = `${pad(today.getMonth() + 1)}-${pad(today.getDate())}-${today.getFullYear()}`;
       const timePart = `${pad(today.getHours())}-${pad(today.getMinutes())}`;
       const safeName = customerName.trim().replace(/\s+/g, "_");
-      const policyLabel = nonOwner ? `${policyType}_NonOwner` : policyType;
+      const policyLabel = nonOwner
+        ? `${policyType === "CommercialAuto" ? "CommercialAuto" : policyType}_NonOwner`
+        : policyType;
       const receiptLabel = noReceipt
         ? "_NoReceipt"
         : receiptType === "cash"
@@ -906,8 +928,8 @@ export default function PdfMergerPage() {
                           onClick={() => setPolicyType(pt.value)}
                           className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition ${selected ? "bg-blue-600 border-blue-600 text-white" : configured ? "bg-white border-gray-200 text-gray-600 hover:border-blue-300" : "bg-gray-50 border-dashed border-gray-200 text-gray-400"}`}
                         >
-                          <Car className="w-4 h-4" />
-                          {pt.value}
+                          <span>{pt.emoji}</span>
+                          {pt.label ?? pt.value}
                           {!configured && (
                             <span className="text-[10px] opacity-50">
                               (soon)
@@ -1145,6 +1167,34 @@ export default function PdfMergerPage() {
                           <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-600">
                             <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
                             Reading receipt…
+                          </div>
+                        ) : receiptInfo?.notAReceipt ? (
+                          <div className="flex items-start gap-3 p-4 bg-rose-50 border border-rose-200 rounded-xl">
+                            <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="text-sm font-semibold text-rose-800">
+                                Office Copy required
+                              </p>
+                              <p className="text-xs text-rose-600 mt-1 leading-relaxed">
+                                Only the <strong>Office Copy</strong> of the
+                                receipt is accepted — not the Customer Copy or
+                                any other document.
+                              </p>
+                              <button
+                                onClick={() => {
+                                  handleOfficeReceiptChange(null);
+                                  if (officeReceiptRef.current)
+                                    officeReceiptRef.current.value = "";
+                                  setTimeout(
+                                    () => officeReceiptRef.current?.click(),
+                                    50,
+                                  );
+                                }}
+                                className="mt-2 text-xs font-semibold text-rose-700 underline underline-offset-2 hover:text-rose-900 transition"
+                              >
+                                Upload the correct receipt →
+                              </button>
+                            </div>
                           </div>
                         ) : receiptInfo ? (
                           <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
@@ -1554,7 +1604,7 @@ export default function PdfMergerPage() {
                       : noReceipt
                         ? "Ready to merge"
                         : !officeReceipt
-                          ? "Upload the office receipt or toggle No Receipt"
+                          ? "Upload the Office Copy of the receipt, or toggle No Receipt"
                           : !receiptFieldsReady
                             ? "Fill in paid amount, next due date, and monthly payment"
                             : "Upload a CC receipt or switch to Cash"}

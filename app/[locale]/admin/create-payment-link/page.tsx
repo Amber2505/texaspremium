@@ -30,7 +30,7 @@ type TabType = "create" | "history";
 
 interface LinkHistory {
   _id: string;
-  consentDocumentId?: string; // ← session-specific PDF lookup
+  consentDocumentId?: string;
   linkType: LinkType;
   amount: number | null;
   description: string | null;
@@ -81,8 +81,13 @@ export default function CreatePaymentLink() {
   const [editingDescValue, setEditingDescValue] = useState("");
   const [savingDescId, setSavingDescId] = useState<string | null>(null);
 
-  // Search state
+  // Search + pagination state
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalLinks, setTotalLinks] = useState(0);
+  const [isSearchMode, setIsSearchMode] = useState(false);
 
   // PDF download state
   const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
@@ -99,18 +104,8 @@ export default function CreatePaymentLink() {
     return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6, 10)}`;
   };
 
-  // Filter history by search query (phone, email, description, amount)
-  const filteredLinks = historyLinks.slice(0, 25).filter((link) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase().trim();
-    return (
-      formatPhoneDisplay(link.customerPhone).toLowerCase().includes(q) ||
-      link.customerPhone.includes(q.replace(/\D/g, "")) ||
-      (link.customerEmail?.toLowerCase().includes(q) ?? false) ||
-      (link.description?.toLowerCase().includes(q) ?? false) ||
-      (link.amount ? `${(link.amount / 100).toFixed(2)}`.includes(q) : false)
-    );
-  });
+  // In search mode the server returns all matches; in paginated mode it returns one page
+  const filteredLinks = historyLinks;
 
   useEffect(() => {
     const checkAuth = () => {
@@ -138,7 +133,7 @@ export default function CreatePaymentLink() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === "history") fetchHistory();
+    if (activeTab === "history") fetchHistory(1);
   }, [activeTab]);
 
   useEffect(() => {
@@ -149,28 +144,58 @@ export default function CreatePaymentLink() {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === "paymentLinkUpdated") {
-        fetch("/api/payment-link-history")
-          .then((r) => r.json())
-          .then((d) => {
-            if (d.success) setHistoryLinks(d.links);
-          })
-          .catch(() => {});
+        if (!isSearchMode) fetchHistory(currentPage);
       }
     };
     wsRef.current = ws;
     return () => ws.close();
   }, [isCheckingAuth]);
 
-  const fetchHistory = async () => {
+  // ── Fetch paginated page ────────────────────────────────────────────────────
+  const fetchHistory = async (page = 1) => {
     setHistoryLoading(true);
     try {
-      const response = await fetch("/api/payment-link-history");
-      const data = await response.json();
-      if (data.success) setHistoryLinks(data.links);
-    } catch (error) {
-      console.error("Error fetching history:", error);
+      const res = await fetch(`/api/payment-link-history?page=${page}`);
+      const data = await res.json();
+      if (data.success) {
+        setHistoryLinks(data.links);
+        setCurrentPage(data.page);
+        setTotalPages(data.totalPages);
+        setTotalLinks(data.total);
+        setIsSearchMode(false);
+        setSearchQuery("");
+      }
+    } catch (err) {
+      console.error("Error fetching history:", err);
     } finally {
       setHistoryLoading(false);
+    }
+  };
+
+  // ── Search all records server-side ─────────────────────────────────────────
+  const handleSearch = async (q: string) => {
+    setSearchQuery(q);
+    if (!q.trim()) {
+      fetchHistory(1);
+      return;
+    }
+    setSearchLoading(true);
+    try {
+      const res = await fetch(
+        `/api/payment-link-history?search=${encodeURIComponent(q.trim())}`,
+      );
+      const data = await res.json();
+      if (data.success) {
+        setHistoryLinks(data.links);
+        setTotalLinks(data.total);
+        setCurrentPage(1);
+        setTotalPages(1);
+        setIsSearchMode(true);
+      }
+    } catch (err) {
+      console.error("Search error:", err);
+    } finally {
+      setSearchLoading(false);
     }
   };
 
@@ -243,7 +268,6 @@ export default function CreatePaymentLink() {
         return;
       }
 
-      const amountInCents = parseFloat(amount) * 100;
       const linkId = await saveToHistory({
         linkType: "payment",
         amount,
@@ -265,7 +289,7 @@ export default function CreatePaymentLink() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amount: amountInCents,
+          amount: parseFloat(amount) * 100,
           description,
           customerPhone,
           paymentMethod,
@@ -375,16 +399,12 @@ export default function CreatePaymentLink() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ linkId, disabled: !currentStatus }),
       });
-      if (response.ok) fetchHistory();
+      if (response.ok) fetchHistory(currentPage);
     } catch (error) {
       console.error("Error toggling link status:", error);
     }
   };
 
-  // Download / preview consent PDF
-  // Priority: (1) consentDocumentId on the link = exact match
-  //           (2) email + consent timestamp = closest-in-time match
-  //           (3) email alone = returns ambiguity list if multiple records exist
   const handleDownloadConsentPdf = async (link: LinkHistory) => {
     setDownloadingPdfId(link._id);
     try {
@@ -393,24 +413,16 @@ export default function CreatePaymentLink() {
         setDownloadingPdfId(null);
         return;
       }
-
-      // Build query params by priority
       const params = new URLSearchParams();
       if (link.consentDocumentId) {
         params.set("documentId", link.consentDocumentId);
       } else if (link.customerEmail) {
         params.set("email", link.customerEmail);
-        if (link.timestamps?.consent) {
+        if (link.timestamps?.consent)
           params.set("nearTimestamp", link.timestamps.consent);
-        }
-        if (link.customerPhone) {
-          params.set("phone", link.customerPhone);
-        }
+        if (link.customerPhone) params.set("phone", link.customerPhone);
       }
-
       const response = await fetch(`/api/consent-pdf?${params.toString()}`);
-
-      // Handle ambiguity — multiple records for this email
       if (response.status === 409) {
         const err = await response.json();
         if (err.ambiguous && err.records?.length > 0) {
@@ -425,34 +437,30 @@ export default function CreatePaymentLink() {
           );
           const idx = parseInt(choice || "0", 10) - 1;
           if (idx >= 0 && idx < err.records.length) {
-            const chosenDocId = err.records[idx].documentId;
             const retry = await fetch(
-              `/api/consent-pdf?documentId=${encodeURIComponent(chosenDocId)}`,
+              `/api/consent-pdf?documentId=${encodeURIComponent(err.records[idx].documentId)}`,
             );
             if (!retry.ok) {
               alert("Failed to open the selected PDF.");
               return;
             }
-            const blob = await retry.blob();
-            triggerPreview(blob, `Consent_${chosenDocId.slice(0, 8)}.pdf`);
-            return;
-          } else {
-            return;
+            triggerPreview(
+              await retry.blob(),
+              `Consent_${err.records[idx].documentId.slice(0, 8)}.pdf`,
+            );
           }
+          return;
         }
       }
-
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
         alert(err.error || "Consent PDF not found for this link.");
         return;
       }
-
-      const blob = await response.blob();
       const filename = link.consentDocumentId
         ? `Consent_${link.consentDocumentId.slice(0, 8)}.pdf`
         : `Consent_${link.customerEmail}.pdf`;
-      triggerPreview(blob, filename);
+      triggerPreview(await response.blob(), filename);
     } catch (err) {
       console.error("Error opening PDF:", err);
       alert("Failed to open consent PDF.");
@@ -461,14 +469,10 @@ export default function CreatePaymentLink() {
     }
   };
 
-  // Helper: trigger browser download of a blob
-  // Helper: open PDF in a new tab for preview (user can download from there if needed)
   const triggerPreview = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
     const newTab = window.open(url, "_blank");
-
     if (!newTab) {
-      // Popup blocker caught it — fall back to download so user still gets the file
       alert(
         "Popup blocked. Please allow popups for this site, or the PDF will download instead.",
       );
@@ -479,9 +483,6 @@ export default function CreatePaymentLink() {
       a.click();
       a.remove();
     }
-
-    // Revoke the blob URL after a delay to let the new tab load it
-    // (If we revoke too early, the new tab can't render the PDF)
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
 
@@ -498,8 +499,8 @@ export default function CreatePaymentLink() {
     }
   };
 
-  const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleString("en-US", {
+  const formatDate = (timestamp: number) =>
+    new Date(timestamp).toLocaleString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -507,7 +508,6 @@ export default function CreatePaymentLink() {
       minute: "2-digit",
       hour12: true,
     });
-  };
 
   if (isCheckingAuth) {
     return (
@@ -565,26 +565,27 @@ export default function CreatePaymentLink() {
         {/* Tab Navigation */}
         <div className="bg-white rounded-xl shadow-sm p-2 mb-6">
           <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => setActiveTab("create")}
-              className={`flex items-center justify-center gap-2 p-3 rounded-lg font-medium transition ${
-                activeTab === "create"
-                  ? "bg-gradient-to-r from-red-700 to-blue-800 text-white"
-                  : "text-gray-600 hover:bg-gray-100"
-              }`}
-            >
-              <Link2 className="w-5 h-5" /> Create Link
-            </button>
-            <button
-              onClick={() => setActiveTab("history")}
-              className={`flex items-center justify-center gap-2 p-3 rounded-lg font-medium transition ${
-                activeTab === "history"
-                  ? "bg-gradient-to-r from-red-700 to-blue-800 text-white"
-                  : "text-gray-600 hover:bg-gray-100"
-              }`}
-            >
-              <History className="w-5 h-5" /> History
-            </button>
+            {(["create", "history"] as TabType[]).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex items-center justify-center gap-2 p-3 rounded-lg font-medium transition ${
+                  activeTab === tab
+                    ? "bg-gradient-to-r from-red-700 to-blue-800 text-white"
+                    : "text-gray-600 hover:bg-gray-100"
+                }`}
+              >
+                {tab === "create" ? (
+                  <>
+                    <Link2 className="w-5 h-5" /> Create Link
+                  </>
+                ) : (
+                  <>
+                    <History className="w-5 h-5" /> History
+                  </>
+                )}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -596,44 +597,40 @@ export default function CreatePaymentLink() {
                 Link Type
               </label>
               <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setLinkType("payment")}
-                  className={`flex items-center justify-center gap-2 p-4 rounded-lg border-2 transition ${
-                    linkType === "payment"
-                      ? "border-blue-600 bg-blue-50 text-blue-700"
-                      : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
-                  }`}
-                >
-                  <DollarSign className="w-5 h-5" />
-                  <div className="text-left">
-                    <div className="font-medium">Payment Link</div>
-                    <div className="text-xs">
-                      Collect payment + setup autopay
+                {[
+                  {
+                    v: "payment" as LinkType,
+                    icon: DollarSign,
+                    label: "Payment Link",
+                    sub: "Collect payment + setup autopay",
+                    color: "blue",
+                  },
+                  {
+                    v: "autopay-only" as LinkType,
+                    icon: CreditCard,
+                    label: "Autopay Setup Only",
+                    sub: "No payment required",
+                    color: "green",
+                  },
+                ].map(({ v, icon: Icon, label, sub, color }) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setLinkType(v)}
+                    className={`flex items-center justify-center gap-2 p-4 rounded-lg border-2 transition ${
+                      linkType === v
+                        ? `border-${color}-600 bg-${color}-50 text-${color}-700`
+                        : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
+                    }`}
+                  >
+                    <Icon className="w-5 h-5" />
+                    <div className="text-left">
+                      <div className="font-medium">{label}</div>
+                      <div className="text-xs">{sub}</div>
                     </div>
-                  </div>
-                  {linkType === "payment" && (
-                    <Check className="w-5 h-5 ml-auto" />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLinkType("autopay-only")}
-                  className={`flex items-center justify-center gap-2 p-4 rounded-lg border-2 transition ${
-                    linkType === "autopay-only"
-                      ? "border-green-600 bg-green-50 text-green-700"
-                      : "border-gray-300 bg-white text-gray-700 hover:border-gray-400"
-                  }`}
-                >
-                  <CreditCard className="w-5 h-5" />
-                  <div className="text-left">
-                    <div className="font-medium">Autopay Setup Only</div>
-                    <div className="text-xs">No payment required</div>
-                  </div>
-                  {linkType === "autopay-only" && (
-                    <Check className="w-5 h-5 ml-auto" />
-                  )}
-                </button>
+                    {linkType === v && <Check className="w-5 h-5 ml-auto" />}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -647,7 +644,7 @@ export default function CreatePaymentLink() {
                     </p>
                     <p className="text-xs text-blue-700">
                       Customer email will be collected automatically during
-                      Square checkout. You don&apos;t need to enter it here.
+                      Square checkout.
                     </p>
                   </div>
                 </div>
@@ -677,12 +674,9 @@ export default function CreatePaymentLink() {
                           className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Enter amount with decimals (e.g., 123.45)
-                      </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray/700 mb-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
                         Description <span className="text-red-500">*</span>
                       </label>
                       <input
@@ -713,9 +707,6 @@ export default function CreatePaymentLink() {
                     maxLength={14}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Enter any format - will auto-format to (XXX) XXX-XXXX
-                  </p>
                 </div>
 
                 <div>
@@ -813,8 +804,8 @@ export default function CreatePaymentLink() {
                 >
                   {loading ? (
                     <>
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Creating Link...
+                      <Loader2 className="w-5 h-5 animate-spin" /> Creating
+                      Link...
                     </>
                   ) : (
                     <>
@@ -887,13 +878,11 @@ export default function CreatePaymentLink() {
                 >
                   {copied ? (
                     <>
-                      <Check className="w-5 h-5" />
-                      Copied!
+                      <Check className="w-5 h-5" /> Copied!
                     </>
                   ) : (
                     <>
-                      <Copy className="w-5 h-5" />
-                      Copy Link
+                      <Copy className="w-5 h-5" /> Copy Link
                     </>
                   )}
                 </button>
@@ -928,7 +917,7 @@ export default function CreatePaymentLink() {
                         <strong>
                           {language === "en" ? "English" : "Spanish"}
                         </strong>
-                        . Customer email will be captured during checkout.
+                        .
                       </>
                     )}
                   </p>
@@ -947,11 +936,16 @@ export default function CreatePaymentLink() {
                   Link History
                 </h2>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Showing latest 25 links
+                  {isSearchMode
+                    ? `${totalLinks} result${totalLinks !== 1 ? "s" : ""} across all records`
+                    : `${totalLinks} total · page ${currentPage} of ${totalPages}`}
                 </p>
               </div>
               <button
-                onClick={fetchHistory}
+                onClick={() => {
+                  setSearchQuery("");
+                  fetchHistory(1);
+                }}
                 disabled={historyLoading}
                 className="px-4 py-2 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition flex items-center gap-2"
               >
@@ -970,13 +964,16 @@ export default function CreatePaymentLink() {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search by phone, email, description, or amount..."
+                onChange={(e) => handleSearch(e.target.value)}
+                placeholder="Search all records by phone, email, description, or amount..."
                 className="w-full pl-9 pr-9 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               />
-              {searchQuery && (
+              {searchLoading && (
+                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 animate-spin" />
+              )}
+              {searchQuery && !searchLoading && (
                 <button
-                  onClick={() => setSearchQuery("")}
+                  onClick={() => handleSearch("")}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   <X className="w-4 h-4" />
@@ -998,7 +995,7 @@ export default function CreatePaymentLink() {
                 </p>
                 {searchQuery && (
                   <button
-                    onClick={() => setSearchQuery("")}
+                    onClick={() => handleSearch("")}
                     className="mt-2 text-sm text-blue-500 hover:text-blue-700"
                   >
                     Clear search
@@ -1007,42 +1004,36 @@ export default function CreatePaymentLink() {
               </div>
             ) : (
               <>
-                {searchQuery && (
+                {isSearchMode && searchQuery && (
                   <p className="text-xs text-gray-400 mb-3">
                     {filteredLinks.length} result
                     {filteredLinks.length !== 1 ? "s" : ""} for &quot;
-                    {searchQuery}&quot;
+                    {searchQuery}&quot; across all records
                   </p>
                 )}
+
                 <div className="space-y-4">
                   {filteredLinks.map((link) => (
                     <div
                       key={link._id}
-                      className={`border rounded-lg p-4 transition ${
-                        link.disabled
-                          ? "border-red-300 bg-red-50 opacity-75"
-                          : "border-gray-200 hover:border-blue-300"
-                      }`}
+                      className={`border rounded-lg p-4 transition ${link.disabled ? "border-red-300 bg-red-50 opacity-75" : "border-gray-200 hover:border-blue-300"}`}
                     >
+                      {/* Card header */}
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-2">
-                          {link.linkType === "payment" ? (
-                            <div
-                              className={`w-10 h-10 rounded-lg flex items-center justify-center ${link.disabled ? "bg-gray-200" : "bg-blue-100"}`}
-                            >
+                          <div
+                            className={`w-10 h-10 rounded-lg flex items-center justify-center ${link.disabled ? "bg-gray-200" : link.linkType === "payment" ? "bg-blue-100" : "bg-green-100"}`}
+                          >
+                            {link.linkType === "payment" ? (
                               <DollarSign
                                 className={`w-5 h-5 ${link.disabled ? "text-gray-500" : "text-blue-700"}`}
                               />
-                            </div>
-                          ) : (
-                            <div
-                              className={`w-10 h-10 rounded-lg flex items-center justify-center ${link.disabled ? "bg-gray-200" : "bg-green-100"}`}
-                            >
+                            ) : (
                               <CreditCard
                                 className={`w-5 h-5 ${link.disabled ? "text-gray-500" : "text-green-700"}`}
                               />
-                            </div>
-                          )}
+                            )}
+                          </div>
                           <div>
                             <div className="flex items-center gap-2">
                               <h3
@@ -1066,19 +1057,11 @@ export default function CreatePaymentLink() {
                         </div>
 
                         <div className="flex items-center gap-2 flex-wrap justify-end">
-                          {/* Consent PDF button — only shown when consent done */}
-                          {/* Consent PDF button — only shown when consent done */}
-                          {/* View Consent PDF button — only shown when consent done */}
                           {link.completedStages?.consent &&
                             (link.consentDocumentId || link.customerEmail) && (
                               <button
                                 onClick={() => handleDownloadConsentPdf(link)}
                                 disabled={downloadingPdfId === link._id}
-                                title={
-                                  link.consentDocumentId
-                                    ? "View the exact signed PDF for this session"
-                                    : "View the latest consent PDF for this customer"
-                                }
                                 className="px-3 py-1.5 text-sm rounded-lg transition flex items-center gap-1.5 bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-50"
                               >
                                 {downloadingPdfId === link._id ? (
@@ -1091,7 +1074,6 @@ export default function CreatePaymentLink() {
                                 </span>
                               </button>
                             )}
-
                           <button
                             onClick={() =>
                               toggleDisableLink(
@@ -1099,15 +1081,10 @@ export default function CreatePaymentLink() {
                                 link.disabled || false,
                               )
                             }
-                            className={`px-3 py-1.5 text-sm rounded-lg transition flex items-center gap-1.5 ${
-                              link.disabled
-                                ? "bg-green-100 text-green-700 hover:bg-green-200"
-                                : "bg-red-100 text-red-700 hover:bg-red-200"
-                            }`}
+                            className={`px-3 py-1.5 text-sm rounded-lg transition flex items-center gap-1.5 ${link.disabled ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-red-100 text-red-700 hover:bg-red-200"}`}
                           >
                             {link.disabled ? "Enable" : "Disable"}
                           </button>
-
                           <button
                             onClick={() =>
                               handleCopyHistoryLink(
@@ -1116,27 +1093,22 @@ export default function CreatePaymentLink() {
                               )
                             }
                             disabled={link.disabled}
-                            className={`px-3 py-1.5 text-sm rounded-lg transition flex items-center gap-1.5 ${
-                              link.disabled
-                                ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                            }`}
+                            className={`px-3 py-1.5 text-sm rounded-lg transition flex items-center gap-1.5 ${link.disabled ? "bg-gray-200 text-gray-400 cursor-not-allowed" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
                           >
                             {copiedLinkId === link._id ? (
                               <>
-                                <Check className="w-4 h-4" />
-                                Copied
+                                <Check className="w-4 h-4" /> Copied
                               </>
                             ) : (
                               <>
-                                <Copy className="w-4 h-4" />
-                                Copy
+                                <Copy className="w-4 h-4" /> Copy
                               </>
                             )}
                           </button>
                         </div>
                       </div>
 
+                      {/* Details */}
                       <div className="space-y-2 text-sm">
                         {link.amount && (
                           <div className="flex items-center gap-2">
@@ -1153,7 +1125,6 @@ export default function CreatePaymentLink() {
                             </span>
                           </div>
                         )}
-
                         <div className="flex items-start gap-2">
                           <FileText className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
                           {editingDescId === link._id ? (
@@ -1215,7 +1186,6 @@ export default function CreatePaymentLink() {
                             </div>
                           )}
                         </div>
-
                         {link.customerEmail && (
                           <div className="flex items-center gap-2">
                             <Mail className="w-4 h-4 text-gray-400" />
@@ -1233,7 +1203,6 @@ export default function CreatePaymentLink() {
                             </span>
                           </div>
                         )}
-
                         <div className="flex items-center gap-2">
                           <Phone className="w-4 h-4 text-gray-400" />
                           <span
@@ -1245,7 +1214,6 @@ export default function CreatePaymentLink() {
                             {formatPhoneDisplay(link.customerPhone)}
                           </span>
                         </div>
-
                         <div className="flex items-center gap-2">
                           <CreditCard className="w-4 h-4 text-gray-400" />
                           <span
@@ -1261,7 +1229,6 @@ export default function CreatePaymentLink() {
                                 : "Direct Bill (No Autopay)"}
                           </span>
                         </div>
-
                         <div className="flex items-center gap-2">
                           <Globe className="w-4 h-4 text-gray-400" />
                           <span
@@ -1310,13 +1277,7 @@ export default function CreatePaymentLink() {
                                     />
                                   )}
                                   <div
-                                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
-                                      done
-                                        ? "bg-green-100 text-green-700"
-                                        : prevDone
-                                          ? "bg-blue-50 text-blue-500 ring-1 ring-blue-300"
-                                          : "bg-gray-100 text-gray-400"
-                                    }`}
+                                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${done ? "bg-green-100 text-green-700" : prevDone ? "bg-blue-50 text-blue-500 ring-1 ring-blue-300" : "bg-gray-100 text-gray-400"}`}
                                   >
                                     {done ? (
                                       <svg
@@ -1372,7 +1333,6 @@ export default function CreatePaymentLink() {
                               </>
                             )}
                           </div>
-
                           {(link.timestamps?.payment ||
                             link.timestamps?.consent ||
                             link.timestamps?.autopaySetup) && (
@@ -1424,6 +1384,7 @@ export default function CreatePaymentLink() {
                         </div>
                       )}
 
+                      {/* Link display */}
                       <div
                         className={`mt-3 pt-3 border-t ${link.disabled ? "border-red-200" : "border-gray-200"}`}
                       >
@@ -1448,12 +1409,10 @@ export default function CreatePaymentLink() {
                               </span>
                             </div>
                           </div>
-
                           {link.squareLink && (
                             <details className="pt-2 border-t border-gray-100">
                               <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
-                                ℹ️ Show Square Direct Link (for reference only -
-                                don&apos;t share with customers)
+                                ℹ️ Show Square Direct Link (for reference only)
                               </summary>
                               <div className="flex items-start gap-2 mt-2 p-2 bg-yellow-50 rounded">
                                 <ExternalLink className="w-4 h-4 text-yellow-600 mt-0.5" />
@@ -1461,10 +1420,6 @@ export default function CreatePaymentLink() {
                                   <p className="text-xs font-medium text-yellow-800 mb-1">
                                     ⚠️ Square Payment Link (bypasses
                                     validation):
-                                  </p>
-                                  <p className="text-xs text-yellow-700 mb-1">
-                                    This link goes directly to Square and CANNOT
-                                    be disabled.
                                   </p>
                                   <span className="text-xs text-yellow-600 font-mono break-all">
                                     {link.squareLink}
@@ -1474,7 +1429,6 @@ export default function CreatePaymentLink() {
                             </details>
                           )}
                         </div>
-
                         {link.disabled && (
                           <div className="mt-3 p-2 bg-red-100 border border-red-300 rounded">
                             <p className="text-xs text-red-700 font-medium">
@@ -1487,6 +1441,63 @@ export default function CreatePaymentLink() {
                     </div>
                   ))}
                 </div>
+
+                {/* Pagination — only shown in normal (non-search) mode */}
+                {!isSearchMode && totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
+                    <button
+                      onClick={() => fetchHistory(currentPage - 1)}
+                      disabled={currentPage <= 1 || historyLoading}
+                      className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      ← Prev
+                    </button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .filter(
+                          (p) =>
+                            p === 1 ||
+                            p === totalPages ||
+                            Math.abs(p - currentPage) <= 1,
+                        )
+                        .reduce<(number | "…")[]>((acc, p, idx, arr) => {
+                          if (
+                            idx > 0 &&
+                            (p as number) - (arr[idx - 1] as number) > 1
+                          )
+                            acc.push("…");
+                          acc.push(p);
+                          return acc;
+                        }, [])
+                        .map((p, idx) =>
+                          p === "…" ? (
+                            <span
+                              key={`e-${idx}`}
+                              className="px-1 text-gray-400 text-sm"
+                            >
+                              …
+                            </span>
+                          ) : (
+                            <button
+                              key={p}
+                              onClick={() => fetchHistory(p as number)}
+                              disabled={historyLoading}
+                              className={`w-8 h-8 text-sm font-semibold rounded-lg transition ${currentPage === p ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-100"}`}
+                            >
+                              {p}
+                            </button>
+                          ),
+                        )}
+                    </div>
+                    <button
+                      onClick={() => fetchHistory(currentPage + 1)}
+                      disabled={currentPage >= totalPages || historyLoading}
+                      className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>
