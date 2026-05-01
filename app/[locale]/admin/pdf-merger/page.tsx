@@ -20,6 +20,7 @@ import {
   ChevronLeft,
   Sparkles,
 } from "lucide-react";
+import AdminShell from "../_components/AdminShell";
 
 // ─── DOCUMENT SETS PER POLICY TYPE ───────────────────────────────────────────
 type TemplateEntry = { key: string; label: string };
@@ -826,517 +827,495 @@ export default function PdfMergerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F5F4F1]">
-      {/* Top nav bar */}
-      <div className="bg-white border-b border-gray-100 sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => (window.location.href = "/admin")}
-              className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition"
-            >
-              <ChevronLeft className="w-4 h-4" /> Admin
-            </button>
-            <span className="text-gray-200">/</span>
-            <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-red-600 to-blue-700 flex items-center justify-center">
-                <FileText className="w-3.5 h-3.5 text-white" />
+    <AdminShell activePath="/admin/pdf-merger">
+      <div className="min-h-screen bg-[#F5F4F1]">
+        {/* Top nav bar */}
+        <div className="bg-white border-b border-gray-100 sticky top-0 z-30">
+          <div className="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => (window.location.href = "/admin")}
+                className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-700 transition"
+              >
+                <ChevronLeft className="w-4 h-4" /> Admin
+              </button>
+              <span className="text-gray-200">/</span>
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-red-600 to-blue-700 flex items-center justify-center">
+                  <FileText className="w-3.5 h-3.5 text-white" />
+                </div>
+                <span className="text-sm font-semibold text-gray-800">
+                  PDF Merger
+                </span>
               </div>
-              <span className="text-sm font-semibold text-gray-800">
-                PDF Merger
-              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleReset}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition font-medium"
+              >
+                Reset
+              </button>
+              <button
+                onClick={handleMerge}
+                disabled={!canMerge || merging}
+                className="flex items-center gap-2 text-sm px-4 py-1.5 rounded-lg bg-gradient-to-r from-red-600 to-blue-700 text-white font-semibold hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {merging ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Merging…
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" /> Merge & Download
+                  </>
+                )}
+              </button>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleReset}
-              className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition font-medium"
-            >
-              Reset
-            </button>
-            <button
-              onClick={handleMerge}
-              disabled={!canMerge || merging}
-              className="flex items-center gap-2 text-sm px-4 py-1.5 rounded-lg bg-gradient-to-r from-red-600 to-blue-700 text-white font-semibold hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {merging ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Merging…
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4" /> Merge & Download
-                </>
-              )}
-            </button>
-          </div>
         </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {status && (
-          <div
-            className={`flex items-center gap-3 p-4 rounded-2xl mb-6 text-sm font-medium ${status.type === "success" ? "bg-emerald-50 border border-emerald-200 text-emerald-800" : "bg-rose-50 border border-rose-200 text-rose-800"}`}
-          >
-            {status.type === "success" ? (
-              <CheckCircle className="w-4 h-4 flex-shrink-0" />
-            ) : (
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            )}
-            {status.message}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
-          <div className="space-y-5">
-            {/* Policy Setup */}
-            <SectionCard>
-              <SectionTitle>Policy Setup</SectionTitle>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="md:col-span-2">
-                  <FieldLabel required>Customer name</FieldLabel>
-                  <StyledInput
-                    type="text"
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="Auto-filled from receipt, or enter manually"
-                  />
-                  {customerName && (
-                    <p className="text-[11px] text-gray-400 mt-1.5 font-mono">
-                      {customerName.trim().replace(/\s+/g, "_")}_
-                      {nonOwner ? `${policyType}_NonOwner` : policyType}
-                      {noReceipt
-                        ? "_NoReceipt"
-                        : receiptType === "cash"
-                          ? "_Cash"
-                          : ""}
-                      {paidInFull ? "_PIF" : ""}_{datePreview}_HH-MM.pdf
-                    </p>
-                  )}
-                </div>
-
-                <div>
-                  <FieldLabel>Policy type</FieldLabel>
-                  <div className="flex flex-wrap gap-2">
-                    {POLICY_TYPES.map((pt) => {
-                      const configured =
-                        (DOCUMENT_SETS[pt.value] ?? []).length > 0;
-                      const selected = policyType === pt.value;
-                      return (
-                        <button
-                          key={pt.value}
-                          onClick={() => setPolicyType(pt.value)}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition ${selected ? "bg-blue-600 border-blue-600 text-white" : configured ? "bg-white border-gray-200 text-gray-600 hover:border-blue-300" : "bg-gray-50 border-dashed border-gray-200 text-gray-400"}`}
-                        >
-                          <span>{pt.emoji}</span>
-                          {pt.label ?? pt.value}
-                          {!configured && (
-                            <span className="text-[10px] opacity-50">
-                              (soon)
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <FieldLabel>Subtype</FieldLabel>
-                  <div className="flex gap-2">
-                    {[
-                      { v: false, label: "Regular" },
-                      { v: true, label: "Non-Owner" },
-                    ].map(({ v, label }) => (
-                      <button
-                        key={String(v)}
-                        onClick={() => setNonOwner(v)}
-                        className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition ${nonOwner === v ? (v ? "bg-violet-600 border-violet-600 text-white" : "bg-blue-600 border-blue-600 text-white") : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"}`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="md:col-span-2">
-                  <FieldLabel>Payment method on file</FieldLabel>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      {
-                        v: "cc" as PaymentMethod,
-                        icon: <CreditCard className="w-4 h-4" />,
-                        label: "Credit Card",
-                        sub: "Recurring CC Form",
-                      },
-                      {
-                        v: "eft" as PaymentMethod,
-                        icon: <Landmark className="w-4 h-4" />,
-                        label: "Bank (EFT)",
-                        sub: "EFT Form General",
-                      },
-                      {
-                        v: "none" as PaymentMethod,
-                        icon: <Ban className="w-4 h-4" />,
-                        label: "None",
-                        sub: "No payment form",
-                      },
-                    ].map(({ v, icon, label, sub }) => (
-                      <button
-                        key={v}
-                        onClick={() => setPaymentMethod(v)}
-                        className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition ${paymentMethod === v ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"}`}
-                      >
-                        <span
-                          className={
-                            paymentMethod === v
-                              ? "text-blue-600"
-                              : "text-gray-400"
-                          }
-                        >
-                          {icon}
-                        </span>
-                        <div>
-                          <p className="text-sm font-semibold leading-none">
-                            {label}
-                          </p>
-                          <p className="text-[11px] mt-0.5 opacity-70">{sub}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </SectionCard>
-
-            {/* Documents */}
-            <SectionCard>
-              <SectionTitle>Documents</SectionTitle>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <FieldLabel required>
-                      Company application / policy package
-                    </FieldLabel>
-                    <span className="text-[11px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-md font-medium">
-                      #2 in merge order
-                    </span>
-                  </div>
-
-                  {companyApp ? (
-                    <div className="space-y-2">
-                      <UploadedFile
-                        name={companyApp.name}
-                        size={companyApp.size}
-                        label="Company App"
-                        onRemove={() => {
-                          setCompanyApp(null);
-                          setExtraDocs([]);
-                          if (companyAppRef.current)
-                            companyAppRef.current.value = "";
-                        }}
-                      />
-                      <button
-                        onClick={() => companyAppRef.current?.click()}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-blue-600 border border-dashed border-blue-200 rounded-xl hover:bg-blue-50 transition"
-                      >
-                        <PlusCircle className="w-4 h-4" />
-                        Add more PDFs to package
-                      </button>
-                    </div>
-                  ) : (
-                    <UploadBox onClick={() => companyAppRef.current?.click()}>
-                      <div className="w-10 h-10 rounded-2xl bg-gray-100 flex items-center justify-center group-hover:bg-blue-100 transition">
-                        <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-gray-500">
-                          Upload PDF(s)
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          Upload one or multiple files to include
-                        </p>
-                      </div>
-                    </UploadBox>
-                  )}
-                  <input
-                    ref={companyAppRef}
-                    type="file"
-                    accept="application/pdf"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files && e.target.files.length > 0)
-                        handleCompanyAppFiles(e.target.files);
-                    }}
-                  />
-                </div>
-
-                {extraDocs.length > 0 && (
-                  <div className="space-y-2">
-                    <FieldLabel>Extra documents</FieldLabel>
-                    {extraDocs.map((doc) => (
-                      <div
-                        key={doc.id}
-                        className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl"
-                      >
-                        <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
-                          <FileText className="w-3.5 h-3.5 text-amber-600" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <input
-                            type="text"
-                            value={doc.label}
-                            onChange={(e) =>
-                              handleUpdateExtraLabel(doc.id, e.target.value)
-                            }
-                            placeholder="Label (optional)"
-                            className="w-full text-sm bg-transparent border-none outline-none text-gray-700 font-medium placeholder-gray-400"
-                          />
-                          <p className="text-xs text-amber-600 truncate">
-                            {doc.file.name} ·{" "}
-                            {(doc.file.size / 1024).toFixed(0)} KB
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => handleRemoveExtraDoc(doc.id)}
-                          className="text-amber-400 hover:text-rose-500 transition"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </SectionCard>
-
-            {/* Receipt & Payment */}
-            <SectionCard>
-              <div className="flex items-center justify-between mb-4">
-                <SectionTitle>Receipt & Payment</SectionTitle>
-                <button
-                  onClick={() => {
-                    setNoReceipt((v) => !v);
-                    if (!noReceipt) {
-                      handleOfficeReceiptChange(null);
-                      setCcReceipts([]);
-                      setPaidInFull(false);
-                      if (officeReceiptRef.current)
-                        officeReceiptRef.current.value = "";
-                      if (ccReceiptRef.current) ccReceiptRef.current.value = "";
-                    }
-                  }}
-                  className={`text-xs px-3 py-1.5 rounded-lg font-semibold border transition ${noReceipt ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}
-                >
-                  {noReceipt ? "✓ No Receipt" : "No Receipt"}
-                </button>
-              </div>
-
-              {noReceipt ? (
-                <div className="flex items-center gap-3 px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl">
-                  <Ban className="w-5 h-5 text-gray-400" />
-                  <div>
-                    <p className="text-sm font-semibold text-gray-600">
-                      Receipt skipped
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      No office or CC receipt will be included.
-                    </p>
-                  </div>
-                </div>
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          {status && (
+            <div
+              className={`flex items-center gap-3 p-4 rounded-2xl mb-6 text-sm font-medium ${status.type === "success" ? "bg-emerald-50 border border-emerald-200 text-emerald-800" : "bg-rose-50 border border-rose-200 text-rose-800"}`}
+            >
+              {status.type === "success" ? (
+                <CheckCircle className="w-4 h-4 flex-shrink-0" />
               ) : (
-                <div className="space-y-5">
-                  {/* Office receipt upload */}
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              )}
+              {status.message}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
+            <div className="space-y-5">
+              {/* Policy Setup */}
+              <SectionCard>
+                <SectionTitle>Policy Setup</SectionTitle>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="md:col-span-2">
+                    <FieldLabel required>Customer name</FieldLabel>
+                    <StyledInput
+                      type="text"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      placeholder="Auto-filled from receipt, or enter manually"
+                    />
+                    {customerName && (
+                      <p className="text-[11px] text-gray-400 mt-1.5 font-mono">
+                        {customerName.trim().replace(/\s+/g, "_")}_
+                        {nonOwner ? `${policyType}_NonOwner` : policyType}
+                        {noReceipt
+                          ? "_NoReceipt"
+                          : receiptType === "cash"
+                            ? "_Cash"
+                            : ""}
+                        {paidInFull ? "_PIF" : ""}_{datePreview}_HH-MM.pdf
+                      </p>
+                    )}
+                  </div>
+
                   <div>
-                    <FieldLabel required>Office receipt</FieldLabel>
-                    {officeReceipt ? (
+                    <FieldLabel>Policy type</FieldLabel>
+                    <div className="flex flex-wrap gap-2">
+                      {POLICY_TYPES.map((pt) => {
+                        const configured =
+                          (DOCUMENT_SETS[pt.value] ?? []).length > 0;
+                        const selected = policyType === pt.value;
+                        return (
+                          <button
+                            key={pt.value}
+                            onClick={() => setPolicyType(pt.value)}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition ${selected ? "bg-blue-600 border-blue-600 text-white" : configured ? "bg-white border-gray-200 text-gray-600 hover:border-blue-300" : "bg-gray-50 border-dashed border-gray-200 text-gray-400"}`}
+                          >
+                            <span>{pt.emoji}</span>
+                            {pt.label ?? pt.value}
+                            {!configured && (
+                              <span className="text-[10px] opacity-50">
+                                (soon)
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <FieldLabel>Subtype</FieldLabel>
+                    <div className="flex gap-2">
+                      {[
+                        { v: false, label: "Regular" },
+                        { v: true, label: "Non-Owner" },
+                      ].map(({ v, label }) => (
+                        <button
+                          key={String(v)}
+                          onClick={() => setNonOwner(v)}
+                          className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition ${nonOwner === v ? (v ? "bg-violet-600 border-violet-600 text-white" : "bg-blue-600 border-blue-600 text-white") : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <FieldLabel>Payment method on file</FieldLabel>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        {
+                          v: "cc" as PaymentMethod,
+                          icon: <CreditCard className="w-4 h-4" />,
+                          label: "Credit Card",
+                          sub: "Recurring CC Form",
+                        },
+                        {
+                          v: "eft" as PaymentMethod,
+                          icon: <Landmark className="w-4 h-4" />,
+                          label: "Bank (EFT)",
+                          sub: "EFT Form General",
+                        },
+                        {
+                          v: "none" as PaymentMethod,
+                          icon: <Ban className="w-4 h-4" />,
+                          label: "None",
+                          sub: "No payment form",
+                        },
+                      ].map(({ v, icon, label, sub }) => (
+                        <button
+                          key={v}
+                          onClick={() => setPaymentMethod(v)}
+                          className={`flex items-center gap-3 px-4 py-3 rounded-xl border text-left transition ${paymentMethod === v ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"}`}
+                        >
+                          <span
+                            className={
+                              paymentMethod === v
+                                ? "text-blue-600"
+                                : "text-gray-400"
+                            }
+                          >
+                            {icon}
+                          </span>
+                          <div>
+                            <p className="text-sm font-semibold leading-none">
+                              {label}
+                            </p>
+                            <p className="text-[11px] mt-0.5 opacity-70">
+                              {sub}
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </SectionCard>
+
+              {/* Documents */}
+              <SectionCard>
+                <SectionTitle>Documents</SectionTitle>
+                <div className="space-y-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <FieldLabel required>
+                        Company application / policy package
+                      </FieldLabel>
+                      <span className="text-[11px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-md font-medium">
+                        #2 in merge order
+                      </span>
+                    </div>
+
+                    {companyApp ? (
                       <div className="space-y-2">
                         <UploadedFile
-                          name={officeReceipt.name}
-                          size={officeReceipt.size}
+                          name={companyApp.name}
+                          size={companyApp.size}
+                          label="Company App"
                           onRemove={() => {
-                            handleOfficeReceiptChange(null);
-                            if (officeReceiptRef.current)
-                              officeReceiptRef.current.value = "";
+                            setCompanyApp(null);
+                            setExtraDocs([]);
+                            if (companyAppRef.current)
+                              companyAppRef.current.value = "";
                           }}
                         />
-
-                        {/* Extracted receipt info */}
-                        {extractingReceipt ? (
-                          <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-600">
-                            <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
-                            Reading receipt…
-                          </div>
-                        ) : receiptInfo?.notAReceipt ? (
-                          <div className="flex items-start gap-3 p-4 bg-rose-50 border border-rose-200 rounded-xl">
-                            <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-                            <div>
-                              <p className="text-sm font-semibold text-rose-800">
-                                Office Copy required
-                              </p>
-                              <p className="text-xs text-rose-600 mt-1 leading-relaxed">
-                                Only the <strong>Office Copy</strong> of the
-                                receipt is accepted — not the Customer Copy or
-                                any other document.
-                              </p>
-                              <button
-                                onClick={() => {
-                                  handleOfficeReceiptChange(null);
-                                  if (officeReceiptRef.current)
-                                    officeReceiptRef.current.value = "";
-                                  setTimeout(
-                                    () => officeReceiptRef.current?.click(),
-                                    50,
-                                  );
-                                }}
-                                className="mt-2 text-xs font-semibold text-rose-700 underline underline-offset-2 hover:text-rose-900 transition"
-                              >
-                                Upload the correct receipt →
-                              </button>
-                            </div>
-                          </div>
-                        ) : receiptInfo ? (
-                          <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
-                            <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                              <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-                              From receipt
-                            </div>
-
-                            {/* TBD warning */}
-                            {isPolicyTbd && (
-                              <div className="flex items-start gap-3 p-3 mb-3 bg-rose-50 border border-rose-200 rounded-xl">
-                                <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-                                <div>
-                                  <p className="text-sm font-semibold text-rose-800">
-                                    Policy number is TBD — cannot merge
-                                  </p>
-                                  <p className="text-xs text-rose-600 mt-0.5">
-                                    The receipt shows policy # as TBD. Wait for
-                                    the carrier to assign a policy number before
-                                    merging.
-                                  </p>
-                                </div>
-                              </div>
-                            )}
-
-                            <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
-                              {(
-                                [
-                                  ["Customer", receiptInfo.customerName, false],
-                                  [
-                                    "Policy #",
-                                    receiptInfo.policyNumber,
-                                    isPolicyTbd,
-                                  ],
-                                  ["Company", receiptInfo.companyName, false],
-                                  [
-                                    "Amount",
-                                    receiptInfo.paidAmount
-                                      ? `$${receiptInfo.paidAmount}`
-                                      : null,
-                                    false,
-                                  ],
-                                ] as const
-                              ).map(([label, value, isError]) => (
-                                <div
-                                  key={label}
-                                  className="flex items-center gap-2"
-                                >
-                                  <span className="text-[11px] text-gray-400 min-w-[58px]">
-                                    {label}
-                                  </span>
-                                  <span
-                                    className={`text-xs font-medium flex-1 truncate ${isError ? "text-rose-600" : "text-gray-700"}`}
-                                  >
-                                    {value || (
-                                      <em className="text-amber-500 font-normal">
-                                        not found
-                                      </em>
-                                    )}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-
-                            {extractionNote && (
-                              <p className="text-[11px] text-emerald-600 mt-2 flex items-center gap-1">
-                                <Sparkles className="w-3 h-3" />
-                                {extractionNote}
-                              </p>
-                            )}
-                          </div>
-                        ) : null}
+                        <button
+                          onClick={() => companyAppRef.current?.click()}
+                          className="w-full flex items-center justify-center gap-2 py-2.5 text-sm font-medium text-blue-600 border border-dashed border-blue-200 rounded-xl hover:bg-blue-50 transition"
+                        >
+                          <PlusCircle className="w-4 h-4" />
+                          Add more PDFs to package
+                        </button>
                       </div>
                     ) : (
-                      <UploadBox
-                        onClick={() => officeReceiptRef.current?.click()}
-                      >
-                        <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center group-hover:bg-blue-100 transition">
-                          <Upload className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition" />
+                      <UploadBox onClick={() => companyAppRef.current?.click()}>
+                        <div className="w-10 h-10 rounded-2xl bg-gray-100 flex items-center justify-center group-hover:bg-blue-100 transition">
+                          <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition" />
                         </div>
-                        <p className="text-sm text-gray-400">
-                          Upload office receipt PDF
-                        </p>
-                        <p className="text-xs text-gray-300">
-                          Policy #, company, customer name & amount auto-filled
-                        </p>
+                        <div>
+                          <p className="text-sm font-medium text-gray-500">
+                            Upload PDF(s)
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            Upload one or multiple files to include
+                          </p>
+                        </div>
                       </UploadBox>
                     )}
                     <input
-                      ref={officeReceiptRef}
+                      ref={companyAppRef}
                       type="file"
                       accept="application/pdf"
+                      multiple
                       className="hidden"
                       onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) handleOfficeReceiptChange(f);
+                        if (e.target.files && e.target.files.length > 0)
+                          handleCompanyAppFiles(e.target.files);
                       }}
                     />
                   </div>
 
-                  {/* Payment details */}
-                  <div
-                    className={`rounded-2xl border overflow-hidden transition ${officeReceipt ? "border-gray-200" : "border-gray-100 opacity-50"}`}
-                  >
-                    <div className="grid grid-cols-[1fr_auto_1fr]">
-                      <div className="p-5 space-y-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">
-                          Payment details
-                        </p>
-                        <div>
-                          <FieldLabel required>Paid amount</FieldLabel>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
-                              $
-                            </span>
-                            <StyledInput
+                  {extraDocs.length > 0 && (
+                    <div className="space-y-2">
+                      <FieldLabel>Extra documents</FieldLabel>
+                      {extraDocs.map((doc) => (
+                        <div
+                          key={doc.id}
+                          className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl"
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                            <FileText className="w-3.5 h-3.5 text-amber-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <input
                               type="text"
-                              inputMode="decimal"
-                              value={paidAmount}
+                              value={doc.label}
                               onChange={(e) =>
-                                setPaidAmount(
-                                  e.target.value.replace(/[^\d.,]/g, ""),
-                                )
+                                handleUpdateExtraLabel(doc.id, e.target.value)
                               }
-                              disabled={!officeReceipt}
-                              placeholder="0.00"
-                              className="pl-7"
+                              placeholder="Label (optional)"
+                              className="w-full text-sm bg-transparent border-none outline-none text-gray-700 font-medium placeholder-gray-400"
                             />
+                            <p className="text-xs text-amber-600 truncate">
+                              {doc.file.name} ·{" "}
+                              {(doc.file.size / 1024).toFixed(0)} KB
+                            </p>
                           </div>
+                          <button
+                            onClick={() => handleRemoveExtraDoc(doc.id)}
+                            className="text-amber-400 hover:text-rose-500 transition"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <FieldLabel required>Next due date</FieldLabel>
-                            <StyledInput
-                              type="date"
-                              value={nextDueDate}
-                              onChange={(e) => setNextDueDate(e.target.value)}
-                              disabled={!officeReceipt || paidInFull}
-                            />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </SectionCard>
+
+              {/* Receipt & Payment */}
+              <SectionCard>
+                <div className="flex items-center justify-between mb-4">
+                  <SectionTitle>Receipt & Payment</SectionTitle>
+                  <button
+                    onClick={() => {
+                      setNoReceipt((v) => !v);
+                      if (!noReceipt) {
+                        handleOfficeReceiptChange(null);
+                        setCcReceipts([]);
+                        setPaidInFull(false);
+                        if (officeReceiptRef.current)
+                          officeReceiptRef.current.value = "";
+                        if (ccReceiptRef.current)
+                          ccReceiptRef.current.value = "";
+                      }
+                    }}
+                    className={`text-xs px-3 py-1.5 rounded-lg font-semibold border transition ${noReceipt ? "bg-gray-800 text-white border-gray-800" : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"}`}
+                  >
+                    {noReceipt ? "✓ No Receipt" : "No Receipt"}
+                  </button>
+                </div>
+
+                {noReceipt ? (
+                  <div className="flex items-center gap-3 px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl">
+                    <Ban className="w-5 h-5 text-gray-400" />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-600">
+                        Receipt skipped
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        No office or CC receipt will be included.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    {/* Office receipt upload */}
+                    <div>
+                      <FieldLabel required>Office receipt</FieldLabel>
+                      {officeReceipt ? (
+                        <div className="space-y-2">
+                          <UploadedFile
+                            name={officeReceipt.name}
+                            size={officeReceipt.size}
+                            onRemove={() => {
+                              handleOfficeReceiptChange(null);
+                              if (officeReceiptRef.current)
+                                officeReceiptRef.current.value = "";
+                            }}
+                          />
+
+                          {/* Extracted receipt info */}
+                          {extractingReceipt ? (
+                            <div className="flex items-center gap-2 px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-sm text-blue-600">
+                              <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />
+                              Reading receipt…
+                            </div>
+                          ) : receiptInfo?.notAReceipt ? (
+                            <div className="flex items-start gap-3 p-4 bg-rose-50 border border-rose-200 rounded-xl">
+                              <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
+                              <div>
+                                <p className="text-sm font-semibold text-rose-800">
+                                  Office Copy required
+                                </p>
+                                <p className="text-xs text-rose-600 mt-1 leading-relaxed">
+                                  Only the <strong>Office Copy</strong> of the
+                                  receipt is accepted — not the Customer Copy or
+                                  any other document.
+                                </p>
+                                <button
+                                  onClick={() => {
+                                    handleOfficeReceiptChange(null);
+                                    if (officeReceiptRef.current)
+                                      officeReceiptRef.current.value = "";
+                                    setTimeout(
+                                      () => officeReceiptRef.current?.click(),
+                                      50,
+                                    );
+                                  }}
+                                  className="mt-2 text-xs font-semibold text-rose-700 underline underline-offset-2 hover:text-rose-900 transition"
+                                >
+                                  Upload the correct receipt →
+                                </button>
+                              </div>
+                            </div>
+                          ) : receiptInfo ? (
+                            <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+                              <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                                <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                                From receipt
+                              </div>
+
+                              {/* TBD warning */}
+                              {isPolicyTbd && (
+                                <div className="flex items-start gap-3 p-3 mb-3 bg-rose-50 border border-rose-200 rounded-xl">
+                                  <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
+                                  <div>
+                                    <p className="text-sm font-semibold text-rose-800">
+                                      Policy number is TBD — cannot merge
+                                    </p>
+                                    <p className="text-xs text-rose-600 mt-0.5">
+                                      The receipt shows policy # as TBD. Wait
+                                      for the carrier to assign a policy number
+                                      before merging.
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
+                                {(
+                                  [
+                                    [
+                                      "Customer",
+                                      receiptInfo.customerName,
+                                      false,
+                                    ],
+                                    [
+                                      "Policy #",
+                                      receiptInfo.policyNumber,
+                                      isPolicyTbd,
+                                    ],
+                                    ["Company", receiptInfo.companyName, false],
+                                    [
+                                      "Amount",
+                                      receiptInfo.paidAmount
+                                        ? `$${receiptInfo.paidAmount}`
+                                        : null,
+                                      false,
+                                    ],
+                                  ] as const
+                                ).map(([label, value, isError]) => (
+                                  <div
+                                    key={label}
+                                    className="flex items-center gap-2"
+                                  >
+                                    <span className="text-[11px] text-gray-400 min-w-[58px]">
+                                      {label}
+                                    </span>
+                                    <span
+                                      className={`text-xs font-medium flex-1 truncate ${isError ? "text-rose-600" : "text-gray-700"}`}
+                                    >
+                                      {value || (
+                                        <em className="text-amber-500 font-normal">
+                                          not found
+                                        </em>
+                                      )}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {extractionNote && (
+                                <p className="text-[11px] text-emerald-600 mt-2 flex items-center gap-1">
+                                  <Sparkles className="w-3 h-3" />
+                                  {extractionNote}
+                                </p>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <UploadBox
+                          onClick={() => officeReceiptRef.current?.click()}
+                        >
+                          <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center group-hover:bg-blue-100 transition">
+                            <Upload className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition" />
                           </div>
+                          <p className="text-sm text-gray-400">
+                            Upload office receipt PDF
+                          </p>
+                          <p className="text-xs text-gray-300">
+                            Policy #, company, customer name & amount
+                            auto-filled
+                          </p>
+                        </UploadBox>
+                      )}
+                      <input
+                        ref={officeReceiptRef}
+                        type="file"
+                        accept="application/pdf"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handleOfficeReceiptChange(f);
+                        }}
+                      />
+                    </div>
+
+                    {/* Payment details */}
+                    <div
+                      className={`rounded-2xl border overflow-hidden transition ${officeReceipt ? "border-gray-200" : "border-gray-100 opacity-50"}`}
+                    >
+                      <div className="grid grid-cols-[1fr_auto_1fr]">
+                        <div className="p-5 space-y-4">
+                          <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400">
+                            Payment details
+                          </p>
                           <div>
-                            <FieldLabel required>Monthly payment</FieldLabel>
+                            <FieldLabel required>Paid amount</FieldLabel>
                             <div className="relative">
                               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
                                 $
@@ -1344,332 +1323,365 @@ export default function PdfMergerPage() {
                               <StyledInput
                                 type="text"
                                 inputMode="decimal"
-                                value={monthlyAmount}
+                                value={paidAmount}
                                 onChange={(e) =>
-                                  setMonthlyAmount(
+                                  setPaidAmount(
                                     e.target.value.replace(/[^\d.,]/g, ""),
                                   )
                                 }
-                                disabled={!officeReceipt || paidInFull}
+                                disabled={!officeReceipt}
                                 placeholder="0.00"
                                 className="pl-7"
                               />
                             </div>
                           </div>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col items-center py-5">
-                        <div className="w-px flex-1 bg-gray-100" />
-                        <span className="text-[11px] font-semibold text-gray-300 tracking-widest py-3">
-                          OR
-                        </span>
-                        <div className="w-px flex-1 bg-gray-100" />
-                      </div>
-
-                      {/* PIF panel — outer div, NOT a button, so date input never bubbles */}
-                      <div
-                        className={`flex flex-col justify-start transition ${paidInFull ? "bg-emerald-50" : ""} ${!officeReceipt ? "opacity-40 pointer-events-none" : ""}`}
-                      >
-                        {/* Clickable toggle row only */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const next = !paidInFull;
-                            setPaidInFull(next);
-                            if (!next) {
-                              setMonthlyAmount("");
-                              setNextDueDate("");
-                              setExpirationDate("");
-                            } else {
-                              setMonthlyAmount("0.00");
-                              if (expirationDate) {
-                                const computed =
-                                  computePifDueDate(expirationDate);
-                                if (computed) setNextDueDate(computed);
-                              }
-                            }
-                          }}
-                          disabled={!officeReceipt}
-                          className={`p-5 pb-3 text-left w-full flex items-start gap-3 disabled:cursor-not-allowed ${paidInFull ? "" : "hover:bg-gray-50"}`}
-                        >
-                          <div
-                            className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition ${paidInFull ? "border-emerald-500 bg-emerald-500" : "border-gray-300"}`}
-                          >
-                            {paidInFull && (
-                              <svg
-                                className="w-2.5 h-2.5"
-                                viewBox="0 0 10 8"
-                                fill="none"
-                              >
-                                <path
-                                  d="M1 4l3 3 5-6"
-                                  stroke="white"
-                                  strokeWidth="1.8"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <FieldLabel required>Next due date</FieldLabel>
+                              <StyledInput
+                                type="date"
+                                value={nextDueDate}
+                                onChange={(e) => setNextDueDate(e.target.value)}
+                                disabled={!officeReceipt || paidInFull}
+                              />
+                            </div>
+                            <div>
+                              <FieldLabel required>Monthly payment</FieldLabel>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+                                  $
+                                </span>
+                                <StyledInput
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={monthlyAmount}
+                                  onChange={(e) =>
+                                    setMonthlyAmount(
+                                      e.target.value.replace(/[^\d.,]/g, ""),
+                                    )
+                                  }
+                                  disabled={!officeReceipt || paidInFull}
+                                  placeholder="0.00"
+                                  className="pl-7"
                                 />
-                              </svg>
-                            )}
-                          </div>
-                          <div>
-                            <p
-                              className={`text-sm font-semibold ${paidInFull ? "text-emerald-800" : "text-gray-700"}`}
-                            >
-                              Paid in full
-                            </p>
-                            <p
-                              className={`text-xs mt-1 leading-relaxed ${paidInFull ? "text-emerald-600" : "text-gray-400"}`}
-                            >
-                              {paidInFull
-                                ? "Monthly → $0.00. Enter expiration date below."
-                                : "Toggle if customer paid the full premium upfront."}
-                            </p>
-                          </div>
-                        </button>
-
-                        {/* Expiration date — outside the toggle button, no bubbling possible */}
-                        {paidInFull && (
-                          <div className="px-5 pb-5">
-                            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 mb-3 bg-emerald-100 text-emerald-700 rounded-lg text-[11px] font-semibold">
-                              <Calendar className="w-3 h-3" />
-                              PIF active
+                              </div>
                             </div>
-                            <p className="text-[11px] text-emerald-700 font-semibold mb-1">
-                              Policy expiration date
-                            </p>
-                            <input
-                              type="date"
-                              value={expirationDate}
-                              onChange={(e) =>
-                                setExpirationDate(e.target.value)
-                              }
-                              className="w-full px-3 py-2 text-sm bg-white border border-emerald-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition"
-                            />
-                            {nextDueDate && (
-                              <p className="text-[11px] text-emerald-600 mt-1">
-                                Due date set to{" "}
-                                {new Date(
-                                  nextDueDate + "T00:00:00",
-                                ).toLocaleDateString("en-US", {
-                                  month: "numeric",
-                                  day: "numeric",
-                                  year: "numeric",
-                                })}
-                              </p>
-                            )}
                           </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                        </div>
 
-                  {/* CC receipt type */}
-                  <div>
-                    <FieldLabel>Sale receipt type</FieldLabel>
-                    <div className="flex gap-2 mb-4">
-                      {[
-                        {
-                          v: "card" as ReceiptType,
-                          icon: <CreditCard className="w-4 h-4" />,
-                          label: "Card / Square",
-                        },
-                        {
-                          v: "cash" as ReceiptType,
-                          icon: <DollarSign className="w-4 h-4" />,
-                          label: "Cash / In-Office",
-                        },
-                      ].map(({ v, icon, label }) => (
-                        <button
-                          key={v}
-                          onClick={() => {
-                            setReceiptType(v);
-                            if (v === "cash") {
-                              setCcReceipts([]);
-                              if (ccReceiptRef.current)
-                                ccReceiptRef.current.value = "";
-                            }
-                          }}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition ${receiptType === v ? (v === "card" ? "bg-blue-600 border-blue-600 text-white" : "bg-emerald-600 border-emerald-600 text-white") : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"}`}
+                        <div className="flex flex-col items-center py-5">
+                          <div className="w-px flex-1 bg-gray-100" />
+                          <span className="text-[11px] font-semibold text-gray-300 tracking-widest py-3">
+                            OR
+                          </span>
+                          <div className="w-px flex-1 bg-gray-100" />
+                        </div>
+
+                        {/* PIF panel — outer div, NOT a button, so date input never bubbles */}
+                        <div
+                          className={`flex flex-col justify-start transition ${paidInFull ? "bg-emerald-50" : ""} ${!officeReceipt ? "opacity-40 pointer-events-none" : ""}`}
                         >
-                          {icon}
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-
-                    {receiptType === "card" ? (
-                      <div className="space-y-2">
-                        {ccReceipts.map((f, i) => (
-                          <div
-                            key={i}
-                            className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl"
+                          {/* Clickable toggle row only */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = !paidInFull;
+                              setPaidInFull(next);
+                              if (!next) {
+                                setMonthlyAmount("");
+                                setNextDueDate("");
+                                setExpirationDate("");
+                              } else {
+                                setMonthlyAmount("0.00");
+                                if (expirationDate) {
+                                  const computed =
+                                    computePifDueDate(expirationDate);
+                                  if (computed) setNextDueDate(computed);
+                                }
+                              }
+                            }}
+                            disabled={!officeReceipt}
+                            className={`p-5 pb-3 text-left w-full flex items-start gap-3 disabled:cursor-not-allowed ${paidInFull ? "" : "hover:bg-gray-50"}`}
                           >
-                            <CreditCard className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-emerald-800 truncate">
-                                {f.name}
+                            <div
+                              className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition ${paidInFull ? "border-emerald-500 bg-emerald-500" : "border-gray-300"}`}
+                            >
+                              {paidInFull && (
+                                <svg
+                                  className="w-2.5 h-2.5"
+                                  viewBox="0 0 10 8"
+                                  fill="none"
+                                >
+                                  <path
+                                    d="M1 4l3 3 5-6"
+                                    stroke="white"
+                                    strokeWidth="1.8"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  />
+                                </svg>
+                              )}
+                            </div>
+                            <div>
+                              <p
+                                className={`text-sm font-semibold ${paidInFull ? "text-emerald-800" : "text-gray-700"}`}
+                              >
+                                Paid in full
                               </p>
-                              <p className="text-xs text-emerald-500">
-                                {(f.size / 1024).toFixed(0)} KB
-                                {ccReceipts.length > 1
-                                  ? ` · Card ${i + 1}`
-                                  : ""}
+                              <p
+                                className={`text-xs mt-1 leading-relaxed ${paidInFull ? "text-emerald-600" : "text-gray-400"}`}
+                              >
+                                {paidInFull
+                                  ? "Monthly → $0.00. Enter expiration date below."
+                                  : "Toggle if customer paid the full premium upfront."}
                               </p>
                             </div>
-                            <button
-                              onClick={() =>
-                                setCcReceipts((prev) =>
-                                  prev.filter((_, idx) => idx !== i),
-                                )
-                              }
-                              className="text-emerald-400 hover:text-rose-500 transition"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ))}
-                        <UploadBox
-                          onClick={() => ccReceiptRef.current?.click()}
-                        >
-                          <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center group-hover:bg-blue-100 transition">
-                            {ccReceipts.length > 0 ? (
-                              <PlusCircle className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition" />
-                            ) : (
-                              <Upload className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-400">
-                              {ccReceipts.length > 0
-                                ? "Add another card receipt"
-                                : "Upload CC receipt"}
-                            </p>
-                            {ccReceipts.length === 0 && (
-                              <p className="text-xs text-gray-300">
-                                One receipt per card if split payment
+                          </button>
+
+                          {/* Expiration date — outside the toggle button, no bubbling possible */}
+                          {paidInFull && (
+                            <div className="px-5 pb-5">
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 mb-3 bg-emerald-100 text-emerald-700 rounded-lg text-[11px] font-semibold">
+                                <Calendar className="w-3 h-3" />
+                                PIF active
+                              </div>
+                              <p className="text-[11px] text-emerald-700 font-semibold mb-1">
+                                Policy expiration date
                               </p>
-                            )}
-                          </div>
-                          {ccReceipts.length > 0 && (
-                            <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-2.5 py-1 rounded-full">
-                              {ccReceipts.length} added
-                            </span>
+                              <input
+                                type="date"
+                                value={expirationDate}
+                                onChange={(e) =>
+                                  setExpirationDate(e.target.value)
+                                }
+                                className="w-full px-3 py-2 text-sm bg-white border border-emerald-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition"
+                              />
+                              {nextDueDate && (
+                                <p className="text-[11px] text-emerald-600 mt-1">
+                                  Due date set to{" "}
+                                  {new Date(
+                                    nextDueDate + "T00:00:00",
+                                  ).toLocaleDateString("en-US", {
+                                    month: "numeric",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  })}
+                                </p>
+                              )}
+                            </div>
                           )}
-                        </UploadBox>
-                        <input
-                          ref={ccReceiptRef}
-                          type="file"
-                          accept="application/pdf"
-                          className="hidden"
-                          onChange={(e) => {
-                            const f = e.target.files?.[0];
-                            if (f) {
-                              setCcReceipts((prev) => [...prev, f]);
-                              if (ccReceiptRef.current)
-                                ccReceiptRef.current.value = "";
-                            }
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl">
-                        <DollarSign className="w-5 h-5 text-emerald-600" />
-                        <div>
-                          <p className="text-sm font-semibold text-emerald-800">
-                            Cash / In-office sale
-                          </p>
-                          <p className="text-xs text-emerald-600 mt-0.5">
-                            No CC receipt needed — package ends after office
-                            receipt
-                          </p>
                         </div>
                       </div>
-                    )}
+                    </div>
+
+                    {/* CC receipt type */}
+                    <div>
+                      <FieldLabel>Sale receipt type</FieldLabel>
+                      <div className="flex gap-2 mb-4">
+                        {[
+                          {
+                            v: "card" as ReceiptType,
+                            icon: <CreditCard className="w-4 h-4" />,
+                            label: "Card / Square",
+                          },
+                          {
+                            v: "cash" as ReceiptType,
+                            icon: <DollarSign className="w-4 h-4" />,
+                            label: "Cash / In-Office",
+                          },
+                        ].map(({ v, icon, label }) => (
+                          <button
+                            key={v}
+                            onClick={() => {
+                              setReceiptType(v);
+                              if (v === "cash") {
+                                setCcReceipts([]);
+                                if (ccReceiptRef.current)
+                                  ccReceiptRef.current.value = "";
+                              }
+                            }}
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition ${receiptType === v ? (v === "card" ? "bg-blue-600 border-blue-600 text-white" : "bg-emerald-600 border-emerald-600 text-white") : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"}`}
+                          >
+                            {icon}
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {receiptType === "card" ? (
+                        <div className="space-y-2">
+                          {ccReceipts.map((f, i) => (
+                            <div
+                              key={i}
+                              className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl"
+                            >
+                              <CreditCard className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-emerald-800 truncate">
+                                  {f.name}
+                                </p>
+                                <p className="text-xs text-emerald-500">
+                                  {(f.size / 1024).toFixed(0)} KB
+                                  {ccReceipts.length > 1
+                                    ? ` · Card ${i + 1}`
+                                    : ""}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() =>
+                                  setCcReceipts((prev) =>
+                                    prev.filter((_, idx) => idx !== i),
+                                  )
+                                }
+                                className="text-emerald-400 hover:text-rose-500 transition"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
+                          <UploadBox
+                            onClick={() => ccReceiptRef.current?.click()}
+                          >
+                            <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center group-hover:bg-blue-100 transition">
+                              {ccReceipts.length > 0 ? (
+                                <PlusCircle className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition" />
+                              ) : (
+                                <Upload className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition" />
+                              )}
+                            </div>
+                            <div>
+                              <p className="text-sm text-gray-400">
+                                {ccReceipts.length > 0
+                                  ? "Add another card receipt"
+                                  : "Upload CC receipt"}
+                              </p>
+                              {ccReceipts.length === 0 && (
+                                <p className="text-xs text-gray-300">
+                                  One receipt per card if split payment
+                                </p>
+                              )}
+                            </div>
+                            {ccReceipts.length > 0 && (
+                              <span className="text-xs font-semibold text-blue-600 bg-blue-100 px-2.5 py-1 rounded-full">
+                                {ccReceipts.length} added
+                              </span>
+                            )}
+                          </UploadBox>
+                          <input
+                            ref={ccReceiptRef}
+                            type="file"
+                            accept="application/pdf"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) {
+                                setCcReceipts((prev) => [...prev, f]);
+                                if (ccReceiptRef.current)
+                                  ccReceiptRef.current.value = "";
+                              }
+                            }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                          <DollarSign className="w-5 h-5 text-emerald-600" />
+                          <div>
+                            <p className="text-sm font-semibold text-emerald-800">
+                              Cash / In-office sale
+                            </p>
+                            <p className="text-xs text-emerald-600 mt-0.5">
+                              No CC receipt needed — package ends after office
+                              receipt
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
+                )}
+              </SectionCard>
+
+              {/* Validation hint */}
+              {!canMerge && !merging && (
+                <div className="flex items-center gap-2 text-xs text-gray-400 px-1">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  {isPolicyTbd
+                    ? "Policy number is TBD — cannot merge until carrier assigns a policy number"
+                    : !customerName.trim()
+                      ? "Enter customer name to get started"
+                      : !companyApp
+                        ? "Upload the company application to continue"
+                        : noReceipt
+                          ? "Ready to merge"
+                          : !officeReceipt
+                            ? "Upload the Office Copy of the receipt, or toggle No Receipt"
+                            : !receiptFieldsReady
+                              ? "Fill in paid amount, next due date, and monthly payment"
+                              : "Upload a CC receipt or switch to Cash"}
                 </div>
               )}
-            </SectionCard>
+            </div>
 
-            {/* Validation hint */}
-            {!canMerge && !merging && (
-              <div className="flex items-center gap-2 text-xs text-gray-400 px-1">
-                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                {isPolicyTbd
-                  ? "Policy number is TBD — cannot merge until carrier assigns a policy number"
-                  : !customerName.trim()
-                    ? "Enter customer name to get started"
-                    : !companyApp
-                      ? "Upload the company application to continue"
-                      : noReceipt
-                        ? "Ready to merge"
-                        : !officeReceipt
-                          ? "Upload the Office Copy of the receipt, or toggle No Receipt"
-                          : !receiptFieldsReady
-                            ? "Fill in paid amount, next due date, and monthly payment"
-                            : "Upload a CC receipt or switch to Cash"}
-              </div>
-            )}
-          </div>
-
-          {/* Right column: Merge order */}
-          <div className="xl:sticky xl:top-20 xl:self-start space-y-5">
-            <SectionCard>
-              <SectionTitle>Merge order preview</SectionTitle>
-              <div className="space-y-1.5">
-                {displayDocs.map((item) => (
-                  <div
-                    key={`${item.num}-${item.label}`}
-                    className="flex items-center gap-3 py-1.5"
-                  >
-                    <span className="w-6 h-6 rounded-lg bg-gray-100 text-gray-500 text-[11px] font-bold flex items-center justify-center flex-shrink-0">
-                      {item.num}
-                    </span>
-                    <span className="text-xs text-gray-600 flex-1 leading-snug">
-                      {item.label}
-                    </span>
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-md font-semibold flex-shrink-0 ${item.type === "static" ? "bg-emerald-100 text-emerald-700" : item.type === "extra" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}
+            {/* Right column: Merge order */}
+            <div className="xl:sticky xl:top-20 xl:self-start space-y-5">
+              <SectionCard>
+                <SectionTitle>Merge order preview</SectionTitle>
+                <div className="space-y-1.5">
+                  {displayDocs.map((item) => (
+                    <div
+                      key={`${item.num}-${item.label}`}
+                      className="flex items-center gap-3 py-1.5"
                     >
-                      {item.type === "static"
-                        ? "Auto"
-                        : item.type === "extra"
-                          ? "Extra"
-                          : "Upload"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </SectionCard>
+                      <span className="w-6 h-6 rounded-lg bg-gray-100 text-gray-500 text-[11px] font-bold flex items-center justify-center flex-shrink-0">
+                        {item.num}
+                      </span>
+                      <span className="text-xs text-gray-600 flex-1 leading-snug">
+                        {item.label}
+                      </span>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-md font-semibold flex-shrink-0 ${item.type === "static" ? "bg-emerald-100 text-emerald-700" : item.type === "extra" ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}
+                      >
+                        {item.type === "static"
+                          ? "Auto"
+                          : item.type === "extra"
+                            ? "Extra"
+                            : "Upload"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </SectionCard>
 
-            {/* TBD block in sidebar */}
-            {isPolicyTbd && (
-              <div className="flex items-start gap-3 p-4 bg-rose-50 border border-rose-200 rounded-2xl">
-                <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
-                <p className="text-xs font-semibold text-rose-700">
-                  Policy # is TBD — merge blocked until carrier assigns a number
-                </p>
-              </div>
-            )}
-
-            <button
-              onClick={handleMerge}
-              disabled={!canMerge || merging}
-              className="w-full flex items-center justify-center gap-2 py-3 text-sm font-semibold text-white bg-gradient-to-r from-red-600 to-blue-700 rounded-2xl hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {merging ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" /> Merging…
-                </>
-              ) : (
-                <>
-                  <Download className="w-4 h-4" /> Merge & Download PDF
-                </>
+              {/* TBD block in sidebar */}
+              {isPolicyTbd && (
+                <div className="flex items-start gap-3 p-4 bg-rose-50 border border-rose-200 rounded-2xl">
+                  <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs font-semibold text-rose-700">
+                    Policy # is TBD — merge blocked until carrier assigns a
+                    number
+                  </p>
+                </div>
               )}
-            </button>
+
+              <button
+                onClick={handleMerge}
+                disabled={!canMerge || merging}
+                className="w-full flex items-center justify-center gap-2 py-3 text-sm font-semibold text-white bg-gradient-to-r from-red-600 to-blue-700 rounded-2xl hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {merging ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" /> Merging…
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" /> Merge & Download PDF
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </AdminShell>
   );
 }

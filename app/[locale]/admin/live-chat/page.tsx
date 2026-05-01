@@ -2,6 +2,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { History, RotateCcw } from "lucide-react";
+import AdminShell from "../_components/AdminShell";
 
 import {
   Send,
@@ -1235,904 +1236,920 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
   }
 
   return (
-    <div className="h-screen flex bg-gray-100">
-      {/* History Button - Bottom Left Corner */}
-      <button
-        onClick={() => {
-          setShowDeletedChatsModal(true);
-          loadDeletedChats(0);
-        }}
-        className="fixed bottom-4 left-4 z-50 p-4 bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-full shadow-xl hover:scale-110 transition-all duration-300 flex items-center gap-2"
-        title="View Deleted Chats History"
-      >
-        <History className="w-6 h-6" />
-        <span className="hidden sm:inline text-sm font-medium">History</span>
-      </button>
+    <AdminShell activePath="/admin/live-chat">
+      <div className="h-screen flex bg-gray-100">
+        {/* History Button - Bottom Left Corner */}
+        <button
+          onClick={() => {
+            setShowDeletedChatsModal(true);
+            loadDeletedChats(0);
+          }}
+          className="fixed bottom-4 left-4 z-50 p-4 bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-full shadow-xl hover:scale-110 transition-all duration-300 flex items-center gap-2"
+          title="View Deleted Chats History"
+        >
+          <History className="w-6 h-6" />
+          <span className="hidden sm:inline text-sm font-medium">History</span>
+        </button>
 
-      <button
-        onClick={() => setShowMobileSidebar(!showMobileSidebar)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-blue-600 text-white rounded-lg shadow-lg"
-      >
-        <Menu className="w-6 h-6" />
-      </button>
+        <button
+          onClick={() => setShowMobileSidebar(!showMobileSidebar)}
+          className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-blue-600 text-white rounded-lg shadow-lg"
+        >
+          <Menu className="w-6 h-6" />
+        </button>
 
-      <div
-        className={`${
-          showMobileSidebar ? "translate-x-0" : "-translate-x-full"
-        } lg:translate-x-0 fixed lg:relative z-40 w-full sm:w-96 bg-white border-r border-gray-200 flex flex-col transition-transform duration-300 h-full`}
-      >
-        <div className="p-4 border-b bg-gradient-to-r from-red-700 to-blue-800 text-white flex-shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex flex-col">
-              <button
-                onClick={() => (window.location.href = "/admin")}
-                className="flex items-center gap-1 text-xs text-blue-200 hover:text-white mb-1 transition-colors"
-              >
-                <svg
-                  className="w-3 h-3"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+        <div
+          className={`${
+            showMobileSidebar ? "translate-x-0" : "-translate-x-full"
+          } lg:translate-x-0 fixed lg:relative z-40 w-full sm:w-96 bg-white border-r border-gray-200 flex flex-col transition-transform duration-300 h-full`}
+        >
+          <div className="p-4 border-b bg-gradient-to-r from-red-700 to-blue-800 text-white flex-shrink-0">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex flex-col">
+                <button
+                  onClick={() => (window.location.href = "/admin")}
+                  className="flex items-center gap-1 text-xs text-blue-200 hover:text-white mb-1 transition-colors"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 19l-7-7 7-7"
-                  />
-                </svg>
-                Back to Admin
-              </button>
-              <h2 className="text-xl font-bold">Live Chats</h2>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setShowMobileSidebar(false)}
-                className="lg:hidden p-1.5 hover:bg-white/20 rounded transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setNotificationsEnabled(!notificationsEnabled)}
-                className="p-1.5 hover:bg-white/20 rounded transition"
-                title={
-                  notificationsEnabled
-                    ? "Mute notifications"
-                    : "Enable notifications"
-                }
-              >
-                {notificationsEnabled ? (
-                  <Bell className="w-4 h-4" />
-                ) : (
-                  <BellOff className="w-4 h-4" />
-                )}
-              </button>
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  isConnected ? "bg-green-400" : "bg-red-400"
-                }`}
-              ></div>
-              <span className="text-sm hidden sm:inline">
-                {isConnected ? "Online" : "Offline"}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-blue-100 truncate">
-              Logged in as {adminName}
-            </p>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-1 px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-xs transition flex-shrink-0"
-              title="Logout"
-            >
-              <LogOut className="w-3 h-3" />
-              <span className="hidden sm:inline">Logout</span>
-            </button>
-          </div>
-          {totalChatsCount > 0 && (
-            <p className="text-xs text-blue-200 mt-1">
-              Showing {sessions.length} of {totalChatsCount} chats
-            </p>
-          )}
-        </div>
-
-        <div className="p-3 border-b bg-gray-50 space-y-2 flex-shrink-0">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by name, phone, or ID..."
-              className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <button
-                onClick={() => setShowFilterMenu(!showFilterMenu)}
-                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-              >
-                <div className="flex items-center gap-2">
-                  <Filter className="w-4 h-4" />
-                  <span className="capitalize">{filterStatus}</span>
-                </div>
-                <ChevronDown className="w-4 h-4" />
-              </button>
-              {showFilterMenu && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-10">
-                  {["all", "active", "ended", "unassigned"].map((status) => (
-                    <button
-                      key={status}
-                      onClick={() => {
-                        setFilterStatus(status as typeof filterStatus);
-                        setShowFilterMenu(false);
-                      }}
-                      className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition first:rounded-t-lg last:rounded-b-lg ${
-                        filterStatus === status
-                          ? "bg-blue-50 text-blue-700 font-medium"
-                          : ""
-                      }`}
-                    >
-                      <span className="capitalize">{status}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto">
-          {filteredSessions.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
-              <Users size={48} className="mx-auto mb-4 opacity-50" />
-              <p className="font-medium">
-                {searchQuery || filterStatus !== "all"
-                  ? "No matching chats"
-                  : "No active chats"}
-              </p>
-              <p className="text-sm mt-2">
-                {searchQuery || filterStatus !== "all"
-                  ? "Try adjusting your filters"
-                  : "Waiting for customers..."}
-              </p>
-            </div>
-          ) : (
-            <>
-              {filteredSessions.map((session, sessionIndex) => {
-                const isClaimedByMe =
-                  session.hasAgent && session.agentName === adminName;
-                const isClaimedByOther =
-                  session.hasAgent && session.agentName !== adminName;
-                const lastMessage =
-                  session.conversationHistory[
-                    session.conversationHistory.length - 1
-                  ];
-                const unreadCount = session.unreadCount || 0;
-
-                return (
-                  <div
-                    key={`${session.userId}-${sessionIndex}`}
-                    className={`w-full border-b relative group ${
-                      selectedSession?.userId === session.userId
-                        ? "bg-blue-50 border-l-4 border-l-blue-600"
-                        : ""
-                    } ${
-                      isClaimedByOther &&
-                      !session.customerEnded &&
-                      !session.adminEnded
-                        ? "opacity-50"
-                        : ""
-                    } ${session.customerEnded ? "bg-red-50" : ""} ${
-                      session.adminEnded ? "bg-orange-50" : ""
-                    }`}
+                  <svg
+                    className="w-3 h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    <button
-                      onClick={() => {
-                        claimCustomer(session);
-                        setShowMobileSidebar(false);
-                      }}
-                      disabled={
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 19l-7-7 7-7"
+                    />
+                  </svg>
+                  Back to Admin
+                </button>
+                <h2 className="text-xl font-bold">Live Chats</h2>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowMobileSidebar(false)}
+                  className="lg:hidden p-1.5 hover:bg-white/20 rounded transition"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setNotificationsEnabled(!notificationsEnabled)}
+                  className="p-1.5 hover:bg-white/20 rounded transition"
+                  title={
+                    notificationsEnabled
+                      ? "Mute notifications"
+                      : "Enable notifications"
+                  }
+                >
+                  {notificationsEnabled ? (
+                    <Bell className="w-4 h-4" />
+                  ) : (
+                    <BellOff className="w-4 h-4" />
+                  )}
+                </button>
+                <div
+                  className={`w-2 h-2 rounded-full ${
+                    isConnected ? "bg-green-400" : "bg-red-400"
+                  }`}
+                ></div>
+                <span className="text-sm hidden sm:inline">
+                  {isConnected ? "Online" : "Offline"}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-blue-100 truncate">
+                Logged in as {adminName}
+              </p>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1 px-2 py-1 bg-white/20 hover:bg-white/30 rounded text-xs transition flex-shrink-0"
+                title="Logout"
+              >
+                <LogOut className="w-3 h-3" />
+                <span className="hidden sm:inline">Logout</span>
+              </button>
+            </div>
+            {totalChatsCount > 0 && (
+              <p className="text-xs text-blue-200 mt-1">
+                Showing {sessions.length} of {totalChatsCount} chats
+              </p>
+            )}
+          </div>
+
+          <div className="p-3 border-b bg-gray-50 space-y-2 flex-shrink-0">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by name, phone, or ID..."
+                className="w-full pl-10 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <button
+                  onClick={() => setShowFilterMenu(!showFilterMenu)}
+                  className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                >
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-4 h-4" />
+                    <span className="capitalize">{filterStatus}</span>
+                  </div>
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+                {showFilterMenu && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-10">
+                    {["all", "active", "ended", "unassigned"].map((status) => (
+                      <button
+                        key={status}
+                        onClick={() => {
+                          setFilterStatus(status as typeof filterStatus);
+                          setShowFilterMenu(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 transition first:rounded-t-lg last:rounded-b-lg ${
+                          filterStatus === status
+                            ? "bg-blue-50 text-blue-700 font-medium"
+                            : ""
+                        }`}
+                      >
+                        <span className="capitalize">{status}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {filteredSessions.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">
+                <Users size={48} className="mx-auto mb-4 opacity-50" />
+                <p className="font-medium">
+                  {searchQuery || filterStatus !== "all"
+                    ? "No matching chats"
+                    : "No active chats"}
+                </p>
+                <p className="text-sm mt-2">
+                  {searchQuery || filterStatus !== "all"
+                    ? "Try adjusting your filters"
+                    : "Waiting for customers..."}
+                </p>
+              </div>
+            ) : (
+              <>
+                {filteredSessions.map((session, sessionIndex) => {
+                  const isClaimedByMe =
+                    session.hasAgent && session.agentName === adminName;
+                  const isClaimedByOther =
+                    session.hasAgent && session.agentName !== adminName;
+                  const lastMessage =
+                    session.conversationHistory[
+                      session.conversationHistory.length - 1
+                    ];
+                  const unreadCount = session.unreadCount || 0;
+
+                  return (
+                    <div
+                      key={`${session.userId}-${sessionIndex}`}
+                      className={`w-full border-b relative group ${
+                        selectedSession?.userId === session.userId
+                          ? "bg-blue-50 border-l-4 border-l-blue-600"
+                          : ""
+                      } ${
                         isClaimedByOther &&
                         !session.customerEnded &&
                         !session.adminEnded
-                      }
-                      className="w-full p-4 text-left hover:bg-gray-50 transition disabled:cursor-not-allowed"
+                          ? "opacity-50"
+                          : ""
+                      } ${session.customerEnded ? "bg-red-50" : ""} ${
+                        session.adminEnded ? "bg-orange-50" : ""
+                      }`}
                     >
-                      <div className="flex items-start justify-between mb-1">
-                        <div className="flex-1 min-w-0 pr-10">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-semibold text-gray-800 truncate">
-                              {session.userName}
-                            </p>
-                            {unreadCount > 0 && (
-                              <span className="bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">
-                                {unreadCount}
+                      <button
+                        onClick={() => {
+                          claimCustomer(session);
+                          setShowMobileSidebar(false);
+                        }}
+                        disabled={
+                          isClaimedByOther &&
+                          !session.customerEnded &&
+                          !session.adminEnded
+                        }
+                        className="w-full p-4 text-left hover:bg-gray-50 transition disabled:cursor-not-allowed"
+                      >
+                        <div className="flex items-start justify-between mb-1">
+                          <div className="flex-1 min-w-0 pr-10">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-semibold text-gray-800 truncate">
+                                {session.userName}
+                              </p>
+                              {unreadCount > 0 && (
+                                <span className="bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">
+                                  {unreadCount}
+                                </span>
+                              )}
+                            </div>
+                            {session.userPhone && (
+                              <p className="text-xs text-gray-500 truncate">
+                                {session.userPhone}
+                              </p>
+                            )}
+                            {session.customerEnded && (
+                              <span className="text-xs text-red-600 font-medium">
+                                ● Customer ended chat
                               </span>
                             )}
-                          </div>
-                          {session.userPhone && (
-                            <p className="text-xs text-gray-500 truncate">
-                              {session.userPhone}
-                            </p>
-                          )}
-                          {session.customerEnded && (
-                            <span className="text-xs text-red-600 font-medium">
-                              ● Customer ended chat
-                            </span>
-                          )}
-                          {session.adminEnded && (
-                            <span className="text-xs text-orange-600 font-medium">
-                              ● Admin ended chat
-                            </span>
-                          )}
-                          {!session.customerEnded &&
-                            !session.adminEnded &&
-                            isClaimedByMe && (
-                              <span className="text-xs text-green-600 font-medium">
-                                You&apos;re chatting
-                              </span>
-                            )}
-                          {!session.customerEnded &&
-                            !session.adminEnded &&
-                            isClaimedByOther && (
+                            {session.adminEnded && (
                               <span className="text-xs text-orange-600 font-medium">
-                                {session.agentName} is chatting
+                                ● Admin ended chat
                               </span>
                             )}
-                          {!session.customerEnded &&
-                            !session.adminEnded &&
-                            !session.hasAgent && (
-                              <span className="text-xs text-blue-600 font-medium">
-                                New chat
-                              </span>
+                            {!session.customerEnded &&
+                              !session.adminEnded &&
+                              isClaimedByMe && (
+                                <span className="text-xs text-green-600 font-medium">
+                                  You&apos;re chatting
+                                </span>
+                              )}
+                            {!session.customerEnded &&
+                              !session.adminEnded &&
+                              isClaimedByOther && (
+                                <span className="text-xs text-orange-600 font-medium">
+                                  {session.agentName} is chatting
+                                </span>
+                              )}
+                            {!session.customerEnded &&
+                              !session.adminEnded &&
+                              !session.hasAgent && (
+                                <span className="text-xs text-blue-600 font-medium">
+                                  New chat
+                                </span>
+                              )}
+                          </div>
+                          <div className="flex flex-col items-end gap-1 flex-shrink-0 pr-8">
+                            {session.isActive && !session.customerEnded && (
+                              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                             )}
-                        </div>
-                        <div className="flex flex-col items-end gap-1 flex-shrink-0 pr-8">
-                          {session.isActive && !session.customerEnded && (
-                            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                          )}
-                          {session.customerEnded && (
-                            <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                          )}
-                          <div className="flex items-center gap-1 text-xs text-gray-500 whitespace-nowrap">
-                            <Clock size={12} />
-                            {getSessionDuration(session.joinedAt)}
+                            {session.customerEnded && (
+                              <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                            )}
+                            <div className="flex items-center gap-1 text-xs text-gray-500 whitespace-nowrap">
+                              <Clock size={12} />
+                              {getSessionDuration(session.joinedAt)}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      {customerTyping[session.userId] ? (
-                        <p className="text-sm text-blue-600 italic truncate">
-                          {session.userName} is typing...
-                        </p>
-                      ) : lastMessage ? (
-                        <p className="text-sm text-gray-600 truncate">
-                          {lastMessage.isAdmin ? "You: " : ""}
-                          {lastMessage.content}
-                        </p>
-                      ) : null}
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteChat(session.userId);
-                      }}
-                      className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1.5 text-red-600 hover:bg-red-100 rounded transition-opacity z-10"
-                      title="Delete chat"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                        {customerTyping[session.userId] ? (
+                          <p className="text-sm text-blue-600 italic truncate">
+                            {session.userName} is typing...
+                          </p>
+                        ) : lastMessage ? (
+                          <p className="text-sm text-gray-600 truncate">
+                            {lastMessage.isAdmin ? "You: " : ""}
+                            {lastMessage.content}
+                          </p>
+                        ) : null}
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteChat(session.userId);
+                        }}
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 p-1.5 text-red-600 hover:bg-red-100 rounded transition-opacity z-10"
+                        title="Delete chat"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {hasMoreChats && filterStatus === "all" && !searchQuery && (
+                  <button
+                    onClick={loadMoreChats}
+                    disabled={isLoadingMore}
+                    className="w-full p-4 border-t bg-gray-50 hover:bg-gray-100 transition text-center text-sm font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isLoadingMore ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Loading more chats...
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="w-4 h-4" />
+                        Load More ({totalChatsCount - sessions.length}{" "}
+                        remaining)
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {!hasMoreChats && sessions.length > 0 && loadedCount >= 20 && (
+                  <div className="w-full p-4 border-t bg-gray-50 text-center text-sm text-gray-500">
+                    All chats loaded ({sessions.length} total)
                   </div>
-                );
-              })}
-
-              {hasMoreChats && filterStatus === "all" && !searchQuery && (
-                <button
-                  onClick={loadMoreChats}
-                  disabled={isLoadingMore}
-                  className="w-full p-4 border-t bg-gray-50 hover:bg-gray-100 transition text-center text-sm font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isLoadingMore ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Loading more chats...
-                    </>
-                  ) : (
-                    <>
-                      <ChevronDown className="w-4 h-4" />
-                      Load More ({totalChatsCount - sessions.length} remaining)
-                    </>
-                  )}
-                </button>
-              )}
-
-              {!hasMoreChats && sessions.length > 0 && loadedCount >= 20 && (
-                <div className="w-full p-4 border-t bg-gray-50 text-center text-sm text-gray-500">
-                  All chats loaded ({sessions.length} total)
-                </div>
-              )}
-            </>
-          )}
+                )}
+              </>
+            )}
+          </div>
         </div>
-      </div>
 
-      <div className="flex-1 flex flex-col">
-        {selectedSession ? (
-          <>
-            <div className="p-3 sm:p-4 bg-white border-b shadow-sm flex items-center justify-between flex-wrap gap-2">
-              <div className="flex-1 min-w-0">
-                <h3 className="font-semibold text-base sm:text-lg text-gray-800 truncate">
-                  {selectedSession.userName}
-                </h3>
-                <p className="text-xs sm:text-sm text-gray-500 truncate">
-                  {selectedSession.userPhone &&
-                    `${selectedSession.userPhone} • `}
-                  User ID: {selectedSession.userId}
-                </p>
-              </div>
-              <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-                <button
-                  onClick={() => setShowNotesModal(true)}
-                  className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
-                  title="Add notes"
-                >
-                  <StickyNote className="w-4 h-4 sm:w-5 sm:h-5" />
-                </button>
-                <button
-                  onClick={downloadTranscript}
-                  className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
-                  title="Download transcript"
-                >
-                  <Download className="w-4 h-4 sm:w-5 sm:h-5" />
-                </button>
-                <button
-                  onClick={() => deleteChat(selectedSession.userId)}
-                  className="p-1.5 sm:p-2 text-red-600 hover:bg-red-100 rounded-lg transition"
-                  title="Delete chat"
-                >
-                  <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
-                </button>
-                <button
-                  onClick={endSession}
-                  className="px-2 sm:px-4 py-1.5 sm:py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center gap-1 sm:gap-2 text-sm"
-                >
-                  <X size={14} className="sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">End Chat</span>
-                  <span className="sm:hidden">End</span>
-                </button>
-              </div>
-            </div>
-
-            {selectedSession.notes && (
-              <div className="px-4 py-2 bg-yellow-50 border-b border-yellow-200">
-                <div className="flex items-start gap-2">
-                  <StickyNote className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-yellow-800">
-                      Internal Notes:
-                    </p>
-                    <p className="text-sm text-yellow-700 truncate">
-                      {selectedSession.notes}
-                    </p>
-                  </div>
+        <div className="flex-1 flex flex-col">
+          {selectedSession ? (
+            <>
+              <div className="p-3 sm:p-4 bg-white border-b shadow-sm flex items-center justify-between flex-wrap gap-2">
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-base sm:text-lg text-gray-800 truncate">
+                    {selectedSession.userName}
+                  </h3>
+                  <p className="text-xs sm:text-sm text-gray-500 truncate">
+                    {selectedSession.userPhone &&
+                      `${selectedSession.userPhone} • `}
+                    User ID: {selectedSession.userId}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                   <button
                     onClick={() => setShowNotesModal(true)}
-                    className="text-yellow-600 hover:text-yellow-800 text-xs"
+                    className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                    title="Add notes"
                   >
-                    Edit
+                    <StickyNote className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+                  <button
+                    onClick={downloadTranscript}
+                    className="p-1.5 sm:p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition"
+                    title="Download transcript"
+                  >
+                    <Download className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+                  <button
+                    onClick={() => deleteChat(selectedSession.userId)}
+                    className="p-1.5 sm:p-2 text-red-600 hover:bg-red-100 rounded-lg transition"
+                    title="Delete chat"
+                  >
+                    <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </button>
+                  <button
+                    onClick={endSession}
+                    className="px-2 sm:px-4 py-1.5 sm:py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition flex items-center gap-1 sm:gap-2 text-sm"
+                  >
+                    <X size={14} className="sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">End Chat</span>
+                    <span className="sm:hidden">End</span>
                   </button>
                 </div>
               </div>
-            )}
 
-            <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 bg-gray-50">
-              {messages.map((msg, index) => (
-                <div
-                  key={`${msg.id}-${index}` || `msg-${index}`}
-                  className={`flex ${
-                    msg.isAdmin ? "justify-end" : "justify-start"
-                  }`}
-                >
-                  {msg.deleted ? (
-                    <div
-                      className={`max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 border-2 border-dashed ${
-                        msg.isAdmin
-                          ? "bg-red-50 border-red-300 text-red-700"
-                          : "bg-gray-100 border-gray-300 text-gray-500"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <Trash2 className="w-4 h-4" />
-                        <p className="text-xs font-semibold italic">
-                          Message deleted by {msg.deletedBy || "Admin"}
-                        </p>
-                      </div>
-                      <p className="text-sm italic opacity-75">
-                        This message was removed
+              {selectedSession.notes && (
+                <div className="px-4 py-2 bg-yellow-50 border-b border-yellow-200">
+                  <div className="flex items-start gap-2">
+                    <StickyNote className="w-4 h-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-yellow-800">
+                        Internal Notes:
                       </p>
-                      <p className="text-xs mt-1 opacity-60">
-                        {formatTime(msg.deletedAt || msg.timestamp)}
+                      <p className="text-sm text-yellow-700 truncate">
+                        {selectedSession.notes}
                       </p>
                     </div>
-                  ) : (
-                    <div
-                      className={`relative group max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 ${
-                        msg.isAdmin
-                          ? "bg-blue-600 text-white"
-                          : "bg-white text-gray-800 shadow"
-                      }`}
+                    <button
+                      onClick={() => setShowNotesModal(true)}
+                      className="text-yellow-600 hover:text-yellow-800 text-xs"
                     >
-                      {msg.isAdmin && (
-                        <button
-                          onClick={() =>
-                            handleDeleteMessage(msg.id, selectedSession.userId)
-                          }
-                          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-white/70 hover:text-red-400 transition"
-                          title="Delete message"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              )}
 
-                      <div className="flex items-center gap-2 mb-1">
-                        <p
-                          className={`text-xs font-semibold ${
-                            msg.isAdmin ? "text-blue-100" : "text-gray-600"
-                          }`}
-                        >
-                          {msg.isAdmin
-                            ? msg.userName || adminName
-                            : selectedSession.userName}
-                        </p>
-                        {msg.isAdmin && msg.read && (
-                          <CheckCheck className="w-3 h-3 text-blue-200" />
-                        )}
-                      </div>
-
-                      <p className="whitespace-pre-line text-sm sm:text-base break-words">
-                        {msg.content}
-                      </p>
-
-                      {msg.fileUrl && (
-                        <a
-                          href={msg.fileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-2 inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm hover:bg-blue-100 transition max-w-full"
-                        >
-                          <Paperclip className="w-4 h-4 flex-shrink-0" />
-                          <span className="truncate">
-                            {msg.fileName && msg.fileName.length > 30
-                              ? `${msg.fileName.substring(0, 27)}...`
-                              : msg.fileName || "Download file"}
-                          </span>
-                        </a>
-                      )}
-
-                      <p
-                        className={`text-xs mt-1 ${
-                          msg.isAdmin ? "text-blue-100" : "text-gray-500"
+              <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 bg-gray-50">
+                {messages.map((msg, index) => (
+                  <div
+                    key={`${msg.id}-${index}` || `msg-${index}`}
+                    className={`flex ${
+                      msg.isAdmin ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    {msg.deleted ? (
+                      <div
+                        className={`max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 border-2 border-dashed ${
+                          msg.isAdmin
+                            ? "bg-red-50 border-red-300 text-red-700"
+                            : "bg-gray-100 border-gray-300 text-gray-500"
                         }`}
                       >
-                        {formatTime(msg.timestamp)}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ))}
-
-              {selectedSession && customerTyping[selectedSession.userId] && (
-                <div className="flex justify-start">
-                  <div className="max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 bg-gray-100 border border-gray-200">
-                    <div className="flex items-center gap-2">
-                      <div className="flex space-x-1">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                        <div
-                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.1s" }}
-                        ></div>
-                        <div
-                          className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                          style={{ animationDelay: "0.2s" }}
-                        ></div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <Trash2 className="w-4 h-4" />
+                          <p className="text-xs font-semibold italic">
+                            Message deleted by {msg.deletedBy || "Admin"}
+                          </p>
+                        </div>
+                        <p className="text-sm italic opacity-75">
+                          This message was removed
+                        </p>
+                        <p className="text-xs mt-1 opacity-60">
+                          {formatTime(msg.deletedAt || msg.timestamp)}
+                        </p>
                       </div>
-                      <span className="text-gray-500 text-sm">
-                        {selectedSession.userName} is typing...
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
+                    ) : (
+                      <div
+                        className={`relative group max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 ${
+                          msg.isAdmin
+                            ? "bg-blue-600 text-white"
+                            : "bg-white text-gray-800 shadow"
+                        }`}
+                      >
+                        {msg.isAdmin && (
+                          <button
+                            onClick={() =>
+                              handleDeleteMessage(
+                                msg.id,
+                                selectedSession.userId,
+                              )
+                            }
+                            className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 text-white/70 hover:text-red-400 transition"
+                            title="Delete message"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
 
-            {showQuickResponses && (
-              <div className="border-t bg-white p-3 max-h-64 overflow-y-auto">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-yellow-600" />
-                    <h4 className="text-sm font-semibold text-gray-800">
-                      Quick Responses
-                    </h4>
-                    <span className="text-xs text-gray-500 hidden sm:inline">
-                      (Type shortcuts like /greeting)
-                    </span>
+                        <div className="flex items-center gap-2 mb-1">
+                          <p
+                            className={`text-xs font-semibold ${
+                              msg.isAdmin ? "text-blue-100" : "text-gray-600"
+                            }`}
+                          >
+                            {msg.isAdmin
+                              ? msg.userName || adminName
+                              : selectedSession.userName}
+                          </p>
+                          {msg.isAdmin && msg.read && (
+                            <CheckCheck className="w-3 h-3 text-blue-200" />
+                          )}
+                        </div>
+
+                        <p className="whitespace-pre-line text-sm sm:text-base break-words">
+                          {msg.content}
+                        </p>
+
+                        {msg.fileUrl && (
+                          <a
+                            href={msg.fileUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 inline-flex items-center gap-2 px-3 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm hover:bg-blue-100 transition max-w-full"
+                          >
+                            <Paperclip className="w-4 h-4 flex-shrink-0" />
+                            <span className="truncate">
+                              {msg.fileName && msg.fileName.length > 30
+                                ? `${msg.fileName.substring(0, 27)}...`
+                                : msg.fileName || "Download file"}
+                            </span>
+                          </a>
+                        )}
+
+                        <p
+                          className={`text-xs mt-1 ${
+                            msg.isAdmin ? "text-blue-100" : "text-gray-500"
+                          }`}
+                        >
+                          {formatTime(msg.timestamp)}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  <button
-                    onClick={() => setShowQuickResponses(false)}
-                    className="text-gray-400 hover:text-gray-600"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {quickResponses.map((qr) => (
-                    <button
-                      key={qr.id}
-                      onClick={() => insertQuickResponse(qr)}
-                      className="text-left p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded text-blue-600">
-                          {qr.shortcut}
-                        </code>
-                        <span className="text-xs text-gray-500">
-                          {qr.category}
+                ))}
+
+                {selectedSession && customerTyping[selectedSession.userId] && (
+                  <div className="flex justify-start">
+                    <div className="max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 bg-gray-100 border border-gray-200">
+                      <div className="flex items-center gap-2">
+                        <div className="flex space-x-1">
+                          <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                          <div
+                            className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.1s" }}
+                          ></div>
+                          <div
+                            className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                            style={{ animationDelay: "0.2s" }}
+                          ></div>
+                        </div>
+                        <span className="text-gray-500 text-sm">
+                          {selectedSession.userName} is typing...
                         </span>
                       </div>
-                      <p className="text-xs text-gray-700 line-clamp-2">
-                        {qr.message}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="p-3 sm:p-4 bg-white border-t">
-              {selectedSession.customerEnded || selectedSession.adminEnded ? (
-                <div className="text-center py-3 text-gray-500 bg-gray-50 rounded-lg text-sm sm:text-base">
-                  <p className="font-medium">
-                    This chat session has ended - Read-only mode
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="flex gap-1 sm:gap-3">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                      accept="image/*,.pdf,.doc,.docx"
-                    />
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={isUploadingFile}
-                      className={`p-1.5 sm:p-2 transition flex-shrink-0 ${
-                        isUploadingFile
-                          ? "text-gray-400 cursor-not-allowed"
-                          : "text-gray-600 hover:text-gray-800"
-                      }`}
-                      type="button"
-                      title="Attach file"
-                    >
-                      {isUploadingFile ? (
-                        <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => setShowQuickResponses(!showQuickResponses)}
-                      className={`p-1.5 sm:p-2 transition flex-shrink-0 ${
-                        showQuickResponses
-                          ? "text-yellow-600 bg-yellow-50"
-                          : "text-gray-600 hover:text-gray-800"
-                      }`}
-                      type="button"
-                      title="Quick responses"
-                    >
-                      <Zap className="w-4 h-4 sm:w-5 sm:h-5" />
-                    </button>
-                    <div className="relative flex-shrink-0">
-                      <button
-                        onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-                        className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-800 transition"
-                        type="button"
-                        title="Add emoji"
-                      >
-                        <Smile className="w-4 h-4 sm:w-5 sm:h-5" />
-                      </button>
-                      {showEmojiPicker && (
-                        <div className="absolute bottom-12 left-0 z-50">
-                          <EmojiPicker
-                            onEmojiClick={(emojiData) => {
-                              handleTyping(inputMessage + emojiData.emoji);
-                              setShowEmojiPicker(false);
-                            }}
-                          />
-                        </div>
-                      )}
                     </div>
-                    <input
-                      ref={inputRef}
-                      type="text"
-                      value={inputMessage}
-                      onChange={(e) => handleTyping(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          sendMessage(e);
-                        }
-                      }}
-                      placeholder="Type message..."
-                      className="flex-1 px-2 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base min-w-0"
-                    />
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              {showQuickResponses && (
+                <div className="border-t bg-white p-3 max-h-64 overflow-y-auto">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-yellow-600" />
+                      <h4 className="text-sm font-semibold text-gray-800">
+                        Quick Responses
+                      </h4>
+                      <span className="text-xs text-gray-500 hidden sm:inline">
+                        (Type shortcuts like /greeting)
+                      </span>
+                    </div>
                     <button
-                      onClick={sendMessage}
-                      disabled={!inputMessage.trim()}
-                      className="px-3 sm:px-6 py-2 sm:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 sm:gap-2 flex-shrink-0"
+                      onClick={() => setShowQuickResponses(false)}
+                      className="text-gray-400 hover:text-gray-600"
                     >
-                      <Send size={16} className="sm:w-5 sm:h-5" />
-                      <span className="hidden sm:inline">Send</span>
+                      <X className="w-4 h-4" />
                     </button>
                   </div>
-                  {inputMessage.startsWith("/") && (
-                    <div className="text-xs text-gray-500 flex items-center gap-1">
-                      <Zap className="w-3 h-3" />
-                      Shortcut detected - press Enter or click Quick Response
-                      button above
-                    </div>
-                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {quickResponses.map((qr) => (
+                      <button
+                        key={qr.id}
+                        onClick={() => insertQuickResponse(qr)}
+                        className="text-left p-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition"
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded text-blue-600">
+                            {qr.shortcut}
+                          </code>
+                          <span className="text-xs text-gray-500">
+                            {qr.category}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-700 line-clamp-2">
+                          {qr.message}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
-            </div>
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center bg-gray-50">
-            <div className="text-center text-gray-500 max-w-md p-4">
-              <MessageSquare size={64} className="mx-auto mb-4 opacity-30" />
-              <p className="text-xl font-semibold">No Chat Selected</p>
-              <p className="mt-2">
-                Select a customer from the sidebar to start chatting
-              </p>
-              <div className="mt-8 p-4 bg-blue-50 rounded-lg text-left">
-                <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
-                  <Zap className="w-4 h-4" />
-                  Quick Response Shortcuts
-                </h3>
-                <div className="space-y-1 text-sm text-blue-800">
-                  <p>
-                    <code className="bg-blue-100 px-1 rounded">/greeting</code>{" "}
-                    - Welcome message
-                  </p>
-                  <p>
-                    <code className="bg-blue-100 px-1 rounded">/quote</code> -
-                    Quote assistance
-                  </p>
-                  <p>
-                    <code className="bg-blue-100 px-1 rounded">/claim</code> -
-                    Claim help
-                  </p>
-                  <p>
-                    <code className="bg-blue-100 px-1 rounded">/payment</code> -
-                    Payment link
-                  </p>
-                  <p>
-                    <code className="bg-blue-100 px-1 rounded">/thanks</code> -
-                    Thank you
-                  </p>
-                  <p>
-                    <code className="bg-blue-100 px-1 rounded">/bye</code> -
-                    Goodbye
-                  </p>
+
+              <div className="p-3 sm:p-4 bg-white border-t">
+                {selectedSession.customerEnded || selectedSession.adminEnded ? (
+                  <div className="text-center py-3 text-gray-500 bg-gray-50 rounded-lg text-sm sm:text-base">
+                    <p className="font-medium">
+                      This chat session has ended - Read-only mode
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex gap-1 sm:gap-3">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        onChange={handleFileSelect}
+                        className="hidden"
+                        accept="image/*,.pdf,.doc,.docx"
+                      />
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingFile}
+                        className={`p-1.5 sm:p-2 transition flex-shrink-0 ${
+                          isUploadingFile
+                            ? "text-gray-400 cursor-not-allowed"
+                            : "text-gray-600 hover:text-gray-800"
+                        }`}
+                        type="button"
+                        title="Attach file"
+                      >
+                        {isUploadingFile ? (
+                          <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() =>
+                          setShowQuickResponses(!showQuickResponses)
+                        }
+                        className={`p-1.5 sm:p-2 transition flex-shrink-0 ${
+                          showQuickResponses
+                            ? "text-yellow-600 bg-yellow-50"
+                            : "text-gray-600 hover:text-gray-800"
+                        }`}
+                        type="button"
+                        title="Quick responses"
+                      >
+                        <Zap className="w-4 h-4 sm:w-5 sm:h-5" />
+                      </button>
+                      <div className="relative flex-shrink-0">
+                        <button
+                          onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                          className="p-1.5 sm:p-2 text-gray-600 hover:text-gray-800 transition"
+                          type="button"
+                          title="Add emoji"
+                        >
+                          <Smile className="w-4 h-4 sm:w-5 sm:h-5" />
+                        </button>
+                        {showEmojiPicker && (
+                          <div className="absolute bottom-12 left-0 z-50">
+                            <EmojiPicker
+                              onEmojiClick={(emojiData) => {
+                                handleTyping(inputMessage + emojiData.emoji);
+                                setShowEmojiPicker(false);
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        ref={inputRef}
+                        type="text"
+                        value={inputMessage}
+                        onChange={(e) => handleTyping(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            sendMessage(e);
+                          }
+                        }}
+                        placeholder="Type message..."
+                        className="flex-1 px-2 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base min-w-0"
+                      />
+                      <button
+                        onClick={sendMessage}
+                        disabled={!inputMessage.trim()}
+                        className="px-3 sm:px-6 py-2 sm:py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1 sm:gap-2 flex-shrink-0"
+                      >
+                        <Send size={16} className="sm:w-5 sm:h-5" />
+                        <span className="hidden sm:inline">Send</span>
+                      </button>
+                    </div>
+                    {inputMessage.startsWith("/") && (
+                      <div className="text-xs text-gray-500 flex items-center gap-1">
+                        <Zap className="w-3 h-3" />
+                        Shortcut detected - press Enter or click Quick Response
+                        button above
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center bg-gray-50">
+              <div className="text-center text-gray-500 max-w-md p-4">
+                <MessageSquare size={64} className="mx-auto mb-4 opacity-30" />
+                <p className="text-xl font-semibold">No Chat Selected</p>
+                <p className="mt-2">
+                  Select a customer from the sidebar to start chatting
+                </p>
+                <div className="mt-8 p-4 bg-blue-50 rounded-lg text-left">
+                  <h3 className="font-semibold text-blue-900 mb-2 flex items-center gap-2">
+                    <Zap className="w-4 h-4" />
+                    Quick Response Shortcuts
+                  </h3>
+                  <div className="space-y-1 text-sm text-blue-800">
+                    <p>
+                      <code className="bg-blue-100 px-1 rounded">
+                        /greeting
+                      </code>{" "}
+                      - Welcome message
+                    </p>
+                    <p>
+                      <code className="bg-blue-100 px-1 rounded">/quote</code> -
+                      Quote assistance
+                    </p>
+                    <p>
+                      <code className="bg-blue-100 px-1 rounded">/claim</code> -
+                      Claim help
+                    </p>
+                    <p>
+                      <code className="bg-blue-100 px-1 rounded">/payment</code>{" "}
+                      - Payment link
+                    </p>
+                    <p>
+                      <code className="bg-blue-100 px-1 rounded">/thanks</code>{" "}
+                      - Thank you
+                    </p>
+                    <p>
+                      <code className="bg-blue-100 px-1 rounded">/bye</code> -
+                      Goodbye
+                    </p>
+                  </div>
                 </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {showNotesModal && selectedSession && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <StickyNote className="w-5 h-5 text-yellow-600" />
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    Internal Notes
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setShowNotesModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-sm text-gray-600 mb-3">
+                Add notes for {selectedSession.userName} (visible only to
+                admins)
+              </p>
+              <textarea
+                value={sessionNotes}
+                onChange={(e) => setSessionNotes(e.target.value)}
+                placeholder="Add internal notes about this conversation..."
+                className="w-full h-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
+              <div className="flex gap-3 mt-4">
+                <button
+                  onClick={() => {
+                    setShowNotesModal(false);
+                    setSessionNotes(selectedSession.notes || "");
+                  }}
+                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveSessionNotes}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                >
+                  Save Notes
+                </button>
               </div>
             </div>
           </div>
         )}
-      </div>
 
-      {showNotesModal && selectedSession && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <StickyNote className="w-5 h-5 text-yellow-600" />
-                <h3 className="text-lg font-semibold text-gray-800">
-                  Internal Notes
-                </h3>
+        {/* Deleted Chats History Modal */}
+        {showDeletedChatsModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+            <div className="bg-white rounded-2xl w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl">
+              {/* Header */}
+              <div className="p-6 border-b bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-t-2xl flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <History className="w-6 h-6" />
+                  <div>
+                    <h2 className="text-2xl font-bold">
+                      Deleted Chats History
+                    </h2>
+                    <p className="text-sm text-purple-100">
+                      {deletedChatsTotal > 0
+                        ? `${deletedChatsTotal} deleted chats`
+                        : "No deleted chats"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowDeletedChatsModal(false);
+                    setDeletedChats([]);
+                    setDeletedChatsSkip(0);
+                  }}
+                  className="text-white hover:text-gray-200 transition"
+                >
+                  <X className="w-6 h-6" />
+                </button>
               </div>
-              <button
-                onClick={() => setShowNotesModal(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <p className="text-sm text-gray-600 mb-3">
-              Add notes for {selectedSession.userName} (visible only to admins)
-            </p>
-            <textarea
-              value={sessionNotes}
-              onChange={(e) => setSessionNotes(e.target.value)}
-              placeholder="Add internal notes about this conversation..."
-              className="w-full h-32 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            />
-            <div className="flex gap-3 mt-4">
-              <button
-                onClick={() => {
-                  setShowNotesModal(false);
-                  setSessionNotes(selectedSession.notes || "");
-                }}
-                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveSessionNotes}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-              >
-                Save Notes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Deleted Chats History Modal */}
-      {showDeletedChatsModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-          <div className="bg-white rounded-2xl w-full max-w-6xl max-h-[90vh] flex flex-col shadow-2xl">
-            {/* Header */}
-            <div className="p-6 border-b bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-t-2xl flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <History className="w-6 h-6" />
-                <div>
-                  <h2 className="text-2xl font-bold">Deleted Chats History</h2>
-                  <p className="text-sm text-purple-100">
-                    {deletedChatsTotal > 0
-                      ? `${deletedChatsTotal} deleted chats`
-                      : "No deleted chats"}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setShowDeletedChatsModal(false);
-                  setDeletedChats([]);
-                  setDeletedChatsSkip(0);
-                }}
-                className="text-white hover:text-gray-200 transition"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {deletedChatsLoading && deletedChats.length === 0 ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+                  </div>
+                ) : deletedChats.length === 0 ? (
+                  <div className="text-center py-12 text-gray-500">
+                    <History size={64} className="mx-auto mb-4 opacity-30" />
+                    <p className="text-lg font-medium">No Deleted Chats</p>
+                    <p className="text-sm mt-2">
+                      Deleted chat history will appear here
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {deletedChats.map((chat, index) => (
+                      <div
+                        key={`${chat._id}-${index}`}
+                        className="border border-gray-200 rounded-xl p-4 hover:shadow-lg transition-shadow bg-gradient-to-r from-gray-50 to-white"
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            {/* Customer Info */}
+                            <div className="flex items-center gap-2 mb-2">
+                              <h3 className="text-lg font-semibold text-gray-800">
+                                {chat.userName}
+                              </h3>
+                              {chat.userPhone && (
+                                <span className="text-sm text-gray-500">
+                                  • {chat.userPhone}
+                                </span>
+                              )}
+                            </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-6">
-              {deletedChatsLoading && deletedChats.length === 0 ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
-                </div>
-              ) : deletedChats.length === 0 ? (
-                <div className="text-center py-12 text-gray-500">
-                  <History size={64} className="mx-auto mb-4 opacity-30" />
-                  <p className="text-lg font-medium">No Deleted Chats</p>
-                  <p className="text-sm mt-2">
-                    Deleted chat history will appear here
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {deletedChats.map((chat, index) => (
-                    <div
-                      key={`${chat._id}-${index}`}
-                      className="border border-gray-200 rounded-xl p-4 hover:shadow-lg transition-shadow bg-gradient-to-r from-gray-50 to-white"
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 min-w-0">
-                          {/* Customer Info */}
-                          <div className="flex items-center gap-2 mb-2">
-                            <h3 className="text-lg font-semibold text-gray-800">
-                              {chat.userName}
-                            </h3>
-                            {chat.userPhone && (
-                              <span className="text-sm text-gray-500">
-                                • {chat.userPhone}
-                              </span>
+                            {/* Chat Details */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-3">
+                              <div>
+                                <p className="text-gray-500">User ID</p>
+                                <p className="font-medium text-gray-700 truncate">
+                                  {chat.userId}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Messages</p>
+                                <p className="font-medium text-gray-700">
+                                  {chat.messageCount ||
+                                    chat.conversationHistory?.length ||
+                                    0}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Duration</p>
+                                <p className="font-medium text-gray-700">
+                                  {chat.chatDuration || "N/A"}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-gray-500">Agent</p>
+                                <p className="font-medium text-gray-700">
+                                  {chat.agentName || "Unassigned"}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Deletion Info */}
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
+                                <div>
+                                  <p className="text-red-600 font-medium">
+                                    Deleted By
+                                  </p>
+                                  <p className="text-red-800">
+                                    {chat.deletedBy}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-red-600 font-medium">
+                                    Deleted At
+                                  </p>
+                                  <p className="text-red-800">
+                                    {chat.deletedAt
+                                      ? new Date(
+                                          chat.deletedAt,
+                                        ).toLocaleString()
+                                      : "N/A"}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-red-600 font-medium">
+                                    Original Session
+                                  </p>
+                                  <p className="text-red-800">
+                                    {new Date(chat.joinedAt).toLocaleString()}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Notes if any */}
+                            {chat.notes && (
+                              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                                <p className="text-xs font-medium text-yellow-800 mb-1">
+                                  Notes:
+                                </p>
+                                <p className="text-sm text-yellow-900">
+                                  {chat.notes}
+                                </p>
+                              </div>
                             )}
                           </div>
 
-                          {/* Chat Details */}
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-3">
-                            <div>
-                              <p className="text-gray-500">User ID</p>
-                              <p className="font-medium text-gray-700 truncate">
-                                {chat.userId}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500">Messages</p>
-                              <p className="font-medium text-gray-700">
-                                {chat.messageCount ||
-                                  chat.conversationHistory?.length ||
-                                  0}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500">Duration</p>
-                              <p className="font-medium text-gray-700">
-                                {chat.chatDuration || "N/A"}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-gray-500">Agent</p>
-                              <p className="font-medium text-gray-700">
-                                {chat.agentName || "Unassigned"}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Deletion Info */}
-                          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-sm">
-                              <div>
-                                <p className="text-red-600 font-medium">
-                                  Deleted By
-                                </p>
-                                <p className="text-red-800">{chat.deletedBy}</p>
-                              </div>
-                              <div>
-                                <p className="text-red-600 font-medium">
-                                  Deleted At
-                                </p>
-                                <p className="text-red-800">
-                                  {chat.deletedAt
-                                    ? new Date(chat.deletedAt).toLocaleString()
-                                    : "N/A"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-red-600 font-medium">
-                                  Original Session
-                                </p>
-                                <p className="text-red-800">
-                                  {new Date(chat.joinedAt).toLocaleString()}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Notes if any */}
-                          {chat.notes && (
-                            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                              <p className="text-xs font-medium text-yellow-800 mb-1">
-                                Notes:
-                              </p>
-                              <p className="text-sm text-yellow-900">
-                                {chat.notes}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex flex-col gap-2 flex-shrink-0">
-                          <button
-                            onClick={() => restoreDeletedChat(chat)}
-                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2 text-sm whitespace-nowrap"
-                            title="Restore this chat"
-                          >
-                            <RotateCcw className="w-4 h-4" />
-                            Restore
-                          </button>
-                          <button
-                            onClick={() => {
-                              const transcript = `
+                          {/* Actions */}
+                          <div className="flex flex-col gap-2 flex-shrink-0">
+                            <button
+                              onClick={() => restoreDeletedChat(chat)}
+                              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition flex items-center gap-2 text-sm whitespace-nowrap"
+                              title="Restore this chat"
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                              Restore
+                            </button>
+                            <button
+                              onClick={() => {
+                                const transcript = `
 ========================================
 DELETED CHAT TRANSCRIPT
 ========================================
@@ -2141,10 +2158,10 @@ Phone: ${chat.userPhone || "N/A"}
 User ID: ${chat.userId}
 Session Started: ${new Date(chat.joinedAt).toLocaleString()}
 Session Ended: ${
-                                chat.lastSeen
-                                  ? new Date(chat.lastSeen).toLocaleString()
-                                  : new Date(chat.joinedAt).toLocaleString()
-                              }
+                                  chat.lastSeen
+                                    ? new Date(chat.lastSeen).toLocaleString()
+                                    : new Date(chat.joinedAt).toLocaleString()
+                                }
 Agent: ${chat.agentName || "Unassigned"}
 Duration: ${chat.chatDuration || "N/A"}
 Messages: ${chat.messageCount || 0}
@@ -2152,10 +2169,10 @@ Messages: ${chat.messageCount || 0}
 DELETION INFO:
 Deleted By: ${chat.deletedBy || "Unknown"}
 Deleted At: ${
-                                chat.deletedAt
-                                  ? new Date(chat.deletedAt).toLocaleString()
-                                  : "N/A"
-                              }
+                                  chat.deletedAt
+                                    ? new Date(chat.deletedAt).toLocaleString()
+                                    : "N/A"
+                                }
 
 ${chat.notes ? `Notes: ${chat.notes}\n` : ""}
 ========================================
@@ -2173,57 +2190,58 @@ ${(chat.conversationHistory || [])
   })
   .join("\n\n")}
 `;
-                              const blob = new Blob([transcript], {
-                                type: "text/plain",
-                              });
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement("a");
-                              a.href = url;
-                              a.download = `deleted-chat-${
-                                chat.userId
-                              }-${Date.now()}.txt`;
-                              document.body.appendChild(a);
-                              a.click();
-                              document.body.removeChild(a);
-                              URL.revokeObjectURL(url);
-                            }}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2 text-sm whitespace-nowrap"
-                            title="Download transcript"
-                          >
-                            <Download className="w-4 h-4" />
-                            Download
-                          </button>
+                                const blob = new Blob([transcript], {
+                                  type: "text/plain",
+                                });
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement("a");
+                                a.href = url;
+                                a.download = `deleted-chat-${
+                                  chat.userId
+                                }-${Date.now()}.txt`;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(url);
+                              }}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2 text-sm whitespace-nowrap"
+                              title="Download transcript"
+                            >
+                              <Download className="w-4 h-4" />
+                              Download
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
 
-                  {/* Load More Button */}
-                  {hasMoreDeletedChats && (
-                    <button
-                      onClick={() => loadDeletedChats(deletedChats.length)}
-                      disabled={deletedChatsLoading}
-                      className="w-full py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                      {deletedChatsLoading ? (
-                        <>
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                          Loading...
-                        </>
-                      ) : (
-                        <>
-                          Load More ({deletedChatsTotal - deletedChats.length}{" "}
-                          remaining)
-                        </>
-                      )}
-                    </button>
-                  )}
-                </div>
-              )}
+                    {/* Load More Button */}
+                    {hasMoreDeletedChats && (
+                      <button
+                        onClick={() => loadDeletedChats(deletedChats.length)}
+                        disabled={deletedChatsLoading}
+                        className="w-full py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
+                      >
+                        {deletedChatsLoading ? (
+                          <>
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                            Loading...
+                          </>
+                        ) : (
+                          <>
+                            Load More ({deletedChatsTotal - deletedChats.length}{" "}
+                            remaining)
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </AdminShell>
   );
 }

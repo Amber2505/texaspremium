@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { RingCentralMessage } from "@/lib/models/message";
 import Image from "next/image";
 import { franc } from "franc"; //helpful for determining whether to use English or Spanish footer in scheduled messages based on message content
+import AdminShell from "../_components/AdminShell";
 
 interface ConversationSummary {
   phoneNumber: string;
@@ -1624,202 +1625,19 @@ export default function MessageStoredPage() {
     );
 
   return (
-    <div className="h-screen flex flex-col bg-gray-100">
-      {/* Header */}
-      <div
-        className={`bg-white border-b border-gray-200 px-4 sm:px-6 py-4 ${
-          selectedPhone ? "hidden md:block" : ""
-        }`}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex flex-col">
-            <button
-              onClick={() => (window.location.href = "/admin")}
-              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-1 transition-colors"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 19l-7-7 7-7"
-                />
-              </svg>
-              Back to Admin
-            </button>
-            <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
-              Messages
-            </h1>
-          </div>
-          <Image
-            src="/logo.png"
-            alt="Texas Premium Insurance Services"
-            width={160}
-            height={50}
-            className="h-15 w-auto object-contain hidden sm:block"
-          />
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                if (filterType === "scheduled") {
-                  fetchAllScheduledConversations();
-                } else {
-                  setConversations([]);
-                  setHasMore(true);
-                  fetchMessages(0, searchInput, filterType, false);
-                }
-              }}
-              className="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
-              title="Refresh conversations"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
-              <span className="hidden sm:inline">Refresh</span>
-            </button>
-            <button
-              onClick={() => setShowNewMessageModal(true)}
-              className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              <span className="hidden sm:inline">New Message</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar */}
+    <AdminShell activePath="/admin/messages-stored">
+      <div className="h-screen flex flex-col bg-gray-100">
+        {/* Header */}
         <div
-          className={`w-full md:w-96 bg-white border-r border-gray-200 flex flex-col ${
-            selectedPhone ? "hidden md:flex" : "flex"
+          className={`bg-white border-b border-gray-200 px-4 sm:px-6 py-4 ${
+            selectedPhone ? "hidden md:block" : ""
           }`}
         >
-          <div className="p-4 border-b border-gray-200 space-y-3">
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search phone or messages..."
-                value={searchInput}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
-              <svg
-                className="w-5 h-5 text-gray-400 absolute left-3 top-2.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-              {searchInput && (
-                <button
-                  onClick={() => {
-                    setSearchInput("");
-                    if (filterType !== "scheduled") {
-                      setConversations([]);
-                      setHasMore(true);
-                      fetchMessages(0, "", filterType, false);
-                    }
-                  }}
-                  className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
-                >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M6 18L18 6M6 6l12 12"
-                    />
-                  </svg>
-                </button>
-              )}
-            </div>
-            {/* Filter Dropdown */}
-            <div className="flex items-center gap-2">
-              <svg
-                className="w-5 h-5 text-gray-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-                />
-              </svg>
-              <select
-                value={filterType}
-                onChange={(e) => {
-                  const newFilter = e.target.value as
-                    | "all"
-                    | "unread"
-                    | "scheduled";
-                  setFilterType(newFilter);
-                  if (newFilter === "scheduled") {
-                    fetchAllScheduledConversations();
-                  } else {
-                    setConversations([]);
-                    setHasMore(true);
-                    fetchMessages(0, searchInput, newFilter, false);
-                  }
-                }}
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 font-medium"
-              >
-                <option value="all">All Messages</option>
-                <option value="unread">Unread Only</option>
-                <option value="scheduled">Scheduled</option>
-              </select>
-            </div>
-            {/* Mark All Read button - shows when there are unread conversations */}
-            {conversations.some(
-              (c) =>
-                (c.unreadCount ?? 0) > 0 ||
-                (c.lastMessage?.direction === "Inbound" &&
-                  c.lastMessage?.readStatus === "Unread"),
-            ) && (
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col">
               <button
-                onClick={markAllAsRead}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-sm font-medium rounded-lg transition-colors"
+                onClick={() => (window.location.href = "/admin")}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-1 transition-colors"
               >
                 <svg
                   className="w-4 h-4"
@@ -1831,145 +1649,38 @@ export default function MessageStoredPage() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    d="M15 19l-7-7 7-7"
                   />
                 </svg>
-                Mark All as Read
+                Back to Admin
               </button>
-            )}
-          </div>
-
-          {/* Conversations list */}
-          <div className="flex-1 overflow-y-auto" ref={conversationsListRef}>
-            {filterType === "scheduled" ? (
-              // ── SCHEDULED VIEW ──
-              scheduledConversations.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-gray-500 p-6">
-                  <svg
-                    className="w-16 h-16 mb-4 text-gray-300"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <p className="text-center text-sm font-medium">
-                    No scheduled messages
-                  </p>
-                  <p className="text-center text-xs text-gray-400 mt-1">
-                    Schedule a message from any conversation
-                  </p>
-                </div>
-              ) : (
-                scheduledConversations.map((sc) => {
-                  const convKey = sc.conversationId;
-                  const isSelected = selectedConversationId === convKey;
-                  const displayName = sc.phoneNumbers
-                    .map((p) => formatPhoneNumber(p))
-                    .join(", ");
-                  const nextDate = new Date(sc.nextScheduledAt);
-
-                  return (
-                    <div
-                      key={convKey}
-                      onClick={() => {
-                        // Find existing conversation or open by conversationId
-                        const existing = conversations.find(
-                          (c) =>
-                            (c.conversationId || c.phoneNumber) === convKey,
-                        );
-                        if (existing) {
-                          viewConversation(existing);
-                        } else {
-                          setSelectedPhone(sc.phoneNumbers[0]);
-                          setSelectedConversationId(convKey);
-                          setSelectedParticipants(sc.phoneNumbers);
-                          setConversation([]);
-                          setMessageInput("");
-                          fetchScheduledMessages(convKey);
-                          setShowScheduledPanel(false);
-                        }
-                      }}
-                      className={`p-4 border-b border-gray-100 transition-colors cursor-pointer ${
-                        isSelected
-                          ? "bg-purple-50 border-l-4 border-l-purple-600"
-                          : "hover:bg-gray-50"
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        {/* Avatar */}
-                        <div className="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center relative">
-                          <svg
-                            className="w-6 h-6 text-white"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                            />
-                          </svg>
-                          {/* Count badge */}
-                          {sc.scheduledCount > 1 && (
-                            <div className="absolute -top-1 -right-1 w-5 h-5 bg-purple-700 rounded-full border-2 border-white flex items-center justify-center">
-                              <span className="text-white text-[10px] font-bold">
-                                {sc.scheduledCount}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-1">
-                            <h3
-                              className="font-semibold text-gray-900 text-sm truncate"
-                              title={displayName}
-                            >
-                              {displayName}
-                            </h3>
-                            <span className="text-xs text-purple-600 font-medium whitespace-nowrap ml-2">
-                              {nextDate.toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                          </div>
-
-                          <p className="text-xs text-purple-600 font-medium mb-1">
-                            📅 {sc.scheduledCount} scheduled · Next:{" "}
-                            {nextDate.toLocaleDateString([], {
-                              month: "short",
-                              day: "numeric",
-                            })}
-                          </p>
-
-                          {/* Preview of next message */}
-                          <p className="text-sm text-gray-500 truncate">
-                            {sc.messages[0]?.message?.split("\n\nNote:")[0] ||
-                              "Scheduled message"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )
-            ) : loading ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              </div>
-            ) : conversations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-gray-500 p-6">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900">
+                Messages
+              </h1>
+            </div>
+            <Image
+              src="/logo.png"
+              alt="Texas Premium Insurance Services"
+              width={160}
+              height={50}
+              className="h-15 w-auto object-contain hidden sm:block"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  if (filterType === "scheduled") {
+                    fetchAllScheduledConversations();
+                  } else {
+                    setConversations([]);
+                    setHasMore(true);
+                    fetchMessages(0, searchInput, filterType, false);
+                  }
+                }}
+                className="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2"
+                title="Refresh conversations"
+              >
                 <svg
-                  className="w-16 h-16 mb-4 text-gray-300"
+                  className="w-5 h-5"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
@@ -1978,610 +1689,77 @@ export default function MessageStoredPage() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                   />
                 </svg>
-                <p className="text-center text-sm">
-                  {filterType === "unread"
-                    ? "No unread messages"
-                    : "No conversations yet"}
-                </p>
-                <p className="text-center text-xs text-gray-400 mt-1">
-                  {filterType === "unread"
-                    ? "All caught up!"
-                    : "Start a new conversation to begin"}
-                </p>
-              </div>
-            ) : (
-              conversations.map((conv, index) => {
-                const convKey = conv.conversationId || conv.phoneNumber;
-                const isSelected = selectedConversationId === convKey;
-                const lastMsg = conv.lastMessage;
-                const isUnread =
-                  (conv.unreadCount ?? 0) > 0 ||
-                  (lastMsg?.direction === "Inbound" &&
-                    lastMsg?.readStatus === "Unread");
-                const displayName = getConversationName(conv);
-
-                return (
-                  <div
-                    key={`${convKey}-${index}`}
-                    className={`p-4 border-b border-gray-100 transition-colors relative ${
-                      isSelected
-                        ? "bg-blue-50 border-l-4 border-l-blue-600"
-                        : "hover:bg-gray-50 active:bg-gray-100"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div
-                        onClick={() => {
-                          const isContentSearch =
-                            conv.matchingMessages &&
-                            conv.matchingMessages.length > 0;
-                          viewConversation(
-                            conv,
-                            isContentSearch ? searchInput : undefined,
-                          );
-                        }}
-                        className="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center cursor-pointer relative"
-                      >
-                        {/* Group indicator */}
-                        {conv.isGroup && (
-                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full border-2 border-white flex items-center justify-center">
-                            <svg
-                              className="w-2.5 h-2.5 text-white"
-                              fill="currentColor"
-                              viewBox="0 0 20 20"
-                            >
-                              <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
-                            </svg>
-                          </div>
-                        )}
-                        <svg
-                          className="w-8 h-8 text-white"
-                          fill="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                        </svg>
-                      </div>
-
-                      <div
-                        onClick={() => {
-                          const isContentSearch =
-                            conv.matchingMessages &&
-                            conv.matchingMessages.length > 0;
-                          viewConversation(
-                            conv,
-                            isContentSearch ? searchInput : undefined,
-                          );
-                        }}
-                        className="flex-1 min-w-0 cursor-pointer"
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <div className="flex-1 min-w-0">
-                            <h3
-                              className={`${
-                                isUnread ? "font-bold" : "font-semibold"
-                              } text-gray-900 text-sm sm:text-base truncate`}
-                              title={displayName}
-                            >
-                              {displayName}
-                            </h3>
-                            {conv.isGroup &&
-                              conv.participants &&
-                              conv.participants.length > 1 && (
-                                <p className="text-xs text-gray-500">
-                                  Group • {conv.participants.length}{" "}
-                                  participants
-                                </p>
-                              )}
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className="text-xs text-gray-500 whitespace-nowrap">
-                              {new Date(
-                                conv.lastMessageTime,
-                              ).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                            {isUnread && (
-                              <div className="w-3 h-3 bg-blue-500 rounded-full shadow-sm flex-shrink-0"></div>
-                            )}
-                          </div>
-                        </div>
-                        {drafts[convKey] ? (
-                          <p className="text-sm text-amber-600 truncate flex items-center gap-1">
-                            <span className="font-semibold">Draft:</span>&nbsp;
-                            {drafts[convKey]}
-                          </p>
-                        ) : (
-                          <p
-                            className={`text-sm truncate flex items-center gap-1 ${lastMsg?.type === "MissedCall" ? "text-red-500" : "text-gray-600"}`}
-                          >
-                            {lastMsg?.type === "MissedCall" ? (
-                              <>
-                                <svg
-                                  className="w-4 h-4 flex-shrink-0"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
-                                  />
-                                </svg>
-                                Missed call
-                              </>
-                            ) : (
-                              <>
-                                {lastMsg?.direction === "Outbound" && (
-                                  <svg
-                                    className="w-4 h-4 text-gray-400 flex-shrink-0"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth={2}
-                                      d="M5 13l4 4L19 7"
-                                    />
-                                  </svg>
-                                )}
-                                {lastMsg?.subject || "No message"}
-                              </>
-                            )}
-                          </p>
-                        )}
-                        {conv.matchingMessages &&
-                          conv.matchingMessages.length > 0 &&
-                          searchInput && (
-                            <div className="mt-1 space-y-1">
-                              {conv.matchingMessages
-                                .slice(0, 2)
-                                .map((msg, idx) => (
-                                  <p
-                                    key={idx}
-                                    className="text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded truncate"
-                                  >
-                                    <span className="font-medium">Match:</span>{" "}
-                                    {msg}
-                                  </p>
-                                ))}
-                              {conv.matchingMessages.length > 2 && (
-                                <p className="text-xs text-purple-500">
-                                  +{conv.matchingMessages.length - 2} more
-                                  matches
-                                </p>
-                              )}
-                            </div>
-                          )}
-                      </div>
-
-                      <div className="relative flex-shrink-0">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setOpenDropdown(
-                              openDropdown === convKey ? null : convKey,
-                            );
-                          }}
-                          className="p-2 hover:bg-gray-200 rounded-full transition-colors"
-                        >
-                          <svg
-                            className="w-5 h-5 text-gray-500"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                          </svg>
-                        </button>
-
-                        {openDropdown === convKey && (
-                          <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                markAsUnread(convKey);
-                              }}
-                              className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 border-b border-gray-100"
-                            >
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
-                                />
-                              </svg>
-                              Mark as Unread
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteConversation(convKey, displayName);
-                              }}
-                              className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 rounded-b-lg"
-                            >
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                />
-                              </svg>
-                              Delete Conversation
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-            {(isLoadingMore || hasMore) && conversations.length > 0 && (
-              <div className="flex items-center justify-center p-4 text-gray-500">
-                <div className="flex items-center gap-2">
-                  {isLoadingMore ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                      <span className="text-sm">Loading more...</span>
-                    </>
-                  ) : hasMore ? (
-                    <span className="text-sm text-gray-400">
-                      {conversations.length} of {totalCount} conversations
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            )}
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+              <button
+                onClick={() => setShowNewMessageModal(true)}
+                className="bg-blue-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                <span className="hidden sm:inline">New Message</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Chat Area */}
-        <div
-          className={`flex-1 flex flex-col bg-gray-50 ${
-            selectedPhone ? "flex" : "hidden md:flex"
-          }`}
-        >
-          {!selectedPhone ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
-              <svg
-                className="w-24 h-24 mb-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={1.5}
-                  d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+        <div className="flex-1 flex overflow-hidden">
+          {/* Sidebar */}
+          <div
+            className={`w-full md:w-96 bg-white border-r border-gray-200 flex flex-col ${
+              selectedPhone ? "hidden md:flex" : "flex"
+            }`}
+          >
+            <div className="p-4 border-b border-gray-200 space-y-3">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search phone or messages..."
+                  value={searchInput}
+                  onChange={(e) => handleSearchChange(e.target.value)}
+                  className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
-              </svg>
-              <p className="text-xl font-medium">Select a conversation</p>
-            </div>
-          ) : (
-            <>
-              {/* Chat Header - STICKY */}
-              <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-10">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <button
-                      onClick={handleBack}
-                      className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors flex items-center gap-1 text-gray-600"
-                    >
-                      <svg
-                        className="w-6 h-6"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M15 19l-7-7 7-7"
-                        />
-                      </svg>
-                      <span className="text-sm font-medium md:hidden">
-                        Back
-                      </span>
-                    </button>
-
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0 relative">
-                      {selectedParticipants.length > 1 && (
-                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full border-2 border-white flex items-center justify-center">
-                          <svg
-                            className="w-2.5 h-2.5 text-white"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
-                          </svg>
-                        </div>
-                      )}
-                      <svg
-                        className="w-6 h-6 sm:w-8 sm:h-8 text-white"
-                        fill="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
-                      </svg>
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <h2 className="font-semibold text-gray-900 text-sm sm:text-base truncate max-w-[150px] sm:max-w-none">
-                        {selectedParticipants.length > 1
-                          ? `${selectedParticipants
-                              .map((p) => formatPhoneNumber(p))
-                              .slice(0, 2)
-                              .join(", ")}${
-                              selectedParticipants.length > 2
-                                ? ` +${selectedParticipants.length - 2}`
-                                : ""
-                            }`
-                          : formatPhoneNumber(selectedPhone)}
-                      </h2>
-                      {selectedParticipants.length > 1 && (
-                        <span className="text-xs text-gray-500">
-                          Group • {selectedParticipants.length} participants
-                        </span>
-                      )}
-                      {activeSearchText &&
-                        matchingMessageIndices.length > 0 && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
-                              Search: &quot;{activeSearchText}&quot;
-                            </span>
-                            <button
-                              onClick={() => {
-                                setActiveSearchText("");
-                                setMatchingMessageIndices([]);
-                                const currentConv = conversations.find(
-                                  (c) =>
-                                    (c.conversationId || c.phoneNumber) ===
-                                    selectedConversationId,
-                                );
-                                if (currentConv) viewConversation(currentConv);
-                              }}
-                              className="text-xs text-gray-500 hover:text-gray-700 underline"
-                            >
-                              View all
-                            </button>
-                          </div>
-                        )}
-                    </div>
-                  </div>
-
-                  {selectMode ? (
-                    <div className="flex items-center gap-2 sm:gap-4">
-                      <span className="text-xs sm:text-sm text-gray-600">
-                        {selectedMessageIds.size}
-                      </span>
-                      <button
-                        onClick={() =>
-                          deleteMessages(Array.from(selectedMessageIds))
-                        }
-                        className="text-red-600 font-medium text-sm sm:text-base"
-                      >
-                        Delete
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectMode(false);
-                          setSelectedMessageIds(new Set());
-                        }}
-                        className="text-gray-500 text-sm sm:text-base"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="relative" ref={chatMenuRef}>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowChatMenu(!showChatMenu);
-                        }}
-                        className="text-gray-500 hover:text-gray-700 p-2 hover:bg-gray-100 rounded-full transition-colors"
-                        title="More options"
-                      >
-                        <svg
-                          className="w-6 h-6"
-                          fill="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle cx="12" cy="5" r="2" />
-                          <circle cx="12" cy="12" r="2" />
-                          <circle cx="12" cy="19" r="2" />
-                        </svg>
-                      </button>
-
-                      {showChatMenu && (
-                        <div className="absolute right-0 top-12 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
-                          <button
-                            onClick={() => {
-                              setShowDetailsModal(true);
-                              setShowChatMenu(false);
-                            }}
-                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                          >
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                              />
-                            </svg>
-                            Details
-                          </button>
-                          <button
-                            onClick={() => {
-                              setSelectMode(true);
-                              setShowChatMenu(false);
-                            }}
-                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
-                          >
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-                              />
-                            </svg>
-                            Select
-                          </button>
-                          <button
-                            onClick={() => {
-                              setShowInlineSearch(true);
-                              setShowChatMenu(false);
-                              setTimeout(
-                                () => inlineSearchRef.current?.focus(),
-                                100,
-                              );
-                            }}
-                            className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 rounded-b-lg"
-                          >
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                              />
-                            </svg>
-                            Search
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Inline Search Bar */}
-              {showInlineSearch && (
-                <div className="bg-white border-b border-gray-200 px-3 py-2 flex items-center gap-2">
-                  <svg
-                    className="w-4 h-4 text-gray-400 flex-shrink-0"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
-                  </svg>
-                  <input
-                    ref={inlineSearchRef}
-                    type="text"
-                    value={inlineSearchInput}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setInlineSearchInput(val);
-                      if (!val.trim()) {
-                        setMatchingMessageIndices([]);
-                        setActiveSearchText("");
-                        return;
-                      }
-                      // Normalize: lowercase, remove accents, collapse spaces
-                      const normalize = (str: string) =>
-                        str
-                          .toLowerCase()
-                          .normalize("NFD")
-                          .replace(/[\u0300-\u036f]/g, "")
-                          .replace(/\s+/g, " ")
-                          .trim();
-
-                      const normalizedSearch = normalize(val);
-                      const indices = conversation
-                        .map((msg, i) => {
-                          const text = normalize(msg.subject || "");
-                          // Match as exact phrase
-                          return text.includes(normalizedSearch) ? i : -1;
-                        })
-                        .filter((i) => i !== -1);
-                      setMatchingMessageIndices(indices);
-                      setActiveSearchText(val);
-                      // Scroll to first match instantly
-                      if (indices.length > 0) {
-                        const el = document.getElementById(
-                          `message-${indices[0]}`,
-                        );
-                        const container = messagesContainerRef.current;
-                        if (el && container) {
-                          container.scrollTop =
-                            el.offsetTop -
-                            container.clientHeight / 2 +
-                            el.offsetHeight / 2;
-                        }
-                      }
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Escape") {
-                        setShowInlineSearch(false);
-                        setInlineSearchInput("");
-                        setActiveSearchText("");
-                        setMatchingMessageIndices([]);
-                      }
-                    }}
-                    placeholder="Search in conversation..."
-                    className="flex-1 text-sm outline-none bg-transparent"
+                <svg
+                  className="w-5 h-5 text-gray-400 absolute left-3 top-2.5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                   />
-                  {matchingMessageIndices.length > 0 && (
-                    <span className="text-xs text-purple-600 font-medium whitespace-nowrap">
-                      {matchingMessageIndices.length} found
-                    </span>
-                  )}
+                </svg>
+                {searchInput && (
                   <button
                     onClick={() => {
-                      setShowInlineSearch(false);
-                      setInlineSearchInput("");
-                      setActiveSearchText("");
-                      setMatchingMessageIndices([]);
+                      setSearchInput("");
+                      if (filterType !== "scheduled") {
+                        setConversations([]);
+                        setHasMore(true);
+                        fetchMessages(0, "", filterType, false);
+                      }
                     }}
-                    className="text-gray-400 hover:text-gray-600 p-1"
+                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
                   >
                     <svg
-                      className="w-4 h-4"
+                      className="w-5 h-5"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -2594,38 +1772,530 @@ export default function MessageStoredPage() {
                       />
                     </svg>
                   </button>
+                )}
+              </div>
+              {/* Filter Dropdown */}
+              <div className="flex items-center gap-2">
+                <svg
+                  className="w-5 h-5 text-gray-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+                  />
+                </svg>
+                <select
+                  value={filterType}
+                  onChange={(e) => {
+                    const newFilter = e.target.value as
+                      | "all"
+                      | "unread"
+                      | "scheduled";
+                    setFilterType(newFilter);
+                    if (newFilter === "scheduled") {
+                      fetchAllScheduledConversations();
+                    } else {
+                      setConversations([]);
+                      setHasMore(true);
+                      fetchMessages(0, searchInput, newFilter, false);
+                    }
+                  }}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white text-gray-700 font-medium"
+                >
+                  <option value="all">All Messages</option>
+                  <option value="unread">Unread Only</option>
+                  <option value="scheduled">Scheduled</option>
+                </select>
+              </div>
+              {/* Mark All Read button - shows when there are unread conversations */}
+              {conversations.some(
+                (c) =>
+                  (c.unreadCount ?? 0) > 0 ||
+                  (c.lastMessage?.direction === "Inbound" &&
+                    c.lastMessage?.readStatus === "Unread"),
+              ) && (
+                <button
+                  onClick={markAllAsRead}
+                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-sm font-medium rounded-lg transition-colors"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  Mark All as Read
+                </button>
+              )}
+            </div>
+
+            {/* Conversations list */}
+            <div className="flex-1 overflow-y-auto" ref={conversationsListRef}>
+              {filterType === "scheduled" ? (
+                // ── SCHEDULED VIEW ──
+                scheduledConversations.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-500 p-6">
+                    <svg
+                      className="w-16 h-16 mb-4 text-gray-300"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <p className="text-center text-sm font-medium">
+                      No scheduled messages
+                    </p>
+                    <p className="text-center text-xs text-gray-400 mt-1">
+                      Schedule a message from any conversation
+                    </p>
+                  </div>
+                ) : (
+                  scheduledConversations.map((sc) => {
+                    const convKey = sc.conversationId;
+                    const isSelected = selectedConversationId === convKey;
+                    const displayName = sc.phoneNumbers
+                      .map((p) => formatPhoneNumber(p))
+                      .join(", ");
+                    const nextDate = new Date(sc.nextScheduledAt);
+
+                    return (
+                      <div
+                        key={convKey}
+                        onClick={() => {
+                          // Find existing conversation or open by conversationId
+                          const existing = conversations.find(
+                            (c) =>
+                              (c.conversationId || c.phoneNumber) === convKey,
+                          );
+                          if (existing) {
+                            viewConversation(existing);
+                          } else {
+                            setSelectedPhone(sc.phoneNumbers[0]);
+                            setSelectedConversationId(convKey);
+                            setSelectedParticipants(sc.phoneNumbers);
+                            setConversation([]);
+                            setMessageInput("");
+                            fetchScheduledMessages(convKey);
+                            setShowScheduledPanel(false);
+                          }
+                        }}
+                        className={`p-4 border-b border-gray-100 transition-colors cursor-pointer ${
+                          isSelected
+                            ? "bg-purple-50 border-l-4 border-l-purple-600"
+                            : "hover:bg-gray-50"
+                        }`}
+                      >
+                        <div className="flex items-start gap-3">
+                          {/* Avatar */}
+                          <div className="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-purple-400 to-purple-600 flex items-center justify-center relative">
+                            <svg
+                              className="w-6 h-6 text-white"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                              />
+                            </svg>
+                            {/* Count badge */}
+                            {sc.scheduledCount > 1 && (
+                              <div className="absolute -top-1 -right-1 w-5 h-5 bg-purple-700 rounded-full border-2 border-white flex items-center justify-center">
+                                <span className="text-white text-[10px] font-bold">
+                                  {sc.scheduledCount}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-1">
+                              <h3
+                                className="font-semibold text-gray-900 text-sm truncate"
+                                title={displayName}
+                              >
+                                {displayName}
+                              </h3>
+                              <span className="text-xs text-purple-600 font-medium whitespace-nowrap ml-2">
+                                {nextDate.toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+
+                            <p className="text-xs text-purple-600 font-medium mb-1">
+                              📅 {sc.scheduledCount} scheduled · Next:{" "}
+                              {nextDate.toLocaleDateString([], {
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </p>
+
+                            {/* Preview of next message */}
+                            <p className="text-sm text-gray-500 truncate">
+                              {sc.messages[0]?.message?.split("\n\nNote:")[0] ||
+                                "Scheduled message"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )
+              ) : loading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : conversations.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-500 p-6">
+                  <svg
+                    className="w-16 h-16 mb-4 text-gray-300"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                    />
+                  </svg>
+                  <p className="text-center text-sm">
+                    {filterType === "unread"
+                      ? "No unread messages"
+                      : "No conversations yet"}
+                  </p>
+                  <p className="text-center text-xs text-gray-400 mt-1">
+                    {filterType === "unread"
+                      ? "All caught up!"
+                      : "Start a new conversation to begin"}
+                  </p>
+                </div>
+              ) : (
+                conversations.map((conv, index) => {
+                  const convKey = conv.conversationId || conv.phoneNumber;
+                  const isSelected = selectedConversationId === convKey;
+                  const lastMsg = conv.lastMessage;
+                  const isUnread =
+                    (conv.unreadCount ?? 0) > 0 ||
+                    (lastMsg?.direction === "Inbound" &&
+                      lastMsg?.readStatus === "Unread");
+                  const displayName = getConversationName(conv);
+
+                  return (
+                    <div
+                      key={`${convKey}-${index}`}
+                      className={`p-4 border-b border-gray-100 transition-colors relative ${
+                        isSelected
+                          ? "bg-blue-50 border-l-4 border-l-blue-600"
+                          : "hover:bg-gray-50 active:bg-gray-100"
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          onClick={() => {
+                            const isContentSearch =
+                              conv.matchingMessages &&
+                              conv.matchingMessages.length > 0;
+                            viewConversation(
+                              conv,
+                              isContentSearch ? searchInput : undefined,
+                            );
+                          }}
+                          className="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center cursor-pointer relative"
+                        >
+                          {/* Group indicator */}
+                          {conv.isGroup && (
+                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full border-2 border-white flex items-center justify-center">
+                              <svg
+                                className="w-2.5 h-2.5 text-white"
+                                fill="currentColor"
+                                viewBox="0 0 20 20"
+                              >
+                                <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+                              </svg>
+                            </div>
+                          )}
+                          <svg
+                            className="w-8 h-8 text-white"
+                            fill="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                          </svg>
+                        </div>
+
+                        <div
+                          onClick={() => {
+                            const isContentSearch =
+                              conv.matchingMessages &&
+                              conv.matchingMessages.length > 0;
+                            viewConversation(
+                              conv,
+                              isContentSearch ? searchInput : undefined,
+                            );
+                          }}
+                          className="flex-1 min-w-0 cursor-pointer"
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex-1 min-w-0">
+                              <h3
+                                className={`${
+                                  isUnread ? "font-bold" : "font-semibold"
+                                } text-gray-900 text-sm sm:text-base truncate`}
+                                title={displayName}
+                              >
+                                {displayName}
+                              </h3>
+                              {conv.isGroup &&
+                                conv.participants &&
+                                conv.participants.length > 1 && (
+                                  <p className="text-xs text-gray-500">
+                                    Group • {conv.participants.length}{" "}
+                                    participants
+                                  </p>
+                                )}
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              <span className="text-xs text-gray-500 whitespace-nowrap">
+                                {new Date(
+                                  conv.lastMessageTime,
+                                ).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                              {isUnread && (
+                                <div className="w-3 h-3 bg-blue-500 rounded-full shadow-sm flex-shrink-0"></div>
+                              )}
+                            </div>
+                          </div>
+                          {drafts[convKey] ? (
+                            <p className="text-sm text-amber-600 truncate flex items-center gap-1">
+                              <span className="font-semibold">Draft:</span>
+                              &nbsp;
+                              {drafts[convKey]}
+                            </p>
+                          ) : (
+                            <p
+                              className={`text-sm truncate flex items-center gap-1 ${lastMsg?.type === "MissedCall" ? "text-red-500" : "text-gray-600"}`}
+                            >
+                              {lastMsg?.type === "MissedCall" ? (
+                                <>
+                                  <svg
+                                    className="w-4 h-4 flex-shrink-0"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                                    />
+                                  </svg>
+                                  Missed call
+                                </>
+                              ) : (
+                                <>
+                                  {lastMsg?.direction === "Outbound" && (
+                                    <svg
+                                      className="w-4 h-4 text-gray-400 flex-shrink-0"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M5 13l4 4L19 7"
+                                      />
+                                    </svg>
+                                  )}
+                                  {lastMsg?.subject || "No message"}
+                                </>
+                              )}
+                            </p>
+                          )}
+                          {conv.matchingMessages &&
+                            conv.matchingMessages.length > 0 &&
+                            searchInput && (
+                              <div className="mt-1 space-y-1">
+                                {conv.matchingMessages
+                                  .slice(0, 2)
+                                  .map((msg, idx) => (
+                                    <p
+                                      key={idx}
+                                      className="text-xs text-purple-600 bg-purple-50 px-2 py-1 rounded truncate"
+                                    >
+                                      <span className="font-medium">
+                                        Match:
+                                      </span>{" "}
+                                      {msg}
+                                    </p>
+                                  ))}
+                                {conv.matchingMessages.length > 2 && (
+                                  <p className="text-xs text-purple-500">
+                                    +{conv.matchingMessages.length - 2} more
+                                    matches
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                        </div>
+
+                        <div className="relative flex-shrink-0">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenDropdown(
+                                openDropdown === convKey ? null : convKey,
+                              );
+                            }}
+                            className="p-2 hover:bg-gray-200 rounded-full transition-colors"
+                          >
+                            <svg
+                              className="w-5 h-5 text-gray-500"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                            </svg>
+                          </button>
+
+                          {openDropdown === convKey && (
+                            <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  markAsUnread(convKey);
+                                }}
+                                className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 border-b border-gray-100"
+                              >
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                                  />
+                                </svg>
+                                Mark as Unread
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  deleteConversation(convKey, displayName);
+                                }}
+                                className="w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 rounded-b-lg"
+                              >
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                  />
+                                </svg>
+                                Delete Conversation
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+              {(isLoadingMore || hasMore) && conversations.length > 0 && (
+                <div className="flex items-center justify-center p-4 text-gray-500">
+                  <div className="flex items-center gap-2">
+                    {isLoadingMore ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                        <span className="text-sm">Loading more...</span>
+                      </>
+                    ) : hasMore ? (
+                      <span className="text-sm text-gray-400">
+                        {conversations.length} of {totalCount} conversations
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
               )}
+            </div>
+          </div>
 
-              {/* Messages */}
-              <div
-                ref={messagesContainerRef}
-                className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3 sm:space-y-4"
-              >
-                {(isLoadingMoreMessages || hasMoreMessages) &&
-                  conversation.length > 0 && (
-                    <div className="flex items-center justify-center py-4">
-                      {isLoadingMoreMessages ? (
-                        <div className="flex items-center gap-2">
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
-                          <span className="text-sm text-gray-500">
-                            Loading older messages...
-                          </span>
-                        </div>
-                      ) : hasMoreMessages ? (
-                        <span className="text-sm text-gray-400">
-                          Scroll up for older messages
-                        </span>
-                      ) : null}
-                    </div>
-                  )}
-
-                {isLoadingConversation && (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="text-center">
-                      <div className="w-12 h-12 bg-gradient-to-r from-purple-600 to-blue-700 rounded-full flex items-center justify-center mx-auto mb-3">
+          {/* Chat Area */}
+          <div
+            className={`flex-1 flex flex-col bg-gray-50 ${
+              selectedPhone ? "flex" : "hidden md:flex"
+            }`}
+          >
+            {!selectedPhone ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+                <svg
+                  className="w-24 h-24 mb-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.5}
+                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                  />
+                </svg>
+                <p className="text-xl font-medium">Select a conversation</p>
+              </div>
+            ) : (
+              <>
+                {/* Chat Header - STICKY */}
+                <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-3 sm:py-4 sticky top-0 z-10">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 sm:gap-3">
+                      <button
+                        onClick={handleBack}
+                        className="p-2 -ml-2 hover:bg-gray-100 rounded-full transition-colors flex items-center gap-1 text-gray-600"
+                      >
                         <svg
-                          className="w-6 h-6 text-white"
+                          className="w-6 h-6"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -2634,566 +2304,131 @@ export default function MessageStoredPage() {
                             strokeLinecap="round"
                             strokeLinejoin="round"
                             strokeWidth={2}
-                            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                            d="M15 19l-7-7 7-7"
                           />
                         </svg>
-                      </div>
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600 mx-auto"></div>
-                      <p className="text-gray-500 mt-3 text-sm">
-                        Loading messages...
-                      </p>
-                    </div>
-                  </div>
-                )}
+                        <span className="text-sm font-medium md:hidden">
+                          Back
+                        </span>
+                      </button>
 
-                {!isLoadingConversation && conversation.length === 0 && (
-                  <div className="flex items-center justify-center h-full">
-                    <div className="text-center text-gray-500">
-                      <svg
-                        className="w-12 h-12 mx-auto mb-3 text-gray-300"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
-                        />
-                      </svg>
-                      <p className="text-sm">No messages yet</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Start a conversation!
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {conversation.map((msg, index) => {
-                  const isOutbound = msg.direction === "Outbound";
-                  const showDate =
-                    index === 0 ||
-                    new Date(msg.creationTime).toDateString() !==
-                      new Date(
-                        conversation[index - 1]?.creationTime || "",
-                      ).toDateString();
-                  const isSelected = selectedMessageIds.has(msg.id || "");
-                  const isMatchingMessage =
-                    matchingMessageIndices.includes(index);
-
-                  return (
-                    <div key={`${msg.id}-${index}`} id={`message-${index}`}>
-                      {showDate && (
-                        <div className="flex items-center justify-center my-4">
-                          <div className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
-                            {new Date(msg.creationTime).toLocaleDateString(
-                              "en-US",
-                              {
-                                weekday: "short",
-                                year: "numeric",
-                                month: "short",
-                                day: "numeric",
-                              },
-                            )}
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center flex-shrink-0 relative">
+                        {selectedParticipants.length > 1 && (
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-purple-500 rounded-full border-2 border-white flex items-center justify-center">
+                            <svg
+                              className="w-2.5 h-2.5 text-white"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+                            </svg>
                           </div>
-                        </div>
-                      )}
-
-                      <div
-                        className={`flex ${
-                          isOutbound ? "justify-end" : "justify-start"
-                        }`}
-                      >
-                        <div className="flex items-start gap-2 sm:gap-3 max-w-[85%] sm:max-w-[75%]">
-                          {selectMode && (
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => toggleSelect(msg.id || "")}
-                              className="mt-4 w-5 h-5 text-blue-600 bg-white border-2 border-gray-400 rounded focus:ring-2 focus:ring-blue-500 z-10 flex-shrink-0 cursor-pointer"
-                              onClick={(e) => e.stopPropagation()}
-                            />
+                        )}
+                        <svg
+                          className="w-6 h-6 sm:w-8 sm:h-8 text-white"
+                          fill="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                        </svg>
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <h2 className="font-semibold text-gray-900 text-sm sm:text-base truncate max-w-[150px] sm:max-w-none">
+                          {selectedParticipants.length > 1
+                            ? `${selectedParticipants
+                                .map((p) => formatPhoneNumber(p))
+                                .slice(0, 2)
+                                .join(", ")}${
+                                selectedParticipants.length > 2
+                                  ? ` +${selectedParticipants.length - 2}`
+                                  : ""
+                              }`
+                            : formatPhoneNumber(selectedPhone)}
+                        </h2>
+                        {selectedParticipants.length > 1 && (
+                          <span className="text-xs text-gray-500">
+                            Group • {selectedParticipants.length} participants
+                          </span>
+                        )}
+                        {activeSearchText &&
+                          matchingMessageIndices.length > 0 && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
+                                Search: &quot;{activeSearchText}&quot;
+                              </span>
+                              <button
+                                onClick={() => {
+                                  setActiveSearchText("");
+                                  setMatchingMessageIndices([]);
+                                  const currentConv = conversations.find(
+                                    (c) =>
+                                      (c.conversationId || c.phoneNumber) ===
+                                      selectedConversationId,
+                                  );
+                                  if (currentConv)
+                                    viewConversation(currentConv);
+                                }}
+                                className="text-xs text-gray-500 hover:text-gray-700 underline"
+                              >
+                                View all
+                              </button>
+                            </div>
                           )}
-
-                          <div
-                            className={`relative rounded-2xl px-3 sm:px-4 py-2 transition-all ${
-                              selectMode
-                                ? isSelected
-                                  ? "bg-blue-600 text-white ring-2 ring-blue-400"
-                                  : "bg-gray-200 opacity-80 hover:opacity-100"
-                                : isOutbound
-                                  ? "bg-blue-600 text-white"
-                                  : "bg-white text-gray-900 border border-gray-200"
-                            } ${selectMode ? "cursor-pointer" : ""} ${
-                              isMatchingMessage
-                                ? "ring-2 ring-purple-500 ring-offset-2"
-                                : ""
-                            }`}
-                            onClick={() =>
-                              selectMode && toggleSelect(msg.id || "")
-                            }
-                          >
-                            {selectMode && isSelected && (
-                              <div className="absolute inset-0 rounded-2xl ring-4 ring-blue-400 pointer-events-none opacity-30" />
-                            )}
-
-                            {isMatchingMessage && activeSearchText && (
-                              <div className="flex items-center gap-1 mb-1">
-                                <span className="text-[10px] font-medium bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
-                                  Match
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Show sender in group messages */}
-                            {!isOutbound &&
-                              selectedParticipants.length > 1 &&
-                              msg.from?.phoneNumber && (
-                                <div className="text-xs font-semibold text-gray-500 mb-1">
-                                  {formatPhoneNumber(msg.from.phoneNumber)}
-                                </div>
-                              )}
-                            {msg.type === "MissedCall" && (
-                              <div className="flex items-center gap-2 py-1">
-                                <svg
-                                  className="w-4 h-4 text-red-400 flex-shrink-0"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
-                                  />
-                                </svg>
-                                <span className="text-sm font-medium text-red-400">
-                                  Missed call
-                                </span>
-                              </div>
-                            )}
-                            {msg.subject && (
-                              <p className="break-words whitespace-pre-wrap mb-2 text-sm sm:text-base">
-                                {isMatchingMessage && activeSearchText
-                                  ? (() => {
-                                      const text = msg.subject;
-                                      const normalize = (s: string) =>
-                                        s
-                                          .toLowerCase()
-                                          .normalize("NFD")
-                                          .replace(/[\u0300-\u036f]/g, "");
-                                      const normalize2 = (s: string) =>
-                                        s
-                                          .toLowerCase()
-                                          .normalize("NFD")
-                                          .replace(/[\u0300-\u036f]/g, "");
-                                      const needle = normalize2(
-                                        activeSearchText.trim(),
-                                      );
-                                      const parts: {
-                                        text: string;
-                                        highlight: boolean;
-                                      }[] = [];
-                                      let remaining = text;
-                                      let remainingNorm = normalize2(text);
-
-                                      while (remaining.length > 0) {
-                                        const idx =
-                                          remainingNorm.indexOf(needle);
-                                        if (idx === -1) {
-                                          parts.push({
-                                            text: remaining,
-                                            highlight: false,
-                                          });
-                                          break;
-                                        }
-                                        if (idx > 0) {
-                                          parts.push({
-                                            text: remaining.slice(0, idx),
-                                            highlight: false,
-                                          });
-                                        }
-                                        parts.push({
-                                          text: remaining.slice(
-                                            idx,
-                                            idx + needle.length,
-                                          ),
-                                          highlight: true,
-                                        });
-                                        remaining = remaining.slice(
-                                          idx + needle.length,
-                                        );
-                                        remainingNorm = remainingNorm.slice(
-                                          idx + needle.length,
-                                        );
-                                      }
-                                      return (
-                                        <>
-                                          {parts.map((part, pi) =>
-                                            part.highlight ? (
-                                              <mark
-                                                key={pi}
-                                                className={`${isOutbound ? "bg-yellow-200 text-gray-900" : "bg-yellow-200"} px-0.5 rounded`}
-                                              >
-                                                {part.text}
-                                              </mark>
-                                            ) : (
-                                              <span key={pi}>{part.text}</span>
-                                            ),
-                                          )}
-                                        </>
-                                      );
-                                    })()
-                                  : renderTextWithLinks(
-                                      msg.subject,
-                                      isOutbound,
-                                    )}
-                              </p>
-                            )}
-
-                            {/* Attachments (continuing from previous section - keeping attachment rendering logic the same) */}
-                            {msg.attachments?.length ? (
-                              <div className="space-y-2 mt-2">
-                                {msg.attachments.map(
-                                  (att: MessageAttachment, i: number) => {
-                                    const url = att.azureUrl || att.uri;
-                                    if (!url) return null;
-
-                                    if (att.contentType?.startsWith("image/")) {
-                                      const allImages = conversation.flatMap(
-                                        (m) =>
-                                          (m.attachments || [])
-                                            .filter(
-                                              (a: MessageAttachment) =>
-                                                a.contentType?.startsWith(
-                                                  "image/",
-                                                ) &&
-                                                (a.azureUrl || a.uri),
-                                            )
-                                            .map((a: MessageAttachment) => ({
-                                              url: a.azureUrl || a.uri || "",
-                                              filename: a.filename || "image",
-                                            })),
-                                      );
-
-                                      return (
-                                        <div key={i} className="relative group">
-                                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                                          <img
-                                            src={url}
-                                            alt={att.filename || "Image"}
-                                            className="max-w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                                            style={{ maxHeight: "250px" }}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              openLightbox(
-                                                url,
-                                                att.filename || "image",
-                                                allImages,
-                                              );
-                                            }}
-                                            title="Click to view full size"
-                                          />
-                                          <button
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              downloadFile(
-                                                url,
-                                                att.filename || "image.png",
-                                              );
-                                            }}
-                                            className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                                            title="Download image"
-                                          >
-                                            <svg
-                                              className="w-4 h-4"
-                                              fill="none"
-                                              stroke="currentColor"
-                                              viewBox="0 0 24 24"
-                                            >
-                                              <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                strokeWidth={2}
-                                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                                              />
-                                            </svg>
-                                          </button>
-                                        </div>
-                                      );
-                                    }
-
-                                    if (att.contentType?.startsWith("audio/")) {
-                                      return (
-                                        <div
-                                          key={i}
-                                          className={`flex items-center justify-between gap-2 p-2 rounded ${
-                                            isOutbound || isSelected
-                                              ? "bg-blue-700 hover:bg-blue-800"
-                                              : "bg-gray-100 hover:bg-gray-200"
-                                          }`}
-                                        >
-                                          <a
-                                            href={url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="flex items-center gap-2 flex-1"
-                                          >
-                                            <svg
-                                              className="w-5 h-5 flex-shrink-0"
-                                              fill="currentColor"
-                                              viewBox="0 0 20 20"
-                                            >
-                                              <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" />
-                                            </svg>
-                                            <span className="text-sm truncate">
-                                              {att.filename || "Audio"}
-                                            </span>
-                                          </a>
-                                          <button
-                                            onClick={() =>
-                                              downloadFile(
-                                                url,
-                                                att.filename || "audio.mp3",
-                                              )
-                                            }
-                                            className={`p-1 rounded hover:bg-opacity-80 ${
-                                              isOutbound || isSelected
-                                                ? "hover:bg-blue-600"
-                                                : "hover:bg-gray-300"
-                                            }`}
-                                            title="Download audio"
-                                          >
-                                            <svg
-                                              className="w-4 h-4"
-                                              fill="none"
-                                              stroke="currentColor"
-                                              viewBox="0 0 24 24"
-                                            >
-                                              <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                strokeWidth={2}
-                                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                                              />
-                                            </svg>
-                                          </button>
-                                        </div>
-                                      );
-                                    }
-
-                                    if (att.contentType?.startsWith("video/")) {
-                                      return (
-                                        <div
-                                          key={i}
-                                          className={`flex items-center justify-between gap-2 p-2 rounded ${
-                                            isOutbound || isSelected
-                                              ? "bg-blue-700 hover:bg-blue-800"
-                                              : "bg-gray-100 hover:bg-gray-200"
-                                          }`}
-                                        >
-                                          <a
-                                            href={url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="flex items-center gap-2 flex-1"
-                                          >
-                                            <svg
-                                              className="w-5 h-5 flex-shrink-0"
-                                              fill="currentColor"
-                                              viewBox="0 0 20 20"
-                                            >
-                                              <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
-                                            </svg>
-                                            <span className="text-sm truncate">
-                                              {att.filename || "Video"}
-                                            </span>
-                                          </a>
-                                          <button
-                                            onClick={() =>
-                                              downloadFile(
-                                                url,
-                                                att.filename || "video.mp4",
-                                              )
-                                            }
-                                            className={`p-1 rounded hover:bg-opacity-80 ${
-                                              isOutbound || isSelected
-                                                ? "hover:bg-blue-600"
-                                                : "hover:bg-gray-300"
-                                            }`}
-                                            title="Download video"
-                                          >
-                                            <svg
-                                              className="w-4 h-4"
-                                              fill="none"
-                                              stroke="currentColor"
-                                              viewBox="0 0 24 24"
-                                            >
-                                              <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                strokeWidth={2}
-                                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                                              />
-                                            </svg>
-                                          </button>
-                                        </div>
-                                      );
-                                    }
-
-                                    if (att.contentType === "application/pdf") {
-                                      return (
-                                        <div
-                                          key={i}
-                                          className={`flex items-center justify-between gap-2 p-2 rounded ${
-                                            isOutbound || isSelected
-                                              ? "bg-blue-700 hover:bg-blue-800"
-                                              : "bg-gray-100 hover:bg-gray-200"
-                                          }`}
-                                        >
-                                          <a
-                                            href={url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="flex items-center gap-2 flex-1"
-                                          >
-                                            <svg
-                                              className="w-5 h-5 flex-shrink-0"
-                                              fill="currentColor"
-                                              viewBox="0 0 20 20"
-                                            >
-                                              <path
-                                                fillRule="evenodd"
-                                                d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z"
-                                                clipRule="evenodd"
-                                              />
-                                            </svg>
-                                            <span className="text-sm truncate">
-                                              {att.filename || "PDF Document"}
-                                            </span>
-                                          </a>
-                                          <button
-                                            onClick={() =>
-                                              downloadFile(
-                                                url,
-                                                att.filename || "document.pdf",
-                                              )
-                                            }
-                                            className={`p-1 rounded hover:bg-opacity-80 ${
-                                              isOutbound || isSelected
-                                                ? "hover:bg-blue-600"
-                                                : "hover:bg-gray-300"
-                                            }`}
-                                            title="Download PDF"
-                                          >
-                                            <svg
-                                              className="w-4 h-4"
-                                              fill="none"
-                                              stroke="currentColor"
-                                              viewBox="0 0 24 24"
-                                            >
-                                              <path
-                                                strokeLinecap="round"
-                                                strokeLinejoin="round"
-                                                strokeWidth={2}
-                                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                                              />
-                                            </svg>
-                                          </button>
-                                        </div>
-                                      );
-                                    }
-
-                                    return null;
-                                  },
-                                )}
-                              </div>
-                            ) : null}
-
-                            <div className="flex items-center gap-2 mt-2">
-                              <span
-                                className={`text-xs ${
-                                  isOutbound || isSelected
-                                    ? "text-blue-100"
-                                    : "text-gray-500"
-                                } opacity-70`}
-                              >
-                                {new Date(msg.creationTime).toLocaleTimeString(
-                                  [],
-                                  { hour: "2-digit", minute: "2-digit" },
-                                )}
-                              </span>
-                              {isOutbound && (
-                                <svg
-                                  className="w-4 h-4 text-blue-200"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M5 13l4 4L19 7"
-                                  />
-                                </svg>
-                              )}
-                            </div>
-                          </div>
-                        </div>
                       </div>
                     </div>
-                  );
-                })}
-                <div ref={messagesEndRef} />
-              </div>
 
-              {/* Input */}
-              {!selectMode && (
-                <div className="bg-white border-t border-gray-200 p-2 sm:p-4 safe-area-bottom">
-                  {selectedFiles.length > 0 && (
-                    <div className="mb-2 sm:mb-3 flex flex-wrap gap-2">
-                      {selectedFiles.map((file, i) => {
-                        const sizeMB = (file.size / 1024 / 1024).toFixed(2);
-                        const isLarge = file.size > 1.5 * 1024 * 1024;
-                        const isWarning = file.size > 1.2 * 1024 * 1024;
-
-                        return (
-                          <div
-                            key={i}
-                            className={`flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg text-sm ${
-                              isLarge
-                                ? "bg-red-100 border border-red-300"
-                                : isWarning
-                                  ? "bg-yellow-100 border border-yellow-300"
-                                  : "bg-gray-100"
-                            }`}
+                    {selectMode ? (
+                      <div className="flex items-center gap-2 sm:gap-4">
+                        <span className="text-xs sm:text-sm text-gray-600">
+                          {selectedMessageIds.size}
+                        </span>
+                        <button
+                          onClick={() =>
+                            deleteMessages(Array.from(selectedMessageIds))
+                          }
+                          className="text-red-600 font-medium text-sm sm:text-base"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectMode(false);
+                            setSelectedMessageIds(new Set());
+                          }}
+                          className="text-gray-500 text-sm sm:text-base"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="relative" ref={chatMenuRef}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setShowChatMenu(!showChatMenu);
+                          }}
+                          className="text-gray-500 hover:text-gray-700 p-2 hover:bg-gray-100 rounded-full transition-colors"
+                          title="More options"
+                        >
+                          <svg
+                            className="w-6 h-6"
+                            fill="currentColor"
+                            viewBox="0 0 24 24"
                           >
-                            <div className="flex flex-col">
-                              <span className="text-xs sm:text-sm font-medium truncate max-w-[100px] sm:max-w-none">
-                                {file.name}
-                              </span>
-                              <span
-                                className={`text-xs ${
-                                  isLarge
-                                    ? "text-red-600 font-semibold"
-                                    : isWarning
-                                      ? "text-yellow-700"
-                                      : "text-gray-500"
-                                }`}
-                              >
-                                {sizeMB}MB {isLarge && "⚠️"}
-                              </span>
-                            </div>
+                            <circle cx="12" cy="5" r="2" />
+                            <circle cx="12" cy="12" r="2" />
+                            <circle cx="12" cy="19" r="2" />
+                          </svg>
+                        </button>
+
+                        {showChatMenu && (
+                          <div className="absolute right-0 top-12 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
                             <button
-                              onClick={() =>
-                                setSelectedFiles((prev) =>
-                                  prev.filter((_, j) => j !== i),
-                                )
-                              }
-                              className="text-red-600 hover:text-red-800 p-1"
+                              onClick={() => {
+                                setShowDetailsModal(true);
+                                setShowChatMenu(false);
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
                             >
                               <svg
                                 className="w-4 h-4"
@@ -3205,43 +2440,154 @@ export default function MessageStoredPage() {
                                   strokeLinecap="round"
                                   strokeLinejoin="round"
                                   strokeWidth={2}
-                                  d="M6 18L18 6M6 6l12 12"
+                                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
                                 />
                               </svg>
+                              Details
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectMode(true);
+                                setShowChatMenu(false);
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                                />
+                              </svg>
+                              Select
+                            </button>
+                            <button
+                              onClick={() => {
+                                setShowInlineSearch(true);
+                                setShowChatMenu(false);
+                                setTimeout(
+                                  () => inlineSearchRef.current?.focus(),
+                                  100,
+                                );
+                              }}
+                              className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 rounded-b-lg"
+                            >
+                              <svg
+                                className="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                                />
+                              </svg>
+                              Search
                             </button>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* Scheduled Messages Banner */}
-                  {scheduledMessages.length > 0 && (
-                    <button
-                      onClick={() => setShowScheduledPanel((v) => !v)}
-                      className="flex items-center justify-between w-full px-4 py-2.5 bg-purple-600 hover:bg-purple-700 transition-colors rounded-t-lg"
-                    >
-                      <div className="flex items-center gap-2">
-                        <svg
-                          className="w-4 h-4 text-white"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                        <span className="text-sm font-semibold text-white">
-                          {scheduledMessages.length} Scheduled Message
-                          {scheduledMessages.length > 1 ? "s" : ""}
-                        </span>
+                        )}
                       </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Inline Search Bar */}
+                {showInlineSearch && (
+                  <div className="bg-white border-b border-gray-200 px-3 py-2 flex items-center gap-2">
+                    <svg
+                      className="w-4 h-4 text-gray-400 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      />
+                    </svg>
+                    <input
+                      ref={inlineSearchRef}
+                      type="text"
+                      value={inlineSearchInput}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setInlineSearchInput(val);
+                        if (!val.trim()) {
+                          setMatchingMessageIndices([]);
+                          setActiveSearchText("");
+                          return;
+                        }
+                        // Normalize: lowercase, remove accents, collapse spaces
+                        const normalize = (str: string) =>
+                          str
+                            .toLowerCase()
+                            .normalize("NFD")
+                            .replace(/[\u0300-\u036f]/g, "")
+                            .replace(/\s+/g, " ")
+                            .trim();
+
+                        const normalizedSearch = normalize(val);
+                        const indices = conversation
+                          .map((msg, i) => {
+                            const text = normalize(msg.subject || "");
+                            // Match as exact phrase
+                            return text.includes(normalizedSearch) ? i : -1;
+                          })
+                          .filter((i) => i !== -1);
+                        setMatchingMessageIndices(indices);
+                        setActiveSearchText(val);
+                        // Scroll to first match instantly
+                        if (indices.length > 0) {
+                          const el = document.getElementById(
+                            `message-${indices[0]}`,
+                          );
+                          const container = messagesContainerRef.current;
+                          if (el && container) {
+                            container.scrollTop =
+                              el.offsetTop -
+                              container.clientHeight / 2 +
+                              el.offsetHeight / 2;
+                          }
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          setShowInlineSearch(false);
+                          setInlineSearchInput("");
+                          setActiveSearchText("");
+                          setMatchingMessageIndices([]);
+                        }
+                      }}
+                      placeholder="Search in conversation..."
+                      className="flex-1 text-sm outline-none bg-transparent"
+                    />
+                    {matchingMessageIndices.length > 0 && (
+                      <span className="text-xs text-purple-600 font-medium whitespace-nowrap">
+                        {matchingMessageIndices.length} found
+                      </span>
+                    )}
+                    <button
+                      onClick={() => {
+                        setShowInlineSearch(false);
+                        setInlineSearchInput("");
+                        setActiveSearchText("");
+                        setMatchingMessageIndices([]);
+                      }}
+                      className="text-gray-400 hover:text-gray-600 p-1"
+                    >
                       <svg
-                        className={`w-4 h-4 text-white transition-transform ${showScheduledPanel ? "rotate-180" : ""}`}
+                        className="w-4 h-4"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -3250,212 +2596,560 @@ export default function MessageStoredPage() {
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
+                          d="M6 18L18 6M6 6l12 12"
                         />
                       </svg>
                     </button>
-                  )}
+                  </div>
+                )}
 
-                  {/* Scheduled Messages Panel */}
-                  {showScheduledPanel && scheduledMessages.length > 0 && (
-                    <div className="bg-white border border-purple-200 rounded-b-lg max-h-72 overflow-y-auto shadow-lg">
-                      {scheduledMessages.map((sm) => (
-                        <div
-                          key={sm._id}
-                          className="p-4 border-b border-gray-100 last:border-0 hover:bg-purple-50 transition-colors"
-                        >
-                          {/* Message bubble preview */}
-                          <div className="flex items-start gap-3">
-                            <div className="flex-shrink-0 mt-0.5">
-                              <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-                                <svg
-                                  className="w-4 h-4 text-purple-600"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                                  />
-                                </svg>
-                              </div>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm text-gray-800 break-words leading-relaxed whitespace-pre-wrap">
-                                {sm.message}
-                              </p>
-                              <p className="text-xs text-purple-600 font-medium mt-1">
-                                📅{" "}
-                                {new Date(sm.scheduledAt).toLocaleString([], {
-                                  month: "short",
-                                  day: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
-                              </p>
-                            </div>
+                {/* Messages */}
+                <div
+                  ref={messagesContainerRef}
+                  className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3 sm:space-y-4"
+                >
+                  {(isLoadingMoreMessages || hasMoreMessages) &&
+                    conversation.length > 0 && (
+                      <div className="flex items-center justify-center py-4">
+                        {isLoadingMoreMessages ? (
+                          <div className="flex items-center gap-2">
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-600"></div>
+                            <span className="text-sm text-gray-500">
+                              Loading older messages...
+                            </span>
                           </div>
+                        ) : hasMoreMessages ? (
+                          <span className="text-sm text-gray-400">
+                            Scroll up for older messages
+                          </span>
+                        ) : null}
+                      </div>
+                    )}
 
-                          {/* Action buttons - clearly visible */}
-                          <div className="flex gap-2 mt-3">
-                            <button
-                              onClick={() => {
-                                setEditingScheduled(sm);
-                                setEditingScheduledMessage(sm.message);
-                                const dt = new Date(sm.scheduledAt);
-                                const local = new Date(
-                                  dt.getTime() - dt.getTimezoneOffset() * 60000,
-                                )
-                                  .toISOString()
-                                  .slice(0, 16);
-                                setEditScheduledDateTime(local);
-                              }}
-                              className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg transition-colors"
-                            >
-                              <svg
-                                className="w-3.5 h-3.5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                                />
-                              </svg>
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => cancelScheduledMessage(sm._id)}
-                              className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 text-xs font-semibold rounded-lg transition-colors"
-                            >
-                              <svg
-                                className="w-3.5 h-3.5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M6 18L18 6M6 6l12 12"
-                                />
-                              </svg>
-                              Cancel
-                            </button>
-                          </div>
+                  {isLoadingConversation && (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center">
+                        <div className="w-12 h-12 bg-gradient-to-r from-purple-600 to-blue-700 rounded-full flex items-center justify-center mx-auto mb-3">
+                          <svg
+                            className="w-6 h-6 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                            />
+                          </svg>
                         </div>
-                      ))}
+                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-purple-600 mx-auto"></div>
+                        <p className="text-gray-500 mt-3 text-sm">
+                          Loading messages...
+                        </p>
+                      </div>
                     </div>
                   )}
 
-                  {/* Edit Scheduled Message Modal */}
-                  {editingScheduled && (
-                    <div className="fixed inset-0 backdrop-blur-sm bg-black/40 flex items-center justify-center p-4 z-50">
-                      <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden">
-                        {/* Modal Header */}
-                        <div className="bg-purple-600 px-6 py-4">
-                          <h3 className="text-lg font-bold text-white">
-                            Edit Scheduled Message
-                          </h3>
-                          <p className="text-purple-200 text-xs mt-0.5">
-                            To:{" "}
-                            {editingScheduled.phoneNumbers
-                              .map((p) => formatPhoneNumber(p))
-                              .join(", ")}
-                          </p>
-                        </div>
+                  {!isLoadingConversation && conversation.length === 0 && (
+                    <div className="flex items-center justify-center h-full">
+                      <div className="text-center text-gray-500">
+                        <svg
+                          className="w-12 h-12 mx-auto mb-3 text-gray-300"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                          />
+                        </svg>
+                        <p className="text-sm">No messages yet</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          Start a conversation!
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
-                        <div className="p-6 space-y-4">
-                          {/* Edit message text */}
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Message
-                            </label>
-                            <textarea
-                              value={editingScheduledMessage}
-                              onChange={(e) =>
-                                setEditingScheduledMessage(e.target.value)
-                              }
-                              rows={3}
-                              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm resize-none"
-                              placeholder="Message text..."
-                            />
+                  {conversation.map((msg, index) => {
+                    const isOutbound = msg.direction === "Outbound";
+                    const showDate =
+                      index === 0 ||
+                      new Date(msg.creationTime).toDateString() !==
+                        new Date(
+                          conversation[index - 1]?.creationTime || "",
+                        ).toDateString();
+                    const isSelected = selectedMessageIds.has(msg.id || "");
+                    const isMatchingMessage =
+                      matchingMessageIndices.includes(index);
+
+                    return (
+                      <div key={`${msg.id}-${index}`} id={`message-${index}`}>
+                        {showDate && (
+                          <div className="flex items-center justify-center my-4">
+                            <div className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
+                              {new Date(msg.creationTime).toLocaleDateString(
+                                "en-US",
+                                {
+                                  weekday: "short",
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                },
+                              )}
+                            </div>
                           </div>
+                        )}
 
-                          {/* Edit scheduled time */}
-                          <div>
-                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                              Send at
-                            </label>
-                            <input
-                              type="datetime-local"
-                              value={editScheduledDateTime}
-                              min={new Date(Date.now() + 60000)
-                                .toISOString()
-                                .slice(0, 16)}
-                              max="9999-12-31T23:59"
-                              onChange={(e) =>
-                                setEditScheduledDateTime(e.target.value)
-                              }
-                              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm"
-                            />
-                            {editScheduledDateTime && (
-                              <p className="text-xs text-purple-600 mt-1.5 flex items-center gap-1">
-                                <svg
-                                  className="w-3 h-3"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
-                                >
-                                  <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                                  />
-                                </svg>
-                                Will send:{" "}
-                                {new Date(
-                                  editScheduledDateTime,
-                                ).toLocaleString()}
-                              </p>
+                        <div
+                          className={`flex ${
+                            isOutbound ? "justify-end" : "justify-start"
+                          }`}
+                        >
+                          <div className="flex items-start gap-2 sm:gap-3 max-w-[85%] sm:max-w-[75%]">
+                            {selectMode && (
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleSelect(msg.id || "")}
+                                className="mt-4 w-5 h-5 text-blue-600 bg-white border-2 border-gray-400 rounded focus:ring-2 focus:ring-blue-500 z-10 flex-shrink-0 cursor-pointer"
+                                onClick={(e) => e.stopPropagation()}
+                              />
                             )}
-                          </div>
 
-                          {/* Buttons */}
-                          <div className="flex gap-3 pt-1">
-                            <button
-                              onClick={() => {
-                                setEditingScheduled(null);
-                                setEditScheduledDateTime("");
-                                setEditingScheduledMessage("");
-                              }}
-                              className="flex-1 py-3 border-2 border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 font-semibold text-sm transition-colors"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={saveScheduledEdit}
-                              disabled={
-                                !editScheduledDateTime ||
-                                !editingScheduledMessage.trim() ||
-                                savingScheduledEdit
+                            <div
+                              className={`relative rounded-2xl px-3 sm:px-4 py-2 transition-all ${
+                                selectMode
+                                  ? isSelected
+                                    ? "bg-blue-600 text-white ring-2 ring-blue-400"
+                                    : "bg-gray-200 opacity-80 hover:opacity-100"
+                                  : isOutbound
+                                    ? "bg-blue-600 text-white"
+                                    : "bg-white text-gray-900 border border-gray-200"
+                              } ${selectMode ? "cursor-pointer" : ""} ${
+                                isMatchingMessage
+                                  ? "ring-2 ring-purple-500 ring-offset-2"
+                                  : ""
+                              }`}
+                              onClick={() =>
+                                selectMode && toggleSelect(msg.id || "")
                               }
-                              className="flex-1 bg-purple-600 text-white py-3 rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm flex items-center justify-center gap-2 transition-colors"
                             >
-                              {savingScheduledEdit ? (
-                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                <>
+                              {selectMode && isSelected && (
+                                <div className="absolute inset-0 rounded-2xl ring-4 ring-blue-400 pointer-events-none opacity-30" />
+                              )}
+
+                              {isMatchingMessage && activeSearchText && (
+                                <div className="flex items-center gap-1 mb-1">
+                                  <span className="text-[10px] font-medium bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">
+                                    Match
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Show sender in group messages */}
+                              {!isOutbound &&
+                                selectedParticipants.length > 1 &&
+                                msg.from?.phoneNumber && (
+                                  <div className="text-xs font-semibold text-gray-500 mb-1">
+                                    {formatPhoneNumber(msg.from.phoneNumber)}
+                                  </div>
+                                )}
+                              {msg.type === "MissedCall" && (
+                                <div className="flex items-center gap-2 py-1">
                                   <svg
-                                    className="w-4 h-4"
+                                    className="w-4 h-4 text-red-400 flex-shrink-0"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                                    />
+                                  </svg>
+                                  <span className="text-sm font-medium text-red-400">
+                                    Missed call
+                                  </span>
+                                </div>
+                              )}
+                              {msg.subject && (
+                                <p className="break-words whitespace-pre-wrap mb-2 text-sm sm:text-base">
+                                  {isMatchingMessage && activeSearchText
+                                    ? (() => {
+                                        const text = msg.subject;
+                                        const normalize = (s: string) =>
+                                          s
+                                            .toLowerCase()
+                                            .normalize("NFD")
+                                            .replace(/[\u0300-\u036f]/g, "");
+                                        const normalize2 = (s: string) =>
+                                          s
+                                            .toLowerCase()
+                                            .normalize("NFD")
+                                            .replace(/[\u0300-\u036f]/g, "");
+                                        const needle = normalize2(
+                                          activeSearchText.trim(),
+                                        );
+                                        const parts: {
+                                          text: string;
+                                          highlight: boolean;
+                                        }[] = [];
+                                        let remaining = text;
+                                        let remainingNorm = normalize2(text);
+
+                                        while (remaining.length > 0) {
+                                          const idx =
+                                            remainingNorm.indexOf(needle);
+                                          if (idx === -1) {
+                                            parts.push({
+                                              text: remaining,
+                                              highlight: false,
+                                            });
+                                            break;
+                                          }
+                                          if (idx > 0) {
+                                            parts.push({
+                                              text: remaining.slice(0, idx),
+                                              highlight: false,
+                                            });
+                                          }
+                                          parts.push({
+                                            text: remaining.slice(
+                                              idx,
+                                              idx + needle.length,
+                                            ),
+                                            highlight: true,
+                                          });
+                                          remaining = remaining.slice(
+                                            idx + needle.length,
+                                          );
+                                          remainingNorm = remainingNorm.slice(
+                                            idx + needle.length,
+                                          );
+                                        }
+                                        return (
+                                          <>
+                                            {parts.map((part, pi) =>
+                                              part.highlight ? (
+                                                <mark
+                                                  key={pi}
+                                                  className={`${isOutbound ? "bg-yellow-200 text-gray-900" : "bg-yellow-200"} px-0.5 rounded`}
+                                                >
+                                                  {part.text}
+                                                </mark>
+                                              ) : (
+                                                <span key={pi}>
+                                                  {part.text}
+                                                </span>
+                                              ),
+                                            )}
+                                          </>
+                                        );
+                                      })()
+                                    : renderTextWithLinks(
+                                        msg.subject,
+                                        isOutbound,
+                                      )}
+                                </p>
+                              )}
+
+                              {/* Attachments (continuing from previous section - keeping attachment rendering logic the same) */}
+                              {msg.attachments?.length ? (
+                                <div className="space-y-2 mt-2">
+                                  {msg.attachments.map(
+                                    (att: MessageAttachment, i: number) => {
+                                      const url = att.azureUrl || att.uri;
+                                      if (!url) return null;
+
+                                      if (
+                                        att.contentType?.startsWith("image/")
+                                      ) {
+                                        const allImages = conversation.flatMap(
+                                          (m) =>
+                                            (m.attachments || [])
+                                              .filter(
+                                                (a: MessageAttachment) =>
+                                                  a.contentType?.startsWith(
+                                                    "image/",
+                                                  ) &&
+                                                  (a.azureUrl || a.uri),
+                                              )
+                                              .map((a: MessageAttachment) => ({
+                                                url: a.azureUrl || a.uri || "",
+                                                filename: a.filename || "image",
+                                              })),
+                                        );
+
+                                        return (
+                                          <div
+                                            key={i}
+                                            className="relative group"
+                                          >
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                              src={url}
+                                              alt={att.filename || "Image"}
+                                              className="max-w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                              style={{ maxHeight: "250px" }}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                openLightbox(
+                                                  url,
+                                                  att.filename || "image",
+                                                  allImages,
+                                                );
+                                              }}
+                                              title="Click to view full size"
+                                            />
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                downloadFile(
+                                                  url,
+                                                  att.filename || "image.png",
+                                                );
+                                              }}
+                                              className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                              title="Download image"
+                                            >
+                                              <svg
+                                                className="w-4 h-4"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                              >
+                                                <path
+                                                  strokeLinecap="round"
+                                                  strokeLinejoin="round"
+                                                  strokeWidth={2}
+                                                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                                />
+                                              </svg>
+                                            </button>
+                                          </div>
+                                        );
+                                      }
+
+                                      if (
+                                        att.contentType?.startsWith("audio/")
+                                      ) {
+                                        return (
+                                          <div
+                                            key={i}
+                                            className={`flex items-center justify-between gap-2 p-2 rounded ${
+                                              isOutbound || isSelected
+                                                ? "bg-blue-700 hover:bg-blue-800"
+                                                : "bg-gray-100 hover:bg-gray-200"
+                                            }`}
+                                          >
+                                            <a
+                                              href={url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="flex items-center gap-2 flex-1"
+                                            >
+                                              <svg
+                                                className="w-5 h-5 flex-shrink-0"
+                                                fill="currentColor"
+                                                viewBox="0 0 20 20"
+                                              >
+                                                <path d="M18 3a1 1 0 00-1.196-.98l-10 2A1 1 0 006 5v9.114A4.369 4.369 0 005 14c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V7.82l8-1.6v5.894A4.37 4.37 0 0015 12c-1.657 0-3 .895-3 2s1.343 2 3 2 3-.895 3-2V3z" />
+                                              </svg>
+                                              <span className="text-sm truncate">
+                                                {att.filename || "Audio"}
+                                              </span>
+                                            </a>
+                                            <button
+                                              onClick={() =>
+                                                downloadFile(
+                                                  url,
+                                                  att.filename || "audio.mp3",
+                                                )
+                                              }
+                                              className={`p-1 rounded hover:bg-opacity-80 ${
+                                                isOutbound || isSelected
+                                                  ? "hover:bg-blue-600"
+                                                  : "hover:bg-gray-300"
+                                              }`}
+                                              title="Download audio"
+                                            >
+                                              <svg
+                                                className="w-4 h-4"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                              >
+                                                <path
+                                                  strokeLinecap="round"
+                                                  strokeLinejoin="round"
+                                                  strokeWidth={2}
+                                                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                                />
+                                              </svg>
+                                            </button>
+                                          </div>
+                                        );
+                                      }
+
+                                      if (
+                                        att.contentType?.startsWith("video/")
+                                      ) {
+                                        return (
+                                          <div
+                                            key={i}
+                                            className={`flex items-center justify-between gap-2 p-2 rounded ${
+                                              isOutbound || isSelected
+                                                ? "bg-blue-700 hover:bg-blue-800"
+                                                : "bg-gray-100 hover:bg-gray-200"
+                                            }`}
+                                          >
+                                            <a
+                                              href={url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="flex items-center gap-2 flex-1"
+                                            >
+                                              <svg
+                                                className="w-5 h-5 flex-shrink-0"
+                                                fill="currentColor"
+                                                viewBox="0 0 20 20"
+                                              >
+                                                <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+                                              </svg>
+                                              <span className="text-sm truncate">
+                                                {att.filename || "Video"}
+                                              </span>
+                                            </a>
+                                            <button
+                                              onClick={() =>
+                                                downloadFile(
+                                                  url,
+                                                  att.filename || "video.mp4",
+                                                )
+                                              }
+                                              className={`p-1 rounded hover:bg-opacity-80 ${
+                                                isOutbound || isSelected
+                                                  ? "hover:bg-blue-600"
+                                                  : "hover:bg-gray-300"
+                                              }`}
+                                              title="Download video"
+                                            >
+                                              <svg
+                                                className="w-4 h-4"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                              >
+                                                <path
+                                                  strokeLinecap="round"
+                                                  strokeLinejoin="round"
+                                                  strokeWidth={2}
+                                                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                                />
+                                              </svg>
+                                            </button>
+                                          </div>
+                                        );
+                                      }
+
+                                      if (
+                                        att.contentType === "application/pdf"
+                                      ) {
+                                        return (
+                                          <div
+                                            key={i}
+                                            className={`flex items-center justify-between gap-2 p-2 rounded ${
+                                              isOutbound || isSelected
+                                                ? "bg-blue-700 hover:bg-blue-800"
+                                                : "bg-gray-100 hover:bg-gray-200"
+                                            }`}
+                                          >
+                                            <a
+                                              href={url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="flex items-center gap-2 flex-1"
+                                            >
+                                              <svg
+                                                className="w-5 h-5 flex-shrink-0"
+                                                fill="currentColor"
+                                                viewBox="0 0 20 20"
+                                              >
+                                                <path
+                                                  fillRule="evenodd"
+                                                  d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z"
+                                                  clipRule="evenodd"
+                                                />
+                                              </svg>
+                                              <span className="text-sm truncate">
+                                                {att.filename || "PDF Document"}
+                                              </span>
+                                            </a>
+                                            <button
+                                              onClick={() =>
+                                                downloadFile(
+                                                  url,
+                                                  att.filename ||
+                                                    "document.pdf",
+                                                )
+                                              }
+                                              className={`p-1 rounded hover:bg-opacity-80 ${
+                                                isOutbound || isSelected
+                                                  ? "hover:bg-blue-600"
+                                                  : "hover:bg-gray-300"
+                                              }`}
+                                              title="Download PDF"
+                                            >
+                                              <svg
+                                                className="w-4 h-4"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                viewBox="0 0 24 24"
+                                              >
+                                                <path
+                                                  strokeLinecap="round"
+                                                  strokeLinejoin="round"
+                                                  strokeWidth={2}
+                                                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                                />
+                                              </svg>
+                                            </button>
+                                          </div>
+                                        );
+                                      }
+
+                                      return null;
+                                    },
+                                  )}
+                                </div>
+                              ) : null}
+
+                              <div className="flex items-center gap-2 mt-2">
+                                <span
+                                  className={`text-xs ${
+                                    isOutbound || isSelected
+                                      ? "text-blue-100"
+                                      : "text-gray-500"
+                                  } opacity-70`}
+                                >
+                                  {new Date(
+                                    msg.creationTime,
+                                  ).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                                {isOutbound && (
+                                  <svg
+                                    className="w-4 h-4 text-blue-200"
                                     fill="none"
                                     stroke="currentColor"
                                     viewBox="0 0 24 24"
@@ -3467,43 +3161,600 @@ export default function MessageStoredPage() {
                                       d="M5 13l4 4L19 7"
                                     />
                                   </svg>
-                                  Save Changes
-                                </>
-                              )}
-                            </button>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
+                </div>
 
-                  <div className="flex gap-2 sm:gap-3 items-end">
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="p-2 sm:px-3 sm:py-3 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl flex-shrink-0"
-                    >
-                      <svg
-                        className="w-6 h-6"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
+                {/* Input */}
+                {!selectMode && (
+                  <div className="bg-white border-t border-gray-200 p-2 sm:p-4 safe-area-bottom">
+                    {selectedFiles.length > 0 && (
+                      <div className="mb-2 sm:mb-3 flex flex-wrap gap-2">
+                        {selectedFiles.map((file, i) => {
+                          const sizeMB = (file.size / 1024 / 1024).toFixed(2);
+                          const isLarge = file.size > 1.5 * 1024 * 1024;
+                          const isWarning = file.size > 1.2 * 1024 * 1024;
+
+                          return (
+                            <div
+                              key={i}
+                              className={`flex items-center gap-2 px-2 sm:px-3 py-1 sm:py-2 rounded-lg text-sm ${
+                                isLarge
+                                  ? "bg-red-100 border border-red-300"
+                                  : isWarning
+                                    ? "bg-yellow-100 border border-yellow-300"
+                                    : "bg-gray-100"
+                              }`}
+                            >
+                              <div className="flex flex-col">
+                                <span className="text-xs sm:text-sm font-medium truncate max-w-[100px] sm:max-w-none">
+                                  {file.name}
+                                </span>
+                                <span
+                                  className={`text-xs ${
+                                    isLarge
+                                      ? "text-red-600 font-semibold"
+                                      : isWarning
+                                        ? "text-yellow-700"
+                                        : "text-gray-500"
+                                  }`}
+                                >
+                                  {sizeMB}MB {isLarge && "⚠️"}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() =>
+                                  setSelectedFiles((prev) =>
+                                    prev.filter((_, j) => j !== i),
+                                  )
+                                }
+                                className="text-red-600 hover:text-red-800 p-1"
+                              >
+                                <svg
+                                  className="w-4 h-4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M6 18L18 6M6 6l12 12"
+                                  />
+                                </svg>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Scheduled Messages Banner */}
+                    {scheduledMessages.length > 0 && (
+                      <button
+                        onClick={() => setShowScheduledPanel((v) => !v)}
+                        className="flex items-center justify-between w-full px-4 py-2.5 bg-purple-600 hover:bg-purple-700 transition-colors rounded-t-lg"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => setShowScheduleModal(true)}
-                      disabled={!messageInput.trim()}
-                      className="p-2 sm:px-3 sm:py-3 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-xl flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-                      title="Schedule message"
-                    >
+                        <div className="flex items-center gap-2">
+                          <svg
+                            className="w-4 h-4 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                          <span className="text-sm font-semibold text-white">
+                            {scheduledMessages.length} Scheduled Message
+                            {scheduledMessages.length > 1 ? "s" : ""}
+                          </span>
+                        </div>
+                        <svg
+                          className={`w-4 h-4 text-white transition-transform ${showScheduledPanel ? "rotate-180" : ""}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 9l-7 7-7-7"
+                          />
+                        </svg>
+                      </button>
+                    )}
+
+                    {/* Scheduled Messages Panel */}
+                    {showScheduledPanel && scheduledMessages.length > 0 && (
+                      <div className="bg-white border border-purple-200 rounded-b-lg max-h-72 overflow-y-auto shadow-lg">
+                        {scheduledMessages.map((sm) => (
+                          <div
+                            key={sm._id}
+                            className="p-4 border-b border-gray-100 last:border-0 hover:bg-purple-50 transition-colors"
+                          >
+                            {/* Message bubble preview */}
+                            <div className="flex items-start gap-3">
+                              <div className="flex-shrink-0 mt-0.5">
+                                <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                                  <svg
+                                    className="w-4 h-4 text-purple-600"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                                    />
+                                  </svg>
+                                </div>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm text-gray-800 break-words leading-relaxed whitespace-pre-wrap">
+                                  {sm.message}
+                                </p>
+                                <p className="text-xs text-purple-600 font-medium mt-1">
+                                  📅{" "}
+                                  {new Date(sm.scheduledAt).toLocaleString([], {
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Action buttons - clearly visible */}
+                            <div className="flex gap-2 mt-3">
+                              <button
+                                onClick={() => {
+                                  setEditingScheduled(sm);
+                                  setEditingScheduledMessage(sm.message);
+                                  const dt = new Date(sm.scheduledAt);
+                                  const local = new Date(
+                                    dt.getTime() -
+                                      dt.getTimezoneOffset() * 60000,
+                                  )
+                                    .toISOString()
+                                    .slice(0, 16);
+                                  setEditScheduledDateTime(local);
+                                }}
+                                className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold rounded-lg transition-colors"
+                              >
+                                <svg
+                                  className="w-3.5 h-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                                  />
+                                </svg>
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => cancelScheduledMessage(sm._id)}
+                                className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 text-xs font-semibold rounded-lg transition-colors"
+                              >
+                                <svg
+                                  className="w-3.5 h-3.5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M6 18L18 6M6 6l12 12"
+                                  />
+                                </svg>
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Edit Scheduled Message Modal */}
+                    {editingScheduled && (
+                      <div className="fixed inset-0 backdrop-blur-sm bg-black/40 flex items-center justify-center p-4 z-50">
+                        <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl overflow-hidden">
+                          {/* Modal Header */}
+                          <div className="bg-purple-600 px-6 py-4">
+                            <h3 className="text-lg font-bold text-white">
+                              Edit Scheduled Message
+                            </h3>
+                            <p className="text-purple-200 text-xs mt-0.5">
+                              To:{" "}
+                              {editingScheduled.phoneNumbers
+                                .map((p) => formatPhoneNumber(p))
+                                .join(", ")}
+                            </p>
+                          </div>
+
+                          <div className="p-6 space-y-4">
+                            {/* Edit message text */}
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Message
+                              </label>
+                              <textarea
+                                value={editingScheduledMessage}
+                                onChange={(e) =>
+                                  setEditingScheduledMessage(e.target.value)
+                                }
+                                rows={3}
+                                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm resize-none"
+                                placeholder="Message text..."
+                              />
+                            </div>
+
+                            {/* Edit scheduled time */}
+                            <div>
+                              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                Send at
+                              </label>
+                              <input
+                                type="datetime-local"
+                                value={editScheduledDateTime}
+                                min={new Date(Date.now() + 60000)
+                                  .toISOString()
+                                  .slice(0, 16)}
+                                max="9999-12-31T23:59"
+                                onChange={(e) =>
+                                  setEditScheduledDateTime(e.target.value)
+                                }
+                                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm"
+                              />
+                              {editScheduledDateTime && (
+                                <p className="text-xs text-purple-600 mt-1.5 flex items-center gap-1">
+                                  <svg
+                                    className="w-3 h-3"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                                    />
+                                  </svg>
+                                  Will send:{" "}
+                                  {new Date(
+                                    editScheduledDateTime,
+                                  ).toLocaleString()}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Buttons */}
+                            <div className="flex gap-3 pt-1">
+                              <button
+                                onClick={() => {
+                                  setEditingScheduled(null);
+                                  setEditScheduledDateTime("");
+                                  setEditingScheduledMessage("");
+                                }}
+                                className="flex-1 py-3 border-2 border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 font-semibold text-sm transition-colors"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={saveScheduledEdit}
+                                disabled={
+                                  !editScheduledDateTime ||
+                                  !editingScheduledMessage.trim() ||
+                                  savingScheduledEdit
+                                }
+                                className="flex-1 bg-purple-600 text-white py-3 rounded-xl hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-sm flex items-center justify-center gap-2 transition-colors"
+                              >
+                                {savingScheduledEdit ? (
+                                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                  <>
+                                    <svg
+                                      className="w-4 h-4"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M5 13l4 4L19 7"
+                                      />
+                                    </svg>
+                                    Save Changes
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2 sm:gap-3 items-end">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="p-2 sm:px-3 sm:py-3 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl flex-shrink-0"
+                      >
+                        <svg
+                          className="w-6 h-6"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+                          />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => setShowScheduleModal(true)}
+                        disabled={!messageInput.trim()}
+                        className="p-2 sm:px-3 sm:py-3 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-xl flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                        title="Schedule message"
+                      >
+                        <svg
+                          className="w-6 h-6"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                          />
+                        </svg>
+                      </button>
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={(e) => {
+                          const files = Array.from(e.target.files || []);
+                          const MAX_FILE_SIZE = 1.5 * 1024 * 1024;
+                          const validFiles: File[] = [];
+
+                          files.forEach((f) => {
+                            const isValidType =
+                              f.type.startsWith("image/") ||
+                              f.type.startsWith("audio/") ||
+                              f.type.startsWith("video/");
+
+                            if (!isValidType) {
+                              alert(
+                                `❌ ${f.name}\n\nFile type not supported.\n\nMMS supports: Images, Audio, and Video files only.`,
+                              );
+                              return;
+                            }
+
+                            if (f.size > MAX_FILE_SIZE) {
+                              const sizeMB = (f.size / 1024 / 1024).toFixed(2);
+                              alert(
+                                `❌ ${f.name} is too large!\n\nFile size: ${sizeMB}MB\nMMS limit: 1.5MB\n\nPlease compress the file or choose a smaller one.`,
+                              );
+                              return;
+                            }
+
+                            validFiles.push(f);
+                          });
+
+                          setSelectedFiles((prev) => [...prev, ...validFiles]);
+                        }}
+                        accept="image/*,audio/*,video/*"
+                        multiple
+                        className="hidden"
+                      />
+
+                      <textarea
+                        ref={messageInputRef}
+                        value={messageInput}
+                        onChange={(e) => {
+                          setMessageInput(e.target.value);
+                          if (selectedConversationId) {
+                            if (e.target.value.trim()) {
+                              localStorage.setItem(
+                                `draft_${selectedConversationId}`,
+                                e.target.value,
+                              );
+                            } else {
+                              localStorage.removeItem(
+                                `draft_${selectedConversationId}`,
+                              );
+                            }
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            sendMessage();
+                          }
+                        }}
+                        rows={1}
+                        onPaste={(e) => {
+                          const items = e.clipboardData?.items;
+                          if (!items) return;
+
+                          const imageFiles: File[] = [];
+                          for (let i = 0; i < items.length; i++) {
+                            const item = items[i];
+                            if (item.type.startsWith("image/")) {
+                              const file = item.getAsFile();
+                              if (file) {
+                                if (file.size > 1.5 * 1024 * 1024) {
+                                  alert(
+                                    `Image is too large (${(
+                                      file.size /
+                                      1024 /
+                                      1024
+                                    ).toFixed(2)}MB). Max size is 1.5MB.`,
+                                  );
+                                  continue;
+                                }
+                                const newFile = new File(
+                                  [file],
+                                  `pasted-image-${Date.now()}.${
+                                    file.type.split("/")[1]
+                                  }`,
+                                  {
+                                    type: file.type,
+                                  },
+                                );
+                                imageFiles.push(newFile);
+                              }
+                            }
+                          }
+
+                          if (imageFiles.length > 0) {
+                            e.preventDefault();
+                            setSelectedFiles((prev) => [
+                              ...prev,
+                              ...imageFiles,
+                            ]);
+                          }
+                        }}
+                        placeholder="Type a message..."
+                        className="flex-1 px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm sm:text-base resize-none max-h-40 overflow-y-auto"
+                        disabled={false}
+                      />
+
+                      <button
+                        onClick={sendMessage}
+                        className={`p-2 sm:px-6 sm:py-3 rounded-xl font-medium transition-all flex items-center justify-center flex-shrink-0 ${
+                          (messageInput.trim() || selectedFiles.length > 0) &&
+                          !sending
+                            ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
+                            : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                        }`}
+                        disabled={
+                          (!messageInput.trim() &&
+                            selectedFiles.length === 0) ||
+                          sending
+                        }
+                      >
+                        {sending ? (
+                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <>
+                            <svg
+                              className="w-5 h-5 sm:hidden"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                              />
+                            </svg>
+                            <span className="hidden sm:inline">Send</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {showScheduleModal && (
+          <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl border border-gray-200">
+              <h3 className="text-xl font-bold text-gray-900 mb-1">
+                Schedule Message
+              </h3>
+              <p className="text-sm text-gray-500 mb-4">
+                To:{" "}
+                {selectedParticipants
+                  .map((p) => formatPhoneNumber(p))
+                  .join(", ")}
+              </p>
+
+              <div className="bg-gray-50 rounded-lg p-3 mb-4 border border-gray-200 max-h-32 overflow-y-auto">
+                <p className="text-sm font-medium text-gray-700 mb-1">
+                  Message preview:
+                </p>
+                <p className="text-sm text-gray-600 break-words whitespace-pre-wrap">
+                  {messageInput + getFooter(messageInput)}
+                </p>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Send at
+                </label>
+                <input
+                  type="datetime-local"
+                  value={scheduledDateTime}
+                  min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+                  max="9999-12-31T23:59"
+                  onChange={(e) => setScheduledDateTime(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                />
+                {scheduledDateTime && (
+                  <p className="text-xs text-purple-600 mt-2">
+                    📅 Will send: {new Date(scheduledDateTime).toLocaleString()}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowScheduleModal(false);
+                    setScheduledDateTime("");
+                  }}
+                  className="flex-1 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={scheduleMessage}
+                  disabled={!scheduledDateTime || scheduling}
+                  className="flex-1 bg-purple-600 text-white py-3 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2"
+                >
+                  {scheduling ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
                       <svg
-                        className="w-6 h-6"
+                        className="w-5 h-5"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -3515,414 +3766,69 @@ export default function MessageStoredPage() {
                           d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
                         />
                       </svg>
-                    </button>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={(e) => {
-                        const files = Array.from(e.target.files || []);
-                        const MAX_FILE_SIZE = 1.5 * 1024 * 1024;
-                        const validFiles: File[] = [];
-
-                        files.forEach((f) => {
-                          const isValidType =
-                            f.type.startsWith("image/") ||
-                            f.type.startsWith("audio/") ||
-                            f.type.startsWith("video/");
-
-                          if (!isValidType) {
-                            alert(
-                              `❌ ${f.name}\n\nFile type not supported.\n\nMMS supports: Images, Audio, and Video files only.`,
-                            );
-                            return;
-                          }
-
-                          if (f.size > MAX_FILE_SIZE) {
-                            const sizeMB = (f.size / 1024 / 1024).toFixed(2);
-                            alert(
-                              `❌ ${f.name} is too large!\n\nFile size: ${sizeMB}MB\nMMS limit: 1.5MB\n\nPlease compress the file or choose a smaller one.`,
-                            );
-                            return;
-                          }
-
-                          validFiles.push(f);
-                        });
-
-                        setSelectedFiles((prev) => [...prev, ...validFiles]);
-                      }}
-                      accept="image/*,audio/*,video/*"
-                      multiple
-                      className="hidden"
-                    />
-
-                    <textarea
-                      ref={messageInputRef}
-                      value={messageInput}
-                      onChange={(e) => {
-                        setMessageInput(e.target.value);
-                        if (selectedConversationId) {
-                          if (e.target.value.trim()) {
-                            localStorage.setItem(
-                              `draft_${selectedConversationId}`,
-                              e.target.value,
-                            );
-                          } else {
-                            localStorage.removeItem(
-                              `draft_${selectedConversationId}`,
-                            );
-                          }
-                        }
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault();
-                          sendMessage();
-                        }
-                      }}
-                      rows={1}
-                      onPaste={(e) => {
-                        const items = e.clipboardData?.items;
-                        if (!items) return;
-
-                        const imageFiles: File[] = [];
-                        for (let i = 0; i < items.length; i++) {
-                          const item = items[i];
-                          if (item.type.startsWith("image/")) {
-                            const file = item.getAsFile();
-                            if (file) {
-                              if (file.size > 1.5 * 1024 * 1024) {
-                                alert(
-                                  `Image is too large (${(
-                                    file.size /
-                                    1024 /
-                                    1024
-                                  ).toFixed(2)}MB). Max size is 1.5MB.`,
-                                );
-                                continue;
-                              }
-                              const newFile = new File(
-                                [file],
-                                `pasted-image-${Date.now()}.${
-                                  file.type.split("/")[1]
-                                }`,
-                                {
-                                  type: file.type,
-                                },
-                              );
-                              imageFiles.push(newFile);
-                            }
-                          }
-                        }
-
-                        if (imageFiles.length > 0) {
-                          e.preventDefault();
-                          setSelectedFiles((prev) => [...prev, ...imageFiles]);
-                        }
-                      }}
-                      placeholder="Type a message..."
-                      className="flex-1 px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm sm:text-base resize-none max-h-40 overflow-y-auto"
-                      disabled={false}
-                    />
-
-                    <button
-                      onClick={sendMessage}
-                      className={`p-2 sm:px-6 sm:py-3 rounded-xl font-medium transition-all flex items-center justify-center flex-shrink-0 ${
-                        (messageInput.trim() || selectedFiles.length > 0) &&
-                        !sending
-                          ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
-                          : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      }`}
-                      disabled={
-                        (!messageInput.trim() && selectedFiles.length === 0) ||
-                        sending
-                      }
-                    >
-                      {sending ? (
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <>
-                          <svg
-                            className="w-5 h-5 sm:hidden"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                          >
-                            <path
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              strokeWidth={2}
-                              d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
-                            />
-                          </svg>
-                          <span className="hidden sm:inline">Send</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-
-      {showScheduleModal && (
-        <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl border border-gray-200">
-            <h3 className="text-xl font-bold text-gray-900 mb-1">
-              Schedule Message
-            </h3>
-            <p className="text-sm text-gray-500 mb-4">
-              To:{" "}
-              {selectedParticipants.map((p) => formatPhoneNumber(p)).join(", ")}
-            </p>
-
-            <div className="bg-gray-50 rounded-lg p-3 mb-4 border border-gray-200 max-h-32 overflow-y-auto">
-              <p className="text-sm font-medium text-gray-700 mb-1">
-                Message preview:
-              </p>
-              <p className="text-sm text-gray-600 break-words whitespace-pre-wrap">
-                {messageInput + getFooter(messageInput)}
-              </p>
-            </div>
-
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Send at
-              </label>
-              <input
-                type="datetime-local"
-                value={scheduledDateTime}
-                min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
-                max="9999-12-31T23:59"
-                onChange={(e) => setScheduledDateTime(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-              />
-              {scheduledDateTime && (
-                <p className="text-xs text-purple-600 mt-2">
-                  📅 Will send: {new Date(scheduledDateTime).toLocaleString()}
-                </p>
-              )}
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowScheduleModal(false);
-                  setScheduledDateTime("");
-                }}
-                className="flex-1 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={scheduleMessage}
-                disabled={!scheduledDateTime || scheduling}
-                className="flex-1 bg-purple-600 text-white py-3 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2"
-              >
-                {scheduling ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <>
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                      />
-                    </svg>
-                    Schedule
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* New Message Modal */}
-      {showNewMessageModal && (
-        <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 shadow-2xl border border-gray-200">
-            <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">
-              New Message
-            </h3>
-            <p className="text-sm text-gray-600 mb-4">
-              Enter one or multiple phone numbers separated by commas
-            </p>
-            <input
-              type="tel"
-              value={newPhoneNumber}
-              onChange={(e) => setNewPhoneNumber(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && startNewConversation()}
-              placeholder="+19724567890, +16824567890, ..."
-              className="w-full px-4 py-3 border rounded-lg mb-4 text-base"
-              autoFocus
-            />
-            <div className="flex gap-3">
-              <button
-                onClick={() => {
-                  setShowNewMessageModal(false);
-                  setNewPhoneNumber("");
-                }}
-                className="flex-1 py-3 border rounded-lg text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={startNewConversation}
-                className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700"
-              >
-                Start Chat
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Image Lightbox Modal */}
-      {lightboxImage && (
-        <div
-          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center"
-          onClick={closeLightbox}
-        >
-          <div
-            className="relative max-w-7xl max-h-screen p-2 sm:p-4 w-full"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={closeLightbox}
-              className="absolute top-2 sm:top-4 right-2 sm:right-4 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 z-10"
-              title="Close (Esc)"
-            >
-              <svg
-                className="w-6 h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-
-            <button
-              onClick={() =>
-                downloadFile(lightboxImage.url, lightboxImage.filename)
-              }
-              className="absolute top-2 sm:top-4 right-14 sm:right-20 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 z-10"
-              title="Download"
-            >
-              <svg
-                className="w-6 h-6"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                />
-              </svg>
-            </button>
-
-            {lightboxImage.currentIndex > 0 && (
-              <button
-                onClick={() => navigateLightbox("prev")}
-                className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 sm:p-3 z-10"
-                title="Previous (←)"
-              >
-                <svg
-                  className="w-6 h-6 sm:w-8 sm:h-8"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 19l-7-7 7-7"
-                  />
-                </svg>
-              </button>
-            )}
-
-            {lightboxImage.currentIndex <
-              lightboxImage.allImages.length - 1 && (
-              <button
-                onClick={() => navigateLightbox("next")}
-                className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 sm:p-3 z-10"
-                title="Next (→)"
-              >
-                <svg
-                  className="w-6 h-6 sm:w-8 sm:h-8"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5l7 7-7 7"
-                  />
-                </svg>
-              </button>
-            )}
-
-            <div className="flex items-center justify-center h-full">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={lightboxImage.url}
-                alt={lightboxImage.filename}
-                className="max-w-full max-h-[85vh] sm:max-h-[90vh] object-contain rounded-lg shadow-2xl"
-              />
-            </div>
-
-            {lightboxImage.allImages.length > 1 && (
-              <div className="absolute bottom-16 sm:bottom-4 left-1/2 -translate-x-1/2 text-white bg-black/50 px-4 py-2 rounded-full text-sm">
-                {lightboxImage.currentIndex + 1} /{" "}
-                {lightboxImage.allImages.length}
+                      Schedule
+                    </>
+                  )}
+                </button>
               </div>
-            )}
-
-            <div className="absolute bottom-4 sm:bottom-20 left-1/2 -translate-x-1/2 text-white bg-black/50 px-4 py-2 rounded-full text-xs sm:text-sm max-w-[80%] sm:max-w-md truncate">
-              {lightboxImage.filename}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Details Modal */}
-      {showDetailsModal && (
-        <div
-          className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center p-4 z-50"
-          onClick={() => setShowDetailsModal(false)}
-        >
-          <div
-            className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl border border-gray-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-gray-900">
-                Conversation Details
+        {/* New Message Modal */}
+        {showNewMessageModal && (
+          <div className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-lg max-w-md w-full p-4 sm:p-6 shadow-2xl border border-gray-200">
+              <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">
+                New Message
               </h3>
+              <p className="text-sm text-gray-600 mb-4">
+                Enter one or multiple phone numbers separated by commas
+              </p>
+              <input
+                type="tel"
+                value={newPhoneNumber}
+                onChange={(e) => setNewPhoneNumber(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && startNewConversation()}
+                placeholder="+19724567890, +16824567890, ..."
+                className="w-full px-4 py-3 border rounded-lg mb-4 text-base"
+                autoFocus
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowNewMessageModal(false);
+                    setNewPhoneNumber("");
+                  }}
+                  className="flex-1 py-3 border rounded-lg text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={startNewConversation}
+                  className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700"
+                >
+                  Start Chat
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Image Lightbox Modal */}
+        {lightboxImage && (
+          <div
+            className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center"
+            onClick={closeLightbox}
+          >
+            <div
+              className="relative max-w-7xl max-h-screen p-2 sm:p-4 w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
               <button
-                onClick={() => setShowDetailsModal(false)}
-                className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
+                onClick={closeLightbox}
+                className="absolute top-2 sm:top-4 right-2 sm:right-4 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 z-10"
+                title="Close (Esc)"
               >
                 <svg
                   className="w-6 h-6"
@@ -3938,83 +3844,158 @@ export default function MessageStoredPage() {
                   />
                 </svg>
               </button>
-            </div>
 
-            <div className="space-y-4">
-              {/* Conversation Type */}
-              <div>
-                <label className="text-sm font-medium text-gray-500">
-                  Type
-                </label>
-                <div className="mt-1 flex items-center gap-2">
-                  {selectedParticipants.length > 1 ? (
-                    <>
-                      <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-5 h-5 text-white"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
-                        </svg>
-                      </div>
-                      <span className="text-gray-900 font-medium">
-                        Group Conversation
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                        <svg
-                          className="w-5 h-5 text-white"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </div>
-                      <span className="text-gray-900 font-medium">
-                        Direct Message
-                      </span>
-                    </>
-                  )}
-                </div>
+              <button
+                onClick={() =>
+                  downloadFile(lightboxImage.url, lightboxImage.filename)
+                }
+                className="absolute top-2 sm:top-4 right-14 sm:right-20 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 z-10"
+                title="Download"
+              >
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  />
+                </svg>
+              </button>
+
+              {lightboxImage.currentIndex > 0 && (
+                <button
+                  onClick={() => navigateLightbox("prev")}
+                  className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 sm:p-3 z-10"
+                  title="Previous (←)"
+                >
+                  <svg
+                    className="w-6 h-6 sm:w-8 sm:h-8"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 19l-7-7 7-7"
+                    />
+                  </svg>
+                </button>
+              )}
+
+              {lightboxImage.currentIndex <
+                lightboxImage.allImages.length - 1 && (
+                <button
+                  onClick={() => navigateLightbox("next")}
+                  className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 text-white bg-black/50 hover:bg-black/70 rounded-full p-2 sm:p-3 z-10"
+                  title="Next (→)"
+                >
+                  <svg
+                    className="w-6 h-6 sm:w-8 sm:h-8"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 5l7 7-7 7"
+                    />
+                  </svg>
+                </button>
+              )}
+
+              <div className="flex items-center justify-center h-full">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={lightboxImage.url}
+                  alt={lightboxImage.filename}
+                  className="max-w-full max-h-[85vh] sm:max-h-[90vh] object-contain rounded-lg shadow-2xl"
+                />
               </div>
 
-              {/* Participants */}
-              <div>
-                <label className="text-sm font-medium text-gray-500">
-                  {selectedParticipants.length > 1
-                    ? "Participants"
-                    : "Phone Number"}
-                  {selectedParticipants.length > 1 && (
-                    <span className="ml-1 text-gray-400">
-                      ({selectedParticipants.length})
-                    </span>
-                  )}
-                </label>
-                <div className="mt-2 space-y-2">
-                  {selectedParticipants.map((participant, index) => (
-                    <div
-                      key={participant}
-                      className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                    >
-                      <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold ${
-                          selectedParticipants.length > 1
-                            ? "bg-gradient-to-br from-purple-400 to-purple-600"
-                            : "bg-gradient-to-br from-blue-400 to-blue-600"
-                        }`}
-                      >
-                        {selectedParticipants.length > 1 ? (
-                          index + 1
-                        ) : (
+              {lightboxImage.allImages.length > 1 && (
+                <div className="absolute bottom-16 sm:bottom-4 left-1/2 -translate-x-1/2 text-white bg-black/50 px-4 py-2 rounded-full text-sm">
+                  {lightboxImage.currentIndex + 1} /{" "}
+                  {lightboxImage.allImages.length}
+                </div>
+              )}
+
+              <div className="absolute bottom-4 sm:bottom-20 left-1/2 -translate-x-1/2 text-white bg-black/50 px-4 py-2 rounded-full text-xs sm:text-sm max-w-[80%] sm:max-w-md truncate">
+                {lightboxImage.filename}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Details Modal */}
+        {showDetailsModal && (
+          <div
+            className="fixed inset-0 backdrop-blur-sm bg-black/30 flex items-center justify-center p-4 z-50"
+            onClick={() => setShowDetailsModal(false)}
+          >
+            <div
+              className="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl border border-gray-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-gray-900">
+                  Conversation Details
+                </h3>
+                <button
+                  onClick={() => setShowDetailsModal(false)}
+                  className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100"
+                >
+                  <svg
+                    className="w-6 h-6"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M6 18L18 6M6 6l12 12"
+                    />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Conversation Type */}
+                <div>
+                  <label className="text-sm font-medium text-gray-500">
+                    Type
+                  </label>
+                  <div className="mt-1 flex items-center gap-2">
+                    {selectedParticipants.length > 1 ? (
+                      <>
+                        <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
                           <svg
-                            className="w-5 h-5"
+                            className="w-5 h-5 text-white"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" />
+                          </svg>
+                        </div>
+                        <span className="text-gray-900 font-medium">
+                          Group Conversation
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                          <svg
+                            className="w-5 h-5 text-white"
                             fill="currentColor"
                             viewBox="0 0 20 20"
                           >
@@ -4024,77 +4005,126 @@ export default function MessageStoredPage() {
                               clipRule="evenodd"
                             />
                           </svg>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <div className="font-medium text-gray-900">
-                          {formatPhoneNumber(participant)}
                         </div>
-                        <div className="text-xs text-gray-500">
-                          {participant}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(participant);
-                          // Could add a toast notification here
-                        }}
-                        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-full transition-colors"
-                        title="Copy phone number"
-                      >
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Message Count */}
-              <div>
-                <label className="text-sm font-medium text-gray-500">
-                  Messages
-                </label>
-                <div className="mt-1 text-gray-900 font-medium">
-                  {conversation.length} total
-                </div>
-              </div>
-
-              {/* Conversation ID (for debugging) */}
-              {selectedConversationId && (
-                <div>
-                  <label className="text-sm font-medium text-gray-500">
-                    Conversation ID
-                  </label>
-                  <div className="mt-1 text-xs text-gray-600 font-mono bg-gray-50 p-2 rounded break-all">
-                    {selectedConversationId}
+                        <span className="text-gray-900 font-medium">
+                          Direct Message
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
-              )}
-            </div>
 
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => setShowDetailsModal(false)}
-                className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 font-medium transition-colors"
-              >
-                Close
-              </button>
+                {/* Participants */}
+                <div>
+                  <label className="text-sm font-medium text-gray-500">
+                    {selectedParticipants.length > 1
+                      ? "Participants"
+                      : "Phone Number"}
+                    {selectedParticipants.length > 1 && (
+                      <span className="ml-1 text-gray-400">
+                        ({selectedParticipants.length})
+                      </span>
+                    )}
+                  </label>
+                  <div className="mt-2 space-y-2">
+                    {selectedParticipants.map((participant, index) => (
+                      <div
+                        key={participant}
+                        className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                      >
+                        <div
+                          className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold ${
+                            selectedParticipants.length > 1
+                              ? "bg-gradient-to-br from-purple-400 to-purple-600"
+                              : "bg-gradient-to-br from-blue-400 to-blue-600"
+                          }`}
+                        >
+                          {selectedParticipants.length > 1 ? (
+                            index + 1
+                          ) : (
+                            <svg
+                              className="w-5 h-5"
+                              fill="currentColor"
+                              viewBox="0 0 20 20"
+                            >
+                              <path
+                                fillRule="evenodd"
+                                d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+                                clipRule="evenodd"
+                              />
+                            </svg>
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <div className="font-medium text-gray-900">
+                            {formatPhoneNumber(participant)}
+                          </div>
+                          <div className="text-xs text-gray-500">
+                            {participant}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(participant);
+                            // Could add a toast notification here
+                          }}
+                          className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-full transition-colors"
+                          title="Copy phone number"
+                        >
+                          <svg
+                            className="w-4 h-4"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Message Count */}
+                <div>
+                  <label className="text-sm font-medium text-gray-500">
+                    Messages
+                  </label>
+                  <div className="mt-1 text-gray-900 font-medium">
+                    {conversation.length} total
+                  </div>
+                </div>
+
+                {/* Conversation ID (for debugging) */}
+                {selectedConversationId && (
+                  <div>
+                    <label className="text-sm font-medium text-gray-500">
+                      Conversation ID
+                    </label>
+                    <div className="mt-1 text-xs text-gray-600 font-mono bg-gray-50 p-2 rounded break-all">
+                      {selectedConversationId}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-6 flex gap-3">
+                <button
+                  onClick={() => setShowDetailsModal(false)}
+                  className="flex-1 bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 font-medium transition-colors"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </AdminShell>
   );
 }

@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { Shield, Loader2 } from "lucide-react";
+import AdminShell from "../_components/AdminShell";
 
 export default function CreateQuoteProposal() {
   const [loading, setLoading] = useState(false);
@@ -285,693 +286,715 @@ export default function CreateQuoteProposal() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-6xl mx-auto">
-        <div className="bg-white rounded-lg shadow-md p-8">
-          <button
-            onClick={() => (window.location.href = "/admin")}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-4 transition-colors"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+    <AdminShell activePath="/admin/create-quote-proposal">
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-white rounded-lg shadow-md p-8">
+            <button
+              onClick={() => (window.location.href = "/admin")}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-4 transition-colors"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-            Back to Admin
-          </button>
-          <h1 className="text-3xl font-bold text-gray-900 mb-6">
-            Auto Insurance Quote Proposal Generator
-          </h1>
-
-          {/* Customer Information */}
-          <div className="mb-8">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">
-              Customer Information
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Customer Name *
-                </label>
-                <input
-                  type="text"
-                  value={formData.customerName}
-                  onChange={(e) =>
-                    setFormData({ ...formData, customerName: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                  placeholder="John Doe"
-                  required
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
                 />
-              </div>
+              </svg>
+              Back to Admin
+            </button>
+            <h1 className="text-3xl font-bold text-gray-900 mb-6">
+              Auto Insurance Quote Proposal Generator
+            </h1>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone Number *
-                </label>
-                <input
-                  type="tel"
-                  value={formData.customerPhone}
-                  onChange={(e) =>
-                    setFormData({ ...formData, customerPhone: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                  placeholder="(555) 123-4567"
-                  required
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Address *
-                </label>
-                <input
-                  type="text"
-                  value={formData.customerAddress}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      customerAddress: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                  placeholder="123 Main St, City, State 12345"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Effective Date *
-                </label>
-                <input
-                  type="date"
-                  value={formData.effectiveDate}
-                  onChange={(e) =>
-                    setFormData({ ...formData, effectiveDate: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Policy Term *
-                </label>
-                <select
-                  value={formData.term}
-                  onChange={(e) =>
-                    setFormData({ ...formData, term: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="6">6 Months</option>
-                  <option value="12">12 Months</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Drivers */}
-          <div className="mb-8">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-gray-800 border-b pb-2 flex-grow">
-                Drivers
+            {/* Customer Information */}
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">
+                Customer Information
               </h2>
-              <button
-                onClick={addDriver}
-                className="ml-4 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition"
-              >
-                + Add Driver
-              </button>
-            </div>
-
-            {formData.drivers.map((driver, index) => (
-              <div
-                key={index}
-                className="mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50"
-              >
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="font-medium text-gray-700">
-                    Driver {index + 1}
-                  </h3>
-                  {formData.drivers.length > 1 && (
-                    <button
-                      onClick={() => removeDriver(index)}
-                      className="text-red-600 hover:text-red-800 text-sm"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Customer Name *
+                  </label>
                   <input
                     type="text"
-                    placeholder="Driver Name"
-                    value={driver.name}
+                    value={formData.customerName}
                     onChange={(e) =>
-                      handleDriverChange(index, "name", e.target.value)
+                      setFormData({ ...formData, customerName: e.target.value })
                     }
-                    className="px-3 py-2 border border-gray-300 rounded-md"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                    placeholder="John Doe"
+                    required
                   />
-                  <div>
-                    <input
-                      type="date"
-                      placeholder="Date of Birth"
-                      value={driver.dateOfBirth}
-                      onChange={(e) =>
-                        handleDriverChange(index, "dateOfBirth", e.target.value)
-                      }
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                    {driver.dateOfBirth && (
-                      <p className="text-sm text-gray-600 mt-1">
-                        Age: {calculateAge(driver.dateOfBirth)}
-                      </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number *
+                  </label>
+                  <input
+                    type="tel"
+                    value={formData.customerPhone}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        customerPhone: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                    placeholder="(555) 123-4567"
+                    required
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Address *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.customerAddress}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        customerAddress: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                    placeholder="123 Main St, City, State 12345"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Effective Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.effectiveDate}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        effectiveDate: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Policy Term *
+                  </label>
+                  <select
+                    value={formData.term}
+                    onChange={(e) =>
+                      setFormData({ ...formData, term: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="6">6 Months</option>
+                    <option value="12">12 Months</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Drivers */}
+            <div className="mb-8">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-gray-800 border-b pb-2 flex-grow">
+                  Drivers
+                </h2>
+                <button
+                  onClick={addDriver}
+                  className="ml-4 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition"
+                >
+                  + Add Driver
+                </button>
+              </div>
+
+              {formData.drivers.map((driver, index) => (
+                <div
+                  key={index}
+                  className="mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50"
+                >
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-medium text-gray-700">
+                      Driver {index + 1}
+                    </h3>
+                    {formData.drivers.length > 1 && (
+                      <button
+                        onClick={() => removeDriver(index)}
+                        className="text-red-600 hover:text-red-800 text-sm"
+                      >
+                        Remove
+                      </button>
                     )}
                   </div>
-                  <input
-                    type="text"
-                    placeholder="License # (optional)"
-                    value={driver.licenseNumber}
-                    onChange={(e) =>
-                      handleDriverChange(index, "licenseNumber", e.target.value)
-                    }
-                    className="px-3 py-2 border border-gray-300 rounded-md"
-                  />
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <input
+                      type="text"
+                      placeholder="Driver Name"
+                      value={driver.name}
+                      onChange={(e) =>
+                        handleDriverChange(index, "name", e.target.value)
+                      }
+                      className="px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                    <div>
+                      <input
+                        type="date"
+                        placeholder="Date of Birth"
+                        value={driver.dateOfBirth}
+                        onChange={(e) =>
+                          handleDriverChange(
+                            index,
+                            "dateOfBirth",
+                            e.target.value,
+                          )
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                      {driver.dateOfBirth && (
+                        <p className="text-sm text-gray-600 mt-1">
+                          Age: {calculateAge(driver.dateOfBirth)}
+                        </p>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="License # (optional)"
+                      value={driver.licenseNumber}
+                      onChange={(e) =>
+                        handleDriverChange(
+                          index,
+                          "licenseNumber",
+                          e.target.value,
+                        )
+                      }
+                      className="px-3 py-2 border border-gray-300 rounded-md"
+                    />
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Vehicles */}
-          <div className="mb-8">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold text-gray-800 border-b pb-2 flex-grow">
-                Vehicles
-              </h2>
-              <button
-                onClick={addVehicle}
-                className="ml-4 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition"
-              >
-                + Add Vehicle
-              </button>
+              ))}
             </div>
 
-            {formData.vehicles.map((vehicle, index) => (
-              <div
-                key={index}
-                className="mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50"
-              >
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="font-medium text-gray-700">
-                    Vehicle {index + 1}
-                  </h3>
-                  {formData.vehicles.length > 1 && (
-                    <button
-                      onClick={() => removeVehicle(index)}
-                      className="text-red-600 hover:text-red-800 text-sm"
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="md:col-span-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      VIN Number
-                    </label>
-                    <div className="flex gap-2">
+            {/* Vehicles */}
+            <div className="mb-8">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold text-gray-800 border-b pb-2 flex-grow">
+                  Vehicles
+                </h2>
+                <button
+                  onClick={addVehicle}
+                  className="ml-4 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition"
+                >
+                  + Add Vehicle
+                </button>
+              </div>
+
+              {formData.vehicles.map((vehicle, index) => (
+                <div
+                  key={index}
+                  className="mb-4 p-4 border border-gray-200 rounded-lg bg-gray-50"
+                >
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-medium text-gray-700">
+                      Vehicle {index + 1}
+                    </h3>
+                    {formData.vehicles.length > 1 && (
+                      <button
+                        onClick={() => removeVehicle(index)}
+                        className="text-red-600 hover:text-red-800 text-sm"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="md:col-span-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        VIN Number
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Enter full 17-character VIN"
+                          value={vehicle.vin}
+                          onChange={(e) => {
+                            const val = e.target.value.toUpperCase();
+                            handleVehicleChange(index, "vin", val);
+                            if (val.length === 17) handleVinLookup(index, val);
+                          }}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md font-mono"
+                          maxLength={17}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleVinLookup(index, vehicle.vin)}
+                          disabled={
+                            vehicle.vin.length !== 17 || vinLoading === index
+                          }
+                          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm"
+                        >
+                          {vinLoading === index ? "Looking up..." : "Lookup"}
+                        </button>
+                      </div>
+                      {vinErrors[index] && (
+                        <p className="text-red-500 text-xs mt-1">
+                          {vinErrors[index]}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        Year, make, and model will auto-fill after VIN lookup
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Year
+                      </label>
                       <input
                         type="text"
-                        placeholder="Enter full 17-character VIN"
-                        value={vehicle.vin}
-                        onChange={(e) => {
-                          const val = e.target.value.toUpperCase();
-                          handleVehicleChange(index, "vin", val);
-                          if (val.length === 17) handleVinLookup(index, val);
-                        }}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md font-mono"
-                        maxLength={17}
+                        value={vehicle.year}
+                        readOnly
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                        placeholder="Auto-filled"
                       />
-                      <button
-                        type="button"
-                        onClick={() => handleVinLookup(index, vehicle.vin)}
-                        disabled={
-                          vehicle.vin.length !== 17 || vinLoading === index
-                        }
-                        className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm"
-                      >
-                        {vinLoading === index ? "Looking up..." : "Lookup"}
-                      </button>
                     </div>
-                    {vinErrors[index] && (
-                      <p className="text-red-500 text-xs mt-1">
-                        {vinErrors[index]}
-                      </p>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Make
+                      </label>
+                      <input
+                        type="text"
+                        value={vehicle.make}
+                        readOnly
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                        placeholder="Auto-filled"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Model
+                      </label>
+                      <input
+                        type="text"
+                        value={vehicle.model}
+                        readOnly
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
+                        placeholder="Auto-filled"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Coverages */}
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">
+                Coverage Limits
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Bodily Injury
+                  </label>
+                  <select
+                    value={formData.bodilyInjury}
+                    onChange={(e) =>
+                      setFormData({ ...formData, bodilyInjury: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  >
+                    <option value="30/60">$30,000/$60,000</option>
+                    <option value="50/100">$50,000/$100,000</option>
+                    <option value="100/300">$100,000/$300,000</option>
+                    <option value="250/500">$250,000/$500,000</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Property Damage
+                  </label>
+                  <select
+                    value={formData.propertyDamage}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        propertyDamage: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  >
+                    <option value="25">$25,000</option>
+                    <option value="50">$50,000</option>
+                    <option value="100">$100,000</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    PIP
+                  </label>
+                  <select
+                    value={formData.pip}
+                    onChange={(e) =>
+                      setFormData({ ...formData, pip: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  >
+                    <option value="None">None</option>
+                    <option value="2500">$2,500</option>
+                    <option value="5000">$5,000</option>
+                    <option value="10000">$10,000</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    UMBI
+                  </label>
+                  <select
+                    value={formData.umbi}
+                    onChange={(e) =>
+                      setFormData({ ...formData, umbi: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  >
+                    <option value="None">None</option>
+                    <option value="30/60">$30,000/$60,000</option>
+                    <option value="50/100">$50,000/$100,000</option>
+                    <option value="100/300">$100,000/$300,000</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    UMPD
+                  </label>
+                  <select
+                    value={formData.umpd}
+                    onChange={(e) =>
+                      setFormData({ ...formData, umpd: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  >
+                    <option value="None">None</option>
+                    <option value="25">$25,000</option>
+                    <option value="50">$50,000</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Comprehensive Deductible
+                  </label>
+                  <select
+                    value={formData.comprehensive}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        comprehensive: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  >
+                    <option value="None">None</option>
+                    <option value="250">$250</option>
+                    <option value="500">$500</option>
+                    <option value="1000">$1,000</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Collision Deductible
+                  </label>
+                  <select
+                    value={formData.collision}
+                    onChange={(e) =>
+                      setFormData({ ...formData, collision: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                  >
+                    <option value="None">None</option>
+                    <option value="250">$250</option>
+                    <option value="500">$500</option>
+                    <option value="1000">$1,000</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Rental Reimbursement
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      value={formData.rental}
+                      onChange={(e) => {
+                        setFormData({ ...formData, rental: e.target.value });
+                        if (e.target.value === "None") {
+                          setFormData({
+                            ...formData,
+                            rental: "None",
+                            rentalAmount: "",
+                          });
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                    >
+                      <option value="None">None</option>
+                      <option value="Yes">Yes</option>
+                    </select>
+                    {formData.rental === "Yes" && (
+                      <input
+                        type="text"
+                        value={formData.rentalAmount}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            rentalAmount: e.target.value,
+                          })
+                        }
+                        placeholder="30/900"
+                        className="w-32 px-3 py-2 border border-gray-300 rounded-md"
+                      />
                     )}
-                    <p className="text-xs text-gray-500 mt-1">
-                      Year, make, and model will auto-fill after VIN lookup
-                    </p>
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Towing & Labor
+                  </label>
+                  <div className="flex gap-2">
+                    <select
+                      value={formData.towing}
+                      onChange={(e) => {
+                        setFormData({ ...formData, towing: e.target.value });
+                        if (e.target.value === "None") {
+                          setFormData({
+                            ...formData,
+                            towing: "None",
+                            towingAmount: "",
+                          });
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                    >
+                      <option value="None">None</option>
+                      <option value="Yes">Yes</option>
+                    </select>
+                    {formData.towing === "Yes" && (
+                      <input
+                        type="text"
+                        value={formData.towingAmount}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            towingAmount: e.target.value,
+                          })
+                        }
+                        placeholder="75/225"
+                        className="w-32 px-3 py-2 border border-gray-300 rounded-md"
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Pricing */}
+            <div className="mb-8">
+              <h2 className="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">
+                Payment Information
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Paid in Full Price *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.paidInFullPrice}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        paidInFullPrice: e.target.value,
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                    placeholder="999.00"
+                    required
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Down Payment (applies to all payment plans) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.downPayment}
+                    onChange={(e) =>
+                      setFormData({ ...formData, downPayment: e.target.value })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
+                    placeholder="249.91"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-4">
+                <h3 className="font-semibold text-gray-800 mb-3">
+                  Monthly Payment Plans
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Year
+                      EFT (Bank) Monthly
                     </label>
                     <input
-                      type="text"
-                      value={vehicle.year}
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
-                      placeholder="Auto-filled"
+                      type="number"
+                      step="0.01"
+                      value={formData.monthlyPaymentEFT}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          monthlyPaymentEFT: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      placeholder="169.99"
                     />
                   </div>
+
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Make
+                      RCC (Card) Monthly
                     </label>
                     <input
-                      type="text"
-                      value={vehicle.make}
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
-                      placeholder="Auto-filled"
+                      type="number"
+                      step="0.01"
+                      value={formData.monthlyPaymentRCC}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          monthlyPaymentRCC: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      placeholder="179.99"
                     />
                   </div>
-                  <div className="md:col-span-2">
+
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Model
+                      Direct Bill Monthly
                     </label>
                     <input
-                      type="text"
-                      value={vehicle.model}
-                      readOnly
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-100"
-                      placeholder="Auto-filled"
+                      type="number"
+                      step="0.01"
+                      value={formData.monthlyPaymentDirectBill}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          monthlyPaymentDirectBill: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                      placeholder="189.99"
                     />
                   </div>
                 </div>
               </div>
-            ))}
-          </div>
 
-          {/* Coverages */}
-          <div className="mb-8">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">
-              Coverage Limits
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Bodily Injury
-                </label>
-                <select
-                  value={formData.bodilyInjury}
-                  onChange={(e) =>
-                    setFormData({ ...formData, bodilyInjury: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                >
-                  <option value="30/60">$30,000/$60,000</option>
-                  <option value="50/100">$50,000/$100,000</option>
-                  <option value="100/300">$100,000/$300,000</option>
-                  <option value="250/500">$250,000/$500,000</option>
-                </select>
-              </div>
+              {/* Payment Summary */}
+              <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                <h3 className="font-semibold text-gray-800 mb-3">
+                  Payment Summary
+                </h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Paid in Full:</span>
+                    <span className="font-semibold text-green-600">
+                      ${totals.paidInFull}
+                    </span>
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Property Damage
-                </label>
-                <select
-                  value={formData.propertyDamage}
-                  onChange={(e) =>
-                    setFormData({ ...formData, propertyDamage: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                >
-                  <option value="25">$25,000</option>
-                  <option value="50">$50,000</option>
-                  <option value="100">$100,000</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  PIP
-                </label>
-                <select
-                  value={formData.pip}
-                  onChange={(e) =>
-                    setFormData({ ...formData, pip: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                >
-                  <option value="None">None</option>
-                  <option value="2500">$2,500</option>
-                  <option value="5000">$5,000</option>
-                  <option value="10000">$10,000</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  UMBI
-                </label>
-                <select
-                  value={formData.umbi}
-                  onChange={(e) =>
-                    setFormData({ ...formData, umbi: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                >
-                  <option value="None">None</option>
-                  <option value="30/60">$30,000/$60,000</option>
-                  <option value="50/100">$50,000/$100,000</option>
-                  <option value="100/300">$100,000/$300,000</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  UMPD
-                </label>
-                <select
-                  value={formData.umpd}
-                  onChange={(e) =>
-                    setFormData({ ...formData, umpd: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                >
-                  <option value="None">None</option>
-                  <option value="25">$25,000</option>
-                  <option value="50">$50,000</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Comprehensive Deductible
-                </label>
-                <select
-                  value={formData.comprehensive}
-                  onChange={(e) =>
-                    setFormData({ ...formData, comprehensive: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                >
-                  <option value="None">None</option>
-                  <option value="250">$250</option>
-                  <option value="500">$500</option>
-                  <option value="1000">$1,000</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Collision Deductible
-                </label>
-                <select
-                  value={formData.collision}
-                  onChange={(e) =>
-                    setFormData({ ...formData, collision: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                >
-                  <option value="None">None</option>
-                  <option value="250">$250</option>
-                  <option value="500">$500</option>
-                  <option value="1000">$1,000</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Rental Reimbursement
-                </label>
-                <div className="flex gap-2">
-                  <select
-                    value={formData.rental}
-                    onChange={(e) => {
-                      setFormData({ ...formData, rental: e.target.value });
-                      if (e.target.value === "None") {
-                        setFormData({
-                          ...formData,
-                          rental: "None",
-                          rentalAmount: "",
-                        });
-                      }
-                    }}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
-                  >
-                    <option value="None">None</option>
-                    <option value="Yes">Yes</option>
-                  </select>
-                  {formData.rental === "Yes" && (
-                    <input
-                      type="text"
-                      value={formData.rentalAmount}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          rentalAmount: e.target.value,
-                        })
-                      }
-                      placeholder="30/900"
-                      className="w-32 px-3 py-2 border border-gray-300 rounded-md"
-                    />
+                  {formData.monthlyPaymentEFT && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">EFT Plan Total:</span>
+                      <span className="font-semibold">
+                        ${totals.totalEFT} (Save ${totals.savingsEFT})
+                      </span>
+                    </div>
                   )}
-                </div>
-              </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Towing & Labor
-                </label>
-                <div className="flex gap-2">
-                  <select
-                    value={formData.towing}
-                    onChange={(e) => {
-                      setFormData({ ...formData, towing: e.target.value });
-                      if (e.target.value === "None") {
-                        setFormData({
-                          ...formData,
-                          towing: "None",
-                          towingAmount: "",
-                        });
-                      }
-                    }}
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
-                  >
-                    <option value="None">None</option>
-                    <option value="Yes">Yes</option>
-                  </select>
-                  {formData.towing === "Yes" && (
-                    <input
-                      type="text"
-                      value={formData.towingAmount}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          towingAmount: e.target.value,
-                        })
-                      }
-                      placeholder="75/225"
-                      className="w-32 px-3 py-2 border border-gray-300 rounded-md"
-                    />
+                  {formData.monthlyPaymentRCC && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">RCC Plan Total:</span>
+                      <span className="font-semibold">
+                        ${totals.totalRCC} (Save ${totals.savingsRCC})
+                      </span>
+                    </div>
+                  )}
+
+                  {formData.monthlyPaymentDirectBill && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Direct Bill Total:</span>
+                      <span className="font-semibold">
+                        ${totals.totalDirectBill} (Save $
+                        {totals.savingsDirectBill})
+                      </span>
+                    </div>
                   )}
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Pricing */}
-          <div className="mb-8">
-            <h2 className="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">
-              Payment Information
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Paid in Full Price *
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.paidInFullPrice}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      paidInFullPrice: e.target.value,
-                    })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                  placeholder="999.00"
-                  required
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Down Payment (applies to all payment plans) *
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.downPayment}
-                  onChange={(e) =>
-                    setFormData({ ...formData, downPayment: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500"
-                  placeholder="249.91"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 mb-4">
-              <h3 className="font-semibold text-gray-800 mb-3">
-                Monthly Payment Plans
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    EFT (Bank) Monthly
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.monthlyPaymentEFT}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        monthlyPaymentEFT: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="169.99"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    RCC (Card) Monthly
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.monthlyPaymentRCC}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        monthlyPaymentRCC: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="179.99"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Direct Bill Monthly
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.monthlyPaymentDirectBill}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        monthlyPaymentDirectBill: e.target.value,
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="189.99"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Payment Summary */}
-            <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-              <h3 className="font-semibold text-gray-800 mb-3">
-                Payment Summary
-              </h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Paid in Full:</span>
-                  <span className="font-semibold text-green-600">
-                    ${totals.paidInFull}
-                  </span>
-                </div>
-
-                {formData.monthlyPaymentEFT && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">EFT Plan Total:</span>
-                    <span className="font-semibold">
-                      ${totals.totalEFT} (Save ${totals.savingsEFT})
-                    </span>
-                  </div>
+            {/* Generate Button */}
+            <div className="flex justify-end">
+              <button
+                onClick={generatePDF}
+                disabled={
+                  loading ||
+                  !formData.customerName ||
+                  !formData.paidInFullPrice ||
+                  !formData.customerAddress ||
+                  !formData.customerPhone
+                }
+                className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition font-semibold text-lg flex items-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Generating PDF...
+                  </>
+                ) : (
+                  "Generate Quote PDF"
                 )}
-
-                {formData.monthlyPaymentRCC && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">RCC Plan Total:</span>
-                    <span className="font-semibold">
-                      ${totals.totalRCC} (Save ${totals.savingsRCC})
-                    </span>
-                  </div>
-                )}
-
-                {formData.monthlyPaymentDirectBill && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Direct Bill Total:</span>
-                    <span className="font-semibold">
-                      ${totals.totalDirectBill} (Save $
-                      {totals.savingsDirectBill})
-                    </span>
-                  </div>
-                )}
-              </div>
+              </button>
             </div>
-          </div>
-
-          {/* Generate Button */}
-          <div className="flex justify-end">
-            <button
-              onClick={generatePDF}
-              disabled={
-                loading ||
-                !formData.customerName ||
-                !formData.paidInFullPrice ||
-                !formData.customerAddress ||
-                !formData.customerPhone
-              }
-              className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition font-semibold text-lg flex items-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Generating PDF...
-                </>
-              ) : (
-                "Generate Quote PDF"
-              )}
-            </button>
           </div>
         </div>
       </div>
-    </div>
+    </AdminShell>
   );
 }

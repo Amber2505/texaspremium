@@ -3,6 +3,7 @@
 "use client";
 
 import React, { useState, useEffect, JSX } from "react";
+import AdminShell from "../_components/AdminShell";
 import {
   Calendar,
   Edit,
@@ -1530,581 +1531,451 @@ export default function InsuranceReminderDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <button
-                onClick={() => (window.location.href = "/admin")}
-                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-2 transition-colors"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+    <AdminShell activePath="/admin/reminder">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <button
+                  onClick={() => (window.location.href = "/admin")}
+                  className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-2 transition-colors"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 19l-7-7 7-7"
-                  />
-                </svg>
-                Back to Admin
-              </button>
-              <h1 className="text-3xl font-bold text-gray-900">
-                Insurance Payment Reminders
-              </h1>
-              <p className="text-gray-600 mt-1">
-                Track and manage customer payment follow-ups
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() =>
-                  setView(view === "dashboard" ? "calendar" : "dashboard")
-                }
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition flex items-center gap-2"
-              >
-                <Calendar className="w-4 h-4" />
-                {view === "dashboard" ? "Calendar View" : "Dashboard View"}
-              </button>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
-              >
-                <PlusCircle className="w-4 h-4" />
-                Add Customer
-              </button>
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 19l-7-7 7-7"
+                    />
+                  </svg>
+                  Back to Admin
+                </button>
+                <h1 className="text-3xl font-bold text-gray-900">
+                  Insurance Payment Reminders
+                </h1>
+                <p className="text-gray-600 mt-1">
+                  Track and manage customer payment follow-ups
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  onClick={() =>
+                    setView(view === "dashboard" ? "calendar" : "dashboard")
+                  }
+                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition flex items-center gap-2"
+                >
+                  <Calendar className="w-4 h-4" />
+                  {view === "dashboard" ? "Calendar View" : "Dashboard View"}
+                </button>
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  Add Customer
+                </button>
+              </div>
             </div>
           </div>
-        </div>
 
-        {view === "dashboard" ? (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <StatCard
-                title="Today's Follow-ups"
-                value={todayFollowUps.length}
-                icon={<Bell className="w-6 h-6 text-blue-600" />}
-                color="blue"
-              />
-              <StatCard
-                title="Overdue Follow-ups"
-                value={overdueFollowUps.length}
-                icon={<AlertTriangle className="w-6 h-6 text-red-600" />}
-                color="red"
-              />
-              <StatCard
-                title="Upcoming (7 days)"
-                value={upcomingFollowUps.length}
-                icon={<Calendar className="w-6 h-6 text-green-600" />}
-                color="green"
-              />
-            </div>
-
-            {pendingCustomers.length > 0 && (
-              <div
-                id="pending-section"
-                className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl shadow-sm p-6 mb-6 border-2 border-yellow-200"
-              >
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-                    <Bell className="w-5 h-5 text-yellow-600" />
-                    Pending Customers - Setup Payment Reminders (
-                    {filteredPendingCustomers.length}
-                    {selectedCompany !== "all" &&
-                      ` of ${pendingCustomers.length}`}
-                    )
-                  </h2>
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium text-gray-700">
-                      Filter by Company:
-                    </label>
-                    <select
-                      value={selectedCompany}
-                      onChange={(e) => handleCompanyChange(e.target.value)}
-                      className="border border-yellow-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                    >
-                      <option value="all">
-                        All Companies ({pendingCustomers.length})
-                      </option>
-                      {uniqueCompanies.map((company) => {
-                        const count = pendingCustomers.filter(
-                          (c) => c.company_name === company,
-                        ).length;
-                        return (
-                          <option key={company} value={company}>
-                            {company} ({count})
-                          </option>
-                        );
-                      })}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <input
-                    type="text"
-                    placeholder="Search by name, policy number, company, or coverage type..."
-                    value={searchQueries.pending}
-                    onChange={(e) =>
-                      handleSearchChange("pending", e.target.value)
-                    }
-                    className="w-full border border-yellow-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 bg-white"
-                  />
-                </div>
-
-                {filteredPendingCustomers.length === 0 ? (
-                  <p className="text-gray-500 text-center py-8">
-                    {searchQueries.pending || selectedCompany !== "all"
-                      ? "No matching customers found"
-                      : "No pending customers"}
-                  </p>
-                ) : (
-                  <>
-                    <div className="space-y-3">
-                      {currentPendingCustomers.map((customer) => {
-                        const effectiveDateStr =
-                          customer.effective_date.split("T")[0];
-                        const expirationDateStr =
-                          customer.expiration_date.split("T")[0];
-
-                        const [effYear, effMonth, effDay] = effectiveDateStr
-                          .split("-")
-                          .map(Number);
-                        const [expYear, expMonth, expDay] = expirationDateStr
-                          .split("-")
-                          .map(Number);
-
-                        const effectiveDate = new Date(
-                          effYear,
-                          effMonth - 1,
-                          effDay,
-                        );
-                        const expirationDate = new Date(
-                          expYear,
-                          expMonth - 1,
-                          expDay,
-                        );
-
-                        const yearDiff =
-                          expirationDate.getFullYear() -
-                          effectiveDate.getFullYear();
-                        const monthDiff =
-                          expirationDate.getMonth() - effectiveDate.getMonth();
-                        const dayDiff =
-                          expirationDate.getDate() - effectiveDate.getDate();
-
-                        let diffMonths = yearDiff * 12 + monthDiff;
-
-                        if (dayDiff < 0) {
-                          diffMonths -= 1;
-                        }
-
-                        const policyDuration =
-                          diffMonths >= 12
-                            ? "12 months"
-                            : `${diffMonths} months`;
-
-                        const isEditingDates =
-                          editingPendingDates === customer._id;
-
-                        return (
-                          <div
-                            key={customer._id}
-                            className="border border-yellow-200 rounded-lg p-4 bg-white hover:shadow-md transition"
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-3 mb-2">
-                                  <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
-                                    NEW
-                                  </span>
-                                  <span className="text-xs text-gray-500">
-                                    Policy Duration: {policyDuration}
-                                  </span>
-                                </div>
-                                <h3 className="font-semibold text-gray-900 text-lg">
-                                  {customer.customer_name}
-                                </h3>
-                                <p className="text-sm text-gray-600">
-                                  Policy #: {customer.policy_no}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  Company: {customer.company_name}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  Coverage: {customer.coverage_type}
-                                </p>
-
-                                {isEditingDates ? (
-                                  <div className="mt-2 space-y-2">
-                                    <div className="flex items-center gap-2">
-                                      <label className="text-xs text-gray-600 w-20">
-                                        Effective:
-                                      </label>
-                                      <input
-                                        type="date"
-                                        value={editEffectiveDate}
-                                        onChange={(e) =>
-                                          handleEffectiveDateChange(
-                                            e.target.value,
-                                            customer,
-                                          )
-                                        }
-                                        className="border border-yellow-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
-                                      />
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <label className="text-xs text-gray-600 w-20">
-                                        Expiration:
-                                      </label>
-                                      <input
-                                        type="date"
-                                        value={editExpirationDate}
-                                        onChange={(e) =>
-                                          setEditExpirationDate(e.target.value)
-                                        }
-                                        className="border border-yellow-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
-                                      />
-                                      <span className="text-xs text-gray-500 italic">
-                                        (Auto-filled based on {policyDuration}{" "}
-                                        policy)
-                                      </span>
-                                    </div>
-                                    <div className="flex gap-2">
-                                      <button
-                                        onClick={() =>
-                                          handleSavePendingDates(customer._id)
-                                        }
-                                        className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition"
-                                      >
-                                        Save
-                                      </button>
-                                      <button
-                                        onClick={handleCancelPendingEdit}
-                                        className="px-3 py-1 bg-gray-300 text-gray-700 rounded text-xs hover:bg-gray-400 transition"
-                                      >
-                                        Cancel
-                                      </button>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center gap-2 mt-1">
-                                    <p className="text-xs text-gray-500">
-                                      Effective:{" "}
-                                      {formatDate(
-                                        effectiveDate,
-                                        "MMM dd, yyyy",
-                                      )}{" "}
-                                      - Expiration:{" "}
-                                      {formatDate(
-                                        expirationDate,
-                                        "MMM dd, yyyy",
-                                      )}
-                                    </p>
-                                    <button
-                                      onClick={() =>
-                                        handleEditPendingDates(customer)
-                                      }
-                                      className="p-1 hover:bg-yellow-100 rounded"
-                                      title="Edit Dates"
-                                    >
-                                      <Edit className="w-3 h-3 text-yellow-600" />
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() =>
-                                    handleSetupReminder(customer._id)
-                                  }
-                                  className="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm font-medium hover:bg-yellow-700 transition flex items-center gap-2"
-                                >
-                                  <Calendar className="w-4 h-4" />
-                                  Setup Reminder
-                                </button>
-                                {/* NEW: Cancel Button */}
-                                <button
-                                  onClick={() =>
-                                    handleCancelPendingCustomer(customer)
-                                  }
-                                  className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition flex items-center gap-2"
-                                  title="Cancel Policy"
-                                >
-                                  <XCircle className="w-4 h-4" />
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {totalPages > 1 && (
-                      <div className="mt-6 flex items-center justify-between border-t border-yellow-200 pt-4">
-                        <div className="text-sm text-gray-600">
-                          Showing {startIndex + 1} to{" "}
-                          {Math.min(endIndex, filteredPendingCustomers.length)}{" "}
-                          of {filteredPendingCustomers.length} customers
-                          {selectedCompany !== "all" &&
-                            ` (filtered by ${selectedCompany})`}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={handlePreviousPage}
-                            disabled={currentPage === 1}
-                            className="px-4 py-2 bg-white border border-yellow-300 text-yellow-700 rounded-lg text-sm font-medium hover:bg-yellow-50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                          >
-                            <ChevronLeft className="w-4 h-4" />
-                            Previous
-                          </button>
-                          <span className="text-sm text-gray-700 px-3">
-                            Page {currentPage} of {totalPages}
-                          </span>
-                          <button
-                            onClick={handleNextPage}
-                            disabled={currentPage === totalPages}
-                            className="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm font-medium hover:bg-yellow-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                          >
-                            Next
-                            <ChevronRight className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* Rest of the dashboard sections remain the same... */}
-            {/* I'll include the modals at the end */}
-
-            <div
-              id="today-section"
-              className="bg-white rounded-xl shadow-sm p-6 mb-6"
-            >
-              <h2 className="text-xl font-semibold mb-4 text-gray-800 flex items-center gap-2">
-                <Bell className="w-5 h-5 text-blue-600" />
-                Today&apos;s Follow-ups ({filteredTodayFollowUps.length})
-              </h2>
-
-              <div className="mb-4">
-                <input
-                  type="text"
-                  placeholder="Search by name or policy number..."
-                  value={searchQueries.today}
-                  onChange={(e) => handleSearchChange("today", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          {view === "dashboard" ? (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <StatCard
+                  title="Today's Follow-ups"
+                  value={todayFollowUps.length}
+                  icon={<Bell className="w-6 h-6 text-blue-600" />}
+                  color="blue"
+                />
+                <StatCard
+                  title="Overdue Follow-ups"
+                  value={overdueFollowUps.length}
+                  icon={<AlertTriangle className="w-6 h-6 text-red-600" />}
+                  color="red"
+                />
+                <StatCard
+                  title="Upcoming (7 days)"
+                  value={upcomingFollowUps.length}
+                  icon={<Calendar className="w-6 h-6 text-green-600" />}
+                  color="green"
                 />
               </div>
 
-              {filteredTodayFollowUps.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">
-                  {searchQueries.today
-                    ? "No matching follow-ups found"
-                    : "No follow-ups scheduled for today"}
-                </p>
-              ) : (
-                <>
-                  <div className="space-y-3">
-                    {currentTodayFollowUps.map(
-                      ({ customer, followUp, index }) => (
-                        <FollowUpCard
-                          key={`${customer.id}-${index}`}
-                          customer={customer}
-                          followUp={followUp}
-                          onComplete={() =>
-                            handleCompleteFollowUp(customer.id, index)
-                          }
-                          onMarkPaid={() => handleMarkPaid(customer.id)}
-                          onChangeToDirectBill={handleChangeToDirectBill}
-                        />
-                      ),
-                    )}
+              {pendingCustomers.length > 0 && (
+                <div
+                  id="pending-section"
+                  className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl shadow-sm p-6 mb-6 border-2 border-yellow-200"
+                >
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
+                      <Bell className="w-5 h-5 text-yellow-600" />
+                      Pending Customers - Setup Payment Reminders (
+                      {filteredPendingCustomers.length}
+                      {selectedCompany !== "all" &&
+                        ` of ${pendingCustomers.length}`}
+                      )
+                    </h2>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium text-gray-700">
+                        Filter by Company:
+                      </label>
+                      <select
+                        value={selectedCompany}
+                        onChange={(e) => handleCompanyChange(e.target.value)}
+                        className="border border-yellow-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                      >
+                        <option value="all">
+                          All Companies ({pendingCustomers.length})
+                        </option>
+                        {uniqueCompanies.map((company) => {
+                          const count = pendingCustomers.filter(
+                            (c) => c.company_name === company,
+                          ).length;
+                          return (
+                            <option key={company} value={company}>
+                              {company} ({count})
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
                   </div>
 
-                  {todayTotalPages > 1 && (
-                    <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
-                      <div className="text-sm text-gray-600">
-                        Showing {todayStartIndex + 1} to{" "}
-                        {Math.min(todayEndIndex, filteredTodayFollowUps.length)}{" "}
-                        of {filteredTodayFollowUps.length} follow-ups
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() =>
-                            handlePageChange("today", paginationPages.today - 1)
-                          }
-                          disabled={paginationPages.today === 1}
-                          className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                        >
-                          <ChevronLeft className="w-4 h-4" />
-                          Previous
-                        </button>
-                        <span className="text-sm text-gray-700 px-3">
-                          Page {paginationPages.today} of {todayTotalPages}
-                        </span>
-                        <button
-                          onClick={() =>
-                            handlePageChange("today", paginationPages.today + 1)
-                          }
-                          disabled={paginationPages.today === todayTotalPages}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                        >
-                          Next
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+                  <div className="mb-4">
+                    <input
+                      type="text"
+                      placeholder="Search by name, policy number, company, or coverage type..."
+                      value={searchQueries.pending}
+                      onChange={(e) =>
+                        handleSearchChange("pending", e.target.value)
+                      }
+                      className="w-full border border-yellow-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 bg-white"
+                    />
+                  </div>
 
-            {overdueFollowUps.length > 0 && (
+                  {filteredPendingCustomers.length === 0 ? (
+                    <p className="text-gray-500 text-center py-8">
+                      {searchQueries.pending || selectedCompany !== "all"
+                        ? "No matching customers found"
+                        : "No pending customers"}
+                    </p>
+                  ) : (
+                    <>
+                      <div className="space-y-3">
+                        {currentPendingCustomers.map((customer) => {
+                          const effectiveDateStr =
+                            customer.effective_date.split("T")[0];
+                          const expirationDateStr =
+                            customer.expiration_date.split("T")[0];
+
+                          const [effYear, effMonth, effDay] = effectiveDateStr
+                            .split("-")
+                            .map(Number);
+                          const [expYear, expMonth, expDay] = expirationDateStr
+                            .split("-")
+                            .map(Number);
+
+                          const effectiveDate = new Date(
+                            effYear,
+                            effMonth - 1,
+                            effDay,
+                          );
+                          const expirationDate = new Date(
+                            expYear,
+                            expMonth - 1,
+                            expDay,
+                          );
+
+                          const yearDiff =
+                            expirationDate.getFullYear() -
+                            effectiveDate.getFullYear();
+                          const monthDiff =
+                            expirationDate.getMonth() -
+                            effectiveDate.getMonth();
+                          const dayDiff =
+                            expirationDate.getDate() - effectiveDate.getDate();
+
+                          let diffMonths = yearDiff * 12 + monthDiff;
+
+                          if (dayDiff < 0) {
+                            diffMonths -= 1;
+                          }
+
+                          const policyDuration =
+                            diffMonths >= 12
+                              ? "12 months"
+                              : `${diffMonths} months`;
+
+                          const isEditingDates =
+                            editingPendingDates === customer._id;
+
+                          return (
+                            <div
+                              key={customer._id}
+                              className="border border-yellow-200 rounded-lg p-4 bg-white hover:shadow-md transition"
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                                      NEW
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                      Policy Duration: {policyDuration}
+                                    </span>
+                                  </div>
+                                  <h3 className="font-semibold text-gray-900 text-lg">
+                                    {customer.customer_name}
+                                  </h3>
+                                  <p className="text-sm text-gray-600">
+                                    Policy #: {customer.policy_no}
+                                  </p>
+                                  <p className="text-sm text-gray-600">
+                                    Company: {customer.company_name}
+                                  </p>
+                                  <p className="text-sm text-gray-600">
+                                    Coverage: {customer.coverage_type}
+                                  </p>
+
+                                  {isEditingDates ? (
+                                    <div className="mt-2 space-y-2">
+                                      <div className="flex items-center gap-2">
+                                        <label className="text-xs text-gray-600 w-20">
+                                          Effective:
+                                        </label>
+                                        <input
+                                          type="date"
+                                          value={editEffectiveDate}
+                                          onChange={(e) =>
+                                            handleEffectiveDateChange(
+                                              e.target.value,
+                                              customer,
+                                            )
+                                          }
+                                          className="border border-yellow-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                                        />
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <label className="text-xs text-gray-600 w-20">
+                                          Expiration:
+                                        </label>
+                                        <input
+                                          type="date"
+                                          value={editExpirationDate}
+                                          onChange={(e) =>
+                                            setEditExpirationDate(
+                                              e.target.value,
+                                            )
+                                          }
+                                          className="border border-yellow-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500"
+                                        />
+                                        <span className="text-xs text-gray-500 italic">
+                                          (Auto-filled based on {policyDuration}{" "}
+                                          policy)
+                                        </span>
+                                      </div>
+                                      <div className="flex gap-2">
+                                        <button
+                                          onClick={() =>
+                                            handleSavePendingDates(customer._id)
+                                          }
+                                          className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 transition"
+                                        >
+                                          Save
+                                        </button>
+                                        <button
+                                          onClick={handleCancelPendingEdit}
+                                          className="px-3 py-1 bg-gray-300 text-gray-700 rounded text-xs hover:bg-gray-400 transition"
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <p className="text-xs text-gray-500">
+                                        Effective:{" "}
+                                        {formatDate(
+                                          effectiveDate,
+                                          "MMM dd, yyyy",
+                                        )}{" "}
+                                        - Expiration:{" "}
+                                        {formatDate(
+                                          expirationDate,
+                                          "MMM dd, yyyy",
+                                        )}
+                                      </p>
+                                      <button
+                                        onClick={() =>
+                                          handleEditPendingDates(customer)
+                                        }
+                                        className="p-1 hover:bg-yellow-100 rounded"
+                                        title="Edit Dates"
+                                      >
+                                        <Edit className="w-3 h-3 text-yellow-600" />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() =>
+                                      handleSetupReminder(customer._id)
+                                    }
+                                    className="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm font-medium hover:bg-yellow-700 transition flex items-center gap-2"
+                                  >
+                                    <Calendar className="w-4 h-4" />
+                                    Setup Reminder
+                                  </button>
+                                  {/* NEW: Cancel Button */}
+                                  <button
+                                    onClick={() =>
+                                      handleCancelPendingCustomer(customer)
+                                    }
+                                    className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition flex items-center gap-2"
+                                    title="Cancel Policy"
+                                  >
+                                    <XCircle className="w-4 h-4" />
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {totalPages > 1 && (
+                        <div className="mt-6 flex items-center justify-between border-t border-yellow-200 pt-4">
+                          <div className="text-sm text-gray-600">
+                            Showing {startIndex + 1} to{" "}
+                            {Math.min(
+                              endIndex,
+                              filteredPendingCustomers.length,
+                            )}{" "}
+                            of {filteredPendingCustomers.length} customers
+                            {selectedCompany !== "all" &&
+                              ` (filtered by ${selectedCompany})`}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={handlePreviousPage}
+                              disabled={currentPage === 1}
+                              className="px-4 py-2 bg-white border border-yellow-300 text-yellow-700 rounded-lg text-sm font-medium hover:bg-yellow-50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                              Previous
+                            </button>
+                            <span className="text-sm text-gray-700 px-3">
+                              Page {currentPage} of {totalPages}
+                            </span>
+                            <button
+                              onClick={handleNextPage}
+                              disabled={currentPage === totalPages}
+                              className="px-4 py-2 bg-yellow-600 text-white rounded-lg text-sm font-medium hover:bg-yellow-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                            >
+                              Next
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Rest of the dashboard sections remain the same... */}
+              {/* I'll include the modals at the end */}
+
               <div
-                id="overdue-section"
-                className="bg-gradient-to-r from-red-50 to-orange-50 rounded-xl shadow-sm p-6 mb-6 border-2 border-red-200"
+                id="today-section"
+                className="bg-white rounded-xl shadow-sm p-6 mb-6"
               >
                 <h2 className="text-xl font-semibold mb-4 text-gray-800 flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-red-600" />
-                  Overdue Follow-ups ({filteredOverdueFollowUps.length})
+                  <Bell className="w-5 h-5 text-blue-600" />
+                  Today&apos;s Follow-ups ({filteredTodayFollowUps.length})
                 </h2>
 
                 <div className="mb-4">
                   <input
                     type="text"
                     placeholder="Search by name or policy number..."
-                    value={searchQueries.overdue}
+                    value={searchQueries.today}
                     onChange={(e) =>
-                      handleSearchChange("overdue", e.target.value)
+                      handleSearchChange("today", e.target.value)
                     }
-                    className="w-full border border-red-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
-                {filteredOverdueFollowUps.length === 0 ? (
+                {filteredTodayFollowUps.length === 0 ? (
                   <p className="text-gray-500 text-center py-8">
-                    No matching overdue follow-ups found
+                    {searchQueries.today
+                      ? "No matching follow-ups found"
+                      : "No follow-ups scheduled for today"}
                   </p>
                 ) : (
                   <>
                     <div className="space-y-3">
-                      {currentOverdueFollowUps.map(
-                        ({ customer, followUp, index, daysOverdue }) => (
-                          <div
+                      {currentTodayFollowUps.map(
+                        ({ customer, followUp, index }) => (
+                          <FollowUpCard
                             key={`${customer.id}-${index}`}
-                            className="border border-red-200 rounded-lg p-4 bg-white hover:shadow-md transition"
-                          >
-                            <div className="flex items-start justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-3 mb-2">
-                                  <span className="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">
-                                    {daysOverdue}{" "}
-                                    {daysOverdue === 1 ? "DAY" : "DAYS"} OVERDUE
-                                  </span>
-                                  <span className="text-xs text-gray-500">
-                                    Due:{" "}
-                                    {formatDate(followUp.date, "MMM dd, yyyy")}
-                                  </span>
-                                  <span className="flex items-center gap-1 text-sm text-gray-600">
-                                    {followUp.method === "phone" && (
-                                      <Phone className="w-4 h-4" />
-                                    )}
-                                    {followUp.method === "email" && (
-                                      <Mail className="w-4 h-4" />
-                                    )}
-                                    {followUp.method === "sms" && (
-                                      <MessageSquare className="w-4 h-4" />
-                                    )}
-                                    {followUp.method}
-                                  </span>
-                                </div>
-                                <h3 className="font-semibold text-gray-900">
-                                  {customer.name}
-                                </h3>
-                                <p className="text-sm text-gray-600">
-                                  Policy: {customer.id}
-                                </p>
-                                <p className="text-sm text-gray-700 mt-1">
-                                  {followUp.description}
-                                </p>
-                                <p className="text-xs text-gray-500 mt-1">
-                                  Payment{" "}
-                                  {customer.totalPayments -
-                                    customer.remainingPayments +
-                                    1}{" "}
-                                  of {customer.totalPayments}
-                                </p>
-                              </div>
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => handleMarkPaid(customer.id)}
-                                  className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition"
-                                >
-                                  Mark Paid
-                                </button>
-                                <button
-                                  onClick={() =>
-                                    handleCompleteFollowUp(customer.id, index)
-                                  }
-                                  className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition"
-                                >
-                                  Complete
-                                </button>
-                              </div>
-                            </div>
-                          </div>
+                            customer={customer}
+                            followUp={followUp}
+                            onComplete={() =>
+                              handleCompleteFollowUp(customer.id, index)
+                            }
+                            onMarkPaid={() => handleMarkPaid(customer.id)}
+                            onChangeToDirectBill={handleChangeToDirectBill}
+                          />
                         ),
                       )}
                     </div>
 
-                    {overdueTotalPages > 1 && (
-                      <div className="mt-6 flex items-center justify-between border-t border-red-200 pt-4">
+                    {todayTotalPages > 1 && (
+                      <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
                         <div className="text-sm text-gray-600">
-                          Showing {overdueStartIndex + 1} to{" "}
+                          Showing {todayStartIndex + 1} to{" "}
                           {Math.min(
-                            overdueEndIndex,
-                            filteredOverdueFollowUps.length,
+                            todayEndIndex,
+                            filteredTodayFollowUps.length,
                           )}{" "}
-                          of {filteredOverdueFollowUps.length} follow-ups
+                          of {filteredTodayFollowUps.length} follow-ups
                         </div>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() =>
                               handlePageChange(
-                                "overdue",
-                                paginationPages.overdue - 1,
+                                "today",
+                                paginationPages.today - 1,
                               )
                             }
-                            disabled={paginationPages.overdue === 1}
-                            className="px-4 py-2 bg-white border border-red-300 text-red-700 rounded-lg text-sm font-medium hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                            disabled={paginationPages.today === 1}
+                            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                           >
                             <ChevronLeft className="w-4 h-4" />
                             Previous
                           </button>
                           <span className="text-sm text-gray-700 px-3">
-                            Page {paginationPages.overdue} of{" "}
-                            {overdueTotalPages}
+                            Page {paginationPages.today} of {todayTotalPages}
                           </span>
                           <button
                             onClick={() =>
                               handlePageChange(
-                                "overdue",
-                                paginationPages.overdue + 1,
+                                "today",
+                                paginationPages.today + 1,
                               )
                             }
-                            disabled={
-                              paginationPages.overdue === overdueTotalPages
-                            }
-                            className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                            disabled={paginationPages.today === todayTotalPages}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                           >
                             Next
                             <ChevronRight className="w-4 h-4" />
@@ -2115,842 +1986,1006 @@ export default function InsuranceReminderDashboard() {
                   </>
                 )}
               </div>
-            )}
 
-            <div
-              id="upcoming-section"
-              className="bg-white rounded-xl shadow-sm p-6 mb-6"
-            >
-              <h2 className="text-xl font-semibold mb-4 text-gray-800">
-                Upcoming Follow-ups (Next 7 Days) (
-                {filteredUpcomingFollowUps.length})
-              </h2>
+              {overdueFollowUps.length > 0 && (
+                <div
+                  id="overdue-section"
+                  className="bg-gradient-to-r from-red-50 to-orange-50 rounded-xl shadow-sm p-6 mb-6 border-2 border-red-200"
+                >
+                  <h2 className="text-xl font-semibold mb-4 text-gray-800 flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5 text-red-600" />
+                    Overdue Follow-ups ({filteredOverdueFollowUps.length})
+                  </h2>
 
-              <div className="mb-4">
-                <input
-                  type="text"
-                  placeholder="Search by name or policy number..."
-                  value={searchQueries.upcoming}
-                  onChange={(e) =>
-                    handleSearchChange("upcoming", e.target.value)
-                  }
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+                  <div className="mb-4">
+                    <input
+                      type="text"
+                      placeholder="Search by name or policy number..."
+                      value={searchQueries.overdue}
+                      onChange={(e) =>
+                        handleSearchChange("overdue", e.target.value)
+                      }
+                      className="w-full border border-red-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
+                    />
+                  </div>
+
+                  {filteredOverdueFollowUps.length === 0 ? (
+                    <p className="text-gray-500 text-center py-8">
+                      No matching overdue follow-ups found
+                    </p>
+                  ) : (
+                    <>
+                      <div className="space-y-3">
+                        {currentOverdueFollowUps.map(
+                          ({ customer, followUp, index, daysOverdue }) => (
+                            <div
+                              key={`${customer.id}-${index}`}
+                              className="border border-red-200 rounded-lg p-4 bg-white hover:shadow-md transition"
+                            >
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">
+                                      {daysOverdue}{" "}
+                                      {daysOverdue === 1 ? "DAY" : "DAYS"}{" "}
+                                      OVERDUE
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                      Due:{" "}
+                                      {formatDate(
+                                        followUp.date,
+                                        "MMM dd, yyyy",
+                                      )}
+                                    </span>
+                                    <span className="flex items-center gap-1 text-sm text-gray-600">
+                                      {followUp.method === "phone" && (
+                                        <Phone className="w-4 h-4" />
+                                      )}
+                                      {followUp.method === "email" && (
+                                        <Mail className="w-4 h-4" />
+                                      )}
+                                      {followUp.method === "sms" && (
+                                        <MessageSquare className="w-4 h-4" />
+                                      )}
+                                      {followUp.method}
+                                    </span>
+                                  </div>
+                                  <h3 className="font-semibold text-gray-900">
+                                    {customer.name}
+                                  </h3>
+                                  <p className="text-sm text-gray-600">
+                                    Policy: {customer.id}
+                                  </p>
+                                  <p className="text-sm text-gray-700 mt-1">
+                                    {followUp.description}
+                                  </p>
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    Payment{" "}
+                                    {customer.totalPayments -
+                                      customer.remainingPayments +
+                                      1}{" "}
+                                    of {customer.totalPayments}
+                                  </p>
+                                </div>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleMarkPaid(customer.id)}
+                                    className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition"
+                                  >
+                                    Mark Paid
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      handleCompleteFollowUp(customer.id, index)
+                                    }
+                                    className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition"
+                                  >
+                                    Complete
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ),
+                        )}
+                      </div>
+
+                      {overdueTotalPages > 1 && (
+                        <div className="mt-6 flex items-center justify-between border-t border-red-200 pt-4">
+                          <div className="text-sm text-gray-600">
+                            Showing {overdueStartIndex + 1} to{" "}
+                            {Math.min(
+                              overdueEndIndex,
+                              filteredOverdueFollowUps.length,
+                            )}{" "}
+                            of {filteredOverdueFollowUps.length} follow-ups
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() =>
+                                handlePageChange(
+                                  "overdue",
+                                  paginationPages.overdue - 1,
+                                )
+                              }
+                              disabled={paginationPages.overdue === 1}
+                              className="px-4 py-2 bg-white border border-red-300 text-red-700 rounded-lg text-sm font-medium hover:bg-red-50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                              Previous
+                            </button>
+                            <span className="text-sm text-gray-700 px-3">
+                              Page {paginationPages.overdue} of{" "}
+                              {overdueTotalPages}
+                            </span>
+                            <button
+                              onClick={() =>
+                                handlePageChange(
+                                  "overdue",
+                                  paginationPages.overdue + 1,
+                                )
+                              }
+                              disabled={
+                                paginationPages.overdue === overdueTotalPages
+                              }
+                              className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                            >
+                              Next
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              <div
+                id="upcoming-section"
+                className="bg-white rounded-xl shadow-sm p-6 mb-6"
+              >
+                <h2 className="text-xl font-semibold mb-4 text-gray-800">
+                  Upcoming Follow-ups (Next 7 Days) (
+                  {filteredUpcomingFollowUps.length})
+                </h2>
+
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    placeholder="Search by name or policy number..."
+                    value={searchQueries.upcoming}
+                    onChange={(e) =>
+                      handleSearchChange("upcoming", e.target.value)
+                    }
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {filteredUpcomingFollowUps.length === 0 ? (
+                  <p className="text-gray-500 text-center py-8">
+                    {searchQueries.upcoming
+                      ? "No matching upcoming follow-ups found"
+                      : "No upcoming follow-ups"}
+                  </p>
+                ) : (
+                  <>
+                    <div className="space-y-3">
+                      {currentUpcomingFollowUps.map(
+                        ({ customer, followUp, index }) => (
+                          <FollowUpCard
+                            key={`${customer.id}-${index}`}
+                            customer={customer}
+                            followUp={followUp}
+                            onComplete={() =>
+                              handleCompleteFollowUp(customer.id, index)
+                            }
+                            onMarkPaid={() => handleMarkPaid(customer.id)}
+                            onChangeToDirectBill={handleChangeToDirectBill}
+                            isUpcoming
+                          />
+                        ),
+                      )}
+                    </div>
+
+                    {upcomingTotalPages > 1 && (
+                      <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
+                        <div className="text-sm text-gray-600">
+                          Showing {upcomingStartIndex + 1} to{" "}
+                          {Math.min(
+                            upcomingEndIndex,
+                            filteredUpcomingFollowUps.length,
+                          )}{" "}
+                          of {filteredUpcomingFollowUps.length} follow-ups
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() =>
+                              handlePageChange(
+                                "upcoming",
+                                paginationPages.upcoming - 1,
+                              )
+                            }
+                            disabled={paginationPages.upcoming === 1}
+                            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                            Previous
+                          </button>
+                          <span className="text-sm text-gray-700 px-3">
+                            Page {paginationPages.upcoming} of{" "}
+                            {upcomingTotalPages}
+                          </span>
+                          <button
+                            onClick={() =>
+                              handlePageChange(
+                                "upcoming",
+                                paginationPages.upcoming + 1,
+                              )
+                            }
+                            disabled={
+                              paginationPages.upcoming === upcomingTotalPages
+                            }
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                          >
+                            Next
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
 
-              {filteredUpcomingFollowUps.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">
-                  {searchQueries.upcoming
-                    ? "No matching upcoming follow-ups found"
-                    : "No upcoming follow-ups"}
-                </p>
-              ) : (
-                <>
+              {winBackFollowUps.length > 0 && (
+                <div
+                  id="winback-section"
+                  className="bg-white rounded-xl shadow-sm p-6 mb-6 border-2 border-purple-200"
+                >
+                  <h2 className="text-xl font-semibold mb-4 text-gray-800 flex items-center gap-2">
+                    <Bell className="w-5 h-5 text-purple-600" />
+                    Win-Back Opportunities ({winBackFollowUps.length})
+                  </h2>
                   <div className="space-y-3">
-                    {currentUpcomingFollowUps.map(
+                    {currentWinBackFollowUps.map(
                       ({ customer, followUp, index }) => (
-                        <FollowUpCard
+                        <div
                           key={`${customer.id}-${index}`}
-                          customer={customer}
-                          followUp={followUp}
-                          onComplete={() =>
-                            handleCompleteFollowUp(customer.id, index)
-                          }
-                          onMarkPaid={() => handleMarkPaid(customer.id)}
-                          onChangeToDirectBill={handleChangeToDirectBill}
-                          isUpcoming
-                        />
+                          className="border border-purple-200 rounded-lg p-4 bg-purple-50"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-2">
+                                <span className="px-3 py-1 rounded-full text-xs font-medium border bg-purple-100 text-purple-800 border-purple-200">
+                                  WIN-BACK
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  Cancelled:{" "}
+                                  {formatDate(
+                                    customer.cancellationDate!,
+                                    "MMM dd, yyyy",
+                                  )}
+                                </span>
+                                <span className="text-xs text-gray-600 font-medium">
+                                  Reason:{" "}
+                                  {customer.cancellationReason === "non-payment"
+                                    ? "Non-Payment"
+                                    : customer.cancellationReason ===
+                                        "customer-choice"
+                                      ? "Customer Choice"
+                                      : customer.cancellationReason ===
+                                          "custom-date"
+                                        ? "Custom Date"
+                                        : "No Follow-up"}
+                                </span>
+                              </div>
+                              <h3 className="font-semibold text-gray-900">
+                                {customer.name}
+                              </h3>
+                              <p className="text-sm text-gray-600">
+                                Policy: {customer.id}
+                              </p>
+                              <p className="text-sm text-gray-700 mt-1">
+                                {followUp.description}
+                              </p>
+                              <p className="text-sm text-purple-700 mt-1 font-medium">
+                                Contact on:{" "}
+                                {formatDate(followUp.date, "MMM dd, yyyy")}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() =>
+                                handleCompleteFollowUp(customer.id, index)
+                              }
+                              className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 transition"
+                            >
+                              Complete
+                            </button>
+                          </div>
+                        </div>
                       ),
                     )}
                   </div>
-
-                  {upcomingTotalPages > 1 && (
-                    <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
-                      <div className="text-sm text-gray-600">
-                        Showing {upcomingStartIndex + 1} to{" "}
-                        {Math.min(
-                          upcomingEndIndex,
-                          filteredUpcomingFollowUps.length,
-                        )}{" "}
-                        of {filteredUpcomingFollowUps.length} follow-ups
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() =>
-                            handlePageChange(
-                              "upcoming",
-                              paginationPages.upcoming - 1,
-                            )
-                          }
-                          disabled={paginationPages.upcoming === 1}
-                          className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                        >
-                          <ChevronLeft className="w-4 h-4" />
-                          Previous
-                        </button>
-                        <span className="text-sm text-gray-700 px-3">
-                          Page {paginationPages.upcoming} of{" "}
-                          {upcomingTotalPages}
-                        </span>
-                        <button
-                          onClick={() =>
-                            handlePageChange(
-                              "upcoming",
-                              paginationPages.upcoming + 1,
-                            )
-                          }
-                          disabled={
-                            paginationPages.upcoming === upcomingTotalPages
-                          }
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                        >
-                          Next
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
+                </div>
               )}
-            </div>
 
-            {winBackFollowUps.length > 0 && (
               <div
-                id="winback-section"
-                className="bg-white rounded-xl shadow-sm p-6 mb-6 border-2 border-purple-200"
+                id="all-section"
+                className="bg-white rounded-xl shadow-sm p-6"
               >
-                <h2 className="text-xl font-semibold mb-4 text-gray-800 flex items-center gap-2">
-                  <Bell className="w-5 h-5 text-purple-600" />
-                  Win-Back Opportunities ({winBackFollowUps.length})
+                <h2 className="text-xl font-semibold mb-4 text-gray-800">
+                  All Customers ({filteredAllCustomers.length})
                 </h2>
-                <div className="space-y-3">
-                  {currentWinBackFollowUps.map(
-                    ({ customer, followUp, index }) => (
-                      <div
-                        key={`${customer.id}-${index}`}
-                        className="border border-purple-200 rounded-lg p-4 bg-purple-50"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-2">
-                              <span className="px-3 py-1 rounded-full text-xs font-medium border bg-purple-100 text-purple-800 border-purple-200">
-                                WIN-BACK
-                              </span>
-                              <span className="text-xs text-gray-500">
-                                Cancelled:{" "}
-                                {formatDate(
-                                  customer.cancellationDate!,
-                                  "MMM dd, yyyy",
-                                )}
-                              </span>
-                              <span className="text-xs text-gray-600 font-medium">
-                                Reason:{" "}
-                                {customer.cancellationReason === "non-payment"
-                                  ? "Non-Payment"
-                                  : customer.cancellationReason ===
-                                      "customer-choice"
-                                    ? "Customer Choice"
-                                    : customer.cancellationReason ===
-                                        "custom-date"
-                                      ? "Custom Date"
-                                      : "No Follow-up"}
-                              </span>
-                            </div>
-                            <h3 className="font-semibold text-gray-900">
-                              {customer.name}
-                            </h3>
-                            <p className="text-sm text-gray-600">
-                              Policy: {customer.id}
-                            </p>
-                            <p className="text-sm text-gray-700 mt-1">
-                              {followUp.description}
-                            </p>
-                            <p className="text-sm text-purple-700 mt-1 font-medium">
-                              Contact on:{" "}
-                              {formatDate(followUp.date, "MMM dd, yyyy")}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() =>
-                              handleCompleteFollowUp(customer.id, index)
-                            }
-                            className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 transition"
-                          >
-                            Complete
-                          </button>
-                        </div>
-                      </div>
-                    ),
-                  )}
+
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    placeholder="Search by name or policy number..."
+                    value={searchQueries.all}
+                    onChange={(e) => handleSearchChange("all", e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
-              </div>
-            )}
 
-            <div id="all-section" className="bg-white rounded-xl shadow-sm p-6">
-              <h2 className="text-xl font-semibold mb-4 text-gray-800">
-                All Customers ({filteredAllCustomers.length})
-              </h2>
-
-              <div className="mb-4">
-                <input
-                  type="text"
-                  placeholder="Search by name or policy number..."
-                  value={searchQueries.all}
-                  onChange={(e) => handleSearchChange("all", e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {filteredAllCustomers.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">
-                  No matching customers found
-                </p>
-              ) : (
-                <>
-                  <div className="space-y-3">
-                    {currentAllCustomers.map((customer) => (
-                      <CustomerCard
-                        key={customer.id}
-                        customer={customer}
-                        onEditDueDate={handleEditDueDate}
-                        onCancelCustomer={handleCancelCustomer}
-                        onDeleteCustomer={handleDeleteCustomer}
-                        onChangeToAutopay={handleChangeToAutopay}
-                        onChangeToDirectBill={handleChangeToDirectBill}
-                        onReinstate={handleReinstateClick}
-                        isEditing={editingCustomer === customer.id}
-                        editDueDate={editDueDate}
-                        setEditDueDate={setEditDueDate}
-                        onSaveDueDate={handleSaveDueDate}
-                        onCancelEdit={() => setEditingCustomer(null)}
-                        isEditingDates={editingCustomerDates === customer.id}
-                        editCustomerEffective={editCustomerEffective}
-                        editCustomerExpiration={editCustomerExpiration}
-                        onEditCustomerDates={handleEditCustomerDates}
-                        onCustomerEffectiveDateChange={
-                          handleCustomerEffectiveDateChange
-                        }
-                        onSaveCustomerDates={handleSaveCustomerDates}
-                        onCancelCustomerEdit={handleCancelCustomerEdit}
-                        setEditCustomerExpiration={setEditCustomerExpiration}
-                      />
-                    ))}
-                  </div>
-
-                  {allTotalPages > 1 && (
-                    <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
-                      <div className="text-sm text-gray-600">
-                        Showing {allStartIndex + 1} to{" "}
-                        {Math.min(allEndIndex, filteredAllCustomers.length)} of{" "}
-                        {filteredAllCustomers.length} customers
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() =>
-                            handlePageChange("all", paginationPages.all - 1)
+                {filteredAllCustomers.length === 0 ? (
+                  <p className="text-gray-500 text-center py-8">
+                    No matching customers found
+                  </p>
+                ) : (
+                  <>
+                    <div className="space-y-3">
+                      {currentAllCustomers.map((customer) => (
+                        <CustomerCard
+                          key={customer.id}
+                          customer={customer}
+                          onEditDueDate={handleEditDueDate}
+                          onCancelCustomer={handleCancelCustomer}
+                          onDeleteCustomer={handleDeleteCustomer}
+                          onChangeToAutopay={handleChangeToAutopay}
+                          onChangeToDirectBill={handleChangeToDirectBill}
+                          onReinstate={handleReinstateClick}
+                          isEditing={editingCustomer === customer.id}
+                          editDueDate={editDueDate}
+                          setEditDueDate={setEditDueDate}
+                          onSaveDueDate={handleSaveDueDate}
+                          onCancelEdit={() => setEditingCustomer(null)}
+                          isEditingDates={editingCustomerDates === customer.id}
+                          editCustomerEffective={editCustomerEffective}
+                          editCustomerExpiration={editCustomerExpiration}
+                          onEditCustomerDates={handleEditCustomerDates}
+                          onCustomerEffectiveDateChange={
+                            handleCustomerEffectiveDateChange
                           }
-                          disabled={paginationPages.all === 1}
-                          className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                        >
-                          <ChevronLeft className="w-4 h-4" />
-                          Previous
-                        </button>
-                        <span className="text-sm text-gray-700 px-3">
-                          Page {paginationPages.all} of {allTotalPages}
-                        </span>
-                        <button
-                          onClick={() =>
-                            handlePageChange("all", paginationPages.all + 1)
-                          }
-                          disabled={paginationPages.all === allTotalPages}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                        >
-                          Next
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </>
-        ) : (
-          <WeekCalendarView
-            customers={customers}
-            onCompleteFollowUp={handleCompleteFollowUp}
-          />
-        )}
-
-        {/* Existing Modals */}
-        {/* Add Customer Modal, Setup Modal, Cancel Customer Modal, Reinstate Modal */}
-
-        {/* NEW: Pending Customer Cancellation Modal */}
-        {showPendingCancelModal && cancellingPendingCustomer && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-              <h3 className="text-xl font-semibold mb-4 text-gray-900">
-                Cancel Pending Customer
-              </h3>
-              <p className="text-gray-700 mb-4">
-                Cancel policy for{" "}
-                <strong>{cancellingPendingCustomer.customer_name}</strong> (
-                {cancellingPendingCustomer.policy_no})? This will move the
-                customer to cancelled status with win-back follow-ups.
-              </p>
-
-              {/* Cancellation Date Field */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Cancellation Date <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={pendingCancellationDate}
-                  onChange={(e) => setPendingCancellationDate(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  required
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  The date when the policy was/will be cancelled
-                </p>
-              </div>
-
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Cancellation Reason & Follow-up
-                </label>
-                <div className="space-y-3">
-                  <label className="flex items-start">
-                    <input
-                      type="radio"
-                      name="pending-reason"
-                      value="non-payment"
-                      checked={pendingCancellationReason === "non-payment"}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                        setPendingCancellationReason(
-                          e.target.value as
-                            | "non-payment"
-                            | "customer-choice"
-                            | "custom-date"
-                            | "no-followup",
-                        )
-                      }
-                      className="mr-2 mt-0.5"
-                    />
-                    <span className="text-sm text-gray-700">
-                      Non-Payment{" "}
-                      <span className="text-gray-500">
-                        (Follow up at 3 & 6 months from cancellation date)
-                      </span>
-                    </span>
-                  </label>
-                  <label className="flex items-start">
-                    <input
-                      type="radio"
-                      name="pending-reason"
-                      value="customer-choice"
-                      checked={pendingCancellationReason === "customer-choice"}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                        setPendingCancellationReason(
-                          e.target.value as
-                            | "non-payment"
-                            | "customer-choice"
-                            | "custom-date"
-                            | "no-followup",
-                        )
-                      }
-                      className="mr-2 mt-0.5"
-                    />
-                    <span className="text-sm text-gray-700">
-                      Customer Choice{" "}
-                      <span className="text-gray-500">
-                        (Follow up 15 days before 6 months, then at 6 months)
-                      </span>
-                    </span>
-                  </label>
-                  <label className="flex items-start">
-                    <input
-                      type="radio"
-                      name="pending-reason"
-                      value="custom-date"
-                      checked={pendingCancellationReason === "custom-date"}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                        setPendingCancellationReason(
-                          e.target.value as
-                            | "non-payment"
-                            | "customer-choice"
-                            | "custom-date"
-                            | "no-followup",
-                        )
-                      }
-                      className="mr-2 mt-0.5"
-                    />
-                    <div className="flex-1">
-                      <span className="text-sm text-gray-700">
-                        Custom Win-Back Date{" "}
-                        <span className="text-gray-500">
-                          (Follow up on specific date)
-                        </span>
-                      </span>
-                      {pendingCancellationReason === "custom-date" && (
-                        <input
-                          type="date"
-                          value={pendingCustomWinBackDate}
-                          onChange={(e) =>
-                            setPendingCustomWinBackDate(e.target.value)
-                          }
-                          className="mt-2 border rounded px-3 py-1 text-sm w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="Select follow-up date"
-                          min={pendingCancellationDate}
+                          onSaveCustomerDates={handleSaveCustomerDates}
+                          onCancelCustomerEdit={handleCancelCustomerEdit}
+                          setEditCustomerExpiration={setEditCustomerExpiration}
                         />
-                      )}
+                      ))}
                     </div>
+
+                    {allTotalPages > 1 && (
+                      <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
+                        <div className="text-sm text-gray-600">
+                          Showing {allStartIndex + 1} to{" "}
+                          {Math.min(allEndIndex, filteredAllCustomers.length)}{" "}
+                          of {filteredAllCustomers.length} customers
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() =>
+                              handlePageChange("all", paginationPages.all - 1)
+                            }
+                            disabled={paginationPages.all === 1}
+                            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                            Previous
+                          </button>
+                          <span className="text-sm text-gray-700 px-3">
+                            Page {paginationPages.all} of {allTotalPages}
+                          </span>
+                          <button
+                            onClick={() =>
+                              handlePageChange("all", paginationPages.all + 1)
+                            }
+                            disabled={paginationPages.all === allTotalPages}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                          >
+                            Next
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
+            <WeekCalendarView
+              customers={customers}
+              onCompleteFollowUp={handleCompleteFollowUp}
+            />
+          )}
+
+          {/* Existing Modals */}
+          {/* Add Customer Modal, Setup Modal, Cancel Customer Modal, Reinstate Modal */}
+
+          {/* NEW: Pending Customer Cancellation Modal */}
+          {showPendingCancelModal && cancellingPendingCustomer && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+                <h3 className="text-xl font-semibold mb-4 text-gray-900">
+                  Cancel Pending Customer
+                </h3>
+                <p className="text-gray-700 mb-4">
+                  Cancel policy for{" "}
+                  <strong>{cancellingPendingCustomer.customer_name}</strong> (
+                  {cancellingPendingCustomer.policy_no})? This will move the
+                  customer to cancelled status with win-back follow-ups.
+                </p>
+
+                {/* Cancellation Date Field */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Cancellation Date <span className="text-red-500">*</span>
                   </label>
-                  <label className="flex items-start">
-                    <input
-                      type="radio"
-                      name="pending-reason"
-                      value="no-followup"
-                      checked={pendingCancellationReason === "no-followup"}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                        setPendingCancellationReason(
-                          e.target.value as
-                            | "non-payment"
-                            | "customer-choice"
-                            | "custom-date"
-                            | "no-followup",
-                        )
-                      }
-                      className="mr-2 mt-0.5"
-                    />
-                    <span className="text-sm text-gray-700">
-                      Don&apos;t Follow Up{" "}
-                      <span className="text-gray-500">
-                        (No follow-up needed)
+                  <input
+                    type="date"
+                    value={pendingCancellationDate}
+                    onChange={(e) => setPendingCancellationDate(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    The date when the policy was/will be cancelled
+                  </p>
+                </div>
+
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Cancellation Reason & Follow-up
+                  </label>
+                  <div className="space-y-3">
+                    <label className="flex items-start">
+                      <input
+                        type="radio"
+                        name="pending-reason"
+                        value="non-payment"
+                        checked={pendingCancellationReason === "non-payment"}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setPendingCancellationReason(
+                            e.target.value as
+                              | "non-payment"
+                              | "customer-choice"
+                              | "custom-date"
+                              | "no-followup",
+                          )
+                        }
+                        className="mr-2 mt-0.5"
+                      />
+                      <span className="text-sm text-gray-700">
+                        Non-Payment{" "}
+                        <span className="text-gray-500">
+                          (Follow up at 3 & 6 months from cancellation date)
+                        </span>
                       </span>
-                    </span>
+                    </label>
+                    <label className="flex items-start">
+                      <input
+                        type="radio"
+                        name="pending-reason"
+                        value="customer-choice"
+                        checked={
+                          pendingCancellationReason === "customer-choice"
+                        }
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setPendingCancellationReason(
+                            e.target.value as
+                              | "non-payment"
+                              | "customer-choice"
+                              | "custom-date"
+                              | "no-followup",
+                          )
+                        }
+                        className="mr-2 mt-0.5"
+                      />
+                      <span className="text-sm text-gray-700">
+                        Customer Choice{" "}
+                        <span className="text-gray-500">
+                          (Follow up 15 days before 6 months, then at 6 months)
+                        </span>
+                      </span>
+                    </label>
+                    <label className="flex items-start">
+                      <input
+                        type="radio"
+                        name="pending-reason"
+                        value="custom-date"
+                        checked={pendingCancellationReason === "custom-date"}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setPendingCancellationReason(
+                            e.target.value as
+                              | "non-payment"
+                              | "customer-choice"
+                              | "custom-date"
+                              | "no-followup",
+                          )
+                        }
+                        className="mr-2 mt-0.5"
+                      />
+                      <div className="flex-1">
+                        <span className="text-sm text-gray-700">
+                          Custom Win-Back Date{" "}
+                          <span className="text-gray-500">
+                            (Follow up on specific date)
+                          </span>
+                        </span>
+                        {pendingCancellationReason === "custom-date" && (
+                          <input
+                            type="date"
+                            value={pendingCustomWinBackDate}
+                            onChange={(e) =>
+                              setPendingCustomWinBackDate(e.target.value)
+                            }
+                            className="mt-2 border rounded px-3 py-1 text-sm w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Select follow-up date"
+                            min={pendingCancellationDate}
+                          />
+                        )}
+                      </div>
+                    </label>
+                    <label className="flex items-start">
+                      <input
+                        type="radio"
+                        name="pending-reason"
+                        value="no-followup"
+                        checked={pendingCancellationReason === "no-followup"}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setPendingCancellationReason(
+                            e.target.value as
+                              | "non-payment"
+                              | "customer-choice"
+                              | "custom-date"
+                              | "no-followup",
+                          )
+                        }
+                        className="mr-2 mt-0.5"
+                      />
+                      <span className="text-sm text-gray-700">
+                        Don&apos;t Follow Up{" "}
+                        <span className="text-gray-500">
+                          (No follow-up needed)
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowPendingCancelModal(false);
+                      setCancellingPendingCustomer(null);
+                      setPendingCancellationReason("non-payment");
+                      setPendingCustomWinBackDate("");
+                      setPendingCancellationDate("");
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmPendingCancellation}
+                    disabled={
+                      !pendingCancellationDate ||
+                      (pendingCancellationReason === "custom-date" &&
+                        !pendingCustomWinBackDate)
+                    }
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    Confirm Cancellation
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* NEW: Reinstate Modal */}
+          {showReinstateModal && reinstatingCustomer && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+                <h3 className="text-xl font-semibold mb-4 text-gray-900">
+                  Reinstate Customer Policy
+                </h3>
+                <p className="text-gray-700 mb-4">
+                  Reinstate policy for{" "}
+                  <strong>{reinstatingCustomer.name}</strong> (
+                  {reinstatingCustomer.id})?
+                </p>
+
+                {/* Due Date Field */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    New Due Date <span className="text-red-500">*</span>
                   </label>
+                  <input
+                    type="date"
+                    value={reinstateDueDate}
+                    onChange={(e) => setReinstateDueDate(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Select the new payment due date for this policy
+                  </p>
                 </div>
-              </div>
 
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowPendingCancelModal(false);
-                    setCancellingPendingCustomer(null);
-                    setPendingCancellationReason("non-payment");
-                    setPendingCustomWinBackDate("");
-                    setPendingCancellationDate("");
-                  }}
-                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmPendingCancellation}
-                  disabled={
-                    !pendingCancellationDate ||
-                    (pendingCancellationReason === "custom-date" &&
-                      !pendingCustomWinBackDate)
-                  }
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
-                >
-                  Confirm Cancellation
-                </button>
+                {/* Payment Type Field */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Payment Type <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={reinstatePaymentType}
+                    onChange={(e) =>
+                      setReinstatePaymentType(e.target.value as PaymentType)
+                    }
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  >
+                    <option value="regular">Regular Payment</option>
+                    <option value="autopay">Autopay</option>
+                    <option value="paid-in-full">Paid in Full</option>
+                  </select>
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowReinstateModal(false);
+                      setReinstatingCustomer(null);
+                      setReinstatePaymentType("regular");
+                      setReinstateDueDate("");
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleReinstateSubmit}
+                    disabled={!reinstateDueDate}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    Reinstate Policy
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* NEW: Reinstate Modal */}
-        {showReinstateModal && reinstatingCustomer && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
-              <h3 className="text-xl font-semibold mb-4 text-gray-900">
-                Reinstate Customer Policy
-              </h3>
-              <p className="text-gray-700 mb-4">
-                Reinstate policy for <strong>{reinstatingCustomer.name}</strong>{" "}
-                ({reinstatingCustomer.id})?
-              </p>
+          {showSetupModal && setupCustomer && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl p-6 w-full max-w-7xl max-h-[95vh] overflow-y-auto">
+                <h3 className="text-xl font-semibold mb-4 text-gray-900">
+                  Setup Payment Reminder
+                </h3>
 
-              {/* Due Date Field */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  New Due Date <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  value={reinstateDueDate}
-                  onChange={(e) => setReinstateDueDate(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  required
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Select the new payment due date for this policy
-                </p>
-              </div>
-
-              {/* Payment Type Field */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Payment Type <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={reinstatePaymentType}
-                  onChange={(e) =>
-                    setReinstatePaymentType(e.target.value as PaymentType)
-                  }
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                >
-                  <option value="regular">Regular Payment</option>
-                  <option value="autopay">Autopay</option>
-                  <option value="paid-in-full">Paid in Full</option>
-                </select>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowReinstateModal(false);
-                    setReinstatingCustomer(null);
-                    setReinstatePaymentType("regular");
-                    setReinstateDueDate("");
-                  }}
-                  className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleReinstateSubmit}
-                  disabled={!reinstateDueDate}
-                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
-                >
-                  Reinstate Policy
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showSetupModal && setupCustomer && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-xl p-6 w-full max-w-7xl max-h-[95vh] overflow-y-auto">
-              <h3 className="text-xl font-semibold mb-4 text-gray-900">
-                Setup Payment Reminder
-              </h3>
-
-              {/* Customer Info Header */}
-              <div className="mb-6 pb-4 border-b">
-                <p className="text-gray-700 font-medium text-lg">
-                  {setupCustomer.customer_name}
-                </p>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-                  <div>
-                    <p className="text-xs text-gray-500">Policy</p>
-                    <p className="text-sm text-gray-700">
-                      {setupCustomer.policy_no}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Company</p>
-                    <p className="text-sm text-gray-700">
-                      {setupCustomer.company_name}
-                    </p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-xs text-gray-500">Coverage Period</p>
-                    <p className="text-sm text-gray-700">
-                      {new Date(
-                        setupCustomer.effective_date,
-                      ).toLocaleDateString()}{" "}
-                      -{" "}
-                      {new Date(
-                        setupCustomer.expiration_date,
-                      ).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Editable Coverage Period */}
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      Effective Date
-                    </label>
-                    <input
-                      type="date"
-                      value={setupEffectiveDate}
-                      onChange={(e) => setSetupEffectiveDate(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      Expiration Date
-                    </label>
-                    <input
-                      type="date"
-                      value={setupExpirationDate}
-                      onChange={(e) => setSetupExpirationDate(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  💡 Adjust dates to recalculate AI suggestions
-                </p>
-
-                {setupPaymentType !== "paid-in-full" &&
-                  setupDueDate &&
-                  setupExpirationDate &&
-                  (() => {
-                    const dueDate = new Date(setupDueDate);
-                    const expDate = new Date(setupExpirationDate);
-                    const monthsDiff = Math.max(
-                      0,
-                      (expDate.getFullYear() - dueDate.getFullYear()) * 12 +
-                        (expDate.getMonth() - dueDate.getMonth()),
-                    );
-                    return (
-                      <p className="text-sm font-medium text-blue-600 mt-2">
-                        📅 {monthsDiff} payment{monthsDiff !== 1 ? "s" : ""}{" "}
-                        remaining until expiration
-                      </p>
-                    );
-                  })()}
-              </div>
-
-              {/* Two Column Layout - Side by Side 50/50 */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* LEFT COLUMN: AI Suggestions */}
-                <div className="space-y-4 lg:border-r lg:pr-6 max-h-[60vh] overflow-y-auto">
-                  <h4 className="font-semibold text-gray-900 flex items-center gap-2">
-                    <span className="text-xl">🤖</span>
-                    AI Assistant
-                  </h4>
-
-                  {loadingAiSuggestion && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <div className="flex items-center gap-2">
-                        <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                        <p className="text-sm text-blue-700">
-                          Analyzing your past entries for{" "}
-                          {setupCustomer?.company_name}...
-                        </p>
-                      </div>
-                    </div>
-                  )}
-
-                  {aiSuggestion && showAiSuggestion && !loadingAiSuggestion && (
-                    <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <h4 className="font-semibold text-gray-900">
-                            Suggestions
-                            <span
-                              className={`ml-2 text-xs px-2 py-0.5 rounded ${
-                                aiSuggestion.confidence === "high"
-                                  ? "bg-green-100 text-green-700"
-                                  : aiSuggestion.confidence === "medium"
-                                    ? "bg-yellow-100 text-yellow-700"
-                                    : "bg-gray-100 text-gray-700"
-                              }`}
-                            >
-                              {aiSuggestion.confidence} confidence
-                            </span>
-                          </h4>
-                          <p className="text-xs text-gray-600 mt-0.5">
-                            Based on {aiSuggestion.dataPoints?.sameCompany ?? 0}{" "}
-                            past entries
-                            {(aiSuggestion.dataPoints?.sameCompany ?? 0) > 0 &&
-                              ` for ${setupCustomer?.company_name}`}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => setShowAiSuggestion(false)}
-                          className="text-gray-400 hover:text-gray-600 transition"
-                          title="Dismiss"
-                        >
-                          ✕
-                        </button>
-                      </div>
-
-                      <div className="space-y-2 mb-3">
-                        <div className="flex items-center justify-between bg-white rounded-lg p-3">
-                          <div>
-                            <p className="text-xs text-gray-600">
-                              Suggested Due Date
-                            </p>
-                            <p className="font-medium text-gray-900">
-                              {parseLocalDate(
-                                aiSuggestion.suggestedDueDate,
-                              ).toLocaleDateString("en-US", {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              })}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() =>
-                              setSetupDueDate(aiSuggestion.suggestedDueDate)
-                            }
-                            className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition"
-                          >
-                            Apply
-                          </button>
-                        </div>
-
-                        <div className="flex items-center justify-between bg-white rounded-lg p-3">
-                          <div>
-                            <p className="text-xs text-gray-600">
-                              Suggested Payment
-                            </p>
-                            <p className="font-medium text-gray-900 capitalize">
-                              {aiSuggestion.suggestedPaymentType}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() =>
-                              setSetupPaymentType(
-                                aiSuggestion.suggestedPaymentType,
-                              )
-                            }
-                            className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition"
-                          >
-                            Apply
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="bg-white rounded-lg p-3">
-                          <p className="text-xs font-medium text-gray-700 mb-1">
-                            💡 Reasoning
-                          </p>
-                          <p className="text-xs text-gray-600">
-                            {aiSuggestion.reasoning}
-                          </p>
-                        </div>
-
-                        {aiSuggestion.companyPattern && (
-                          <div className="bg-white rounded-lg p-3">
-                            <p className="text-xs font-medium text-gray-700 mb-1">
-                              📊 Pattern
-                            </p>
-                            <p className="text-xs text-gray-600">
-                              {aiSuggestion.companyPattern}
-                            </p>
-                          </div>
-                        )}
-
-                        {aiSuggestion.pricingAdvantage && (
-                          <div className="bg-white rounded-lg p-3">
-                            <p className="text-xs font-medium text-gray-700 mb-1">
-                              💰 Pricing Tip
-                            </p>
-                            <p className="text-xs text-gray-600">
-                              {aiSuggestion.pricingAdvantage}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {!loadingAiSuggestion && !aiSuggestion && (
-                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
-                      <p className="text-sm text-gray-600">
-                        AI suggestions will appear here after analyzing your
-                        past entries
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* RIGHT COLUMN: Form Fields */}
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-gray-900">Setup Details</h4>
-
-                  {setupPaymentType !== "paid-in-full" && (
+                {/* Customer Info Header */}
+                <div className="mb-6 pb-4 border-b">
+                  <p className="text-gray-700 font-medium text-lg">
+                    {setupCustomer.customer_name}
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Next Payment Due Date *
+                      <p className="text-xs text-gray-500">Policy</p>
+                      <p className="text-sm text-gray-700">
+                        {setupCustomer.policy_no}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500">Company</p>
+                      <p className="text-sm text-gray-700">
+                        {setupCustomer.company_name}
+                      </p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-xs text-gray-500">Coverage Period</p>
+                      <p className="text-sm text-gray-700">
+                        {new Date(
+                          setupCustomer.effective_date,
+                        ).toLocaleDateString()}{" "}
+                        -{" "}
+                        {new Date(
+                          setupCustomer.expiration_date,
+                        ).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Editable Coverage Period */}
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Effective Date
                       </label>
                       <input
                         type="date"
-                        value={setupDueDate}
-                        onChange={(e) => setSetupDueDate(e.target.value)}
-                        className="w-full border rounded-lg px-3 py-2"
-                        min={setupEffectiveDate}
-                        max={setupExpirationDate}
+                        value={setupEffectiveDate}
+                        onChange={(e) => setSetupEffectiveDate(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
-                      <p className="text-xs text-gray-500 mt-1">
-                        When is the next payment due?
-                      </p>
                     </div>
-                  )}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Expiration Date
+                      </label>
+                      <input
+                        type="date"
+                        value={setupExpirationDate}
+                        onChange={(e) => setSetupExpirationDate(e.target.value)}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    💡 Adjust dates to recalculate AI suggestions
+                  </p>
 
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Payment Type
-                    </label>
-                    <select
-                      value={setupPaymentType}
-                      onChange={(e) =>
-                        setSetupPaymentType(e.target.value as PaymentType)
-                      }
-                      className="w-full border rounded-lg px-3 py-2"
-                    >
-                      <option value="regular">Regular Payments</option>
-                      <option value="autopay">Autopay</option>
-                      <option value="paid-in-full">Paid in Full</option>
-                    </select>
+                  {setupPaymentType !== "paid-in-full" &&
+                    setupDueDate &&
+                    setupExpirationDate &&
+                    (() => {
+                      const dueDate = new Date(setupDueDate);
+                      const expDate = new Date(setupExpirationDate);
+                      const monthsDiff = Math.max(
+                        0,
+                        (expDate.getFullYear() - dueDate.getFullYear()) * 12 +
+                          (expDate.getMonth() - dueDate.getMonth()),
+                      );
+                      return (
+                        <p className="text-sm font-medium text-blue-600 mt-2">
+                          📅 {monthsDiff} payment{monthsDiff !== 1 ? "s" : ""}{" "}
+                          remaining until expiration
+                        </p>
+                      );
+                    })()}
+                </div>
+
+                {/* Two Column Layout - Side by Side 50/50 */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* LEFT COLUMN: AI Suggestions */}
+                  <div className="space-y-4 lg:border-r lg:pr-6 max-h-[60vh] overflow-y-auto">
+                    <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                      <span className="text-xl">🤖</span>
+                      AI Assistant
+                    </h4>
+
+                    {loadingAiSuggestion && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                          <p className="text-sm text-blue-700">
+                            Analyzing your past entries for{" "}
+                            {setupCustomer?.company_name}...
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {aiSuggestion &&
+                      showAiSuggestion &&
+                      !loadingAiSuggestion && (
+                        <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
+                          <div className="flex items-start justify-between mb-3">
+                            <div>
+                              <h4 className="font-semibold text-gray-900">
+                                Suggestions
+                                <span
+                                  className={`ml-2 text-xs px-2 py-0.5 rounded ${
+                                    aiSuggestion.confidence === "high"
+                                      ? "bg-green-100 text-green-700"
+                                      : aiSuggestion.confidence === "medium"
+                                        ? "bg-yellow-100 text-yellow-700"
+                                        : "bg-gray-100 text-gray-700"
+                                  }`}
+                                >
+                                  {aiSuggestion.confidence} confidence
+                                </span>
+                              </h4>
+                              <p className="text-xs text-gray-600 mt-0.5">
+                                Based on{" "}
+                                {aiSuggestion.dataPoints?.sameCompany ?? 0} past
+                                entries
+                                {(aiSuggestion.dataPoints?.sameCompany ?? 0) >
+                                  0 && ` for ${setupCustomer?.company_name}`}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => setShowAiSuggestion(false)}
+                              className="text-gray-400 hover:text-gray-600 transition"
+                              title="Dismiss"
+                            >
+                              ✕
+                            </button>
+                          </div>
+
+                          <div className="space-y-2 mb-3">
+                            <div className="flex items-center justify-between bg-white rounded-lg p-3">
+                              <div>
+                                <p className="text-xs text-gray-600">
+                                  Suggested Due Date
+                                </p>
+                                <p className="font-medium text-gray-900">
+                                  {parseLocalDate(
+                                    aiSuggestion.suggestedDueDate,
+                                  ).toLocaleDateString("en-US", {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  })}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() =>
+                                  setSetupDueDate(aiSuggestion.suggestedDueDate)
+                                }
+                                className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition"
+                              >
+                                Apply
+                              </button>
+                            </div>
+
+                            <div className="flex items-center justify-between bg-white rounded-lg p-3">
+                              <div>
+                                <p className="text-xs text-gray-600">
+                                  Suggested Payment
+                                </p>
+                                <p className="font-medium text-gray-900 capitalize">
+                                  {aiSuggestion.suggestedPaymentType}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() =>
+                                  setSetupPaymentType(
+                                    aiSuggestion.suggestedPaymentType,
+                                  )
+                                }
+                                className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition"
+                              >
+                                Apply
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <div className="bg-white rounded-lg p-3">
+                              <p className="text-xs font-medium text-gray-700 mb-1">
+                                💡 Reasoning
+                              </p>
+                              <p className="text-xs text-gray-600">
+                                {aiSuggestion.reasoning}
+                              </p>
+                            </div>
+
+                            {aiSuggestion.companyPattern && (
+                              <div className="bg-white rounded-lg p-3">
+                                <p className="text-xs font-medium text-gray-700 mb-1">
+                                  📊 Pattern
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  {aiSuggestion.companyPattern}
+                                </p>
+                              </div>
+                            )}
+
+                            {aiSuggestion.pricingAdvantage && (
+                              <div className="bg-white rounded-lg p-3">
+                                <p className="text-xs font-medium text-gray-700 mb-1">
+                                  💰 Pricing Tip
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  {aiSuggestion.pricingAdvantage}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                    {!loadingAiSuggestion && !aiSuggestion && (
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
+                        <p className="text-sm text-gray-600">
+                          AI suggestions will appear here after analyzing your
+                          past entries
+                        </p>
+                      </div>
+                    )}
                   </div>
 
-                  {setupPaymentType === "paid-in-full" && (
-                    <p className="text-sm text-blue-600 bg-blue-50 p-3 rounded-lg">
-                      ℹ️ No due date needed - renewal reminder will be set 20
-                      days before expiration
-                    </p>
-                  )}
+                  {/* RIGHT COLUMN: Form Fields */}
+                  <div className="space-y-4">
+                    <h4 className="font-semibold text-gray-900">
+                      Setup Details
+                    </h4>
 
-                  {/* Action Buttons */}
-                  <div className="flex gap-3 pt-4">
-                    <button
-                      onClick={() => {
-                        setShowSetupModal(false);
-                        setSetupCustomer(null);
-                        setSetupDueDate("");
-                        setSetupPaymentType("regular");
-                        setAiSuggestion(null);
-                        setShowAiSuggestion(true);
-                        setSetupEffectiveDate("");
-                        setSetupExpirationDate("");
-                      }}
-                      className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={handleConfirmSetup}
-                      disabled={
-                        setupPaymentType !== "paid-in-full" && !setupDueDate
-                      }
-                      className="flex-1 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    >
-                      Setup Reminder
-                    </button>
+                    {setupPaymentType !== "paid-in-full" && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Next Payment Due Date *
+                        </label>
+                        <input
+                          type="date"
+                          value={setupDueDate}
+                          onChange={(e) => setSetupDueDate(e.target.value)}
+                          className="w-full border rounded-lg px-3 py-2"
+                          min={setupEffectiveDate}
+                          max={setupExpirationDate}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          When is the next payment due?
+                        </p>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Payment Type
+                      </label>
+                      <select
+                        value={setupPaymentType}
+                        onChange={(e) =>
+                          setSetupPaymentType(e.target.value as PaymentType)
+                        }
+                        className="w-full border rounded-lg px-3 py-2"
+                      >
+                        <option value="regular">Regular Payments</option>
+                        <option value="autopay">Autopay</option>
+                        <option value="paid-in-full">Paid in Full</option>
+                      </select>
+                    </div>
+
+                    {setupPaymentType === "paid-in-full" && (
+                      <p className="text-sm text-blue-600 bg-blue-50 p-3 rounded-lg">
+                        ℹ️ No due date needed - renewal reminder will be set 20
+                        days before expiration
+                      </p>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-3 pt-4">
+                      <button
+                        onClick={() => {
+                          setShowSetupModal(false);
+                          setSetupCustomer(null);
+                          setSetupDueDate("");
+                          setSetupPaymentType("regular");
+                          setAiSuggestion(null);
+                          setShowAiSuggestion(true);
+                          setSetupEffectiveDate("");
+                          setSetupExpirationDate("");
+                        }}
+                        className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleConfirmSetup}
+                        disabled={
+                          setupPaymentType !== "paid-in-full" && !setupDueDate
+                        }
+                        className="flex-1 px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      >
+                        Setup Reminder
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </div>
+    </AdminShell>
   );
 }
 

@@ -7,6 +7,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Shield, Loader2, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
+import AdminShell from "../_components/AdminShell";
 
 interface AutopayCustomer {
   _id: string;
@@ -345,455 +346,420 @@ export default function AdminAutopayDashboard() {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-pulse text-lg font-medium text-gray-600">
-          Loading Dashboard...
-        </div>
-      </div>
-    );
-  }
-
   // ── Main UI ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-8">
-      {/* Header */}
-      <div className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <button
-            onClick={() => router.push("/admin")}
-            className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-2 transition-colors"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+    <AdminShell activePath="/admin/autopay">
+      <div className="min-h-screen bg-gray-50 p-4 md:p-8">
+        {/* Header */}
+        <div className="max-w-7xl mx-auto mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <button
+              onClick={() => router.push("/admin")}
+              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-2 transition-colors"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-            Back to Admin
-          </button>
-          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
-            Autopay Portal
-          </h1>
-          <p className="text-gray-500 mt-1">
-            Securely manage payment methods linked by phone number.
-          </p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-          <input
-            ref={searchInputRef}
-            type="text"
-            placeholder="Search Name or Phone..."
-            value={searchQuery}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setCurrentPage(1);
-            }}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-64"
-          />
-          <button
-            onClick={handleLogout}
-            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            <span className="text-sm font-medium">Logout</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="max-w-7xl mx-auto mb-4">
-        <div className="flex bg-white rounded-xl border border-gray-200 p-1 shadow-sm gap-1 w-fit">
-          <button
-            onClick={() => {
-              setActiveTab("pending");
-              setCurrentPage(1);
-            }}
-            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${
-              activeTab === "pending"
-                ? "bg-blue-600 text-white shadow"
-                : "text-gray-500 hover:text-gray-800"
-            }`}
-          >
-            Pending
-            <span
-              className={`px-2 py-0.5 rounded-full text-xs font-black ${
-                activeTab === "pending"
-                  ? "bg-blue-500 text-white"
-                  : "bg-gray-100 text-gray-600"
-              }`}
-            >
-              {pendingTotal}
-            </span>
-            {newCount > 0 && activeTab === "pending" && (
-              <span className="px-1.5 py-0.5 text-[9px] font-black bg-red-500 text-white rounded animate-pulse">
-                {newCount} NEW
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab("completed");
-              setCurrentPage(1);
-            }}
-            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${
-              activeTab === "completed"
-                ? "bg-emerald-600 text-white shadow"
-                : "text-gray-500 hover:text-gray-800"
-            }`}
-          >
-            Completed
-            <span
-              className={`px-2 py-0.5 rounded-full text-xs font-black ${
-                activeTab === "completed"
-                  ? "bg-emerald-500 text-white"
-                  : "bg-gray-100 text-gray-600"
-              }`}
-            >
-              {completedTotal}
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* Main Table */}
-      <div className="max-w-7xl mx-auto">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50 text-gray-500 text-xs font-semibold uppercase tracking-wider">
-                <tr>
-                  <th className="px-6 py-4 text-left">Customer / Phone</th>
-                  <th className="px-6 py-4 text-left">Method</th>
-                  <th className="px-6 py-4 text-left">Last 4</th>
-                  <th className="px-6 py-4 text-left">Created</th>
-                  <th className="px-6 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-100">
-                {customers.map((customer) => {
-                  const isNew = !customer.viewed;
-                  return (
-                    <tr
-                      key={customer._id}
-                      className={`hover:bg-blue-50/30 transition-colors group ${isNew ? "bg-blue-50/50" : ""}`}
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-gray-900">
-                            {customer.customerName}
-                          </span>
-                          {isNew && (
-                            <span className="px-1.5 py-0.5 text-[9px] font-bold bg-red-500 text-white rounded animate-pulse">
-                              NEW
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-blue-600 font-mono">
-                          {customer.customerPhone}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span
-                          className={`px-2 py-1 text-[10px] font-bold rounded-md uppercase ${
-                            customer.method === "card"
-                              ? "bg-indigo-100 text-indigo-700"
-                              : "bg-emerald-100 text-emerald-700"
-                          }`}
-                        >
-                          {customer.method}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {customer.method === "card"
-                          ? `${customer.cardBrand || "Card"} ••${customer.cardLast4}`
-                          : `${customer.accountType || "ACH"} ••${customer.accountLast4}`}
-                      </td>
-                      <td className="px-6 py-4 text-xs text-gray-400 font-mono">
-                        {new Date(customer.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="px-6 py-4 text-right space-x-3">
-                        <button
-                          onClick={() => handleDecrypt(customer)}
-                          className="text-blue-600 hover:text-blue-800 text-sm font-bold transition-all"
-                        >
-                          VIEW
-                        </button>
-                        {customer.viewed && (
-                          <button
-                            onClick={() => markAsUnviewed(customer._id)}
-                            className="text-purple-500 hover:text-purple-700 text-sm font-bold transition-all"
-                          >
-                            UNREAD
-                          </button>
-                        )}
-                        <button
-                          onClick={() =>
-                            toggleCompleted(customer._id, !customer.completed)
-                          }
-                          className={`text-sm font-bold transition-all ${
-                            customer.completed
-                              ? "text-amber-500 hover:text-amber-700"
-                              : "text-emerald-500 hover:text-emerald-700"
-                          }`}
-                        >
-                          {customer.completed ? "REOPEN" : "DONE"}
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleDelete(customer._id, customer.customerName)
-                          }
-                          className="text-gray-300 hover:text-red-600 text-sm font-bold transition-all"
-                        >
-                          DELETE
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          {totalCount > 0 && (
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50">
-              <div className="flex items-center gap-2 text-sm text-gray-500">
-                <span>Rows per page:</span>
-                <select
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                  className="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                >
-                  <option value={10}>10</option>
-                  <option value={20}>20</option>
-                  <option value={50}>50</option>
-                  <option value={100}>100</option>
-                  <option value={0}>All</option>
-                </select>
-                <span className="ml-2">
-                  {pageSize === 0
-                    ? `All ${totalCount} records`
-                    : `${Math.min((currentPage - 1) * pageSize + 1, totalCount)}–${Math.min(currentPage * pageSize, totalCount)} of ${totalCount}`}
-                </span>
-              </div>
-              {pageSize !== 0 && totalPages > 1 && (
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={() => setCurrentPage(1)}
-                    disabled={currentPage === 1}
-                    className="px-2 py-1 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-200 disabled:opacity-30"
-                  >
-                    «
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-200 disabled:opacity-30"
-                  >
-                    ‹ Prev
-                  </button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter(
-                      (p) =>
-                        p === 1 ||
-                        p === totalPages ||
-                        Math.abs(p - currentPage) <= 1,
-                    )
-                    .reduce<(number | string)[]>((acc, p, i, arr) => {
-                      if (i > 0 && (p as number) - (arr[i - 1] as number) > 1)
-                        acc.push("...");
-                      acc.push(p);
-                      return acc;
-                    }, [])
-                    .map((p, i) =>
-                      p === "..." ? (
-                        <span key={`e-${i}`} className="px-2 text-gray-400">
-                          …
-                        </span>
-                      ) : (
-                        <button
-                          key={p}
-                          onClick={() => setCurrentPage(p as number)}
-                          className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${currentPage === p ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-200"}`}
-                        >
-                          {p}
-                        </button>
-                      ),
-                    )}
-                  <button
-                    onClick={() =>
-                      setCurrentPage((p) => Math.min(totalPages, p + 1))
-                    }
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-200 disabled:opacity-30"
-                  >
-                    Next ›
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage(totalPages)}
-                    disabled={currentPage === totalPages}
-                    className="px-2 py-1 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-200 disabled:opacity-30"
-                  >
-                    »
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {customers.length === 0 && (
-            <div className="text-center py-20">
-              <div className="text-4xl mb-4">📂</div>
-              <div className="text-gray-400 font-medium">
-                No matching records found
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Security Code Modal */}
-      <AnimatePresence>
-        {showCodePrompt && (
-          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden"
-            >
-              <div className="bg-slate-900 p-6 text-white text-center">
-                <Shield className="w-10 h-10 mx-auto mb-2 text-amber-400" />
-                <h3 className="text-lg font-bold">Security Verification</h3>
-                <p className="text-xs text-slate-400 mt-1">
-                  Enter security code to view sensitive data
-                </p>
-              </div>
-              <div className="p-6 space-y-4">
-                <input
-                  type="password"
-                  value={securityCode}
-                  onChange={(e) =>
-                    setSecurityCode(
-                      e.target.value.replace(/\D/g, "").slice(0, 4),
-                    )
-                  }
-                  onKeyDown={(e) => e.key === "Enter" && handleCodeSubmit()}
-                  placeholder="Enter 4-digit code"
-                  maxLength={4}
-                  autoFocus
-                  className="w-full px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-slate-900 focus:border-slate-900 outline-none"
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
                 />
-                <div className="flex gap-3">
-                  <button
-                    onClick={closeCodePrompt}
-                    className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition"
+              </svg>
+              Back to Admin
+            </button>
+            <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">
+              Autopay Portal
+            </h1>
+            <p className="text-gray-500 mt-1">
+              Securely manage payment methods linked by phone number.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+            <input
+              ref={searchInputRef}
+              type="text"
+              name="customer-search-field"
+              placeholder="Search Name or Phone..."
+              value={searchQuery}
+              autoComplete="new-password"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setCurrentPage(1);
+              }}
+              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-64"
+            />
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="text-sm font-medium">Logout</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="max-w-7xl mx-auto mb-4">
+          <div className="flex bg-white rounded-xl border border-gray-200 p-1 shadow-sm gap-1 w-fit">
+            <button
+              onClick={() => {
+                setActiveTab("pending");
+                setCurrentPage(1);
+              }}
+              className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${
+                activeTab === "pending"
+                  ? "bg-blue-600 text-white shadow"
+                  : "text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              Pending
+              <span
+                className={`px-2 py-0.5 rounded-full text-xs font-black ${
+                  activeTab === "pending"
+                    ? "bg-blue-500 text-white"
+                    : "bg-gray-100 text-gray-600"
+                }`}
+              >
+                {pendingTotal}
+              </span>
+              {newCount > 0 && activeTab === "pending" && (
+                <span className="px-1.5 py-0.5 text-[9px] font-black bg-red-500 text-white rounded animate-pulse">
+                  {newCount} NEW
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => {
+                setActiveTab("completed");
+                setCurrentPage(1);
+              }}
+              className={`flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-bold transition-all ${
+                activeTab === "completed"
+                  ? "bg-emerald-600 text-white shadow"
+                  : "text-gray-500 hover:text-gray-800"
+              }`}
+            >
+              Completed
+              <span
+                className={`px-2 py-0.5 rounded-full text-xs font-black ${
+                  activeTab === "completed"
+                    ? "bg-emerald-500 text-white"
+                    : "bg-gray-100 text-gray-600"
+                }`}
+              >
+                {completedTotal}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Main Table */}
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50 text-gray-500 text-xs font-semibold uppercase tracking-wider">
+                  <tr>
+                    <th className="px-6 py-4 text-left">Customer / Phone</th>
+                    <th className="px-6 py-4 text-left">Method</th>
+                    <th className="px-6 py-4 text-left">Last 4</th>
+                    <th className="px-6 py-4 text-left">Created</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-100">
+                  {customers.map((customer) => {
+                    const isNew = !customer.viewed;
+                    return (
+                      <tr
+                        key={customer._id}
+                        className={`hover:bg-blue-50/30 transition-colors group ${isNew ? "bg-blue-50/50" : ""}`}
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-gray-900">
+                              {customer.customerName}
+                            </span>
+                            {isNew && (
+                              <span className="px-1.5 py-0.5 text-[9px] font-bold bg-red-500 text-white rounded animate-pulse">
+                                NEW
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-xs text-blue-600 font-mono">
+                            {customer.customerPhone}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`px-2 py-1 text-[10px] font-bold rounded-md uppercase ${
+                              customer.method === "card"
+                                ? "bg-indigo-100 text-indigo-700"
+                                : "bg-emerald-100 text-emerald-700"
+                            }`}
+                          >
+                            {customer.method}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {customer.method === "card"
+                            ? `${customer.cardBrand || "Card"} ••${customer.cardLast4}`
+                            : `${customer.accountType || "ACH"} ••${customer.accountLast4}`}
+                        </td>
+                        <td className="px-6 py-4 text-xs text-gray-400 font-mono">
+                          {new Date(customer.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 text-right space-x-3">
+                          <button
+                            onClick={() => handleDecrypt(customer)}
+                            className="text-blue-600 hover:text-blue-800 text-sm font-bold transition-all"
+                          >
+                            VIEW
+                          </button>
+                          {customer.viewed && (
+                            <button
+                              onClick={() => markAsUnviewed(customer._id)}
+                              className="text-purple-500 hover:text-purple-700 text-sm font-bold transition-all"
+                            >
+                              UNREAD
+                            </button>
+                          )}
+                          <button
+                            onClick={() =>
+                              toggleCompleted(customer._id, !customer.completed)
+                            }
+                            className={`text-sm font-bold transition-all ${
+                              customer.completed
+                                ? "text-amber-500 hover:text-amber-700"
+                                : "text-emerald-500 hover:text-emerald-700"
+                            }`}
+                          >
+                            {customer.completed ? "REOPEN" : "DONE"}
+                          </button>
+                          <button
+                            onClick={() =>
+                              handleDelete(customer._id, customer.customerName)
+                            }
+                            className="text-gray-300 hover:text-red-600 text-sm font-bold transition-all"
+                          >
+                            DELETE
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {totalCount > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50">
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <span>Rows per page:</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    className="border border-gray-300 rounded-lg px-2 py-1 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                   >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleCodeSubmit}
-                    disabled={securityCode.length !== 4}
-                    className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-black transition disabled:opacity-40"
-                  >
-                    Verify
-                  </button>
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                    <option value={0}>All</option>
+                  </select>
+                  <span className="ml-2">
+                    {pageSize === 0
+                      ? `All ${totalCount} records`
+                      : `${Math.min((currentPage - 1) * pageSize + 1, totalCount)}–${Math.min(currentPage * pageSize, totalCount)} of ${totalCount}`}
+                  </span>
+                </div>
+                {pageSize !== 0 && totalPages > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                      className="px-2 py-1 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-200 disabled:opacity-30"
+                    >
+                      «
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="px-3 py-1 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-200 disabled:opacity-30"
+                    >
+                      ‹ Prev
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(
+                        (p) =>
+                          p === 1 ||
+                          p === totalPages ||
+                          Math.abs(p - currentPage) <= 1,
+                      )
+                      .reduce<(number | string)[]>((acc, p, i, arr) => {
+                        if (i > 0 && (p as number) - (arr[i - 1] as number) > 1)
+                          acc.push("...");
+                        acc.push(p);
+                        return acc;
+                      }, [])
+                      .map((p, i) =>
+                        p === "..." ? (
+                          <span key={`e-${i}`} className="px-2 text-gray-400">
+                            …
+                          </span>
+                        ) : (
+                          <button
+                            key={p}
+                            onClick={() => setCurrentPage(p as number)}
+                            className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${currentPage === p ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-200"}`}
+                          >
+                            {p}
+                          </button>
+                        ),
+                      )}
+                    <button
+                      onClick={() =>
+                        setCurrentPage((p) => Math.min(totalPages, p + 1))
+                      }
+                      disabled={currentPage === totalPages}
+                      className="px-3 py-1 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-200 disabled:opacity-30"
+                    >
+                      Next ›
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={currentPage === totalPages}
+                      className="px-2 py-1 rounded-lg text-sm font-medium text-gray-500 hover:bg-gray-200 disabled:opacity-30"
+                    >
+                      »
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {customers.length === 0 && (
+              <div className="text-center py-20">
+                <div className="text-4xl mb-4">📂</div>
+                <div className="text-gray-400 font-medium">
+                  No matching records found
                 </div>
               </div>
-            </motion.div>
+            )}
           </div>
-        )}
-      </AnimatePresence>
+        </div>
 
-      {/* Decrypted Data Modal */}
-      <AnimatePresence>
-        {showData && decryptedData && selectedCustomer && (
-          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden"
-            >
-              <div className="bg-red-600 p-6 text-white flex justify-between items-center">
-                <div>
-                  <h3 className="text-xl font-bold italic tracking-tighter uppercase">
-                    Sensitive Information
-                  </h3>
-                  <p className="text-xs text-red-100 opacity-80">
-                    Sync ID: {selectedCustomer._id}
+        {/* Security Code Modal */}
+        <AnimatePresence>
+          {showCodePrompt && (
+            <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden"
+              >
+                <div className="bg-slate-900 p-6 text-white text-center">
+                  <Shield className="w-10 h-10 mx-auto mb-2 text-amber-400" />
+                  <h3 className="text-lg font-bold">Security Verification</h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Enter security code to view sensitive data
                   </p>
                 </div>
-                <button
-                  onClick={closeModal}
-                  className="text-3xl hover:rotate-90 transition-transform"
-                >
-                  &times;
-                </button>
-              </div>
+                <div className="p-6 space-y-4">
+                  <input
+                    type="password"
+                    value={securityCode}
+                    onChange={(e) =>
+                      setSecurityCode(
+                        e.target.value.replace(/\D/g, "").slice(0, 4),
+                      )
+                    }
+                    onKeyDown={(e) => e.key === "Enter" && handleCodeSubmit()}
+                    placeholder="Enter 4-digit code"
+                    maxLength={4}
+                    autoFocus
+                    className="w-full px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-slate-900 focus:border-slate-900 outline-none"
+                  />
+                  <div className="flex gap-3">
+                    <button
+                      onClick={closeCodePrompt}
+                      className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleCodeSubmit}
+                      disabled={securityCode.length !== 4}
+                      className="flex-1 py-3 bg-slate-900 text-white rounded-xl font-bold hover:bg-black transition disabled:opacity-40"
+                    >
+                      Verify
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
-              <div className="p-6 space-y-5">
-                {selectedCustomer.method === "card" ? (
-                  <>
-                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
-                        Full Card Number
-                      </label>
-                      <div className="flex items-center justify-between">
-                        <span className="text-2xl font-mono text-gray-800 tracking-tighter">
-                          {decryptedData.cardNumber}
-                        </span>
-                        <button
-                          onClick={() =>
-                            copyToClipboard(
-                              decryptedData.cardNumber?.replace(/\s/g, "") ||
-                                "",
-                            )
-                          }
-                          className="text-blue-600 text-xs font-bold"
-                        >
-                          COPY
-                        </button>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
+        {/* Decrypted Data Modal */}
+        <AnimatePresence>
+          {showData && decryptedData && selectedCustomer && (
+            <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden"
+              >
+                <div className="bg-red-600 p-6 text-white flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-bold italic tracking-tighter uppercase">
+                      Sensitive Information
+                    </h3>
+                    <p className="text-xs text-red-100 opacity-80">
+                      Sync ID: {selectedCustomer._id}
+                    </p>
+                  </div>
+                  <button
+                    onClick={closeModal}
+                    className="text-3xl hover:rotate-90 transition-transform"
+                  >
+                    &times;
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-5">
+                  {selectedCustomer.method === "card" ? (
+                    <>
                       <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">
-                          Expiration
-                        </label>
-                        <span className="text-xl font-mono text-gray-800">
-                          {decryptedData.expiryMonth}/{decryptedData.expiryYear}
-                        </span>
-                      </div>
-                      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">
-                          CVV
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
+                          Full Card Number
                         </label>
                         <div className="flex items-center justify-between">
-                          <span className="text-xl font-mono text-gray-800">
-                            {decryptedData.cvv}
+                          <span className="text-2xl font-mono text-gray-800 tracking-tighter">
+                            {decryptedData.cardNumber}
                           </span>
                           <button
                             onClick={() =>
-                              copyToClipboard(decryptedData.cvv || "")
+                              copyToClipboard(
+                                decryptedData.cardNumber?.replace(/\s/g, "") ||
+                                  "",
+                              )
                             }
                             className="text-blue-600 text-xs font-bold"
                           >
@@ -801,115 +767,144 @@ export default function AdminAutopayDashboard() {
                           </button>
                         </div>
                       </div>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">
-                        Cardholder Name
-                      </label>
-                      <span className="text-xl font-bold text-gray-800 uppercase italic">
-                        {decryptedData.cardholderName}
-                      </span>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">
-                        Billing ZIP Code
-                      </label>
-                      <span className="text-xl font-mono text-gray-800">
-                        {decryptedData.zipCode}
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
-                        Account Number
-                      </label>
-                      <div className="flex items-center justify-between">
-                        <span className="text-2xl font-mono text-gray-800">
-                          {decryptedData.accountNumber}
-                        </span>
-                        <button
-                          onClick={() =>
-                            copyToClipboard(decryptedData.accountNumber || "")
-                          }
-                          className="text-blue-600 text-xs font-bold"
-                        >
-                          COPY
-                        </button>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">
+                            Expiration
+                          </label>
+                          <span className="text-xl font-mono text-gray-800">
+                            {decryptedData.expiryMonth}/
+                            {decryptedData.expiryYear}
+                          </span>
+                        </div>
+                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">
+                            CVV
+                          </label>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xl font-mono text-gray-800">
+                              {decryptedData.cvv}
+                            </span>
+                            <button
+                              onClick={() =>
+                                copyToClipboard(decryptedData.cvv || "")
+                              }
+                              className="text-blue-600 text-xs font-bold"
+                            >
+                              COPY
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
-                        Routing Number
-                      </label>
-                      <div className="flex items-center justify-between">
-                        <span className="text-2xl font-mono text-gray-800">
-                          {decryptedData.routingNumber}
-                        </span>
-                        <button
-                          onClick={() =>
-                            copyToClipboard(decryptedData.routingNumber || "")
-                          }
-                          className="text-blue-600 text-xs font-bold"
-                        >
-                          COPY
-                        </button>
-                      </div>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
-                      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">
-                        Account Holder
-                      </label>
-                      <span className="text-xl font-bold text-gray-800 uppercase italic">
-                        {decryptedData.accountHolderName}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
                       <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">
-                          Account Type
+                          Cardholder Name
                         </label>
-                        <span className="text-lg font-bold text-gray-800 uppercase">
-                          {decryptedData.accountType}
+                        <span className="text-xl font-bold text-gray-800 uppercase italic">
+                          {decryptedData.cardholderName}
                         </span>
                       </div>
                       <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">
-                          Holder Type
+                          Billing ZIP Code
                         </label>
-                        <span className="text-lg font-bold text-gray-800 uppercase">
-                          {decryptedData.accountHolderType}
+                        <span className="text-xl font-mono text-gray-800">
+                          {decryptedData.zipCode}
                         </span>
                       </div>
-                    </div>
-                  </>
-                )}
-
-                <div className="flex gap-3">
-                  {selectedCustomer && !selectedCustomer.completed && (
-                    <button
-                      onClick={async () => {
-                        await toggleCompleted(selectedCustomer._id, true);
-                        closeModal();
-                      }}
-                      className="flex-1 bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg"
-                    >
-                      ✓ MARK COMPLETE
-                    </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
+                          Account Number
+                        </label>
+                        <div className="flex items-center justify-between">
+                          <span className="text-2xl font-mono text-gray-800">
+                            {decryptedData.accountNumber}
+                          </span>
+                          <button
+                            onClick={() =>
+                              copyToClipboard(decryptedData.accountNumber || "")
+                            }
+                            className="text-blue-600 text-xs font-bold"
+                          >
+                            COPY
+                          </button>
+                        </div>
+                      </div>
+                      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
+                          Routing Number
+                        </label>
+                        <div className="flex items-center justify-between">
+                          <span className="text-2xl font-mono text-gray-800">
+                            {decryptedData.routingNumber}
+                          </span>
+                          <button
+                            onClick={() =>
+                              copyToClipboard(decryptedData.routingNumber || "")
+                            }
+                            className="text-blue-600 text-xs font-bold"
+                          >
+                            COPY
+                          </button>
+                        </div>
+                      </div>
+                      <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">
+                          Account Holder
+                        </label>
+                        <span className="text-xl font-bold text-gray-800 uppercase italic">
+                          {decryptedData.accountHolderName}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">
+                            Account Type
+                          </label>
+                          <span className="text-lg font-bold text-gray-800 uppercase">
+                            {decryptedData.accountType}
+                          </span>
+                        </div>
+                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                          <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">
+                            Holder Type
+                          </label>
+                          <span className="text-lg font-bold text-gray-800 uppercase">
+                            {decryptedData.accountHolderType}
+                          </span>
+                        </div>
+                      </div>
+                    </>
                   )}
-                  <button
-                    onClick={closeModal}
-                    className="flex-1 bg-slate-900 text-white py-4 rounded-xl font-bold hover:bg-black transition-all shadow-lg"
-                  >
-                    DONE & SECURE
-                  </button>
+
+                  <div className="flex gap-3">
+                    {selectedCustomer && !selectedCustomer.completed && (
+                      <button
+                        onClick={async () => {
+                          await toggleCompleted(selectedCustomer._id, true);
+                          closeModal();
+                        }}
+                        className="flex-1 bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg"
+                      >
+                        ✓ MARK COMPLETE
+                      </button>
+                    )}
+                    <button
+                      onClick={closeModal}
+                      className="flex-1 bg-slate-900 text-white py-4 rounded-xl font-bold hover:bg-black transition-all shadow-lg"
+                    >
+                      DONE & SECURE
+                    </button>
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+      </div>
+    </AdminShell>
   );
 }
