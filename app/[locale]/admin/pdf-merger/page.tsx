@@ -1,8 +1,12 @@
 // app/[locale]/admin/pdf-merger/page.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useState, useRef, useEffect } from "react";
+import AdminShell from "../_components/AdminShell";
 import {
   FileText,
   Upload,
@@ -20,7 +24,6 @@ import {
   ChevronLeft,
   Sparkles,
 } from "lucide-react";
-import AdminShell from "../_components/AdminShell";
 
 // ─── DOCUMENT SETS PER POLICY TYPE ───────────────────────────────────────────
 type TemplateEntry = { key: string; label: string };
@@ -526,39 +529,176 @@ export default function PdfMergerPage() {
       };
 
       const addPdf = async (bytes: Uint8Array, templateKey?: string) => {
-        const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
-        const pages = await merged.copyPages(doc, doc.getPageIndices());
-        pages.forEach((page, i) => {
-          merged.addPage(page);
-          if (i === 0 && templateKey && DATE_STAMPS[templateKey]) {
-            DATE_STAMPS[templateKey].forEach(({ x, y }) => {
-              page.drawText(dateStr, {
-                x,
-                y,
-                size: 10,
-                font,
-                color: rgb(0, 0, 0),
+        const loadAndCopy = async (
+          opts: { throwOnInvalidObject?: boolean } = {},
+        ) => {
+          const doc = await PDFDocument.load(bytes, {
+            ignoreEncryption: true,
+            ...opts,
+          });
+          const pages = await merged.copyPages(doc, doc.getPageIndices());
+          pages.forEach((page, i) => {
+            merged.addPage(page);
+            if (i === 0 && templateKey && DATE_STAMPS[templateKey]) {
+              DATE_STAMPS[templateKey].forEach(({ x, y }) => {
+                page.drawText(dateStr, {
+                  x,
+                  y,
+                  size: 10,
+                  font,
+                  color: rgb(0, 0, 0),
+                });
               });
-            });
+            }
+          });
+        };
+        try {
+          await loadAndCopy();
+        } catch {
+          const proceed = window.confirm(
+            "One of the uploaded PDFs has a non-standard structure (e.g. digitally signed or encrypted).\n\nDo you want to try merging anyway? Some formatting may be affected.",
+          );
+          if (!proceed) throw new Error("Merge cancelled by user.");
+          // Retry with lenient parsing
+          try {
+            await loadAndCopy({ throwOnInvalidObject: false });
+          } catch {
+            // Last resort: render each page via PDF.js → canvas → PNG image embedded in merged PDF
+            // This is equivalent to "print to PDF" — always works, produces flat image pages
+            try {
+              const pdfjsLib = (window as any).pdfjsLib;
+              const arrayBuffer = await new Promise<ArrayBuffer>(
+                (resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = (e) =>
+                    resolve(e.target!.result as ArrayBuffer);
+                  reader.onerror = reject;
+                  reader.readAsArrayBuffer(new Blob([bytes] as BlobPart[]));
+                },
+              );
+              const pdfDoc2 = await pdfjsLib.getDocument({ data: arrayBuffer })
+                .promise;
+              for (let p = 1; p <= pdfDoc2.numPages; p++) {
+                const page2 = await pdfDoc2.getPage(p);
+                const viewport = page2.getViewport({ scale: 2 });
+                const canvas = document.createElement("canvas");
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+                const ctx = canvas.getContext("2d")!;
+                await page2.render({ canvasContext: ctx, viewport }).promise;
+                const pngBase64 = canvas.toDataURL("image/png").split(",")[1];
+                const pngBytes = Uint8Array.from(atob(pngBase64), (c) =>
+                  c.charCodeAt(0),
+                );
+                const pngImage = await merged.embedPng(pngBytes);
+                const imgPage = merged.addPage([
+                  viewport.width / 2,
+                  viewport.height / 2,
+                ]);
+                imgPage.drawImage(pngImage, {
+                  x: 0,
+                  y: 0,
+                  width: viewport.width / 2,
+                  height: viewport.height / 2,
+                });
+              }
+            } catch (renderErr) {
+              throw new Error(
+                "This PDF could not be merged. Please re-save it as a standard PDF and try again.",
+              );
+            }
           }
-        });
+        }
       };
 
       const addOfficeReceipt = async (bytes: Uint8Array) => {
-        const doc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+        const loadReceipt = async (
+          opts: { throwOnInvalidObject?: boolean } = {},
+        ) => {
+          const doc = await PDFDocument.load(bytes, {
+            ignoreEncryption: true,
+            ...opts,
+          });
+          return doc;
+        };
+        let doc;
+        try {
+          doc = await loadReceipt();
+        } catch {
+          const proceed = window.confirm(
+            "The office receipt PDF has a non-standard structure.\n\nDo you want to try merging anyway?",
+          );
+          if (!proceed) throw new Error("Merge cancelled by user.");
+          doc = await loadReceipt({ throwOnInvalidObject: false });
+        }
+
+        // ── Dynamically locate stamp positions via PDF.js text extraction ──────
+        // The receipt layout shifts when there are multiple policy rows,
+        // so hardcoded coordinates break. Instead we find the actual y-position
+        // of the "Paid $" and "YOUR NEXT PAYMENT IS DUE ON" lines.
+        let paidAmountPos = OFFICE_RECEIPT_STAMPS.paidAmount;
+        let dueDatePos = OFFICE_RECEIPT_STAMPS.dueDate;
+        let monthlyPos = OFFICE_RECEIPT_STAMPS.monthlyAmount;
+
+        try {
+          const pdfjsLib = (window as any).pdfjsLib;
+          const arrayBuf = await new Promise<ArrayBuffer>((res, rej) => {
+            const r = new FileReader();
+            r.onload = (e) => res(e.target!.result as ArrayBuffer);
+            r.onerror = rej;
+            r.readAsArrayBuffer(new Blob([new Uint8Array(bytes)]));
+          });
+          const pjDoc = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
+          const pjPage = await pjDoc.getPage(1);
+          const textContent = await pjPage.getTextContent();
+          const textItems = textContent.items as any[];
+
+          // X positions are fixed — the form blanks never shift left/right.
+          // Only Y changes when there are multiple policy rows in the table.
+          // Strategy: find anchor text items, grab their Y, keep X hardcoded.
+
+          // "Paid $" line → Y of paidAmount
+          const paidItem = textItems.find((it: any) =>
+            /Paid\s+\$/.test(it.str),
+          );
+          if (paidItem) {
+            paidAmountPos = {
+              x: OFFICE_RECEIPT_STAMPS.paidAmount.x,
+              y: paidItem.transform[5],
+            };
+          }
+
+          // "YOUR NEXT PAYMENT IS DUE ON" line → Y of dueDate + monthlyAmount
+          const dueItem = textItems.find((it: any) =>
+            /YOUR NEXT PAYMENT IS DUE ON/i.test(it.str),
+          );
+          if (dueItem) {
+            dueDatePos = {
+              x: OFFICE_RECEIPT_STAMPS.dueDate.x,
+              y: dueItem.transform[5],
+            };
+            monthlyPos = {
+              x: OFFICE_RECEIPT_STAMPS.monthlyAmount.x,
+              y: dueItem.transform[5],
+            };
+          }
+        } catch {
+          // If detection fails, fall back to hardcoded coordinates
+        }
+
         const pages = await merged.copyPages(doc, doc.getPageIndices());
         pages.forEach((page, i) => {
           merged.addPage(page);
           if (i === 0) {
             // Paid amount
             page.drawText(`$${paidAmount.trim()}`, {
-              x: OFFICE_RECEIPT_STAMPS.paidAmount.x,
-              y: OFFICE_RECEIPT_STAMPS.paidAmount.y,
+              x: paidAmountPos.x,
+              y: paidAmountPos.y,
               size: 10,
               font,
               color: rgb(0, 0, 0),
             });
-            // Due date — PIF shows "Paid In Full", otherwise formatted date
+            // Due date
             const dueDateText = paidInFull
               ? "Paid In Full"
               : (() => {
@@ -566,19 +706,19 @@ export default function PdfMergerPage() {
                   return `${parseInt(m, 10)}/${parseInt(d, 10)}/${y}`;
                 })();
             page.drawText(dueDateText, {
-              x: OFFICE_RECEIPT_STAMPS.dueDate.x,
-              y: OFFICE_RECEIPT_STAMPS.dueDate.y,
+              x: dueDatePos.x,
+              y: dueDatePos.y,
               size: paidInFull ? 8 : 10,
               font,
               color: rgb(0, 0, 0),
             });
-            // Monthly amount — PIF shows "To Be Determined"
+            // Monthly amount
             const monthlyText = paidInFull
               ? "To Be Determined"
               : `$${monthlyAmount.trim()}`;
             page.drawText(monthlyText, {
-              x: OFFICE_RECEIPT_STAMPS.monthlyAmount.x,
-              y: OFFICE_RECEIPT_STAMPS.monthlyAmount.y,
+              x: monthlyPos.x,
+              y: monthlyPos.y,
               size: paidInFull ? 8 : 10,
               font,
               color: rgb(0, 0, 0),
