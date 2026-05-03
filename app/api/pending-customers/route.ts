@@ -1,3 +1,4 @@
+// app/api/pending-customers/route.ts
 import { NextResponse } from "next/server";
 import clientPromise from "@/lib/mongodb";
 

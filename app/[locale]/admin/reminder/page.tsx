@@ -303,6 +303,18 @@ export default function InsuranceReminderDashboard() {
   const [aiSuggestion, setAiSuggestion] = useState<AISuggestion | null>(null);
   const [loadingAiSuggestion, setLoadingAiSuggestion] = useState(false);
   const [showAiSuggestion, setShowAiSuggestion] = useState(true);
+  const [pdfData, setPdfData] = useState<{
+    found: boolean;
+    paidInFull?: boolean;
+    nextDueDate?: string | null;
+    monthlyAmount?: string | null;
+    paidAmount?: string | null;
+    companyName?: string | null;
+    paymentMethod?: string | null;
+    suggestedPaymentType?: "regular" | "autopay" | "paid-in-full";
+    mergedFilename?: string | null;
+    updatedAt?: string | null;
+  } | null>(null);
   const [setupEffectiveDate, setSetupEffectiveDate] = useState("");
   const [setupExpirationDate, setSetupExpirationDate] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -332,6 +344,14 @@ export default function InsuranceReminderDashboard() {
   const [editingPendingDates, setEditingPendingDates] = useState<string | null>(
     null,
   );
+  const [companyList, setCompanyList] = useState<string[]>([]);
+  const [editingPendingInfo, setEditingPendingInfo] = useState<string | null>(
+    null,
+  );
+  const [editPendingPolicyNo, setEditPendingPolicyNo] = useState("");
+  const [editPendingCompany, setEditPendingCompany] = useState("");
+  const [savingPendingInfo, setSavingPendingInfo] = useState(false);
+  const [pendingInfoError, setPendingInfoError] = useState("");
   const [editCustomerEffective, setEditCustomerEffective] = useState("");
   const [editCustomerExpiration, setEditCustomerExpiration] = useState("");
 
@@ -363,7 +383,21 @@ export default function InsuranceReminderDashboard() {
   }, []);
 
   useEffect(() => {
-    fetchPendingCustomers();
+    fetchPendingCustomers().then((data) => autoSetupFromPdf(data));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/company-database")
+      .then((r) => r.json())
+      .then((data) => {
+        const names = Object.values(
+          data.companies as Record<string, { name: string }>,
+        )
+          .map((c) => c.name)
+          .sort();
+        setCompanyList(names);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -415,7 +449,7 @@ export default function InsuranceReminderDashboard() {
     return () => clearTimeout(timeoutId);
   }, [setupEffectiveDate, setupExpirationDate, showSetupModal, setupCustomer]);
 
-  const fetchPendingCustomers = async () => {
+  const fetchPendingCustomers = async (): Promise<PendingCustomer[]> => {
     try {
       const timestamp = new Date().getTime();
       const response = await fetch(`/api/pending-customers?t=${timestamp}`, {
@@ -424,8 +458,69 @@ export default function InsuranceReminderDashboard() {
       const data = await response.json();
       setPendingCustomers(data);
       setCurrentPage(1);
+      return data;
     } catch (error) {
       console.error("Error fetching pending customers:", error);
+      return [];
+    }
+  };
+
+  const autoSetupFromPdf = async (customers: PendingCustomer[]) => {
+    if (customers.length === 0) return;
+    let count = 0;
+
+    for (const customer of customers) {
+      try {
+        const params = new URLSearchParams();
+        if (customer.policy_no) params.set("policyNo", customer.policy_no);
+        if (customer.customer_name)
+          params.set("customerName", customer.customer_name);
+
+        const pdfRes = await fetch(
+          `/api/pdf-extracted-lookup?${params.toString()}`,
+        );
+        const pdf = await pdfRes.json();
+
+        if (!pdf.found) continue;
+
+        // Determine payment type from pdf data
+        let paymentType: PaymentType = "regular";
+        if (pdf.paidInFull) {
+          paymentType = "paid-in-full";
+        } else if (pdf.paymentMethod === "cc" || pdf.paymentMethod === "eft") {
+          paymentType = "autopay";
+        }
+
+        // Skip if we need a due date but don't have one
+        if (
+          (paymentType === "regular" || paymentType === "autopay") &&
+          !pdf.nextDueDate
+        ) {
+          continue;
+        }
+
+        const setupRes = await fetch("/api/setup-reminder", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            policyNo: customer.policy_no,
+            dueDate: pdf.paidInFull ? undefined : pdf.nextDueDate,
+            paymentType,
+          }),
+        });
+
+        if (setupRes.ok) count++;
+      } catch {
+        // Skip this customer on error, try the next
+      }
+    }
+
+    if (count > 0) {
+      await fetchCustomers();
+      await fetchPendingCustomers();
+      alert(
+        `✅ ${count} reminder${count !== 1 ? "s were" : " was"} automatically set up from PDF merger data.`,
+      );
     }
   };
 
@@ -743,6 +838,31 @@ export default function InsuranceReminderDashboard() {
       setShowSetupModal(true);
       setShowAiSuggestion(true);
       setAiSuggestion(null);
+      setPdfData(null);
+
+      // Look up pdf-extracted data by policy number then customer name
+      try {
+        const params = new URLSearchParams();
+        if (freshCustomer.policy_no)
+          params.set("policyNo", freshCustomer.policy_no);
+        if (freshCustomer.customer_name)
+          params.set("customerName", freshCustomer.customer_name);
+        const pdfRes = await fetch(
+          `/api/pdf-extracted-lookup?${params.toString()}`,
+        );
+        const pdf = await pdfRes.json();
+        if (pdf.found) {
+          setPdfData(pdf);
+          // Auto-apply payment type
+          if (pdf.suggestedPaymentType)
+            setSetupPaymentType(pdf.suggestedPaymentType);
+          // Auto-apply due date only if not paid-in-full
+          if (!pdf.paidInFull && pdf.nextDueDate)
+            setSetupDueDate(pdf.nextDueDate);
+        }
+      } catch {
+        // Non-fatal — setup modal still works without pre-fill
+      }
 
       const effectiveDate = new Date(freshCustomer.effective_date);
       const effYear = effectiveDate.getFullYear();
@@ -810,7 +930,23 @@ export default function InsuranceReminderDashboard() {
     }
   };
 
-  // NEW: Handle Pending Customer Cancellation Click
+  const handleUpdatePendingInfo = async (
+    customerId: string,
+    policyNo: string,
+    companyName: string,
+  ) => {
+    const response = await fetch(`/api/pending-customers/${customerId}/info`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ policyNo, companyName }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || "Failed to update");
+    }
+    await fetchPendingCustomers();
+  };
+
   const handleCancelPendingCustomer = (customer: PendingCustomer) => {
     setCancellingPendingCustomer(customer);
     const today = new Date();
@@ -886,6 +1022,23 @@ export default function InsuranceReminderDashboard() {
           : "Failed to cancel pending customer",
       );
     }
+  };
+
+  const handleUpdateInfo = async (
+    customerId: string,
+    policyNo: string,
+    companyName: string,
+  ) => {
+    const response = await fetch(`/api/customers/${customerId}/info`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ policyNo, companyName }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || "Failed to update");
+    }
+    await fetchCustomers();
   };
 
   const handleChangeToDirectBill = async (customerId: string) => {
@@ -1733,15 +1886,128 @@ export default function InsuranceReminderDashboard() {
                                   <h3 className="font-semibold text-gray-900 text-lg">
                                     {customer.customer_name}
                                   </h3>
-                                  <p className="text-sm text-gray-600">
-                                    Policy #: {customer.policy_no}
-                                  </p>
-                                  <p className="text-sm text-gray-600">
-                                    Company: {customer.company_name}
-                                  </p>
-                                  <p className="text-sm text-gray-600">
-                                    Coverage: {customer.coverage_type}
-                                  </p>
+
+                                  {editingPendingInfo === customer._id ? (
+                                    <div className="mt-1 space-y-2">
+                                      <div className="flex items-center gap-2">
+                                        <label className="text-xs text-gray-600 w-20 flex-shrink-0">
+                                          Policy #:
+                                        </label>
+                                        <input
+                                          type="text"
+                                          value={editPendingPolicyNo}
+                                          onChange={(e) =>
+                                            setEditPendingPolicyNo(
+                                              e.target.value,
+                                            )
+                                          }
+                                          className="flex-1 border border-yellow-400 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-yellow-500 outline-none"
+                                        />
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <label className="text-xs text-gray-600 w-20 flex-shrink-0">
+                                          Company:
+                                        </label>
+                                        <select
+                                          value={editPendingCompany}
+                                          onChange={(e) =>
+                                            setEditPendingCompany(
+                                              e.target.value,
+                                            )
+                                          }
+                                          className="flex-1 border border-yellow-400 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-yellow-500 outline-none bg-white"
+                                        >
+                                          <option value="">
+                                            — select company —
+                                          </option>
+                                          {companyList.map((c) => (
+                                            <option key={c} value={c}>
+                                              {c}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      {pendingInfoError && (
+                                        <p className="text-xs text-red-600">
+                                          {pendingInfoError}
+                                        </p>
+                                      )}
+                                      <div className="flex gap-2">
+                                        <button
+                                          onClick={async () => {
+                                            if (!editPendingPolicyNo.trim()) {
+                                              setPendingInfoError(
+                                                "Policy number is required",
+                                              );
+                                              return;
+                                            }
+                                            setSavingPendingInfo(true);
+                                            setPendingInfoError("");
+                                            try {
+                                              await handleUpdatePendingInfo(
+                                                customer._id,
+                                                editPendingPolicyNo.trim(),
+                                                editPendingCompany,
+                                              );
+                                              setEditingPendingInfo(null);
+                                            } catch (err) {
+                                              setPendingInfoError(
+                                                err instanceof Error
+                                                  ? err.message
+                                                  : "Failed to save",
+                                              );
+                                            } finally {
+                                              setSavingPendingInfo(false);
+                                            }
+                                          }}
+                                          disabled={savingPendingInfo}
+                                          className="px-3 py-1 bg-yellow-600 text-white rounded text-xs hover:bg-yellow-700 disabled:opacity-50"
+                                        >
+                                          {savingPendingInfo
+                                            ? "Saving…"
+                                            : "Save"}
+                                        </button>
+                                        <button
+                                          onClick={() =>
+                                            setEditingPendingInfo(null)
+                                          }
+                                          className="px-3 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300"
+                                        >
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div className="flex items-center gap-1.5 mt-0.5">
+                                        <p className="text-sm text-gray-600">
+                                          Policy #: {customer.policy_no}
+                                          {customer.company_name
+                                            ? ` · ${customer.company_name}`
+                                            : ""}
+                                        </p>
+                                        <button
+                                          onClick={() => {
+                                            setEditPendingPolicyNo(
+                                              customer.policy_no,
+                                            );
+                                            setEditPendingCompany(
+                                              customer.company_name ?? "",
+                                            );
+                                            setPendingInfoError("");
+                                            setEditingPendingInfo(customer._id);
+                                          }}
+                                          className="p-0.5 hover:bg-yellow-100 rounded"
+                                          title="Edit policy # and company"
+                                        >
+                                          <Edit className="w-3 h-3 text-yellow-600" />
+                                        </button>
+                                      </div>
+                                      <p className="text-sm text-gray-600">
+                                        Coverage: {customer.coverage_type}
+                                      </p>
+                                    </>
+                                  )}
 
                                   {isEditingDates ? (
                                     <div className="mt-2 space-y-2">
@@ -2314,7 +2580,7 @@ export default function InsuranceReminderDashboard() {
                 className="bg-white rounded-xl shadow-sm p-6"
               >
                 <h2 className="text-xl font-semibold mb-4 text-gray-800">
-                  All Customers ({filteredAllCustomers.length})
+                  All Customers
                 </h2>
 
                 <div className="mb-4">
@@ -2338,6 +2604,8 @@ export default function InsuranceReminderDashboard() {
                         <CustomerCard
                           key={customer.id}
                           customer={customer}
+                          availableCompanies={companyList}
+                          onUpdateInfo={handleUpdateInfo}
                           onEditDueDate={handleEditDueDate}
                           onCancelCustomer={handleCancelCustomer}
                           onDeleteCustomer={handleDeleteCustomer}
@@ -2751,6 +3019,56 @@ export default function InsuranceReminderDashboard() {
                     })()}
                 </div>
 
+                {/* PDF Merger pre-fill banner */}
+                {pdfData?.found && (
+                  <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-3">
+                    <span className="text-emerald-600 text-lg flex-shrink-0">
+                      📄
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-emerald-800">
+                        Pre-filled from PDF Merger
+                      </p>
+                      <p className="text-xs text-emerald-700 mt-0.5">
+                        {pdfData.paidInFull
+                          ? "Paid in full — no due date needed."
+                          : `Due date set to ${pdfData.nextDueDate ?? "—"} · `}
+                        {!pdfData.paidInFull && (
+                          <>
+                            {pdfData.suggestedPaymentType === "autopay"
+                              ? `Autopay (${pdfData.paymentMethod === "cc" ? "credit card" : "bank EFT"})`
+                              : "Regular / Direct Bill"}
+                          </>
+                        )}
+                        {pdfData.paidAmount && ` · Paid $${pdfData.paidAmount}`}
+                      </p>
+                      {pdfData.updatedAt && (
+                        <p className="text-[11px] text-emerald-500 mt-0.5">
+                          From merge on{" "}
+                          {new Date(pdfData.updatedAt).toLocaleDateString(
+                            "en-US",
+                            {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                              hour: "numeric",
+                              minute: "2-digit",
+                              hour12: true,
+                            },
+                          )}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => setPdfData(null)}
+                      className="text-emerald-400 hover:text-emerald-600 flex-shrink-0"
+                      title="Dismiss"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+
                 {/* Two Column Layout - Side by Side 50/50 */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* LEFT COLUMN: AI Suggestions */}
@@ -2963,6 +3281,7 @@ export default function InsuranceReminderDashboard() {
                           setShowAiSuggestion(true);
                           setSetupEffectiveDate("");
                           setSetupExpirationDate("");
+                          setPdfData(null);
                         }}
                         className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
                       >
@@ -3131,6 +3450,12 @@ function FollowUpCard({
 
 interface CustomerCardProps {
   customer: Customer;
+  availableCompanies: string[];
+  onUpdateInfo: (
+    customerId: string,
+    policyNo: string,
+    companyName: string,
+  ) => Promise<void>;
   onEditDueDate: (id: string) => void;
   onCancelCustomer: (customer: Customer) => void;
   onDeleteCustomer: (customer: Customer) => void;
@@ -3155,6 +3480,8 @@ interface CustomerCardProps {
 
 function CustomerCard({
   customer,
+  availableCompanies,
+  onUpdateInfo,
   onEditDueDate,
   onCancelCustomer,
   onDeleteCustomer,
@@ -3181,8 +3508,28 @@ function CustomerCard({
   ).length;
   const totalFollowUps = customer.followUps.length;
 
-  // Remove this line - it's now a prop
-  // const isEditingDates = editingCustomerDates === customer.id;
+  const [isEditingInfo, setIsEditingInfo] = useState(false);
+  const [editPolicyNo, setEditPolicyNo] = useState(customer.id);
+  const [editCompany, setEditCompany] = useState(customer.companyName ?? "");
+  const [savingInfo, setSavingInfo] = useState(false);
+  const [infoError, setInfoError] = useState("");
+
+  const handleSaveInfo = async () => {
+    if (!editPolicyNo.trim()) {
+      setInfoError("Policy number is required");
+      return;
+    }
+    setSavingInfo(true);
+    setInfoError("");
+    try {
+      await onUpdateInfo(customer.id, editPolicyNo.trim(), editCompany);
+      setIsEditingInfo(false);
+    } catch (err) {
+      setInfoError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSavingInfo(false);
+    }
+  };
 
   // Calculate policy duration for auto-fill
   let policyDuration = "";
@@ -3236,13 +3583,75 @@ function CustomerCard({
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
           <h3 className="font-semibold text-gray-900">{customer.name}</h3>
-          <p className="text-sm text-gray-600">Policy: {customer.id}</p>
 
-          {customer.companyName && (
-            <p className="text-xs text-gray-600">
-              Company: {customer.companyName}
-            </p>
+          {isEditingInfo ? (
+            <div className="mt-2 space-y-2">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-600 w-20 flex-shrink-0">
+                  Policy #:
+                </label>
+                <input
+                  type="text"
+                  value={editPolicyNo}
+                  onChange={(e) => setEditPolicyNo(e.target.value)}
+                  className="flex-1 border border-blue-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-600 w-20 flex-shrink-0">
+                  Company:
+                </label>
+                <select
+                  value={editCompany}
+                  onChange={(e) => setEditCompany(e.target.value)}
+                  className="flex-1 border border-blue-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                >
+                  <option value="">— select company —</option>
+                  {availableCompanies.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {infoError && <p className="text-xs text-red-600">{infoError}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveInfo}
+                  disabled={savingInfo}
+                  className="px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {savingInfo ? "Saving…" : "Save"}
+                </button>
+                <button
+                  onClick={() => setIsEditingInfo(false)}
+                  className="px-3 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              <p className="text-sm text-gray-600">
+                Policy: {customer.id}
+                {customer.companyName ? ` · ${customer.companyName}` : ""}
+              </p>
+              <button
+                onClick={() => {
+                  setEditPolicyNo(customer.id);
+                  setEditCompany(customer.companyName ?? "");
+                  setInfoError("");
+                  setIsEditingInfo(true);
+                }}
+                className="p-0.5 hover:bg-blue-100 rounded"
+                title="Edit policy # and company"
+              >
+                <Edit className="w-3 h-3 text-blue-500" />
+              </button>
+            </div>
           )}
+
           {customer.coverageType && (
             <p className="text-xs text-gray-600">
               Coverage: {customer.coverageType}

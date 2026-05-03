@@ -1,3 +1,5 @@
+// app/api/setup-reminder/route.ts
+
 import { NextResponse } from 'next/server';
 import clientPromise from '@/lib/mongodb';
 
