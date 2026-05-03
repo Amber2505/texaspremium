@@ -131,18 +131,53 @@ function StyledInput({
 
 function UploadBox({
   onClick,
+  onDrop,
   children,
 }: {
   onClick: () => void;
+  onDrop?: (files: FileList) => void;
   children: React.ReactNode;
 }) {
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (onDrop && e.dataTransfer.files.length > 0) {
+      onDrop(e.dataTransfer.files);
+    }
+  };
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className="w-full flex flex-col items-center justify-center gap-2 py-8 border-2 border-dashed border-gray-200 rounded-2xl hover:border-blue-300 hover:bg-blue-50/40 transition-all group text-center"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`w-full flex flex-col items-center justify-center gap-2 py-8 border-2 border-dashed rounded-2xl transition-all group text-center ${
+        isDragging
+          ? "border-blue-400 bg-blue-50 scale-[1.01]"
+          : "border-gray-200 hover:border-blue-300 hover:bg-blue-50/40"
+      }`}
     >
       {children}
+      {isDragging && (
+        <p className="text-xs font-semibold text-blue-500 animate-pulse">
+          Drop to upload
+        </p>
+      )}
     </button>
   );
 }
@@ -573,7 +608,7 @@ export default function PdfMergerPage() {
                   reader.onload = (e) =>
                     resolve(e.target!.result as ArrayBuffer);
                   reader.onerror = reject;
-                  reader.readAsArrayBuffer(new Blob([bytes] as BlobPart[]));
+                  reader.readAsArrayBuffer(new Blob([new Uint8Array(bytes)]));
                 },
               );
               const pdfDoc2 = await pdfjsLib.getDocument({ data: arrayBuffer })
@@ -642,12 +677,8 @@ export default function PdfMergerPage() {
 
         try {
           const pdfjsLib = (window as any).pdfjsLib;
-          const arrayBuf = await new Promise<ArrayBuffer>((res, rej) => {
-            const r = new FileReader();
-            r.onload = (e) => res(e.target!.result as ArrayBuffer);
-            r.onerror = rej;
-            r.readAsArrayBuffer(new Blob([new Uint8Array(bytes)]));
-          });
+          const arrayBuf = new ArrayBuffer(bytes.byteLength);
+          new Uint8Array(arrayBuf).set(bytes);
           const pjDoc = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
           const pjPage = await pjDoc.getPage(1);
           const textContent = await pjPage.getTextContent();
@@ -1189,7 +1220,10 @@ export default function PdfMergerPage() {
                         </button>
                       </div>
                     ) : (
-                      <UploadBox onClick={() => companyAppRef.current?.click()}>
+                      <UploadBox
+                        onClick={() => companyAppRef.current?.click()}
+                        onDrop={(files) => handleCompanyAppFiles(files)}
+                      >
                         <div className="w-10 h-10 rounded-2xl bg-gray-100 flex items-center justify-center group-hover:bg-blue-100 transition">
                           <Upload className="w-5 h-5 text-gray-400 group-hover:text-blue-500 transition" />
                         </div>
@@ -1198,7 +1232,7 @@ export default function PdfMergerPage() {
                             Upload PDF(s)
                           </p>
                           <p className="text-xs text-gray-400">
-                            Upload one or multiple files to include
+                            Drag & drop or click — multiple files supported
                           </p>
                         </div>
                       </UploadBox>
@@ -1420,6 +1454,14 @@ export default function PdfMergerPage() {
                       ) : (
                         <UploadBox
                           onClick={() => officeReceiptRef.current?.click()}
+                          onDrop={(files) => {
+                            const f = Array.from(files).find(
+                              (f) =>
+                                f.type === "application/pdf" ||
+                                f.name.toLowerCase().endsWith(".pdf"),
+                            );
+                            if (f) handleOfficeReceiptChange(f);
+                          }}
                         >
                           <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center group-hover:bg-blue-100 transition">
                             <Upload className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition" />
@@ -1681,6 +1723,17 @@ export default function PdfMergerPage() {
                           ))}
                           <UploadBox
                             onClick={() => ccReceiptRef.current?.click()}
+                            onDrop={(files) => {
+                              Array.from(files)
+                                .filter(
+                                  (f) =>
+                                    f.type === "application/pdf" ||
+                                    f.name.toLowerCase().endsWith(".pdf"),
+                                )
+                                .forEach((f) =>
+                                  setCcReceipts((prev) => [...prev, f]),
+                                );
+                            }}
                           >
                             <div className="w-8 h-8 rounded-xl bg-gray-100 flex items-center justify-center group-hover:bg-blue-100 transition">
                               {ccReceipts.length > 0 ? (
