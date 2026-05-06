@@ -427,10 +427,10 @@ async function generateDailySecurityCode() {
       { upsert: true }
     );
 
-    console.log(`🔐 New daily security code generated for ${todayDate}`);
+    // console.log(`🔐 New daily security code generated for ${todayDate}`);
 
     // Send SMS to admin
-    const message = encodeURIComponent(`Your autopay security code for today is: ${code}`);
+    const message = encodeURIComponent(`Your admin security code for today is: ${code}`);
     await fetch(`https://astraldbapi.herokuapp.com/message_send/?message=${message}&To=9727486404`);
     console.log('📱 Security code sent via SMS');
 

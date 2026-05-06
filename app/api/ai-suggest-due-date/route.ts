@@ -39,81 +39,94 @@ export async function POST(request: Request) {
       .toArray();
 
     // Calculate patterns from existing data
-    const companyData = similarCustomers.map((customer) => {
-      const effDate = new Date(customer.effectiveDate);
-      const dueDate = new Date(customer.dueDate);
-      const daysDiff = Math.floor(
-        (dueDate.getTime() - effDate.getTime()) / (1000 * 60 * 60 * 24)
-      );
+const companyData = similarCustomers
+      .filter((customer) => customer.dueDate && customer.effectiveDate)
+      .map((customer) => {
+        const effDate = new Date(customer.effectiveDate);
+        const dueDate = new Date(customer.dueDate);
 
-      return {
-        company: customer.companyName,
-        paymentType: customer.paymentType,
-        effectiveDate: effDate.toISOString().split('T')[0],
-        dueDate: dueDate.toISOString().split('T')[0],
-        daysBetween: daysDiff,
-        totalPayments: customer.totalPayments,
-        remainingPayments: customer.remainingPayments,
-      };
-    });
+        // Skip if dates are invalid
+        if (isNaN(effDate.getTime()) || isNaN(dueDate.getTime())) return null;
 
-    const otherCompanyData = otherCompanyCustomers.map((customer) => {
-      const effDate = new Date(customer.effectiveDate);
-      const dueDate = new Date(customer.dueDate);
-      const daysDiff = Math.floor(
-        (dueDate.getTime() - effDate.getTime()) / (1000 * 60 * 60 * 24)
-      );
+        const daysDiff = Math.floor(
+          (dueDate.getTime() - effDate.getTime()) / (1000 * 60 * 60 * 24)
+        );
 
-      return {
-        company: customer.companyName,
-        paymentType: customer.paymentType,
-        daysBetween: daysDiff,
-      };
-    });
+        return {
+          company: customer.companyName,
+          paymentType: customer.paymentType,
+          effectiveDate: effDate.toISOString().split('T')[0],
+          dueDate: dueDate.toISOString().split('T')[0],
+          daysBetween: daysDiff,
+          totalPayments: customer.totalPayments,
+          remainingPayments: customer.remainingPayments,
+        };
+      })
+      .filter(Boolean);
+
+    const otherCompanyData = otherCompanyCustomers
+      .filter((customer) => customer.dueDate && customer.effectiveDate)
+      .map((customer) => {
+        const effDate = new Date(customer.effectiveDate);
+        const dueDate = new Date(customer.dueDate);
+
+        if (isNaN(effDate.getTime()) || isNaN(dueDate.getTime())) return null;
+
+        const daysDiff = Math.floor(
+          (dueDate.getTime() - effDate.getTime()) / (1000 * 60 * 60 * 24)
+        );
+
+        return {
+          company: customer.companyName,
+          paymentType: customer.paymentType,
+          daysBetween: daysDiff,
+        };
+      })
+      .filter(Boolean);
 
     // Build the AI prompt
     const prompt = `You are an insurance payment expert analyzing payment patterns for different insurance companies.
 
-**Task:** Predict the best due date and payment type for a new customer based on historical patterns.
+          **Task:** Predict the best due date and payment type for a new customer based on historical patterns.
 
-**New Customer:**
-- Company: ${companyName}
-- Effective Date: ${effectiveDate}
-- Expiration Date: ${expirationDate || 'Not provided'}
+          **New Customer:**
+          - Company: ${companyName}
+          - Effective Date: ${effectiveDate}
+          - Expiration Date: ${expirationDate || 'Not provided'}
 
-**Historical Data for ${companyName}:**
-${companyData.length > 0 ? JSON.stringify(companyData, null, 2) : 'No historical data for this company'}
+          **Historical Data for ${companyName}:**
+          ${companyData.length > 0 ? JSON.stringify(companyData, null, 2) : 'No historical data for this company'}
 
-**Historical Data for Other Companies (for comparison):**
-${JSON.stringify(otherCompanyData.slice(0, 5), null, 2)}
+          **Historical Data for Other Companies (for comparison):**
+          ${JSON.stringify(otherCompanyData.slice(0, 5), null, 2)}
 
-**Analysis Required:**
-1. Analyze the pattern for ${companyName}:
-   - Typical days between effective date and due date
-   - Preferred payment type (regular, autopay, paid-in-full)
-   - Any special patterns or preferences
+          **Analysis Required:**
+          1. Analyze the pattern for ${companyName}:
+            - Typical days between effective date and due date
+            - Preferred payment type (regular, autopay, paid-in-full)
+            - Any special patterns or preferences
 
-2. If no data exists for ${companyName}, compare with similar companies
+          2. If no data exists for ${companyName}, compare with similar companies
 
-3. Consider:
-   - Industry standards (typically 0-30 days after effective date)
-   - Payment type that gets better pricing
-   - Company-specific patterns
-   - The suggested due date should maintain the same day-offset pattern from the effective date
+          3. Consider:
+            - Industry standards (typically 0-30 days after effective date)
+            - Payment type that gets better pricing
+            - Company-specific patterns
+            - The suggested due date should maintain the same day-offset pattern from the effective date
 
-**Provide your response in this exact JSON format:**
-{
-  "daysBetweenEffectiveAndDue": <number>,
-  "suggestedPaymentType": "regular" | "autopay" | "paid-in-full",
-  "confidence": "high" | "medium" | "low",
-  "reasoning": "Brief explanation of why this suggestion",
-  "companyPattern": "Description of company's typical pattern",
-  "pricingAdvantage": "Which payment type typically gets better pricing for this company"
-}
+          **Provide your response in this exact JSON format:**
+          {
+            "daysBetweenEffectiveAndDue": <number>,
+            "suggestedPaymentType": "regular" | "autopay" | "paid-in-full",
+            "confidence": "high" | "medium" | "low",
+            "reasoning": "Brief explanation of why this suggestion",
+            "companyPattern": "Description of company's typical pattern",
+            "pricingAdvantage": "Which payment type typically gets better pricing for this company"
+          }
 
-IMPORTANT: Return the number of days between effective date and due date (daysBetweenEffectiveAndDue), NOT the actual date. This allows us to calculate a future date.
+          IMPORTANT: Return the number of days between effective date and due date (daysBetweenEffectiveAndDue), NOT the actual date. This allows us to calculate a future date.
 
-Respond ONLY with valid JSON, no additional text.`;
+          Respond ONLY with valid JSON, no additional text.`;
 
     // Call OpenAI
     const completion = await openai.chat.completions.create({
@@ -138,45 +151,52 @@ Respond ONLY with valid JSON, no additional text.`;
       throw new Error('No response from AI');
     }
 
-    const aiSuggestion = JSON.parse(aiResponse);
+    console.log('🤖 Raw AI response:', aiResponse);
+    let aiSuggestion;
+    try {
+      aiSuggestion = JSON.parse(aiResponse);
+      console.log('✅ Parsed AI suggestion:', aiSuggestion);
+    } catch (parseErr) {
+      console.error('❌ Failed to parse AI response:', parseErr);
+      throw new Error('AI returned invalid JSON');
+    }
 
-    // ✅ CALCULATE FUTURE DUE DATE BASED ON PATTERN
+    // Extract the day-of-month from the AI's pattern
+    // e.g. if effective date is Jan 8 and daysBetween = 25, payment day = Jan 8 + 25 = Feb 2 → day 2
+    const effectiveDateObj = new Date(effectiveDate);
+    const daysBetween = aiSuggestion.daysBetweenEffectiveAndDue || 15;
+    const patternDate = new Date(effectiveDateObj);
+    patternDate.setDate(patternDate.getDate() + daysBetween);
+    const paymentDayOfMonth = patternDate.getDate(); // e.g. 5, 21, 28
+
+    // Always suggest NEXT month's occurrence — never this month, never today, never past
+    // Rule: if due date is May 5 and today is May 3 → suggest June 5
+    //       if due date is May 2 and today is May 3 → suggest June 2
+    //       if due date is today → suggest next month
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const effectiveDateObj = new Date(effectiveDate);
-    const daysBetween = aiSuggestion.daysBetweenEffectiveAndDue || 15; // Default to 15 days if not provided
+    // Try this month first — if payment day hasn't passed yet, use it
+    const daysInThisMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+    const clampedDayThisMonth = Math.min(paymentDayOfMonth, daysInThisMonth);
+    const thisMonthCandidate = new Date(today.getFullYear(), today.getMonth(), clampedDayThisMonth);
 
-    // Calculate the suggested due date from the effective date
-    let suggestedDueDate = new Date(effectiveDateObj);
-    suggestedDueDate.setDate(suggestedDueDate.getDate() + daysBetween);
-
-    // ✅ IF THE SUGGESTED DATE IS IN THE PAST, MOVE IT TO THE FUTURE
-    if (suggestedDueDate < today) {
-      console.log(`⚠️ Suggested date ${suggestedDueDate.toISOString().split('T')[0]} is in the past. Adjusting to future...`);
-      
-      // Calculate how many months have passed since the effective date
-      const monthsPassed = Math.floor(
-        (today.getTime() - effectiveDateObj.getTime()) / (1000 * 60 * 60 * 24 * 30.44)
-      );
-
-      // Move the due date forward by the number of months passed + 1
-      suggestedDueDate = new Date(effectiveDateObj);
-      suggestedDueDate.setMonth(suggestedDueDate.getMonth() + monthsPassed + 1);
-      suggestedDueDate.setDate(suggestedDueDate.getDate() + daysBetween);
-
-      // If still in the past (edge case), set to today + daysBetween
-      if (suggestedDueDate < today) {
-        suggestedDueDate = new Date(today);
-        suggestedDueDate.setDate(suggestedDueDate.getDate() + daysBetween);
-      }
-
-      console.log(`✅ Adjusted to future date: ${suggestedDueDate.toISOString().split('T')[0]}`);
+    let suggestedDueDate: Date;
+    if (thisMonthCandidate > today) {
+      // May 5 and today is May 3 → suggest May 5
+      suggestedDueDate = thisMonthCandidate;
+    } else {
+      // May 2 and today is May 3 → suggest June 2
+      const daysInNextMonth = new Date(today.getFullYear(), today.getMonth() + 2, 0).getDate();
+      const clampedDayNextMonth = Math.min(paymentDayOfMonth, daysInNextMonth);
+      suggestedDueDate = new Date(today.getFullYear(), today.getMonth() + 1, clampedDayNextMonth);
     }
 
-    // Calculate alternative due date (15 days from suggested)
+    console.log(`✅ Payment day pattern: ${paymentDayOfMonth} → Next due: ${suggestedDueDate.toISOString().split('T')[0]}`);
+
+    // Alternative = month after that
     const alternativeDueDate = new Date(suggestedDueDate);
-    alternativeDueDate.setDate(alternativeDueDate.getDate() + 15);
+    alternativeDueDate.setMonth(alternativeDueDate.getMonth() + 1);
 
     // Format dates to YYYY-MM-DD
     const formatDate = (date: Date): string => {

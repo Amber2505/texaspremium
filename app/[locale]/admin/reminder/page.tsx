@@ -43,10 +43,7 @@ type AISuggestion = {
   pricingAdvantage?: string;
   isMonthToMonth?: boolean;
   policyDuration?: number;
-  dataPoints?: {
-    sameCompany: number;
-    otherCompanies: number;
-  };
+  dataPoints?: { sameCompany: number; otherCompanies: number };
   companyData?: Array<{
     company: string;
     paymentType: string;
@@ -100,19 +97,14 @@ const addDays = (date: Date, days: number): Date => {
   return result;
 };
 
-const isSameDay = (date1: Date, date2: Date): boolean => {
-  return (
-    date1.getFullYear() === date2.getFullYear() &&
-    date1.getMonth() === date2.getMonth() &&
-    date1.getDate() === date2.getDate()
-  );
-};
+const isSameDay = (date1: Date, date2: Date): boolean =>
+  date1.getFullYear() === date2.getFullYear() &&
+  date1.getMonth() === date2.getMonth() &&
+  date1.getDate() === date2.getDate();
 
 const formatDate = (date: Date | undefined, formatStr: string): string => {
-  if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
+  if (!date || !(date instanceof Date) || isNaN(date.getTime()))
     return "Invalid Date";
-  }
-
   const months = [
     "Jan",
     "Feb",
@@ -128,18 +120,13 @@ const formatDate = (date: Date | undefined, formatStr: string): string => {
     "Dec",
   ];
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-  if (formatStr === "MMM dd, yyyy") {
-    return `${
-      months[date.getMonth()]
-    } ${date.getDate()}, ${date.getFullYear()}`;
-  } else if (formatStr === "MMM dd") {
+  if (formatStr === "MMM dd, yyyy")
+    return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+  if (formatStr === "MMM dd")
     return `${months[date.getMonth()]} ${date.getDate()}`;
-  } else if (formatStr === "EEE") {
-    return days[date.getDay()];
-  } else if (formatStr === "d") {
-    return String(date.getDate());
-  } else if (formatStr === "yyyy-MM-dd") {
+  if (formatStr === "EEE") return days[date.getDay()];
+  if (formatStr === "d") return String(date.getDate());
+  if (formatStr === "yyyy-MM-dd") {
     const yyyy = date.getFullYear();
     const mm = String(date.getMonth() + 1).padStart(2, "0");
     const dd = String(date.getDate()).padStart(2, "0");
@@ -153,7 +140,6 @@ const generateFollowUps = (
   paymentType: PaymentType,
 ): FollowUp[] => {
   const followUps: FollowUp[] = [];
-
   if (paymentType === "regular") {
     followUps.push(
       {
@@ -239,9 +225,22 @@ const generateFollowUps = (
       method: "phone",
     });
   }
-
   return followUps;
 };
+
+const SpinnerIcon = () => (
+  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+    <circle
+      className="opacity-25"
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="currentColor"
+      strokeWidth="4"
+    />
+    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+  </svg>
+);
 
 export default function InsuranceReminderDashboard() {
   const parseLocalDate = (dateStr: string): Date => {
@@ -263,8 +262,6 @@ export default function InsuranceReminderDashboard() {
   >("non-payment");
   const [customWinBackDate, setCustomWinBackDate] = useState("");
   const [cancellationDate, setCancellationDate] = useState("");
-
-  // NEW: Pending Customer Cancellation States
   const [showPendingCancelModal, setShowPendingCancelModal] = useState(false);
   const [cancellingPendingCustomer, setCancellingPendingCustomer] =
     useState<PendingCustomer | null>(null);
@@ -273,14 +270,12 @@ export default function InsuranceReminderDashboard() {
   >("non-payment");
   const [pendingCustomWinBackDate, setPendingCustomWinBackDate] = useState("");
   const [pendingCancellationDate, setPendingCancellationDate] = useState("");
-
   const [showReinstateModal, setShowReinstateModal] = useState(false);
   const [reinstatingCustomer, setReinstatingCustomer] =
     useState<Customer | null>(null);
   const [reinstatePaymentType, setReinstatePaymentType] =
     useState<PaymentType>("regular");
   const [reinstateDueDate, setReinstateDueDate] = useState("");
-
   const [showAddModal, setShowAddModal] = useState(false);
   const [newCustomer, setNewCustomer] = useState({
     name: "",
@@ -335,7 +330,6 @@ export default function InsuranceReminderDashboard() {
     winback: 1,
     all: 1,
   });
-
   const [editEffectiveDate, setEditEffectiveDate] = useState("");
   const [editExpirationDate, setEditExpirationDate] = useState("");
   const [editingCustomerDates, setEditingCustomerDates] = useState<
@@ -354,6 +348,16 @@ export default function InsuranceReminderDashboard() {
   const [pendingInfoError, setPendingInfoError] = useState("");
   const [editCustomerEffective, setEditCustomerEffective] = useState("");
   const [editCustomerExpiration, setEditCustomerExpiration] = useState("");
+  const [completingFollowUps, setCompletingFollowUps] = useState<Set<string>>(
+    new Set(),
+  );
+  const [animatingOut, setAnimatingOut] = useState<Set<string>>(new Set());
+  const [locallyCompleted, setLocallyCompleted] = useState<Set<string>>(
+    new Set(),
+  );
+  const [pdfExtractedMap, setPdfExtractedMap] = useState<
+    Map<string, Record<string, unknown>>
+  >(new Map());
 
   useEffect(() => {
     const checkAuth = () => {
@@ -362,12 +366,9 @@ export default function InsuranceReminderDashboard() {
         window.location.href = "/admin";
         return;
       }
-
       try {
         const session = JSON.parse(savedSession);
-        const now = Date.now();
-
-        if (now >= session.expiresAt) {
+        if (Date.now() >= session.expiresAt) {
           localStorage.removeItem("admin_session");
           window.location.href = "/admin";
         }
@@ -376,14 +377,13 @@ export default function InsuranceReminderDashboard() {
         window.location.href = "/admin";
       }
     };
-
     checkAuth();
     const interval = setInterval(checkAuth, 60000);
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    fetchPendingCustomers().then((data) => autoSetupFromPdf(data));
+    fetchPendingCustomers();
   }, []);
 
   useEffect(() => {
@@ -401,15 +401,29 @@ export default function InsuranceReminderDashboard() {
   }, []);
 
   useEffect(() => {
+    fetch("/api/pdf-extracted-all")
+      .then((r) => r.json())
+      .then((records: Array<Record<string, unknown>>) => {
+        const map = new Map<string, Record<string, unknown>>();
+        records.forEach((r) => {
+          if (r.policyNo)
+            map.set((r.policyNo as string).toLowerCase().trim(), r);
+          if (r.customerName)
+            map.set((r.customerName as string).toLowerCase().trim(), r);
+        });
+        setPdfExtractedMap(map);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (
       !showSetupModal ||
       !setupCustomer ||
       !setupEffectiveDate ||
       !setupExpirationDate
-    ) {
+    )
       return;
-    }
-
     const fetchAiSuggestion = async () => {
       try {
         setLoadingAiSuggestion(true);
@@ -423,17 +437,10 @@ export default function InsuranceReminderDashboard() {
             expirationDate: setupExpirationDate,
           }),
         });
-
         if (aiResponse.ok) {
           const suggestion = await aiResponse.json();
-          console.log("AI Suggestion received:", suggestion);
           setAiSuggestion(suggestion);
-
           if (suggestion.confidence === "high") {
-            console.log(
-              "Auto-applying high confidence suggestion:",
-              suggestion.suggestedDueDate,
-            );
             setSetupDueDate(suggestion.suggestedDueDate);
             setSetupPaymentType(suggestion.suggestedPaymentType);
           }
@@ -444,17 +451,16 @@ export default function InsuranceReminderDashboard() {
         setLoadingAiSuggestion(false);
       }
     };
-
     const timeoutId = setTimeout(fetchAiSuggestion, 500);
     return () => clearTimeout(timeoutId);
   }, [setupEffectiveDate, setupExpirationDate, showSetupModal, setupCustomer]);
 
   const fetchPendingCustomers = async (): Promise<PendingCustomer[]> => {
     try {
-      const timestamp = new Date().getTime();
-      const response = await fetch(`/api/pending-customers?t=${timestamp}`, {
-        cache: "no-store",
-      });
+      const response = await fetch(
+        `/api/pending-customers?t=${new Date().getTime()}`,
+        { cache: "no-store" },
+      );
       const data = await response.json();
       setPendingCustomers(data);
       setCurrentPage(1);
@@ -465,73 +471,13 @@ export default function InsuranceReminderDashboard() {
     }
   };
 
-  const autoSetupFromPdf = async (customers: PendingCustomer[]) => {
-    if (customers.length === 0) return;
-    let count = 0;
-
-    for (const customer of customers) {
-      try {
-        const params = new URLSearchParams();
-        if (customer.policy_no) params.set("policyNo", customer.policy_no);
-        if (customer.customer_name)
-          params.set("customerName", customer.customer_name);
-
-        const pdfRes = await fetch(
-          `/api/pdf-extracted-lookup?${params.toString()}`,
-        );
-        const pdf = await pdfRes.json();
-
-        if (!pdf.found) continue;
-
-        // Determine payment type from pdf data
-        let paymentType: PaymentType = "regular";
-        if (pdf.paidInFull) {
-          paymentType = "paid-in-full";
-        } else if (pdf.paymentMethod === "cc" || pdf.paymentMethod === "eft") {
-          paymentType = "autopay";
-        }
-
-        // Skip if we need a due date but don't have one
-        if (
-          (paymentType === "regular" || paymentType === "autopay") &&
-          !pdf.nextDueDate
-        ) {
-          continue;
-        }
-
-        const setupRes = await fetch("/api/setup-reminder", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            policyNo: customer.policy_no,
-            dueDate: pdf.paidInFull ? undefined : pdf.nextDueDate,
-            paymentType,
-          }),
-        });
-
-        if (setupRes.ok) count++;
-      } catch {
-        // Skip this customer on error, try the next
-      }
-    }
-
-    if (count > 0) {
-      await fetchCustomers();
-      await fetchPendingCustomers();
-      alert(
-        `✅ ${count} reminder${count !== 1 ? "s were" : " was"} automatically set up from PDF merger data.`,
-      );
-    }
-  };
-
   useEffect(() => {
     fetchCustomers();
   }, []);
 
   const fetchCustomers = async () => {
     try {
-      const response = await fetch("/api/customers");
-      const data = await response.json();
+      const data = await fetch("/api/customers").then((r) => r.json());
       const customersWithDates = (data as Array<Record<string, unknown>>).map(
         (c) => {
           const parseDate = (dateStr: string | undefined): Date | undefined => {
@@ -548,7 +494,6 @@ export default function InsuranceReminderDashboard() {
               return undefined;
             }
           };
-
           const parsedDueDate =
             parseDate(c.dueDate as string | undefined) || new Date();
           const parsedFollowUps = Array.isArray(c.followUps)
@@ -557,7 +502,6 @@ export default function InsuranceReminderDashboard() {
                 date: parseDate(f.date as string | undefined) || new Date(),
               }))
             : [];
-
           return {
             ...(c as Omit<
               Customer,
@@ -594,35 +538,21 @@ export default function InsuranceReminderDashboard() {
     durationMonths: number,
   ): string => {
     if (!effectiveDate) return "";
-
     const [year, month, day] = effectiveDate.split("-").map(Number);
-
     let targetYear = year;
     let targetMonth = month + durationMonths;
-
     while (targetMonth > 12) {
       targetMonth -= 12;
       targetYear += 1;
     }
-
     const lastDayOfTargetMonth = new Date(targetYear, targetMonth, 0).getDate();
-    const targetDay = Math.min(day, lastDayOfTargetMonth);
-
-    const resultYear = String(targetYear);
-    const resultMonth = String(targetMonth).padStart(2, "0");
-    const resultDay = String(targetDay).padStart(2, "0");
-
-    return `${resultYear}-${resultMonth}-${resultDay}`;
+    return `${String(targetYear)}-${String(targetMonth).padStart(2, "0")}-${String(Math.min(day, lastDayOfTargetMonth)).padStart(2, "0")}`;
   };
 
   const handleEditPendingDates = (customer: PendingCustomer) => {
     setEditingPendingDates(customer._id);
-
-    const effectiveDateStr = customer.effective_date.split("T")[0];
-    const expirationDateStr = customer.expiration_date.split("T")[0];
-
-    setEditEffectiveDate(effectiveDateStr);
-    setEditExpirationDate(expirationDateStr);
+    setEditEffectiveDate(customer.effective_date.split("T")[0]);
+    setEditExpirationDate(customer.expiration_date.split("T")[0]);
   };
 
   const handleEffectiveDateChange = (
@@ -630,29 +560,14 @@ export default function InsuranceReminderDashboard() {
     customer: PendingCustomer,
   ) => {
     setEditEffectiveDate(newEffectiveDate);
-
     if (newEffectiveDate) {
-      const originalEffective = new Date(customer.effective_date);
-      const originalExpiration = new Date(customer.expiration_date);
-
-      const yearDiff =
-        originalExpiration.getFullYear() - originalEffective.getFullYear();
-      const monthDiff =
-        originalExpiration.getMonth() - originalEffective.getMonth();
-      const dayDiff =
-        originalExpiration.getDate() - originalEffective.getDate();
-
-      let durationMonths = yearDiff * 12 + monthDiff;
-
-      if (dayDiff < 0) {
-        durationMonths -= 1;
-      }
-
-      const suggestedExpiration = calculateExpirationDate(
-        newEffectiveDate,
-        durationMonths,
-      );
-      setEditExpirationDate(suggestedExpiration);
+      const orig = new Date(customer.effective_date);
+      const exp = new Date(customer.expiration_date);
+      let months =
+        (exp.getFullYear() - orig.getFullYear()) * 12 +
+        (exp.getMonth() - orig.getMonth());
+      if (exp.getDate() - orig.getDate() < 0) months -= 1;
+      setEditExpirationDate(calculateExpirationDate(newEffectiveDate, months));
     }
   };
 
@@ -661,15 +576,11 @@ export default function InsuranceReminderDashboard() {
       alert("Please fill in both dates");
       return;
     }
-
     if (new Date(editExpirationDate) <= new Date(editEffectiveDate)) {
       alert("Expiration date must be after effective date");
       return;
     }
-
     try {
-      console.log("Saving dates for customer:", customerId);
-
       const response = await fetch(
         `/api/pending-customers/${customerId}/dates`,
         {
@@ -681,32 +592,17 @@ export default function InsuranceReminderDashboard() {
           }),
         },
       );
-
-      console.log("Response status:", response.status);
-
       if (response.ok) {
-        const data = await response.json();
-        console.log("Update successful:", data);
-
         setEditingPendingDates(null);
         setEditEffectiveDate("");
         setEditExpirationDate("");
-
         await fetchPendingCustomers();
-
         alert("Dates updated successfully!");
       } else {
-        let errorMessage = "Failed to update dates";
-        try {
-          const error = await response.json();
-          errorMessage = error.error || errorMessage;
-        } catch {
-          errorMessage = `Server error: ${response.status}`;
-        }
-        alert(errorMessage);
+        const error = await response.json().catch(() => ({}));
+        alert(error.error || `Server error: ${response.status}`);
       }
     } catch (error) {
-      console.error("Error updating dates:", error);
       alert("Failed to update dates. Please try again.");
     }
   };
@@ -719,21 +615,17 @@ export default function InsuranceReminderDashboard() {
 
   const handleEditCustomerDates = (customer: Customer) => {
     setEditingCustomerDates(customer.id);
-
     if (customer.effectiveDate) {
-      const effDate = new Date(customer.effectiveDate);
-      const effYear = effDate.getFullYear();
-      const effMonth = String(effDate.getMonth() + 1).padStart(2, "0");
-      const effDay = String(effDate.getDate()).padStart(2, "0");
-      setEditCustomerEffective(`${effYear}-${effMonth}-${effDay}`);
+      const d = new Date(customer.effectiveDate);
+      setEditCustomerEffective(
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+      );
     }
-
     if (customer.expirationDate) {
-      const expDate = new Date(customer.expirationDate);
-      const expYear = expDate.getFullYear();
-      const expMonth = String(expDate.getMonth() + 1).padStart(2, "0");
-      const expDay = String(expDate.getDate()).padStart(2, "0");
-      setEditCustomerExpiration(`${expYear}-${expMonth}-${expDay}`);
+      const d = new Date(customer.expirationDate);
+      setEditCustomerExpiration(
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`,
+      );
     }
   };
 
@@ -742,29 +634,16 @@ export default function InsuranceReminderDashboard() {
     customer: Customer,
   ) => {
     setEditCustomerEffective(newEffectiveDate);
-
     if (newEffectiveDate && customer.effectiveDate && customer.expirationDate) {
-      const originalEffective = new Date(customer.effectiveDate);
-      const originalExpiration = new Date(customer.expirationDate);
-
-      const yearDiff =
-        originalExpiration.getFullYear() - originalEffective.getFullYear();
-      const monthDiff =
-        originalExpiration.getMonth() - originalEffective.getMonth();
-      const dayDiff =
-        originalExpiration.getDate() - originalEffective.getDate();
-
-      let durationMonths = yearDiff * 12 + monthDiff;
-
-      if (dayDiff < 0) {
-        durationMonths -= 1;
-      }
-
-      const suggestedExpiration = calculateExpirationDate(
-        newEffectiveDate,
-        durationMonths,
+      const orig = new Date(customer.effectiveDate);
+      const exp = new Date(customer.expirationDate);
+      let months =
+        (exp.getFullYear() - orig.getFullYear()) * 12 +
+        (exp.getMonth() - orig.getMonth());
+      if (exp.getDate() - orig.getDate() < 0) months -= 1;
+      setEditCustomerExpiration(
+        calculateExpirationDate(newEffectiveDate, months),
       );
-      setEditCustomerExpiration(suggestedExpiration);
     }
   };
 
@@ -773,15 +652,11 @@ export default function InsuranceReminderDashboard() {
       alert("Please fill in both dates");
       return;
     }
-
     if (new Date(editCustomerExpiration) <= new Date(editCustomerEffective)) {
       alert("Expiration date must be after effective date");
       return;
     }
-
     try {
-      console.log("Saving dates for customer:", customerId);
-
       const response = await fetch(`/api/customers/${customerId}/dates`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -790,33 +665,18 @@ export default function InsuranceReminderDashboard() {
           expiration_date: editCustomerExpiration,
         }),
       });
-
-      console.log("Response status:", response.status);
-
       if (response.ok) {
-        const data = await response.json();
-        console.log("Update successful:", data);
-
         setEditingCustomerDates(null);
         setEditCustomerEffective("");
         setEditCustomerExpiration("");
-
         await fetchCustomers();
         await fetchPendingCustomers();
-
         alert("Dates updated successfully!");
       } else {
-        let errorMessage = "Failed to update dates";
-        try {
-          const error = await response.json();
-          errorMessage = error.error || errorMessage;
-        } catch {
-          errorMessage = `Server error: ${response.status}`;
-        }
-        alert(errorMessage);
+        const error = await response.json().catch(() => ({}));
+        alert(error.error || `Server error: ${response.status}`);
       }
     } catch (error) {
-      console.error("Error updating dates:", error);
       alert("Failed to update dates. Please try again.");
     }
   };
@@ -829,54 +689,47 @@ export default function InsuranceReminderDashboard() {
 
   const handleSetupReminder = async (customerId: string) => {
     try {
-      const response = await fetch(`/api/pending-customers/${customerId}`);
-      const freshCustomer: PendingCustomer = await response.json();
-
-      console.log("Fresh from MongoDB:", freshCustomer.effective_date);
-
+      const freshCustomer: PendingCustomer = await fetch(
+        `/api/pending-customers/${customerId}`,
+      ).then((r) => r.json());
       setSetupCustomer(freshCustomer);
       setShowSetupModal(true);
       setShowAiSuggestion(true);
       setAiSuggestion(null);
       setPdfData(null);
 
-      // Look up pdf-extracted data by policy number then customer name
-      try {
-        const params = new URLSearchParams();
-        if (freshCustomer.policy_no)
-          params.set("policyNo", freshCustomer.policy_no);
-        if (freshCustomer.customer_name)
-          params.set("customerName", freshCustomer.customer_name);
-        const pdfRes = await fetch(
-          `/api/pdf-extracted-lookup?${params.toString()}`,
-        );
-        const pdf = await pdfRes.json();
-        if (pdf.found) {
-          setPdfData(pdf);
-          // Auto-apply payment type
-          if (pdf.suggestedPaymentType)
-            setSetupPaymentType(pdf.suggestedPaymentType);
-          // Auto-apply due date only if not paid-in-full
-          if (!pdf.paidInFull && pdf.nextDueDate)
-            setSetupDueDate(pdf.nextDueDate);
-        }
-      } catch {
-        // Non-fatal — setup modal still works without pre-fill
+      // Zero API calls — lookup from in-memory map loaded on page mount
+      const pdfMatch =
+        pdfExtractedMap.get(freshCustomer.policy_no?.toLowerCase().trim()) ||
+        pdfExtractedMap.get(freshCustomer.customer_name?.toLowerCase().trim());
+      if (pdfMatch) {
+        const pdf = pdfMatch as {
+          found?: boolean;
+          paidInFull?: boolean;
+          nextDueDate?: string | null;
+          monthlyAmount?: string | null;
+          paidAmount?: string | null;
+          companyName?: string | null;
+          paymentMethod?: string | null;
+          suggestedPaymentType?: "regular" | "autopay" | "paid-in-full";
+          mergedFilename?: string | null;
+          updatedAt?: string | null;
+        };
+        setPdfData({ ...pdf, found: true });
+        if (pdf.suggestedPaymentType)
+          setSetupPaymentType(pdf.suggestedPaymentType as PaymentType);
+        if (!pdf.paidInFull && pdf.nextDueDate)
+          setSetupDueDate(pdf.nextDueDate);
       }
 
-      const effectiveDate = new Date(freshCustomer.effective_date);
-      const effYear = effectiveDate.getFullYear();
-      const effMonth = String(effectiveDate.getMonth() + 1).padStart(2, "0");
-      const effDay = String(effectiveDate.getDate()).padStart(2, "0");
-      const effDateStr = `${effYear}-${effMonth}-${effDay}`;
-      setSetupEffectiveDate(effDateStr);
-
-      const expirationDate = new Date(freshCustomer.expiration_date);
-      const expYear = expirationDate.getFullYear();
-      const expMonth = String(expirationDate.getMonth() + 1).padStart(2, "0");
-      const expDay = String(expirationDate.getDate()).padStart(2, "0");
-      const expDateStr = `${expYear}-${expMonth}-${expDay}`;
-      setSetupExpirationDate(expDateStr);
+      const eff = new Date(freshCustomer.effective_date);
+      setSetupEffectiveDate(
+        `${eff.getFullYear()}-${String(eff.getMonth() + 1).padStart(2, "0")}-${String(eff.getDate()).padStart(2, "0")}`,
+      );
+      const exp = new Date(freshCustomer.expiration_date);
+      setSetupExpirationDate(
+        `${exp.getFullYear()}-${String(exp.getMonth() + 1).padStart(2, "0")}-${String(exp.getDate()).padStart(2, "0")}`,
+      );
     } catch {
       alert("Failed to load customer data");
     }
@@ -890,10 +743,6 @@ export default function InsuranceReminderDashboard() {
       alert("Please select a due date");
       return;
     }
-
-    console.log("📤 Sending setup request for:", setupCustomer.policy_no);
-    console.log("📤 Full customer data:", setupCustomer);
-
     try {
       const response = await fetch("/api/setup-reminder", {
         method: "POST",
@@ -904,28 +753,24 @@ export default function InsuranceReminderDashboard() {
           paymentType: setupPaymentType,
         }),
       });
-
       if (response.ok) {
         setShowSetupModal(false);
         setSetupCustomer(null);
         setSetupDueDate("");
         setSetupPaymentType("regular");
+        setPdfData(null);
         fetchCustomers();
         fetchPendingCustomers();
         alert("Payment reminder setup successfully!");
       } else {
-        const errorData = await response.json().catch(() => ({}));
-        const errorMessage =
-          errorData.error || `Server error: ${response.status}`;
-        console.error("Setup reminder failed:", errorMessage, errorData);
-        alert(`Failed to setup reminder: ${errorMessage}`);
+        const e = await response.json().catch(() => ({}));
+        alert(
+          `Failed to setup reminder: ${e.error || `Server error: ${response.status}`}`,
+        );
       }
     } catch (error) {
-      console.error("Error setting up reminder:", error);
       alert(
-        `Failed to setup reminder: ${
-          error instanceof Error ? error.message : "Network error"
-        }`,
+        `Failed to setup reminder: ${error instanceof Error ? error.message : "Network error"}`,
       );
     }
   };
@@ -949,23 +794,18 @@ export default function InsuranceReminderDashboard() {
 
   const handleCancelPendingCustomer = (customer: PendingCustomer) => {
     setCancellingPendingCustomer(customer);
-    const today = new Date();
-    const dateStr = today.toISOString().split("T")[0];
-    setPendingCancellationDate(dateStr);
+    setPendingCancellationDate(new Date().toISOString().split("T")[0]);
     setPendingCancellationReason("non-payment");
     setPendingCustomWinBackDate("");
     setShowPendingCancelModal(true);
   };
 
-  // NEW: Handle Pending Customer Cancellation Confirmation
   const handleConfirmPendingCancellation = async () => {
     if (!cancellingPendingCustomer) return;
-
     if (!pendingCancellationDate) {
       alert("Please select a cancellation date");
       return;
     }
-
     if (
       pendingCancellationReason === "custom-date" &&
       !pendingCustomWinBackDate
@@ -973,21 +813,14 @@ export default function InsuranceReminderDashboard() {
       alert("Please select a custom win-back date");
       return;
     }
-
     const cancellationData: Record<string, unknown> = {
       cancellationReason: pendingCancellationReason,
       cancellationDate: pendingCancellationDate,
     };
-
-    if (
-      pendingCancellationReason === "custom-date" &&
-      pendingCustomWinBackDate
-    ) {
+    if (pendingCancellationReason === "custom-date" && pendingCustomWinBackDate)
       cancellationData.customWinBackDate = new Date(
         pendingCustomWinBackDate,
       ).toISOString();
-    }
-
     try {
       const response = await fetch(
         `/api/pending-customers/${cancellingPendingCustomer._id}/cancel`,
@@ -997,25 +830,19 @@ export default function InsuranceReminderDashboard() {
           body: JSON.stringify(cancellationData),
         },
       );
-
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || "Failed to cancel pending customer");
       }
-
       setShowPendingCancelModal(false);
       setCancellingPendingCustomer(null);
       setPendingCancellationReason("non-payment");
       setPendingCustomWinBackDate("");
       setPendingCancellationDate("");
-
-      // Refresh both lists
       await fetchCustomers();
       await fetchPendingCustomers();
-
       alert("Pending customer cancelled successfully!");
     } catch (error) {
-      console.error("Error cancelling pending customer:", error);
       alert(
         error instanceof Error
           ? error.message
@@ -1046,23 +873,18 @@ export default function InsuranceReminderDashboard() {
       !confirm(
         "Change this customer from Autopay to Direct Bill? This will regenerate follow-up reminders.",
       )
-    ) {
+    )
       return;
-    }
-
     try {
-      const response = await fetch("/api/change-to-direct-bill", {
+      const r = await fetch("/api/change-to-direct-bill", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customerId }),
       });
-
-      if (!response.ok) throw new Error("Failed to change payment type");
-
+      if (!r.ok) throw new Error();
       fetchCustomers();
       alert("Successfully changed to Direct Bill");
-    } catch (error) {
-      console.error("Error changing to direct bill:", error);
+    } catch {
       alert("Failed to change payment type");
     }
   };
@@ -1072,23 +894,18 @@ export default function InsuranceReminderDashboard() {
       !confirm(
         "Change this customer back to Autopay? This will regenerate follow-up reminders.",
       )
-    ) {
+    )
       return;
-    }
-
     try {
-      const response = await fetch("/api/change-to-autopay", {
+      const r = await fetch("/api/change-to-autopay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customerId }),
       });
-
-      if (!response.ok) throw new Error("Failed to change payment type");
-
+      if (!r.ok) throw new Error();
       fetchCustomers();
       alert("Successfully changed to Autopay");
-    } catch (error) {
-      console.error("Error changing to autopay:", error);
+    } catch {
       alert("Failed to change payment type");
     }
   };
@@ -1098,14 +915,11 @@ export default function InsuranceReminderDashboard() {
       alert("Please fill in all required fields");
       return;
     }
-
     const [year, month, day] = newCustomer.dueDate.split("-").map(Number);
     const dueDate = new Date(year, month - 1, day, 12, 0, 0);
-
     const paymentDay = newCustomer.paymentDayOfMonth
       ? parseInt(newCustomer.paymentDayOfMonth)
       : dueDate.getDate();
-
     const customer = {
       id: newCustomer.policyId,
       name: newCustomer.name,
@@ -1116,20 +930,15 @@ export default function InsuranceReminderDashboard() {
       status: "active" as const,
       paymentType: newCustomer.paymentType,
       followUps: generateFollowUps(dueDate, newCustomer.paymentType).map(
-        (f) => ({
-          ...f,
-          date: f.date.toISOString(),
-        }),
+        (f) => ({ ...f, date: f.date.toISOString() }),
       ),
     };
-
     try {
       const response = await fetch("/api/customers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(customer),
       });
-
       if (response.ok) {
         setShowAddModal(false);
         setNewCustomer({
@@ -1142,8 +951,7 @@ export default function InsuranceReminderDashboard() {
         });
         fetchCustomers();
       }
-    } catch (error) {
-      console.error("Error adding customer:", error);
+    } catch {
       alert("Failed to add customer");
     }
   };
@@ -1152,6 +960,23 @@ export default function InsuranceReminderDashboard() {
     customerId: string,
     followUpIndex: number,
   ) => {
+    const key = `${customerId}-${followUpIndex}`;
+    if (
+      completingFollowUps.has(key) ||
+      animatingOut.has(key) ||
+      locallyCompleted.has(key)
+    )
+      return;
+    setAnimatingOut((prev) => new Set(prev).add(key));
+    setCompletingFollowUps((prev) => new Set(prev).add(key));
+    setTimeout(() => {
+      setLocallyCompleted((prev) => new Set(prev).add(key));
+      setAnimatingOut((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    }, 380);
     try {
       await fetch(`/api/customers/${customerId}/followup`, {
         method: "PATCH",
@@ -1161,6 +986,17 @@ export default function InsuranceReminderDashboard() {
       fetchCustomers();
     } catch (error) {
       console.error("Error completing follow-up:", error);
+      setLocallyCompleted((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
+    } finally {
+      setCompletingFollowUps((prev) => {
+        const next = new Set(prev);
+        next.delete(key);
+        return next;
+      });
     }
   };
 
@@ -1169,27 +1005,19 @@ export default function InsuranceReminderDashboard() {
       !confirm(
         "Mark this payment as paid? This will generate next month's reminders.",
       )
-    ) {
+    )
       return;
-    }
-
     try {
       const response = await fetch("/api/mark-paid", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customerId }),
       });
-
-      if (!response.ok) {
-        throw new Error("Failed to mark payment as paid");
-      }
-
+      if (!response.ok) throw new Error();
       const data = await response.json();
-
       fetchCustomers();
       alert(data.message || "Payment marked as paid successfully!");
-    } catch (error) {
-      console.error("Error marking payment:", error);
+    } catch {
       alert("Failed to mark payment as paid");
     }
   };
@@ -1197,27 +1025,23 @@ export default function InsuranceReminderDashboard() {
   const handleEditDueDate = (customerId: string) => {
     setEditingCustomer(customerId);
     const customer = customers.find((c) => c.id === customerId);
-    if (customer) {
-      const year = customer.dueDate.getFullYear();
-      const month = String(customer.dueDate.getMonth() + 1).padStart(2, "0");
-      const day = String(customer.dueDate.getDate()).padStart(2, "0");
-      setEditDueDate(`${year}-${month}-${day}`);
-    }
+    if (customer)
+      setEditDueDate(
+        `${customer.dueDate.getFullYear()}-${String(customer.dueDate.getMonth() + 1).padStart(2, "0")}-${String(customer.dueDate.getDate()).padStart(2, "0")}`,
+      );
   };
 
   const handleSaveDueDate = async () => {
     if (!editingCustomer || !editDueDate) return;
-
     try {
       const [year, month, day] = editDueDate.split("-").map(Number);
-      const dueDate = new Date(year, month - 1, day, 12, 0, 0);
-
       await fetch(`/api/customers/${editingCustomer}/duedate`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dueDate: dueDate.toISOString() }),
+        body: JSON.stringify({
+          dueDate: new Date(year, month - 1, day, 12, 0, 0).toISOString(),
+        }),
       });
-
       setEditingCustomer(null);
       setEditDueDate("");
       fetchCustomers();
@@ -1228,9 +1052,7 @@ export default function InsuranceReminderDashboard() {
 
   const handleCancelCustomer = (customer: Customer) => {
     setCancellingCustomer(customer);
-    const today = new Date();
-    const dateStr = today.toISOString().split("T")[0];
-    setCancellationDate(dateStr);
+    setCancellationDate(new Date().toISOString().split("T")[0]);
     setShowCancelModal(true);
   };
 
@@ -1239,40 +1061,29 @@ export default function InsuranceReminderDashboard() {
       !confirm(
         `Are you sure you want to permanently delete ${customer.name} (${customer.id})? This action cannot be undone.`,
       )
-    ) {
+    )
       return;
-    }
-
     try {
-      await fetch(`/api/customers/${customer.id}/delete`, {
-        method: "DELETE",
-      });
+      await fetch(`/api/customers/${customer.id}/delete`, { method: "DELETE" });
       fetchCustomers();
-    } catch (error) {
-      console.error("Error deleting customer:", error);
+    } catch {
       alert("Failed to delete customer");
     }
   };
 
   const handleConfirmCancellation = async () => {
-    if (!cancellingCustomer) return;
-
-    if (!cancellationDate) {
+    if (!cancellingCustomer || !cancellationDate) {
       alert("Please select a cancellation date");
       return;
     }
-
     const cancellationData: Record<string, unknown> = {
       cancellationReason,
       cancellationDate,
     };
-
-    if (cancellationReason === "custom-date" && customWinBackDate) {
+    if (cancellationReason === "custom-date" && customWinBackDate)
       cancellationData.customWinBackDate = new Date(
         customWinBackDate,
       ).toISOString();
-    }
-
     try {
       const response = await fetch(
         `/api/customers/${cancellingCustomer.id}/cancel`,
@@ -1282,12 +1093,10 @@ export default function InsuranceReminderDashboard() {
           body: JSON.stringify(cancellationData),
         },
       );
-
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || "Failed to cancel customer");
       }
-
       setShowCancelModal(false);
       setCancellingCustomer(null);
       setCancellationReason("non-payment");
@@ -1295,7 +1104,6 @@ export default function InsuranceReminderDashboard() {
       setCancellationDate("");
       fetchCustomers();
     } catch (error) {
-      console.error("Error cancelling customer:", error);
       alert(
         error instanceof Error ? error.message : "Failed to cancel customer",
       );
@@ -1306,10 +1114,9 @@ export default function InsuranceReminderDashboard() {
     setReinstatingCustomer(customer);
     setReinstatePaymentType("regular");
     const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, "0");
-    const day = String(today.getDate()).padStart(2, "0");
-    setReinstateDueDate(`${year}-${month}-${day}`);
+    setReinstateDueDate(
+      `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`,
+    );
     setShowReinstateModal(true);
   };
 
@@ -1318,10 +1125,6 @@ export default function InsuranceReminderDashboard() {
       alert("Please fill in all required fields");
       return;
     }
-
-    console.log("Reinstating customer:", reinstatingCustomer);
-    console.log("Customer _id:", reinstatingCustomer._id);
-
     try {
       const response = await fetch(
         `/api/customers/${reinstatingCustomer._id}/reinstate`,
@@ -1334,105 +1137,97 @@ export default function InsuranceReminderDashboard() {
           }),
         },
       );
-
       if (response.ok) {
         await fetchCustomers();
-
         setShowReinstateModal(false);
         setReinstatingCustomer(null);
         setReinstatePaymentType("regular");
         setReinstateDueDate("");
-
         alert("Policy reinstated successfully!");
       } else {
         const error = await response.json();
         alert(`Error: ${error.error}`);
       }
-    } catch (error) {
-      console.error("Error reinstating customer:", error);
+    } catch {
       alert("Failed to reinstate policy");
     }
   };
 
   const getTodayFollowUps = () => {
     const today = new Date();
-    const todayFollowUps: Array<{
+    const result: Array<{
       customer: Customer;
       followUp: FollowUp;
       index: number;
     }> = [];
-
-    customers.forEach((customer) => {
+    customers.forEach((customer) =>
       customer.followUps.forEach((followUp, index) => {
-        if (isSameDay(followUp.date, today) && followUp.status === "pending") {
-          todayFollowUps.push({ customer, followUp, index });
-        }
-      });
-    });
-
-    return todayFollowUps;
+        if (isSameDay(followUp.date, today) && followUp.status === "pending")
+          result.push({ customer, followUp, index });
+      }),
+    );
+    return result;
   };
 
   const getOverdueFollowUps = () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const overdueFollowUps: Array<{
+    const result: Array<{
       customer: Customer;
       followUp: FollowUp;
       index: number;
       daysOverdue: number;
     }> = [];
-
-    customers.forEach((customer) => {
+    customers.forEach((customer) =>
       customer.followUps.forEach((followUp, index) => {
         if (followUp.date < today && followUp.status === "pending") {
-          const daysOverdue = Math.floor(
-            (today.getTime() - followUp.date.getTime()) / (1000 * 60 * 60 * 24),
-          );
-          overdueFollowUps.push({ customer, followUp, index, daysOverdue });
+          result.push({
+            customer,
+            followUp,
+            index,
+            daysOverdue: Math.floor(
+              (today.getTime() - followUp.date.getTime()) /
+                (1000 * 60 * 60 * 24),
+            ),
+          });
         }
-      });
-    });
-
-    return overdueFollowUps.sort(
+      }),
+    );
+    return result.sort(
       (a, b) => a.followUp.date.getTime() - b.followUp.date.getTime(),
     );
   };
 
   const getUpcomingFollowUps = () => {
     const today = new Date();
-    const upcomingFollowUps: Array<{
+    const result: Array<{
       customer: Customer;
       followUp: FollowUp;
       index: number;
     }> = [];
-
-    customers.forEach((customer) => {
+    customers.forEach((customer) =>
       customer.followUps.forEach((followUp, index) => {
         const diff = Math.floor(
           (followUp.date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
         );
-        if (diff > 0 && diff <= 7 && followUp.status === "pending") {
-          upcomingFollowUps.push({ customer, followUp, index });
-        }
-      });
-    });
-
-    return upcomingFollowUps.sort(
+        if (diff > 0 && diff <= 7 && followUp.status === "pending")
+          result.push({ customer, followUp, index });
+      }),
+    );
+    return result.sort(
       (a, b) => a.followUp.date.getTime() - b.followUp.date.getTime(),
     );
   };
 
   const getWinBackFollowUps = () => {
     const today = new Date();
-    const winBackFollowUps: Array<{
+    const result: Array<{
       customer: Customer;
       followUp: FollowUp;
       index: number;
     }> = [];
-
     customers.forEach((customer) => {
-      if (customer.status === "cancelled") {
+      if (customer.status === "cancelled")
         customer.followUps.forEach((followUp, index) => {
           const diff = Math.floor(
             (followUp.date.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
@@ -1442,14 +1237,11 @@ export default function InsuranceReminderDashboard() {
             diff <= 30 &&
             followUp.status === "pending" &&
             followUp.type === "win-back"
-          ) {
-            winBackFollowUps.push({ customer, followUp, index });
-          }
+          )
+            result.push({ customer, followUp, index });
         });
-      }
     });
-
-    return winBackFollowUps.sort(
+    return result.sort(
       (a, b) => a.followUp.date.getTime() - b.followUp.date.getTime(),
     );
   };
@@ -1508,20 +1300,17 @@ export default function InsuranceReminderDashboard() {
   ) as typeof winBackFollowUps;
   const filteredAllCustomers = customers.filter((c) => {
     if (!searchQueries.all.trim()) return true;
-    const query = searchQueries.all.toLowerCase();
-    return (
-      c.name.toLowerCase().includes(query) || c.id.toLowerCase().includes(query)
-    );
+    const q = searchQueries.all.toLowerCase();
+    return c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q);
   });
-
   const filteredPendingBySearch = pendingCustomers.filter((c) => {
     if (!searchQueries.pending.trim()) return true;
-    const query = searchQueries.pending.toLowerCase();
+    const q = searchQueries.pending.toLowerCase();
     return (
-      c.customer_name?.toLowerCase().includes(query) ||
-      c.policy_no?.toLowerCase().includes(query) ||
-      c.company_name?.toLowerCase().includes(query) ||
-      c.coverage_type?.toLowerCase().includes(query)
+      c.customer_name?.toLowerCase().includes(q) ||
+      c.policy_no?.toLowerCase().includes(q) ||
+      c.company_name?.toLowerCase().includes(q) ||
+      c.coverage_type?.toLowerCase().includes(q)
     );
   });
 
@@ -1529,145 +1318,103 @@ export default function InsuranceReminderDashboard() {
     filteredTodayFollowUps.length / customersPerPage,
   );
   const todayStartIndex = (paginationPages.today - 1) * customersPerPage;
-  const todayEndIndex = todayStartIndex + customersPerPage;
   const currentTodayFollowUps = filteredTodayFollowUps.slice(
     todayStartIndex,
-    todayEndIndex,
+    todayStartIndex + customersPerPage,
   );
 
   const overdueTotalPages = Math.ceil(
     filteredOverdueFollowUps.length / customersPerPage,
   );
   const overdueStartIndex = (paginationPages.overdue - 1) * customersPerPage;
-  const overdueEndIndex = overdueStartIndex + customersPerPage;
   const currentOverdueFollowUps = filteredOverdueFollowUps.slice(
     overdueStartIndex,
-    overdueEndIndex,
+    overdueStartIndex + customersPerPage,
   );
 
   const upcomingTotalPages = Math.ceil(
     filteredUpcomingFollowUps.length / customersPerPage,
   );
   const upcomingStartIndex = (paginationPages.upcoming - 1) * customersPerPage;
-  const upcomingEndIndex = upcomingStartIndex + customersPerPage;
   const currentUpcomingFollowUps = filteredUpcomingFollowUps.slice(
     upcomingStartIndex,
-    upcomingEndIndex,
+    upcomingStartIndex + customersPerPage,
   );
 
   const winbackStartIndex = (paginationPages.winback - 1) * customersPerPage;
-  const winbackEndIndex = winbackStartIndex + customersPerPage;
   const currentWinBackFollowUps = filteredWinBackFollowUps.slice(
     winbackStartIndex,
-    winbackEndIndex,
+    winbackStartIndex + customersPerPage,
   );
 
   const allTotalPages = Math.ceil(
     filteredAllCustomers.length / customersPerPage,
   );
   const allStartIndex = (paginationPages.all - 1) * customersPerPage;
-  const allEndIndex = allStartIndex + customersPerPage;
   const currentAllCustomers = filteredAllCustomers.slice(
     allStartIndex,
-    allEndIndex,
+    allStartIndex + customersPerPage,
   );
 
   const uniqueCompanies = Array.from(
     new Set(pendingCustomers.map((c) => c.company_name).filter(Boolean)),
   ).sort();
-
   const filteredPendingCustomers =
     selectedCompany === "all"
       ? filteredPendingBySearch
       : filteredPendingBySearch.filter(
           (c) => c.company_name === selectedCompany,
         );
-
   const totalPages = Math.ceil(
     filteredPendingCustomers.length / customersPerPage,
   );
   const startIndex = (currentPage - 1) * customersPerPage;
-  const endIndex = startIndex + customersPerPage;
   const currentPendingCustomers = filteredPendingCustomers.slice(
     startIndex,
-    endIndex,
+    startIndex + customersPerPage,
   );
 
+  const scrollToSection = (id: string) =>
+    setTimeout(() => {
+      const el = document.getElementById(id);
+      if (el)
+        window.scrollTo({
+          top: el.getBoundingClientRect().top + window.pageYOffset - 20,
+          behavior: "smooth",
+        });
+    }, 0);
   const handleNextPage = () => {
     if (currentPage < totalPages) {
       setCurrentPage(currentPage + 1);
-
-      setTimeout(() => {
-        const element = document.getElementById("pending-section");
-        if (element) {
-          const headerOffset = 20;
-          const elementPosition = element.getBoundingClientRect().top;
-          const offsetPosition =
-            elementPosition + window.pageYOffset - headerOffset;
-
-          window.scrollTo({
-            top: offsetPosition,
-            behavior: "smooth",
-          });
-        }
-      }, 0);
+      scrollToSection("pending-section");
     }
   };
-
   const handlePreviousPage = () => {
     if (currentPage > 1) {
       setCurrentPage(currentPage - 1);
-
-      setTimeout(() => {
-        const element = document.getElementById("pending-section");
-        if (element) {
-          const headerOffset = 20;
-          const elementPosition = element.getBoundingClientRect().top;
-          const offsetPosition =
-            elementPosition + window.pageYOffset - headerOffset;
-
-          window.scrollTo({
-            top: offsetPosition,
-            behavior: "smooth",
-          });
-        }
-      }, 0);
+      scrollToSection("pending-section");
     }
   };
-
   const handleCompanyChange = (company: string) => {
     setSelectedCompany(company);
     setCurrentPage(1);
   };
-
   const handleSearchChange = (section: string, value: string) => {
     setSearchQueries((prev) => ({ ...prev, [section]: value }));
     setPaginationPages((prev) => ({ ...prev, [section]: 1 }));
-
-    if (section === "pending" && value.trim()) {
-      setSelectedCompany("all");
-    }
+    if (section === "pending" && value.trim()) setSelectedCompany("all");
   };
-
   const handlePageChange = (section: string, newPage: number) => {
     setPaginationPages((prev) => ({ ...prev, [section]: newPage }));
-
-    setTimeout(() => {
-      const sectionId = `${section}-section`;
-      const element = document.getElementById(sectionId);
-      if (element) {
-        const headerOffset = 20;
-        const elementPosition = element.getBoundingClientRect().top;
-        const offsetPosition =
-          elementPosition + window.pageYOffset - headerOffset;
-
-        window.scrollTo({
-          top: offsetPosition,
-          behavior: "smooth",
-        });
-      }
-    }, 0);
+    scrollToSection(`${section}-section`);
   };
+
+  const slideStyle = (key: string) => ({
+    transition: "transform 0.38s cubic-bezier(0.4,0,0.2,1), opacity 0.38s ease",
+    transform: animatingOut.has(key) ? "translateX(-110%)" : "translateX(0)",
+    opacity: animatingOut.has(key) ? 0 : 1,
+    overflow: "hidden" as const,
+  });
 
   if (loading) {
     return (
@@ -1687,6 +1434,7 @@ export default function InsuranceReminderDashboard() {
     <AdminShell activePath="/admin/reminder">
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-6">
         <div className="max-w-7xl mx-auto">
+          {/* Header */}
           <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
             <div className="flex items-center justify-between">
               <div>
@@ -1739,6 +1487,7 @@ export default function InsuranceReminderDashboard() {
 
           {view === "dashboard" ? (
             <>
+              {/* Stats */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <StatCard
                   title="Today's Follow-ups"
@@ -1760,6 +1509,7 @@ export default function InsuranceReminderDashboard() {
                 />
               </div>
 
+              {/* Pending */}
               {pendingCustomers.length > 0 && (
                 <div
                   id="pending-section"
@@ -1786,20 +1536,20 @@ export default function InsuranceReminderDashboard() {
                         <option value="all">
                           All Companies ({pendingCustomers.length})
                         </option>
-                        {uniqueCompanies.map((company) => {
-                          const count = pendingCustomers.filter(
-                            (c) => c.company_name === company,
-                          ).length;
-                          return (
-                            <option key={company} value={company}>
-                              {company} ({count})
-                            </option>
-                          );
-                        })}
+                        {uniqueCompanies.map((company) => (
+                          <option key={company} value={company}>
+                            {company} (
+                            {
+                              pendingCustomers.filter(
+                                (c) => c.company_name === company,
+                              ).length
+                            }
+                            )
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>
-
                   <div className="mb-4">
                     <input
                       type="text"
@@ -1811,7 +1561,6 @@ export default function InsuranceReminderDashboard() {
                       className="w-full border border-yellow-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500 bg-white"
                     />
                   </div>
-
                   {filteredPendingCustomers.length === 0 ? (
                     <p className="text-gray-500 text-center py-8">
                       {searchQueries.pending || selectedCompany !== "all"
@@ -1822,52 +1571,33 @@ export default function InsuranceReminderDashboard() {
                     <>
                       <div className="space-y-3">
                         {currentPendingCustomers.map((customer) => {
-                          const effectiveDateStr =
-                            customer.effective_date.split("T")[0];
-                          const expirationDateStr =
-                            customer.expiration_date.split("T")[0];
-
-                          const [effYear, effMonth, effDay] = effectiveDateStr
+                          const effStr = customer.effective_date.split("T")[0];
+                          const expStr = customer.expiration_date.split("T")[0];
+                          const [effY, effM, effD] = effStr
                             .split("-")
                             .map(Number);
-                          const [expYear, expMonth, expDay] = expirationDateStr
+                          const [expY, expM, expD] = expStr
                             .split("-")
                             .map(Number);
-
-                          const effectiveDate = new Date(
-                            effYear,
-                            effMonth - 1,
-                            effDay,
-                          );
-                          const expirationDate = new Date(
-                            expYear,
-                            expMonth - 1,
-                            expDay,
-                          );
-
-                          const yearDiff =
-                            expirationDate.getFullYear() -
-                            effectiveDate.getFullYear();
-                          const monthDiff =
-                            expirationDate.getMonth() -
-                            effectiveDate.getMonth();
-                          const dayDiff =
-                            expirationDate.getDate() - effectiveDate.getDate();
-
-                          let diffMonths = yearDiff * 12 + monthDiff;
-
-                          if (dayDiff < 0) {
+                          const effectiveDate = new Date(effY, effM - 1, effD);
+                          const expirationDate = new Date(expY, expM - 1, expD);
+                          let diffMonths =
+                            (expirationDate.getFullYear() -
+                              effectiveDate.getFullYear()) *
+                              12 +
+                            (expirationDate.getMonth() -
+                              effectiveDate.getMonth());
+                          if (
+                            expirationDate.getDate() - effectiveDate.getDate() <
+                            0
+                          )
                             diffMonths -= 1;
-                          }
-
                           const policyDuration =
                             diffMonths >= 12
                               ? "12 months"
                               : `${diffMonths} months`;
-
                           const isEditingDates =
                             editingPendingDates === customer._id;
-
                           return (
                             <div
                               key={customer._id}
@@ -1886,7 +1616,6 @@ export default function InsuranceReminderDashboard() {
                                   <h3 className="font-semibold text-gray-900 text-lg">
                                     {customer.customer_name}
                                   </h3>
-
                                   {editingPendingInfo === customer._id ? (
                                     <div className="mt-1 space-y-2">
                                       <div className="flex items-center gap-2">
@@ -2008,7 +1737,6 @@ export default function InsuranceReminderDashboard() {
                                       </p>
                                     </>
                                   )}
-
                                   {isEditingDates ? (
                                     <div className="mt-2 space-y-2">
                                       <div className="flex items-center gap-2">
@@ -2099,7 +1827,6 @@ export default function InsuranceReminderDashboard() {
                                     <Calendar className="w-4 h-4" />
                                     Setup Reminder
                                   </button>
-                                  {/* NEW: Cancel Button */}
                                   <button
                                     onClick={() =>
                                       handleCancelPendingCustomer(customer)
@@ -2116,13 +1843,12 @@ export default function InsuranceReminderDashboard() {
                           );
                         })}
                       </div>
-
                       {totalPages > 1 && (
                         <div className="mt-6 flex items-center justify-between border-t border-yellow-200 pt-4">
                           <div className="text-sm text-gray-600">
                             Showing {startIndex + 1} to{" "}
                             {Math.min(
-                              endIndex,
+                              startIndex + customersPerPage,
                               filteredPendingCustomers.length,
                             )}{" "}
                             of {filteredPendingCustomers.length} customers
@@ -2157,9 +1883,7 @@ export default function InsuranceReminderDashboard() {
                 </div>
               )}
 
-              {/* Rest of the dashboard sections remain the same... */}
-              {/* I'll include the modals at the end */}
-
+              {/* Today */}
               <div
                 id="today-section"
                 className="bg-white rounded-xl shadow-sm p-6 mb-6"
@@ -2168,7 +1892,6 @@ export default function InsuranceReminderDashboard() {
                   <Bell className="w-5 h-5 text-blue-600" />
                   Today&apos;s Follow-ups ({filteredTodayFollowUps.length})
                 </h2>
-
                 <div className="mb-4">
                   <input
                     type="text"
@@ -2180,7 +1903,6 @@ export default function InsuranceReminderDashboard() {
                     className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
-
                 {filteredTodayFollowUps.length === 0 ? (
                   <p className="text-gray-500 text-center py-8">
                     {searchQueries.today
@@ -2190,28 +1912,35 @@ export default function InsuranceReminderDashboard() {
                 ) : (
                   <>
                     <div className="space-y-3">
-                      {currentTodayFollowUps.map(
-                        ({ customer, followUp, index }) => (
-                          <FollowUpCard
-                            key={`${customer.id}-${index}`}
-                            customer={customer}
-                            followUp={followUp}
-                            onComplete={() =>
-                              handleCompleteFollowUp(customer.id, index)
-                            }
-                            onMarkPaid={() => handleMarkPaid(customer.id)}
-                            onChangeToDirectBill={handleChangeToDirectBill}
-                          />
-                        ),
-                      )}
+                      {currentTodayFollowUps
+                        .filter(
+                          ({ customer, index }) =>
+                            !locallyCompleted.has(`${customer.id}-${index}`),
+                        )
+                        .map(({ customer, followUp, index }) => {
+                          const key = `${customer.id}-${index}`;
+                          return (
+                            <div key={key} style={slideStyle(key)}>
+                              <FollowUpCard
+                                customer={customer}
+                                followUp={followUp}
+                                onComplete={() =>
+                                  handleCompleteFollowUp(customer.id, index)
+                                }
+                                onMarkPaid={() => handleMarkPaid(customer.id)}
+                                onChangeToDirectBill={handleChangeToDirectBill}
+                                isCompleting={completingFollowUps.has(key)}
+                              />
+                            </div>
+                          );
+                        })}
                     </div>
-
                     {todayTotalPages > 1 && (
                       <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
                         <div className="text-sm text-gray-600">
                           Showing {todayStartIndex + 1} to{" "}
                           {Math.min(
-                            todayEndIndex,
+                            todayStartIndex + customersPerPage,
                             filteredTodayFollowUps.length,
                           )}{" "}
                           of {filteredTodayFollowUps.length} follow-ups
@@ -2253,6 +1982,7 @@ export default function InsuranceReminderDashboard() {
                 )}
               </div>
 
+              {/* Overdue */}
               {overdueFollowUps.length > 0 && (
                 <div
                   id="overdue-section"
@@ -2262,7 +1992,6 @@ export default function InsuranceReminderDashboard() {
                     <AlertTriangle className="w-5 h-5 text-red-600" />
                     Overdue Follow-ups ({filteredOverdueFollowUps.length})
                   </h2>
-
                   <div className="mb-4">
                     <input
                       type="text"
@@ -2274,7 +2003,6 @@ export default function InsuranceReminderDashboard() {
                       className="w-full border border-red-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500"
                     />
                   </div>
-
                   {filteredOverdueFollowUps.length === 0 ? (
                     <p className="text-gray-500 text-center py-8">
                       No matching overdue follow-ups found
@@ -2282,85 +2010,106 @@ export default function InsuranceReminderDashboard() {
                   ) : (
                     <>
                       <div className="space-y-3">
-                        {currentOverdueFollowUps.map(
-                          ({ customer, followUp, index, daysOverdue }) => (
-                            <div
-                              key={`${customer.id}-${index}`}
-                              className="border border-red-200 rounded-lg p-4 bg-white hover:shadow-md transition"
-                            >
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-3 mb-2">
-                                    <span className="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">
-                                      {daysOverdue}{" "}
-                                      {daysOverdue === 1 ? "DAY" : "DAYS"}{" "}
-                                      OVERDUE
-                                    </span>
-                                    <span className="text-xs text-gray-500">
-                                      Due:{" "}
-                                      {formatDate(
-                                        followUp.date,
-                                        "MMM dd, yyyy",
-                                      )}
-                                    </span>
-                                    <span className="flex items-center gap-1 text-sm text-gray-600">
-                                      {followUp.method === "phone" && (
-                                        <Phone className="w-4 h-4" />
-                                      )}
-                                      {followUp.method === "email" && (
-                                        <Mail className="w-4 h-4" />
-                                      )}
-                                      {followUp.method === "sms" && (
-                                        <MessageSquare className="w-4 h-4" />
-                                      )}
-                                      {followUp.method}
-                                    </span>
+                        {currentOverdueFollowUps
+                          .filter(
+                            ({ customer, index }) =>
+                              !locallyCompleted.has(`${customer.id}-${index}`),
+                          )
+                          .map(({ customer, followUp, index, daysOverdue }) => {
+                            const key = `${customer.id}-${index}`;
+                            return (
+                              <div key={key} style={slideStyle(key)}>
+                                <div className="border border-red-200 rounded-lg p-4 bg-white hover:shadow-md transition">
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-3 mb-2">
+                                        <span className="px-3 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 border border-red-200">
+                                          {daysOverdue}{" "}
+                                          {daysOverdue === 1 ? "DAY" : "DAYS"}{" "}
+                                          OVERDUE
+                                        </span>
+                                        <span className="text-xs text-gray-500">
+                                          Due:{" "}
+                                          {formatDate(
+                                            followUp.date,
+                                            "MMM dd, yyyy",
+                                          )}
+                                        </span>
+                                        <span className="flex items-center gap-1 text-sm text-gray-600">
+                                          {followUp.method === "phone" && (
+                                            <Phone className="w-4 h-4" />
+                                          )}
+                                          {followUp.method === "email" && (
+                                            <Mail className="w-4 h-4" />
+                                          )}
+                                          {followUp.method === "sms" && (
+                                            <MessageSquare className="w-4 h-4" />
+                                          )}
+                                          {followUp.method}
+                                        </span>
+                                      </div>
+                                      <h3 className="font-semibold text-gray-900">
+                                        {customer.name}
+                                      </h3>
+                                      <p className="text-sm text-gray-600">
+                                        Policy: {customer.id}
+                                      </p>
+                                      <p className="text-sm text-gray-700 mt-1">
+                                        {followUp.description}
+                                      </p>
+                                      <p className="text-xs text-gray-500 mt-1">
+                                        Payment{" "}
+                                        {customer.totalPayments -
+                                          customer.remainingPayments +
+                                          1}{" "}
+                                        of {customer.totalPayments}
+                                      </p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={() =>
+                                          handleMarkPaid(customer.id)
+                                        }
+                                        className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition"
+                                      >
+                                        Mark Paid
+                                      </button>
+                                      <button
+                                        onClick={() =>
+                                          handleCompleteFollowUp(
+                                            customer.id,
+                                            index,
+                                          )
+                                        }
+                                        disabled={
+                                          completingFollowUps.has(key) ||
+                                          animatingOut.has(key)
+                                        }
+                                        className={`px-3 py-1 rounded text-sm transition flex items-center gap-1.5 ${completingFollowUps.has(key) || animatingOut.has(key) ? "bg-green-500 text-white cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+                                      >
+                                        {completingFollowUps.has(key) ||
+                                        animatingOut.has(key) ? (
+                                          <>
+                                            <SpinnerIcon />
+                                            Saving…
+                                          </>
+                                        ) : (
+                                          "Complete"
+                                        )}
+                                      </button>
+                                    </div>
                                   </div>
-                                  <h3 className="font-semibold text-gray-900">
-                                    {customer.name}
-                                  </h3>
-                                  <p className="text-sm text-gray-600">
-                                    Policy: {customer.id}
-                                  </p>
-                                  <p className="text-sm text-gray-700 mt-1">
-                                    {followUp.description}
-                                  </p>
-                                  <p className="text-xs text-gray-500 mt-1">
-                                    Payment{" "}
-                                    {customer.totalPayments -
-                                      customer.remainingPayments +
-                                      1}{" "}
-                                    of {customer.totalPayments}
-                                  </p>
-                                </div>
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={() => handleMarkPaid(customer.id)}
-                                    className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700 transition"
-                                  >
-                                    Mark Paid
-                                  </button>
-                                  <button
-                                    onClick={() =>
-                                      handleCompleteFollowUp(customer.id, index)
-                                    }
-                                    className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition"
-                                  >
-                                    Complete
-                                  </button>
                                 </div>
                               </div>
-                            </div>
-                          ),
-                        )}
+                            );
+                          })}
                       </div>
-
                       {overdueTotalPages > 1 && (
                         <div className="mt-6 flex items-center justify-between border-t border-red-200 pt-4">
                           <div className="text-sm text-gray-600">
                             Showing {overdueStartIndex + 1} to{" "}
                             {Math.min(
-                              overdueEndIndex,
+                              overdueStartIndex + customersPerPage,
                               filteredOverdueFollowUps.length,
                             )}{" "}
                             of {filteredOverdueFollowUps.length} follow-ups
@@ -2406,6 +2155,7 @@ export default function InsuranceReminderDashboard() {
                 </div>
               )}
 
+              {/* Upcoming */}
               <div
                 id="upcoming-section"
                 className="bg-white rounded-xl shadow-sm p-6 mb-6"
@@ -2414,7 +2164,6 @@ export default function InsuranceReminderDashboard() {
                   Upcoming Follow-ups (Next 7 Days) (
                   {filteredUpcomingFollowUps.length})
                 </h2>
-
                 <div className="mb-4">
                   <input
                     type="text"
@@ -2426,7 +2175,6 @@ export default function InsuranceReminderDashboard() {
                     className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
-
                 {filteredUpcomingFollowUps.length === 0 ? (
                   <p className="text-gray-500 text-center py-8">
                     {searchQueries.upcoming
@@ -2436,29 +2184,36 @@ export default function InsuranceReminderDashboard() {
                 ) : (
                   <>
                     <div className="space-y-3">
-                      {currentUpcomingFollowUps.map(
-                        ({ customer, followUp, index }) => (
-                          <FollowUpCard
-                            key={`${customer.id}-${index}`}
-                            customer={customer}
-                            followUp={followUp}
-                            onComplete={() =>
-                              handleCompleteFollowUp(customer.id, index)
-                            }
-                            onMarkPaid={() => handleMarkPaid(customer.id)}
-                            onChangeToDirectBill={handleChangeToDirectBill}
-                            isUpcoming
-                          />
-                        ),
-                      )}
+                      {currentUpcomingFollowUps
+                        .filter(
+                          ({ customer, index }) =>
+                            !locallyCompleted.has(`${customer.id}-${index}`),
+                        )
+                        .map(({ customer, followUp, index }) => {
+                          const key = `${customer.id}-${index}`;
+                          return (
+                            <div key={key} style={slideStyle(key)}>
+                              <FollowUpCard
+                                customer={customer}
+                                followUp={followUp}
+                                onComplete={() =>
+                                  handleCompleteFollowUp(customer.id, index)
+                                }
+                                onMarkPaid={() => handleMarkPaid(customer.id)}
+                                onChangeToDirectBill={handleChangeToDirectBill}
+                                isUpcoming
+                                isCompleting={completingFollowUps.has(key)}
+                              />
+                            </div>
+                          );
+                        })}
                     </div>
-
                     {upcomingTotalPages > 1 && (
                       <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
                         <div className="text-sm text-gray-600">
                           Showing {upcomingStartIndex + 1} to{" "}
                           {Math.min(
-                            upcomingEndIndex,
+                            upcomingStartIndex + customersPerPage,
                             filteredUpcomingFollowUps.length,
                           )}{" "}
                           of {filteredUpcomingFollowUps.length} follow-ups
@@ -2503,6 +2258,7 @@ export default function InsuranceReminderDashboard() {
                 )}
               </div>
 
+              {/* Win-Back */}
               {winBackFollowUps.length > 0 && (
                 <div
                   id="winback-section"
@@ -2513,68 +2269,87 @@ export default function InsuranceReminderDashboard() {
                     Win-Back Opportunities ({winBackFollowUps.length})
                   </h2>
                   <div className="space-y-3">
-                    {currentWinBackFollowUps.map(
-                      ({ customer, followUp, index }) => (
-                        <div
-                          key={`${customer.id}-${index}`}
-                          className="border border-purple-200 rounded-lg p-4 bg-purple-50"
-                        >
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-3 mb-2">
-                                <span className="px-3 py-1 rounded-full text-xs font-medium border bg-purple-100 text-purple-800 border-purple-200">
-                                  WIN-BACK
-                                </span>
-                                <span className="text-xs text-gray-500">
-                                  Cancelled:{" "}
-                                  {formatDate(
-                                    customer.cancellationDate!,
-                                    "MMM dd, yyyy",
+                    {currentWinBackFollowUps
+                      .filter(
+                        ({ customer, index }) =>
+                          !locallyCompleted.has(`${customer.id}-${index}`),
+                      )
+                      .map(({ customer, followUp, index }) => {
+                        const key = `${customer.id}-${index}`;
+                        return (
+                          <div key={key} style={slideStyle(key)}>
+                            <div className="border border-purple-200 rounded-lg p-4 bg-purple-50">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <span className="px-3 py-1 rounded-full text-xs font-medium border bg-purple-100 text-purple-800 border-purple-200">
+                                      WIN-BACK
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                      Cancelled:{" "}
+                                      {formatDate(
+                                        customer.cancellationDate!,
+                                        "MMM dd, yyyy",
+                                      )}
+                                    </span>
+                                    <span className="text-xs text-gray-600 font-medium">
+                                      Reason:{" "}
+                                      {customer.cancellationReason ===
+                                      "non-payment"
+                                        ? "Non-Payment"
+                                        : customer.cancellationReason ===
+                                            "customer-choice"
+                                          ? "Customer Choice"
+                                          : customer.cancellationReason ===
+                                              "custom-date"
+                                            ? "Custom Date"
+                                            : "No Follow-up"}
+                                    </span>
+                                  </div>
+                                  <h3 className="font-semibold text-gray-900">
+                                    {customer.name}
+                                  </h3>
+                                  <p className="text-sm text-gray-600">
+                                    Policy: {customer.id}
+                                  </p>
+                                  <p className="text-sm text-gray-700 mt-1">
+                                    {followUp.description}
+                                  </p>
+                                  <p className="text-sm text-purple-700 mt-1 font-medium">
+                                    Contact on:{" "}
+                                    {formatDate(followUp.date, "MMM dd, yyyy")}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() =>
+                                    handleCompleteFollowUp(customer.id, index)
+                                  }
+                                  disabled={
+                                    completingFollowUps.has(key) ||
+                                    animatingOut.has(key)
+                                  }
+                                  className={`px-3 py-1 rounded text-sm transition flex items-center gap-1.5 ${completingFollowUps.has(key) || animatingOut.has(key) ? "bg-green-500 text-white cursor-not-allowed" : "bg-purple-600 text-white hover:bg-purple-700"}`}
+                                >
+                                  {completingFollowUps.has(key) ||
+                                  animatingOut.has(key) ? (
+                                    <>
+                                      <SpinnerIcon />
+                                      Saving…
+                                    </>
+                                  ) : (
+                                    "Complete"
                                   )}
-                                </span>
-                                <span className="text-xs text-gray-600 font-medium">
-                                  Reason:{" "}
-                                  {customer.cancellationReason === "non-payment"
-                                    ? "Non-Payment"
-                                    : customer.cancellationReason ===
-                                        "customer-choice"
-                                      ? "Customer Choice"
-                                      : customer.cancellationReason ===
-                                          "custom-date"
-                                        ? "Custom Date"
-                                        : "No Follow-up"}
-                                </span>
+                                </button>
                               </div>
-                              <h3 className="font-semibold text-gray-900">
-                                {customer.name}
-                              </h3>
-                              <p className="text-sm text-gray-600">
-                                Policy: {customer.id}
-                              </p>
-                              <p className="text-sm text-gray-700 mt-1">
-                                {followUp.description}
-                              </p>
-                              <p className="text-sm text-purple-700 mt-1 font-medium">
-                                Contact on:{" "}
-                                {formatDate(followUp.date, "MMM dd, yyyy")}
-                              </p>
                             </div>
-                            <button
-                              onClick={() =>
-                                handleCompleteFollowUp(customer.id, index)
-                              }
-                              className="px-3 py-1 bg-purple-600 text-white rounded text-sm hover:bg-purple-700 transition"
-                            >
-                              Complete
-                            </button>
                           </div>
-                        </div>
-                      ),
-                    )}
+                        );
+                      })}
                   </div>
                 </div>
               )}
 
+              {/* All Customers */}
               <div
                 id="all-section"
                 className="bg-white rounded-xl shadow-sm p-6"
@@ -2582,7 +2357,6 @@ export default function InsuranceReminderDashboard() {
                 <h2 className="text-xl font-semibold mb-4 text-gray-800">
                   All Customers
                 </h2>
-
                 <div className="mb-4">
                   <input
                     type="text"
@@ -2592,7 +2366,6 @@ export default function InsuranceReminderDashboard() {
                     className="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
-
                 {filteredAllCustomers.length === 0 ? (
                   <p className="text-gray-500 text-center py-8">
                     No matching customers found
@@ -2602,7 +2375,7 @@ export default function InsuranceReminderDashboard() {
                     <div className="space-y-3">
                       {currentAllCustomers.map((customer) => (
                         <CustomerCard
-                          key={customer.id}
+                          key={customer._id ?? customer.id}
                           customer={customer}
                           availableCompanies={companyList}
                           onUpdateInfo={handleUpdateInfo}
@@ -2630,12 +2403,14 @@ export default function InsuranceReminderDashboard() {
                         />
                       ))}
                     </div>
-
                     {allTotalPages > 1 && (
                       <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
                         <div className="text-sm text-gray-600">
                           Showing {allStartIndex + 1} to{" "}
-                          {Math.min(allEndIndex, filteredAllCustomers.length)}{" "}
+                          {Math.min(
+                            allStartIndex + customersPerPage,
+                            filteredAllCustomers.length,
+                          )}{" "}
                           of {filteredAllCustomers.length} customers
                         </div>
                         <div className="flex items-center gap-2">
@@ -2676,10 +2451,162 @@ export default function InsuranceReminderDashboard() {
             />
           )}
 
-          {/* Existing Modals */}
-          {/* Add Customer Modal, Setup Modal, Cancel Customer Modal, Reinstate Modal */}
+          {/* Cancel Customer Modal */}
+          {showCancelModal && cancellingCustomer && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
+                <h3 className="text-xl font-semibold mb-4 text-gray-900">
+                  Cancel Policy
+                </h3>
+                <p className="text-gray-700 mb-4">
+                  Cancel policy for <strong>{cancellingCustomer.name}</strong> (
+                  {cancellingCustomer.id})?
+                </p>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Cancellation Date <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={cancellationDate}
+                    onChange={(e) => setCancellationDate(e.target.value)}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    required
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    The date when the policy was/will be cancelled
+                  </p>
+                </div>
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Cancellation Reason & Follow-up
+                  </label>
+                  <div className="space-y-3">
+                    <label className="flex items-start">
+                      <input
+                        type="radio"
+                        name="cancel-reason"
+                        value="non-payment"
+                        checked={cancellationReason === "non-payment"}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setCancellationReason(
+                            e.target.value as typeof cancellationReason,
+                          )
+                        }
+                        className="mr-2 mt-0.5"
+                      />
+                      <span className="text-sm text-gray-700">
+                        Non-Payment{" "}
+                        <span className="text-gray-500">
+                          (Follow up at 3 & 6 months from cancellation date)
+                        </span>
+                      </span>
+                    </label>
+                    <label className="flex items-start">
+                      <input
+                        type="radio"
+                        name="cancel-reason"
+                        value="customer-choice"
+                        checked={cancellationReason === "customer-choice"}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setCancellationReason(
+                            e.target.value as typeof cancellationReason,
+                          )
+                        }
+                        className="mr-2 mt-0.5"
+                      />
+                      <span className="text-sm text-gray-700">
+                        Customer Choice{" "}
+                        <span className="text-gray-500">
+                          (Follow up 15 days before 6 months, then at 6 months)
+                        </span>
+                      </span>
+                    </label>
+                    <label className="flex items-start">
+                      <input
+                        type="radio"
+                        name="cancel-reason"
+                        value="custom-date"
+                        checked={cancellationReason === "custom-date"}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setCancellationReason(
+                            e.target.value as typeof cancellationReason,
+                          )
+                        }
+                        className="mr-2 mt-0.5"
+                      />
+                      <div className="flex-1">
+                        <span className="text-sm text-gray-700">
+                          Custom Win-Back Date{" "}
+                          <span className="text-gray-500">
+                            (Follow up on specific date)
+                          </span>
+                        </span>
+                        {cancellationReason === "custom-date" && (
+                          <input
+                            type="date"
+                            value={customWinBackDate}
+                            onChange={(e) =>
+                              setCustomWinBackDate(e.target.value)
+                            }
+                            className="mt-2 border rounded px-3 py-1 text-sm w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            min={cancellationDate}
+                          />
+                        )}
+                      </div>
+                    </label>
+                    <label className="flex items-start">
+                      <input
+                        type="radio"
+                        name="cancel-reason"
+                        value="no-followup"
+                        checked={cancellationReason === "no-followup"}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                          setCancellationReason(
+                            e.target.value as typeof cancellationReason,
+                          )
+                        }
+                        className="mr-2 mt-0.5"
+                      />
+                      <span className="text-sm text-gray-700">
+                        Don&apos;t Follow Up{" "}
+                        <span className="text-gray-500">
+                          (No follow-up needed)
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowCancelModal(false);
+                      setCancellingCustomer(null);
+                      setCancellationReason("non-payment");
+                      setCustomWinBackDate("");
+                      setCancellationDate("");
+                    }}
+                    className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmCancellation}
+                    disabled={
+                      !cancellationDate ||
+                      (cancellationReason === "custom-date" &&
+                        !customWinBackDate)
+                    }
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed"
+                  >
+                    Confirm Cancellation
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
-          {/* NEW: Pending Customer Cancellation Modal */}
+          {/* Pending Cancel Modal */}
           {showPendingCancelModal && cancellingPendingCustomer && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
               <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
@@ -2692,8 +2619,6 @@ export default function InsuranceReminderDashboard() {
                   {cancellingPendingCustomer.policy_no})? This will move the
                   customer to cancelled status with win-back follow-ups.
                 </p>
-
-                {/* Cancellation Date Field */}
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Cancellation Date <span className="text-red-500">*</span>
@@ -2709,7 +2634,6 @@ export default function InsuranceReminderDashboard() {
                     The date when the policy was/will be cancelled
                   </p>
                 </div>
-
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Cancellation Reason & Follow-up
@@ -2723,11 +2647,7 @@ export default function InsuranceReminderDashboard() {
                         checked={pendingCancellationReason === "non-payment"}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                           setPendingCancellationReason(
-                            e.target.value as
-                              | "non-payment"
-                              | "customer-choice"
-                              | "custom-date"
-                              | "no-followup",
+                            e.target.value as typeof pendingCancellationReason,
                           )
                         }
                         className="mr-2 mt-0.5"
@@ -2749,11 +2669,7 @@ export default function InsuranceReminderDashboard() {
                         }
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                           setPendingCancellationReason(
-                            e.target.value as
-                              | "non-payment"
-                              | "customer-choice"
-                              | "custom-date"
-                              | "no-followup",
+                            e.target.value as typeof pendingCancellationReason,
                           )
                         }
                         className="mr-2 mt-0.5"
@@ -2773,11 +2689,7 @@ export default function InsuranceReminderDashboard() {
                         checked={pendingCancellationReason === "custom-date"}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                           setPendingCancellationReason(
-                            e.target.value as
-                              | "non-payment"
-                              | "customer-choice"
-                              | "custom-date"
-                              | "no-followup",
+                            e.target.value as typeof pendingCancellationReason,
                           )
                         }
                         className="mr-2 mt-0.5"
@@ -2797,7 +2709,6 @@ export default function InsuranceReminderDashboard() {
                               setPendingCustomWinBackDate(e.target.value)
                             }
                             className="mt-2 border rounded px-3 py-1 text-sm w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            placeholder="Select follow-up date"
                             min={pendingCancellationDate}
                           />
                         )}
@@ -2811,11 +2722,7 @@ export default function InsuranceReminderDashboard() {
                         checked={pendingCancellationReason === "no-followup"}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                           setPendingCancellationReason(
-                            e.target.value as
-                              | "non-payment"
-                              | "customer-choice"
-                              | "custom-date"
-                              | "no-followup",
+                            e.target.value as typeof pendingCancellationReason,
                           )
                         }
                         className="mr-2 mt-0.5"
@@ -2829,7 +2736,6 @@ export default function InsuranceReminderDashboard() {
                     </label>
                   </div>
                 </div>
-
                 <div className="flex gap-3">
                   <button
                     onClick={() => {
@@ -2859,7 +2765,7 @@ export default function InsuranceReminderDashboard() {
             </div>
           )}
 
-          {/* NEW: Reinstate Modal */}
+          {/* Reinstate Modal */}
           {showReinstateModal && reinstatingCustomer && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
               <div className="bg-white rounded-xl p-6 max-w-md w-full mx-4">
@@ -2871,8 +2777,6 @@ export default function InsuranceReminderDashboard() {
                   <strong>{reinstatingCustomer.name}</strong> (
                   {reinstatingCustomer.id})?
                 </p>
-
-                {/* Due Date Field */}
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     New Due Date <span className="text-red-500">*</span>
@@ -2888,8 +2792,6 @@ export default function InsuranceReminderDashboard() {
                     Select the new payment due date for this policy
                   </p>
                 </div>
-
-                {/* Payment Type Field */}
                 <div className="mb-6">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Payment Type <span className="text-red-500">*</span>
@@ -2906,7 +2808,6 @@ export default function InsuranceReminderDashboard() {
                     <option value="paid-in-full">Paid in Full</option>
                   </select>
                 </div>
-
                 <div className="flex gap-3">
                   <button
                     onClick={() => {
@@ -2931,14 +2832,13 @@ export default function InsuranceReminderDashboard() {
             </div>
           )}
 
+          {/* Setup Modal */}
           {showSetupModal && setupCustomer && (
             <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-xl p-6 w-full max-w-7xl max-h-[95vh] overflow-y-auto">
                 <h3 className="text-xl font-semibold mb-4 text-gray-900">
                   Setup Payment Reminder
                 </h3>
-
-                {/* Customer Info Header */}
                 <div className="mb-6 pb-4 border-b">
                   <p className="text-gray-700 font-medium text-lg">
                     {setupCustomer.customer_name}
@@ -2969,8 +2869,6 @@ export default function InsuranceReminderDashboard() {
                       </p>
                     </div>
                   </div>
-
-                  {/* Editable Coverage Period */}
                   <div className="mt-4 grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -2998,28 +2896,25 @@ export default function InsuranceReminderDashboard() {
                   <p className="text-xs text-gray-500 mt-1">
                     💡 Adjust dates to recalculate AI suggestions
                   </p>
-
                   {setupPaymentType !== "paid-in-full" &&
                     setupDueDate &&
                     setupExpirationDate &&
                     (() => {
-                      const dueDate = new Date(setupDueDate);
-                      const expDate = new Date(setupExpirationDate);
-                      const monthsDiff = Math.max(
+                      const d = new Date(setupDueDate);
+                      const e = new Date(setupExpirationDate);
+                      const m = Math.max(
                         0,
-                        (expDate.getFullYear() - dueDate.getFullYear()) * 12 +
-                          (expDate.getMonth() - dueDate.getMonth()),
+                        (e.getFullYear() - d.getFullYear()) * 12 +
+                          (e.getMonth() - d.getMonth()),
                       );
                       return (
                         <p className="text-sm font-medium text-blue-600 mt-2">
-                          📅 {monthsDiff} payment{monthsDiff !== 1 ? "s" : ""}{" "}
-                          remaining until expiration
+                          📅 {m} payment{m !== 1 ? "s" : ""} remaining until
+                          expiration
                         </p>
                       );
                     })()}
                 </div>
-
-                {/* PDF Merger pre-fill banner */}
                 {pdfData?.found && (
                   <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-3">
                     <span className="text-emerald-600 text-lg flex-shrink-0">
@@ -3033,13 +2928,10 @@ export default function InsuranceReminderDashboard() {
                         {pdfData.paidInFull
                           ? "Paid in full — no due date needed."
                           : `Due date set to ${pdfData.nextDueDate ?? "—"} · `}
-                        {!pdfData.paidInFull && (
-                          <>
-                            {pdfData.suggestedPaymentType === "autopay"
-                              ? `Autopay (${pdfData.paymentMethod === "cc" ? "credit card" : "bank EFT"})`
-                              : "Regular / Direct Bill"}
-                          </>
-                        )}
+                        {!pdfData.paidInFull &&
+                          (pdfData.suggestedPaymentType === "autopay"
+                            ? `Autopay (${pdfData.paymentMethod === "cc" ? "credit card" : "bank EFT"})`
+                            : "Regular / Direct Bill")}
                         {pdfData.paidAmount && ` · Paid $${pdfData.paidAmount}`}
                       </p>
                       {pdfData.updatedAt && (
@@ -3068,16 +2960,11 @@ export default function InsuranceReminderDashboard() {
                     </button>
                   </div>
                 )}
-
-                {/* Two Column Layout - Side by Side 50/50 */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* LEFT COLUMN: AI Suggestions */}
                   <div className="space-y-4 lg:border-r lg:pr-6 max-h-[60vh] overflow-y-auto">
                     <h4 className="font-semibold text-gray-900 flex items-center gap-2">
-                      <span className="text-xl">🤖</span>
-                      AI Assistant
+                      <span className="text-xl">🤖</span>AI Assistant
                     </h4>
-
                     {loadingAiSuggestion && (
                       <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                         <div className="flex items-center gap-2">
@@ -3089,7 +2976,6 @@ export default function InsuranceReminderDashboard() {
                         </div>
                       </div>
                     )}
-
                     {aiSuggestion &&
                       showAiSuggestion &&
                       !loadingAiSuggestion && (
@@ -3097,15 +2983,9 @@ export default function InsuranceReminderDashboard() {
                           <div className="flex items-start justify-between mb-3">
                             <div>
                               <h4 className="font-semibold text-gray-900">
-                                Suggestions
+                                Suggestions{" "}
                                 <span
-                                  className={`ml-2 text-xs px-2 py-0.5 rounded ${
-                                    aiSuggestion.confidence === "high"
-                                      ? "bg-green-100 text-green-700"
-                                      : aiSuggestion.confidence === "medium"
-                                        ? "bg-yellow-100 text-yellow-700"
-                                        : "bg-gray-100 text-gray-700"
-                                  }`}
+                                  className={`ml-2 text-xs px-2 py-0.5 rounded ${aiSuggestion.confidence === "high" ? "bg-green-100 text-green-700" : aiSuggestion.confidence === "medium" ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-700"}`}
                                 >
                                   {aiSuggestion.confidence} confidence
                                 </span>
@@ -3126,7 +3006,6 @@ export default function InsuranceReminderDashboard() {
                               ✕
                             </button>
                           </div>
-
                           <div className="space-y-2 mb-3">
                             <div className="flex items-center justify-between bg-white rounded-lg p-3">
                               <div>
@@ -3152,7 +3031,6 @@ export default function InsuranceReminderDashboard() {
                                 Apply
                               </button>
                             </div>
-
                             <div className="flex items-center justify-between bg-white rounded-lg p-3">
                               <div>
                                 <p className="text-xs text-gray-600">
@@ -3174,7 +3052,6 @@ export default function InsuranceReminderDashboard() {
                               </button>
                             </div>
                           </div>
-
                           <div className="space-y-2">
                             <div className="bg-white rounded-lg p-3">
                               <p className="text-xs font-medium text-gray-700 mb-1">
@@ -3184,7 +3061,6 @@ export default function InsuranceReminderDashboard() {
                                 {aiSuggestion.reasoning}
                               </p>
                             </div>
-
                             {aiSuggestion.companyPattern && (
                               <div className="bg-white rounded-lg p-3">
                                 <p className="text-xs font-medium text-gray-700 mb-1">
@@ -3195,7 +3071,6 @@ export default function InsuranceReminderDashboard() {
                                 </p>
                               </div>
                             )}
-
                             {aiSuggestion.pricingAdvantage && (
                               <div className="bg-white rounded-lg p-3">
                                 <p className="text-xs font-medium text-gray-700 mb-1">
@@ -3209,7 +3084,6 @@ export default function InsuranceReminderDashboard() {
                           </div>
                         </div>
                       )}
-
                     {!loadingAiSuggestion && !aiSuggestion && (
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-center">
                         <p className="text-sm text-gray-600">
@@ -3219,13 +3093,10 @@ export default function InsuranceReminderDashboard() {
                       </div>
                     )}
                   </div>
-
-                  {/* RIGHT COLUMN: Form Fields */}
                   <div className="space-y-4">
                     <h4 className="font-semibold text-gray-900">
                       Setup Details
                     </h4>
-
                     {setupPaymentType !== "paid-in-full" && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -3244,7 +3115,6 @@ export default function InsuranceReminderDashboard() {
                         </p>
                       </div>
                     )}
-
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Payment Type
@@ -3261,15 +3131,12 @@ export default function InsuranceReminderDashboard() {
                         <option value="paid-in-full">Paid in Full</option>
                       </select>
                     </div>
-
                     {setupPaymentType === "paid-in-full" && (
                       <p className="text-sm text-blue-600 bg-blue-50 p-3 rounded-lg">
                         ℹ️ No due date needed - renewal reminder will be set 20
                         days before expiration
                       </p>
                     )}
-
-                    {/* Action Buttons */}
                     <div className="flex gap-3 pt-4">
                       <button
                         onClick={() => {
@@ -3325,7 +3192,6 @@ function StatCard({
     green: "bg-green-50 border-green-200",
     purple: "bg-purple-50 border-purple-200",
   };
-
   return (
     <div className={`${colorClasses[color]} border rounded-xl p-4`}>
       <div className="flex items-center justify-between">
@@ -3346,6 +3212,7 @@ interface FollowUpCardProps {
   onMarkPaid: () => void;
   onChangeToDirectBill?: (customerId: string) => void;
   isUpcoming?: boolean;
+  isCompleting?: boolean;
 }
 
 function FollowUpCard({
@@ -3355,6 +3222,7 @@ function FollowUpCard({
   onMarkPaid,
   onChangeToDirectBill,
   isUpcoming = false,
+  isCompleting = false,
 }: FollowUpCardProps) {
   const getMethodIcon = (method: string | undefined): JSX.Element => {
     switch (method) {
@@ -3368,7 +3236,6 @@ function FollowUpCard({
         return <Bell className="w-4 h-4" />;
     }
   };
-
   const getTypeColor = (type: string): string => {
     switch (type) {
       case "final":
@@ -3383,16 +3250,13 @@ function FollowUpCard({
         return "bg-blue-100 text-blue-800 border-blue-200";
     }
   };
-
   return (
     <div className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition">
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-2">
             <span
-              className={`px-3 py-1 rounded-full text-xs font-medium border ${getTypeColor(
-                followUp.type,
-              )}`}
+              className={`px-3 py-1 rounded-full text-xs font-medium border ${getTypeColor(followUp.type)}`}
             >
               {followUp.type.toUpperCase()}
             </span>
@@ -3436,9 +3300,39 @@ function FollowUpCard({
               </button>
               <button
                 onClick={onComplete}
-                className="flex-1 px-3 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 transition font-medium"
+                disabled={isCompleting}
+                className={`flex-1 px-3 py-1.5 rounded text-sm transition font-medium flex items-center justify-center gap-1.5 ${
+                  isCompleting
+                    ? "bg-green-500 text-white cursor-not-allowed"
+                    : "bg-blue-600 text-white hover:bg-blue-700"
+                }`}
               >
-                Complete
+                {isCompleting ? (
+                  <>
+                    <svg
+                      className="w-3.5 h-3.5 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8v8z"
+                      />
+                    </svg>
+                    Saving…
+                  </>
+                ) : (
+                  "Complete"
+                )}
               </button>
             </div>
           )}
