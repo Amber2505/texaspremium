@@ -355,9 +355,6 @@ export default function InsuranceReminderDashboard() {
   const [locallyCompleted, setLocallyCompleted] = useState<Set<string>>(
     new Set(),
   );
-  const [pdfExtractedMap, setPdfExtractedMap] = useState<
-    Map<string, Record<string, unknown>>
-  >(new Map());
 
   useEffect(() => {
     const checkAuth = () => {
@@ -387,6 +384,18 @@ export default function InsuranceReminderDashboard() {
   }, []);
 
   useEffect(() => {
+    fetch("/api/auto-setup-from-pdf", { method: "POST" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.setupCount > 0) {
+          fetchCustomers();
+          fetchPendingCustomers();
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     fetch("/api/company-database")
       .then((r) => r.json())
       .then((data) => {
@@ -396,22 +405,6 @@ export default function InsuranceReminderDashboard() {
           .map((c) => c.name)
           .sort();
         setCompanyList(names);
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    fetch("/api/pdf-extracted-all")
-      .then((r) => r.json())
-      .then((records: Array<Record<string, unknown>>) => {
-        const map = new Map<string, Record<string, unknown>>();
-        records.forEach((r) => {
-          if (r.policyNo)
-            map.set((r.policyNo as string).toLowerCase().trim(), r);
-          if (r.customerName)
-            map.set((r.customerName as string).toLowerCase().trim(), r);
-        });
-        setPdfExtractedMap(map);
       })
       .catch(() => {});
   }, []);
@@ -699,27 +692,27 @@ export default function InsuranceReminderDashboard() {
       setPdfData(null);
 
       // Zero API calls — lookup from in-memory map loaded on page mount
-      const pdfMatch =
-        pdfExtractedMap.get(freshCustomer.policy_no?.toLowerCase().trim()) ||
-        pdfExtractedMap.get(freshCustomer.customer_name?.toLowerCase().trim());
-      if (pdfMatch) {
-        const pdf = pdfMatch as {
-          found?: boolean;
-          paidInFull?: boolean;
-          nextDueDate?: string | null;
-          monthlyAmount?: string | null;
-          paidAmount?: string | null;
-          companyName?: string | null;
-          paymentMethod?: string | null;
-          suggestedPaymentType?: "regular" | "autopay" | "paid-in-full";
-          mergedFilename?: string | null;
-          updatedAt?: string | null;
-        };
-        setPdfData({ ...pdf, found: true });
-        if (pdf.suggestedPaymentType)
-          setSetupPaymentType(pdf.suggestedPaymentType as PaymentType);
-        if (!pdf.paidInFull && pdf.nextDueDate)
-          setSetupDueDate(pdf.nextDueDate);
+      // Smart lookup: pdf-extracted → phone → autopay_customers date range check
+      try {
+        const params = new URLSearchParams();
+        if (freshCustomer.policy_no)
+          params.set("policyNo", freshCustomer.policy_no);
+        if (freshCustomer.customer_name)
+          params.set("customerName", freshCustomer.customer_name);
+        const smartRes = await fetch(
+          `/api/smart-pdf-lookup?${params.toString()}`,
+        );
+        const pdf = await smartRes.json();
+        console.log("🔍 Smart PDF lookup result:", pdf);
+        if (pdf.found) {
+          setPdfData(pdf);
+          if (pdf.suggestedPaymentType)
+            setSetupPaymentType(pdf.suggestedPaymentType as PaymentType);
+          if (!pdf.paidInFull && pdf.nextDueDate)
+            setSetupDueDate(pdf.nextDueDate);
+        }
+      } catch {
+        /* non-fatal — modal still works without pre-fill */
       }
 
       const eff = new Date(freshCustomer.effective_date);
