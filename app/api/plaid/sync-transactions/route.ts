@@ -1,3 +1,5 @@
+// app/api/plaid/sync-transactions/route.ts
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from "next/server";
 import { PlaidApi, PlaidEnvironments, Configuration } from "plaid";
 import clientPromise from "@/lib/mongodb";
@@ -24,11 +26,22 @@ export async function POST() {
   const end = new Date().toISOString().split("T")[0];
   const start = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-  const response = await plaidClient.transactionsGet({
-    access_token: config.access_token,
-    start_date: start,
-    end_date: end,
-  });
+  let response;
+  try {
+    response = await plaidClient.transactionsGet({
+      access_token: config.access_token,
+      start_date: start,
+      end_date: end,
+    });
+  } catch (plaidError: any) {
+    const errData = plaidError?.response?.data;
+    console.error("Plaid transactionsGet error:", JSON.stringify(errData));
+    return NextResponse.json({
+      error: errData?.error_code || "Plaid API error",
+      message: errData?.error_message || plaidError?.message,
+      details: errData,
+    }, { status: 400 });
+  }
 
   const transactions = response.data.transactions;
 
