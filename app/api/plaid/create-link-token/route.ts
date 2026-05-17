@@ -19,7 +19,7 @@ export async function POST() {
       products: [Products.Transactions],
       country_codes: [CountryCode.Us],
       language: "en",
-      redirect_uri: "https://www.texaspremiumins.com/admin/bank-connect",
+      redirect_uri: "https://www.texaspremiumins.com/en/admin/bank-connect",
     });
   return NextResponse.json({ link_token: response.data.link_token });
 }

@@ -61,7 +61,7 @@ export default function BankConnectPage() {
 
   const receivedRedirectUri =
     typeof window !== "undefined" &&
-    window.location.href.includes("?oauth_state_id=")
+    window.location.href.includes("oauth_state_id")
       ? window.location.href
       : undefined;
 
