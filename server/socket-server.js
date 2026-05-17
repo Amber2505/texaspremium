@@ -1,3 +1,4 @@
+// socket-server.js
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const { MongoClient } = require('mongodb');
@@ -1305,6 +1306,37 @@ async function startServer() {
     // Run once on startup to catch anything missed during downtime/redeploy
     setTimeout(processScheduledMessages, 8000);
     console.log('⏰ Scheduled messages processor started (every 60s)');
+
+    // ================================================
+    // PLAID BANK TRANSACTION SYNC
+    // Runs daily at 2 AM CST
+    // ================================================
+    let lastPlaidSyncDate = null;
+    setInterval(async () => {
+      const now = new Date();
+      const cstTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+      const hour = cstTime.getHours();
+      const minute = cstTime.getMinutes();
+      const todayDate = cstTime.toDateString();
+
+      if (hour === 2 && minute >= 0 && minute < 5 && lastPlaidSyncDate !== todayDate) {
+        console.log('🏦 2 AM CST - Syncing Plaid bank transactions...');
+        try {
+          const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.texaspremiumins.com';
+          const res = await fetch(`${appUrl}/api/plaid/sync-transactions`, { method: 'POST' });
+          const data = await res.json();
+          console.log(`✅ Plaid sync complete: ${data.synced} transactions`);
+          lastPlaidSyncDate = todayDate;
+        } catch (err) {
+          console.error('❌ Plaid sync failed:', err.message);
+        }
+      }
+
+      if (hour === 0 && minute === 0 && lastPlaidSyncDate !== null) {
+        lastPlaidSyncDate = null;
+      }
+    }, 30000);
+    console.log('⏰ Plaid bank sync scheduled for 2:00 AM CST daily');
 
     // Generate code on startup if none exists for today
     if (securityCodeCollection) {
