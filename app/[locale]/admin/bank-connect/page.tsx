@@ -59,7 +59,24 @@ export default function BankConnectPage() {
     setConnected(true);
   }, []);
 
-  const { open, ready } = usePlaidLink({ token: linkToken!, onSuccess });
+  const receivedRedirectUri =
+    typeof window !== "undefined" &&
+    window.location.href.includes("?oauth_state_id=")
+      ? window.location.href
+      : undefined;
+
+  const { open, ready } = usePlaidLink({
+    token: linkToken!,
+    onSuccess,
+    receivedRedirectUri,
+  });
+
+  // Auto-open Link if returning from OAuth redirect
+  useEffect(() => {
+    if (ready && receivedRedirectUri) {
+      open();
+    }
+  }, [ready, receivedRedirectUri, open]);
 
   if (isCheckingAuth) {
     return (
