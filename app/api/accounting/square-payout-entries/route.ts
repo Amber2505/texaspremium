@@ -1,7 +1,6 @@
 // app/api/accounting/square-payout-entries/route.ts
-// For a given date range, fetches all payouts and their individual transaction entries.
-// Each entry shows: gross amount, Square fee, net amount — so you can see exactly
-// what Square charged per transaction and what landed in your bank.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 
 import { NextResponse } from "next/server";
 
@@ -31,6 +30,7 @@ export async function GET(request: Request) {
     // Step 1: Get all payouts in range
     const payouts: SquarePayout[] = [];
     let cursor: string | undefined;
+    // Fetch PAID payouts
     do {
       const params = new URLSearchParams({
         begin_time: `${begin}T00:00:00.000Z`,
@@ -50,6 +50,42 @@ export async function GET(request: Request) {
       cursor = data.cursor;
     } while (cursor);
 
+    // Fetch IN_TRANSIT and PENDING payouts (money scheduled but not yet in bank)
+    const pendingPayouts: { id: string; status: string; amount: number; updatedAt: string }[] = [];
+    for (const status of ["SENT", "FAILED"]) {
+      let pendingCursor: string | undefined;
+      do {
+        const params = new URLSearchParams({
+          status,
+          limit: "100",
+          sort_order: "DESC",
+        });
+        if (pendingCursor) params.set("cursor", pendingCursor);
+        const res = await fetch(`${SQUARE_BASE}/v2/payouts?${params}`, { headers });
+        if (!res.ok) {
+          const errBody = await res.json();
+          console.error(`❌ Pending payouts fetch failed for status ${status}:`, JSON.stringify(errBody));
+          break;
+        }
+        const data = await res.json();
+        console.log(`✅ ${status} payouts:`, JSON.stringify(data.payouts || [], null, 2));
+        for (const p of (data.payouts || [])) {
+          // Try all possible amount fields
+          const amount = toFloat(p.amount_money) 
+            || toFloat(p.expected_amount_money)
+            || toFloat(p.net_amount_money);
+          console.log(`Payout ${p.id}: amount_money=${JSON.stringify(p.amount_money)}, expected=${JSON.stringify(p.expected_amount_money)}, net=${JSON.stringify(p.net_amount_money)}`);
+          pendingPayouts.push({
+            id: p.id,
+            status: p.status,
+            amount,
+            updatedAt: p.updated_at || "",
+          });
+        }
+        pendingCursor = data.cursor;
+      } while (pendingCursor);
+    }
+
     if (!payouts.length) {
       return NextResponse.json({ payouts: [] });
     }
@@ -68,8 +104,13 @@ export async function GET(request: Request) {
           `${SQUARE_BASE}/v2/payouts/${payout.id}/payout-entries?${params}`,
           { headers }
         );
-        if (!res.ok) break; // skip if entries unavailable for this payout
+        if (!res.ok) {
+          const errBody = await res.json();
+          console.error(`Payout entries failed for ${payout.id}:`, errBody);
+          break;
+        }
         const data = await res.json();
+        console.log(`Payout ${payout.id}: ${(data.payout_entries || []).length} entries, types: ${[...new Set((data.payout_entries || []).map((e: any) => e.type))].join(', ')}`);
         const raw: SquarePayoutEntry[] = data.payout_entries || [];
         entries.push(
           ...raw.map((e) => ({
@@ -94,16 +135,36 @@ export async function GET(request: Request) {
         arrivalDate: payout.arrival_date,
         netAmount: toFloat(payout.amount_money),
         grossAmount: entries
-          .filter((e) => e.type === "PAYMENT")
+          .filter((e) => e.type === "CHARGE")
           .reduce((s, e) => s + e.grossAmount, 0),
         totalFees: entries
-          .filter((e) => e.type === "PAYMENT")
+          .filter((e) => e.type === "CHARGE")
           .reduce((s, e) => s + Math.abs(e.feeAmount), 0),
         entries,
       });
     }
 
-    return NextResponse.json({ payouts: result });
+    const totalInTransit = pendingPayouts.reduce((s, p) => s + p.amount, 0);
+    console.log(`💰 Total in transit: $${totalInTransit.toFixed(2)} across ${pendingPayouts.length} SENT payouts`);
+    console.log(`💰 Total PAID deposited: $${result.reduce((s, p) => s + p.netAmount, 0).toFixed(2)} across ${result.length} payouts`);
+
+    // Add SENT payouts to result so they show in breakdown table
+    const sentPayoutResults: PayoutWithEntries[] = pendingPayouts.map(p => ({
+      id: p.id,
+      arrivalDate: p.updatedAt.split('T')[0],
+      netAmount: p.amount,
+      grossAmount: 0, // no entry-level detail for SENT
+      totalFees: 0,
+      entries: [],
+      status: p.status,
+    }));
+
+    return NextResponse.json({
+      payouts: result,
+      sentPayouts: pendingPayouts,
+      totalSent: totalInTransit,
+      totalInTransit: 0, // truly unbatched = 0 from API
+    });
   } catch (error) {
     console.error("Square payout entries error:", error);
     return NextResponse.json({ error: "Failed to fetch payout entries" }, { status: 500 });

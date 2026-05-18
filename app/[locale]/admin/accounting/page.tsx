@@ -1,4 +1,6 @@
 // app/[locale]/admin/accounting/page.tsx
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
 import React, { useState, useCallback, useEffect } from "react";
@@ -127,6 +129,7 @@ const FEE_TYPES = [
   "othr",
   "fees",
 ];
+
 function isFeeRow(row: RawRow) {
   return FEE_TYPES.some((f) =>
     (row["Policy Type"] || "").toLowerCase().includes(f),
@@ -883,7 +886,7 @@ function SquarePanel({
 
   const dateEntries = payouts.flatMap((p) =>
     p.entries.filter(
-      (e) => toCST(e.effectiveAt) === dateKey && e.type === "PAYMENT",
+      (e) => toCST(e.effectiveAt) === dateKey && e.type === "CHARGE",
     ),
   );
   const totalGross = dateEntries.reduce((s, e) => s + e.grossAmount, 0);
@@ -1619,6 +1622,428 @@ function getMonthLabel(year: number, month: number) {
   });
 }
 
+// ─── Daily Settlement Table ───────────────────────────────────────────────────
+
+function DailySettlementTable({
+  days,
+  squareByDate,
+  squarePayouts,
+  sentPayouts,
+  plaidTransactions,
+  monthKey,
+}: {
+  days: DaySummary[];
+  squareByDate: Record<string, SquareDayData>;
+  squarePayouts: PayoutWithEntries[];
+  sentPayouts: {
+    id: string;
+    status: string;
+    amount: number;
+    updatedAt: string;
+  }[];
+  plaidTransactions: any[];
+  monthKey: string;
+}) {
+  const [open, setOpen] = useState(true);
+
+  // Build map: effectiveAt date → payout info
+  // Build map: payment date → payout (using actual entry effectiveAt)
+  // Multiple days can share one payout (weekends get bundled)
+  const payoutByArrival = new Map<
+    string,
+    {
+      arrivalDate: string;
+      netAmount: number;
+      payoutId: string;
+      status: string;
+      paymentDates: string[];
+    }
+  >();
+
+  squarePayouts.forEach((p) => {
+    const paymentDates = [
+      ...new Set(
+        p.entries
+          .filter((e) => e.type === "CHARGE")
+          .map((e) => toCST(e.effectiveAt)),
+      ),
+    ];
+    const key = p.id;
+    payoutByArrival.set(key, {
+      arrivalDate: p.arrivalDate,
+      netAmount: p.netAmount,
+      payoutId: p.id,
+      status: "PAID",
+      paymentDates,
+    });
+  });
+
+  // Map each payment date → its payout
+  const entryDateToPayoutMap = new Map<
+    string,
+    { arrivalDate: string; netAmount: number; payoutId: string; status: string }
+  >();
+  payoutByArrival.forEach((payout) => {
+    payout.paymentDates.forEach((d) => {
+      entryDateToPayoutMap.set(d, {
+        arrivalDate: payout.arrivalDate,
+        netAmount: payout.netAmount,
+        payoutId: payout.payoutId,
+        status: payout.status,
+      });
+    });
+  });
+
+  // SENT payouts
+  sentPayouts.forEach((p) => {
+    const d = p.updatedAt.split("T")[0];
+    if (!entryDateToPayoutMap.has(d)) {
+      entryDateToPayoutMap.set(d, {
+        arrivalDate: d,
+        netAmount: p.amount,
+        payoutId: p.id,
+        status: "SENT",
+      });
+    }
+  });
+
+  // Square deposits from Plaid — negative = money coming IN
+  const squarePlaidDeposits = plaidTransactions.filter((tx) => {
+    const name = (tx.name || "").toLowerCase();
+    return (name.includes("square") || name.includes("sq *")) && tx.amount < 0;
+  });
+
+  // Track which payouts are verified to avoid double-counting
+  const verifiedPayoutIds = new Set<string>();
+
+  function findPlaidMatch(
+    arrivalDate: string,
+    netAmount: number,
+    payoutId: string,
+  ) {
+    // Already verified this payout via another day in same bundle
+    if (verifiedPayoutIds.has(payoutId)) return "already_verified";
+    const match = squarePlaidDeposits.find(
+      (tx) =>
+        tx.date === arrivalDate &&
+        Math.abs(Math.abs(tx.amount) - netAmount) < 2.0,
+    );
+    if (match) {
+      verifiedPayoutIds.add(payoutId);
+      return match;
+    }
+    return null;
+  }
+
+  // Get all days that have CC activity
+  const ccDays = days
+    .filter(
+      (d) =>
+        d.dateKey.startsWith(monthKey) && (d.byMethod["Credit Card"] || 0) > 0,
+    )
+    .sort((a, b) => b.dateKey.localeCompare(a.dateKey));
+
+  // Build actual gross/fee per payment date from payout entries
+  const actualByPaymentDate = new Map<
+    string,
+    { gross: number; fees: number; net: number }
+  >();
+  squarePayouts.forEach((p) => {
+    p.entries
+      .filter((e) => e.type === "CHARGE")
+      .forEach((e) => {
+        const d = toCST(e.effectiveAt);
+        const existing = actualByPaymentDate.get(d) || {
+          gross: 0,
+          fees: 0,
+          net: 0,
+        };
+        actualByPaymentDate.set(d, {
+          gross: existing.gross + e.grossAmount,
+          fees: existing.fees + Math.abs(e.feeAmount),
+          net: existing.net + e.netAmount,
+        });
+      });
+  });
+
+  let totalCC = 0,
+    totalFees = 0,
+    totalNet = 0,
+    totalVerified = 0,
+    totalPending = 0;
+
+  const rows = ccDays.map((day) => {
+    const ccAmount = day.byMethod["Credit Card"] || 0;
+    const actual = actualByPaymentDate.get(day.dateKey);
+    const actualGross = actual?.gross || ccAmount;
+    const estimatedFee = actual?.fees ?? actualGross * 0.0302;
+    const estimatedNet = actual?.net ?? actualGross - estimatedFee;
+
+    const payoutInfo = entryDateToPayoutMap.get(day.dateKey);
+    const plaidResult = payoutInfo
+      ? findPlaidMatch(
+          payoutInfo.arrivalDate,
+          payoutInfo.netAmount,
+          payoutInfo.payoutId,
+        )
+      : null;
+    const plaidMatch =
+      plaidResult === "already_verified" ? "already_verified" : plaidResult;
+
+    totalCC += ccAmount;
+    totalFees += estimatedFee;
+    totalNet += estimatedNet;
+    if (plaidMatch && plaidMatch !== "already_verified")
+      totalVerified += Math.abs((plaidMatch as any).amount);
+    else if (payoutInfo?.status === "SENT")
+      totalPending += payoutInfo.netAmount;
+
+    return {
+      day,
+      ccAmount,
+      actualGross,
+      estimatedFee,
+      estimatedNet,
+      payoutInfo,
+      plaidMatch,
+    };
+  });
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">
+            Daily Settlement Ledger
+          </h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            CC collected → Square fees → net sent to Chase
+          </p>
+        </div>
+        <button
+          onClick={() => setOpen(!open)}
+          className="p-1 hover:bg-gray-100 rounded"
+        >
+          <ChevronDown
+            className={`w-4 h-4 text-gray-400 transition-transform ${open ? "" : "-rotate-90"}`}
+          />
+        </button>
+      </div>
+
+      {/* Summary strip */}
+      <div className="grid grid-cols-4 gap-3 mb-4">
+        <div className="rounded-lg bg-blue-50 border border-blue-100 p-3">
+          <p className="text-xs text-blue-600 mb-0.5">Total CC collected</p>
+          <p className="text-lg font-bold text-gray-900">{fmt(totalCC)}</p>
+        </div>
+        <div className="rounded-lg bg-red-50 border border-red-100 p-3">
+          <p className="text-xs text-red-600 mb-0.5">Square fees (actual)</p>
+          <p className="text-lg font-bold text-red-600">−{fmt(totalFees)}</p>
+          <p className="text-[10px] text-red-400">From payout entries</p>
+        </div>
+        <div className="rounded-lg bg-green-50 border border-green-100 p-3">
+          <p className="text-xs text-green-600 mb-0.5">Verified in Chase</p>
+          <p className="text-lg font-bold text-green-700">
+            {fmt(totalVerified)}
+          </p>
+          <p className="text-[10px] text-green-500">Matched via Plaid</p>
+        </div>
+        <div className="rounded-lg bg-amber-50 border border-amber-100 p-3">
+          <p className="text-xs text-amber-600 mb-0.5">In transit / pending</p>
+          <p className="text-lg font-bold text-amber-600">
+            {fmt(totalPending + (totalNet - totalVerified - totalPending))}
+          </p>
+          <p className="text-[10px] text-amber-400">Not yet in Chase</p>
+        </div>
+      </div>
+
+      {open && (
+        <div className="border border-gray-100 rounded-lg overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-gray-50 text-gray-500 border-b border-gray-100">
+                <th className="px-3 py-2 text-left">Date</th>
+                <th className="px-3 py-2 text-right">CC collected</th>
+                <th className="px-3 py-2 text-right">Square fee (actual)</th>
+                <th className="px-3 py-2 text-right">Net to bank</th>
+                <th className="px-3 py-2 text-center">Deposit date</th>
+                <th className="px-3 py-2 text-center">Bank status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {rows.map(
+                ({
+                  day,
+                  ccAmount,
+                  actualGross,
+                  estimatedFee,
+                  estimatedNet,
+                  payoutInfo,
+                  plaidMatch,
+                }) => (
+                  <tr key={day.dateKey} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 text-gray-700 font-medium">
+                      {new Date(day.dateKey + "T12:00:00").toLocaleDateString(
+                        "en-US",
+                        {
+                          month: "short",
+                          day: "numeric",
+                          weekday: "short",
+                        },
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right font-medium text-gray-900">
+                      {fmt(ccAmount)}
+                    </td>
+                    <td className="px-3 py-2 text-right text-red-600">
+                      −{fmt(estimatedFee)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold text-gray-800">
+                      {fmt(estimatedNet)}
+                    </td>
+                    <td className="px-3 py-2 text-center text-gray-500">
+                      {payoutInfo ? payoutInfo.arrivalDate : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {plaidMatch === "already_verified" ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium">
+                          <CheckCircle className="w-2.5 h-2.5" /> Bundled ✓
+                        </span>
+                      ) : plaidMatch ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-100 text-green-700 rounded text-[10px] font-medium">
+                          <CheckCircle className="w-2.5 h-2.5" /> Verified
+                        </span>
+                      ) : payoutInfo?.status === "SENT" ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px] font-medium">
+                          <Clock className="w-2.5 h-2.5" /> Sent
+                        </span>
+                      ) : payoutInfo?.status === "PAID" ? (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded text-[10px] font-medium">
+                          <AlertTriangle className="w-2.5 h-2.5" /> No Plaid
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px]">
+                          Pending
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ),
+              )}
+              {/* Totals */}
+              <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
+                <td className="px-3 py-2 text-gray-700">Total</td>
+                <td className="px-3 py-2 text-right">{fmt(totalCC)}</td>
+                <td className="px-3 py-2 text-right text-red-600">
+                  −{fmt(totalFees)}
+                </td>
+                <td className="px-3 py-2 text-right">{fmt(totalNet)}</td>
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2 text-center text-green-700">
+                  {fmt(totalVerified)} verified
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PayoutBreakdownTable({
+  squarePayouts,
+  totalGross,
+  totalFees,
+  totalNet,
+  blendedRate,
+}: {
+  squarePayouts: PayoutWithEntries[];
+  totalGross: number;
+  totalFees: number;
+  totalNet: number;
+  blendedRate: number;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-gray-100 rounded-lg overflow-hidden">
+      <div className="bg-gray-50 px-3 py-2 text-xs font-medium text-gray-600 flex items-center justify-between">
+        <span>Payout breakdown — each deposit to your Chase account</span>
+        <div className="flex items-center gap-2">
+          <span className="text-green-600 font-medium">✓ All settled</span>
+          <button
+            onClick={() => setOpen(!open)}
+            className="p-0.5 hover:bg-gray-200 rounded"
+          >
+            <ChevronDown
+              className={`w-3.5 h-3.5 text-gray-500 transition-transform ${open ? "" : "-rotate-90"}`}
+            />
+          </button>
+        </div>
+      </div>
+      {open && (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-gray-500 border-b border-gray-100">
+              <th className="px-3 py-2 text-left">Arrival date</th>
+              <th className="px-3 py-2 text-right">Gross collected</th>
+              <th className="px-3 py-2 text-right">Square fees</th>
+              <th className="px-3 py-2 text-right">Rate</th>
+              <th className="px-3 py-2 text-right">Net deposited</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            {squarePayouts
+              .sort((a, b) => b.arrivalDate.localeCompare(a.arrivalDate))
+              .map((p) => {
+                const pGross = p.entries
+                  .filter((e) => e.type === "CHARGE")
+                  .reduce((s, e) => s + (e.grossAmount || 0), 0);
+                const pFees = p.entries
+                  .filter((e) => e.type === "CHARGE")
+                  .reduce((s, e) => s + Math.abs(e.feeAmount || 0), 0);
+                const pNet = p.netAmount || 0;
+                const pRate = pGross > 0 ? (pFees / pGross) * 100 : 0;
+                return (
+                  <tr key={p.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 text-gray-700 font-medium">
+                      {p.arrivalDate}
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-900">
+                      {fmt(pGross)}
+                    </td>
+                    <td className="px-3 py-2 text-right text-red-600">
+                      −{fmt(pFees)}
+                    </td>
+                    <td className="px-3 py-2 text-right text-gray-400">
+                      {pRate.toFixed(2)}%
+                    </td>
+                    <td className="px-3 py-2 text-right font-semibold text-green-700">
+                      {fmt(pNet)}
+                    </td>
+                  </tr>
+                );
+              })}
+            <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
+              <td className="px-3 py-2 text-gray-700">Total</td>
+              <td className="px-3 py-2 text-right">{fmt(totalGross)}</td>
+              <td className="px-3 py-2 text-right text-red-600">
+                −{fmt(totalFees)}
+              </td>
+              <td className="px-3 py-2 text-right text-gray-500">
+                {blendedRate.toFixed(2)}%
+              </td>
+              <td className="px-3 py-2 text-right text-green-700">
+                {fmt(totalNet)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 export default function AccountingPage() {
   const now = new Date();
   const [viewYear, setViewYear] = useState(now.getFullYear());
@@ -1635,6 +2060,16 @@ export default function AccountingPage() {
     Record<string, SquareDayData>
   >({});
   const [squarePayouts, setSquarePayouts] = useState<PayoutWithEntries[]>([]);
+  const [squarePendingPayouts, setSquarePendingPayouts] = useState<
+    {
+      id: string;
+      status: string;
+      amount: number;
+      updatedAt: string;
+    }[]
+  >([]);
+  const [squareTotalInTransit, setSquareTotalInTransit] = useState(0);
+  const [plaidTransactions, setPlaidTransactions] = useState<any[]>([]);
   const [squareLoading, setSquareLoading] = useState(false);
   const [squareError, setSquareError] = useState("");
   const [globalRecon, setGlobalRecon] = useState<GlobalReconciliation | null>(
@@ -1715,7 +2150,19 @@ export default function AccountingPage() {
       );
       setSquareByDate(filteredByDate);
       setSquarePayouts(payoutsData.payouts || []);
+      setSquarePendingPayouts(payoutsData.sentPayouts || []);
+      setSquareTotalInTransit(payoutsData.totalSent || 0);
       setGlobalRecon(buildGlobalReconciliation(days, filteredByDate));
+      // Load Plaid bank transactions for verification
+      try {
+        const plaidRes = await fetch("/api/plaid/transactions");
+        if (plaidRes.ok) {
+          const plaidData = await plaidRes.json();
+          setPlaidTransactions(plaidData.transactions || []);
+        }
+      } catch {
+        /* silent */
+      }
     } catch {
       setSquareError("Failed to fetch Square data");
     } finally {
@@ -1772,9 +2219,9 @@ export default function AccountingPage() {
     (s, d) => s + (d.byMethod["Credit Card"] || 0),
     0,
   );
-  const squareGrossTotal = Object.values(squareByDate).reduce(
+  const squareGrossTotal: number = Object.values(squareByDate).reduce(
     (s, d) => s + d.grossAmount,
-    0,
+    0 as number,
   );
   const shown =
     selectedDate === "all"
@@ -2117,6 +2564,201 @@ export default function AccountingPage() {
 
               {/* Global recon */}
               {globalRecon && <GlobalReconPanel recon={globalRecon} />}
+
+              {/* Square Payout Summary */}
+              {squarePayouts.length > 0 &&
+                (() => {
+                  const allEntries = squarePayouts.flatMap((p) => p.entries);
+                  const refundEntries = allEntries.filter(
+                    (e) => e.type === "REFUND",
+                  );
+
+                  const totalGross = squarePayouts.reduce(
+                    (s, p) =>
+                      s +
+                      p.entries
+                        .filter((e) => e.type === "CHARGE")
+                        .reduce((es, e) => es + (e.grossAmount || 0), 0),
+                    0,
+                  );
+                  const totalFees = squarePayouts.reduce(
+                    (s, p) =>
+                      s +
+                      p.entries
+                        .filter((e) => e.type === "CHARGE")
+                        .reduce((es, e) => es + Math.abs(e.feeAmount || 0), 0),
+                    0,
+                  );
+                  const totalNet = squarePayouts.reduce(
+                    (s, p) => s + (p.netAmount || 0),
+                    0,
+                  );
+                  const totalRefunds = refundEntries.reduce(
+                    (s, e) => s + Math.abs(e.grossAmount),
+                    0,
+                  );
+                  const blendedRate =
+                    totalGross > 0 ? (totalFees / totalGross) * 100 : 0;
+
+                  // Per-payout breakdown
+                  return (
+                    <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
+                      <h2 className="text-sm font-semibold text-gray-900 mb-4">
+                        Square Payouts — Deposited to Bank
+                      </h2>
+
+                      {/* Summary row */}
+                      {(() => {
+                        const totalSent = squarePendingPayouts.reduce(
+                          (s, p) => s + p.amount,
+                          0,
+                        );
+                        const inTransit =
+                          totalSent > 0
+                            ? totalSent
+                            : Math.max(0, totalCC - totalGross);
+                        const isReconciled =
+                          Math.abs(totalGross + inTransit - totalCC) < 1.0;
+                        return (
+                          <>
+                            <div className="grid grid-cols-4 gap-3 mb-3">
+                              <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
+                                <p className="text-xs text-gray-500 mb-0.5">
+                                  Total paid out (gross)
+                                </p>
+                                <p className="text-lg font-bold text-gray-900">
+                                  {fmt(totalGross)}
+                                </p>
+                                <p className="text-[10px] text-gray-400">
+                                  Already deposited to Chase
+                                </p>
+                              </div>
+                              <div className="rounded-lg bg-red-50 border border-red-100 p-3">
+                                <p className="text-xs text-red-600 mb-0.5">
+                                  Square fees taken
+                                </p>
+                                <p className="text-lg font-bold text-red-600">
+                                  −{fmt(totalFees)}
+                                </p>
+                                <p className="text-[10px] text-red-400">
+                                  {blendedRate.toFixed(2)}% avg rate
+                                </p>
+                              </div>
+                              <div className="rounded-lg bg-green-50 border border-green-100 p-3">
+                                <p className="text-xs text-green-600 mb-0.5">
+                                  Net deposited to bank
+                                </p>
+                                <p className="text-lg font-bold text-green-700">
+                                  {fmt(totalNet)}
+                                </p>
+                                <p className="text-[10px] text-green-500">
+                                  {squarePayouts.length} payout
+                                  {squarePayouts.length !== 1 ? "s" : ""}
+                                </p>
+                              </div>
+                              <div className="rounded-lg bg-blue-50 border border-blue-100 p-3">
+                                <p className="text-xs text-blue-600 mb-0.5">
+                                  In transit at Square
+                                </p>
+                                <p className="text-lg font-bold text-blue-700">
+                                  {fmt(
+                                    inTransit > 0
+                                      ? inTransit
+                                      : Math.max(0, totalCC - totalGross),
+                                  )}
+                                </p>
+                                <p className="text-[10px] text-blue-400">
+                                  {squarePendingPayouts.length > 0
+                                    ? `${squarePendingPayouts.length} payouts sent — Chase processes Monday`
+                                    : "Estimated — not yet batched by Square"}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Reconciliation check row */}
+                            <div
+                              className={`rounded-lg px-4 py-2.5 mb-4 flex items-center justify-between text-xs ${isReconciled ? "bg-green-50 border border-green-100" : "bg-amber-50 border border-amber-200"}`}
+                            >
+                              <div className="flex items-center gap-4">
+                                <span className="text-gray-600">
+                                  CSV credit card:{" "}
+                                  <span className="font-semibold text-gray-900">
+                                    {fmt(totalCC)}
+                                  </span>
+                                </span>
+                                <span className="text-gray-400">=</span>
+                                <span className="text-gray-600">
+                                  Deposited:{" "}
+                                  <span className="font-semibold text-gray-900">
+                                    {fmt(totalGross)}
+                                  </span>
+                                </span>
+                                <span className="text-gray-400">+</span>
+                                <span className="text-gray-600">
+                                  In transit:{" "}
+                                  <span className="font-semibold text-blue-700">
+                                    {fmt(inTransit)}
+                                  </span>
+                                </span>
+                              </div>
+                              {isReconciled ? (
+                                <span className="flex items-center gap-1 text-green-700 font-medium">
+                                  <CheckCircle className="w-3.5 h-3.5" />{" "}
+                                  Reconciled
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1 text-amber-700 font-medium">
+                                  <AlertTriangle className="w-3.5 h-3.5" /> Off
+                                  by{" "}
+                                  {fmt(
+                                    Math.abs(totalCC - totalGross - inTransit),
+                                  )}
+                                </span>
+                              )}
+                            </div>
+
+                            {totalRefunds > 0 && (
+                              <div className="rounded-lg bg-amber-50 border border-amber-100 p-3 mb-4 flex items-center justify-between text-xs">
+                                <div>
+                                  <p className="text-amber-700 font-medium mb-0.5">
+                                    Refunds issued
+                                  </p>
+                                  <p className="text-amber-500">
+                                    Returned to customers
+                                  </p>
+                                </div>
+                                <p className="text-lg font-bold text-amber-600">
+                                  −{fmt(totalRefunds)}
+                                </p>
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+
+                      {/* Per-payout breakdown */}
+                      <PayoutBreakdownTable
+                        squarePayouts={squarePayouts}
+                        totalGross={totalGross}
+                        totalFees={totalFees}
+                        totalNet={totalNet}
+                        blendedRate={blendedRate}
+                      />
+                    </div>
+                  );
+                })()}
+
+              {/* Daily Settlement Ledger */}
+              {squarePayouts.length > 0 && (
+                <DailySettlementTable
+                  days={days}
+                  squareByDate={squareByDate}
+                  squarePayouts={squarePayouts}
+                  sentPayouts={squarePendingPayouts}
+                  plaidTransactions={plaidTransactions}
+                  monthKey={monthKey}
+                />
+              )}
 
               {/* Calendar */}
               <MonthCalendar

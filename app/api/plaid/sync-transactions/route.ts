@@ -18,21 +18,55 @@ export async function POST() {
   const client = await clientPromise;
   const db = client.db("db");
 
-  // Get stored access token
   const config = await db.collection("plaid_config").findOne({ key: "chase_access_token" });
   if (!config) return NextResponse.json({ error: "Not connected" }, { status: 400 });
 
-  // Get last 60 days of transactions
   const end = new Date().toISOString().split("T")[0];
-  const start = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const start = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
 
-  let response;
   try {
-    response = await plaidClient.transactionsGet({
-      access_token: config.access_token,
-      start_date: start,
-      end_date: end,
-    });
+    // Paginate through ALL transactions
+    const allTransactions: any[] = [];
+    let offset = 0;
+    const COUNT = 500;
+
+    while (true) {
+      const response = await plaidClient.transactionsGet({
+        access_token: config.access_token,
+        start_date: start,
+        end_date: end,
+        options: {
+          count: COUNT,
+          offset,
+          include_personal_finance_category: true,
+        },
+      });
+
+      const transactions = response.data.transactions;
+      const total = response.data.total_transactions;
+
+      allTransactions.push(...transactions);
+      console.log(`Plaid page: got ${transactions.length}, total so far: ${allTransactions.length} / ${total}`);
+
+      if (allTransactions.length >= total) break;
+      offset += transactions.length;
+
+      // Safety cap — Chase shouldn't have more than 2000 transactions in 90 days
+      if (offset >= 2000) break;
+    }
+
+    // Upsert all to MongoDB
+    for (const tx of allTransactions) {
+      await db.collection("bank_transactions").updateOne(
+        { transaction_id: tx.transaction_id },
+        { $set: { ...tx, syncedAt: new Date() } },
+        { upsert: true }
+      );
+    }
+
+    console.log(`✅ Plaid sync complete: ${allTransactions.length} transactions`);
+    return NextResponse.json({ synced: allTransactions.length });
+
   } catch (plaidError: any) {
     const errData = plaidError?.response?.data;
     console.error("Plaid transactionsGet error:", JSON.stringify(errData));
@@ -42,17 +76,4 @@ export async function POST() {
       details: errData,
     }, { status: 400 });
   }
-
-  const transactions = response.data.transactions;
-
-  // Upsert each transaction to MongoDB
-  for (const tx of transactions) {
-    await db.collection("bank_transactions").updateOne(
-      { transaction_id: tx.transaction_id },
-      { $set: { ...tx, syncedAt: new Date() } },
-      { upsert: true }
-    );
-  }
-
-  return NextResponse.json({ synced: transactions.length });
 }
