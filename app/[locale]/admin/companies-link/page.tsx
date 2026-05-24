@@ -104,6 +104,65 @@ export default function CompaniesLinkAdmin() {
     }
   };
 
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      const previewRes = await fetch("/api/companies-sync");
+      const preview = await previewRes.json();
+
+      if (!previewRes.ok) {
+        showMessage("error", preview.error || "Sync preview failed");
+        return;
+      }
+
+      const cleanCount = preview.cleanNew?.length || 0;
+      const dupCount = preview.likelyDuplicates?.length || 0;
+
+      if (cleanCount === 0 && dupCount === 0) {
+        showMessage("success", "Already up to date — no new companies to add");
+        return;
+      }
+
+      let msg = `${cleanCount} new compan${cleanCount === 1 ? "y" : "ies"} will be added.`;
+      if (dupCount > 0) {
+        const lines = preview.likelyDuplicates
+          .map(
+            (d: { policyName: string; matchesExisting: string }) =>
+              `  • "${d.policyName}" looks like "${d.matchesExisting}"`,
+          )
+          .join("\n");
+        msg += `\n\n${dupCount} likely duplicate${dupCount === 1 ? "" : "s"} will be SKIPPED:\n${lines}`;
+        msg += `\n\n(Edit the policy in customer records if any of these are actually different carriers.)`;
+      }
+      msg += `\n\nContinue?`;
+
+      if (!confirm(msg)) return;
+
+      const res = await fetch("/api/companies-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showMessage("error", data.error || "Sync failed");
+        return;
+      }
+
+      showMessage(
+        "success",
+        `Synced ${data.addedCount} new compan${data.addedCount === 1 ? "y" : "ies"}`,
+      );
+      fetchCompanies();
+    } catch (error) {
+      console.error("Sync error:", error);
+      showMessage("error", "Sync failed");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const showMessage = (type: "success" | "error", text: string) => {
     setMessage({ type, text });
     setTimeout(() => setMessage(null), 5000);
@@ -275,25 +334,56 @@ export default function CompaniesLinkAdmin() {
                   {filteredCompanies.length} of {companies.length} companies
                 </p>
               </div>
-              <button
-                onClick={() => handleOpenModal()}
-                className="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg shadow-md transition flex items-center gap-2"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleSync}
+                  disabled={isSyncing}
+                  className={`font-semibold px-4 py-2 rounded-lg shadow-md transition flex items-center gap-2 ${
+                    isSyncing
+                      ? "bg-blue-300 text-white cursor-not-allowed"
+                      : "bg-blue-600 hover:bg-blue-700 text-white"
+                  }`}
+                  title="Pull new carriers from customer policies"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-                Add Company
-              </button>
+                  {isSyncing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                      />
+                    </svg>
+                  )}
+                  {isSyncing ? "Syncing..." : "Sync from Policies"}
+                </button>
+                <button
+                  onClick={() => handleOpenModal()}
+                  className="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg shadow-md transition flex items-center gap-2"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                  Add Company
+                </button>
+              </div>
             </div>
           </div>
 

@@ -41,40 +41,7 @@ export async function GET() {
     const mongoClient = await clientPromise;
     const db = mongoClient.db('db');
 
-    // ✅ Auto-sync: Get all unique company names from customer policies
-    const policyCompanies = await db
-      .collection('customer_policyandclaim_info')
-      .distinct('company_name');
-
-    // Get existing company names from company_database
-    const existingCompanies = await db
-      .collection('company_database')
-      .distinct('name');
-
-    const existingSet = new Set(existingCompanies);
-
-    // Find new companies that don't exist yet
-    const newCompanies = policyCompanies.filter(
-      (name: string) => name && name.trim() && !existingSet.has(name.trim())
-    );
-
-    // Auto-add new companies with empty links
-    if (newCompanies.length > 0) {
-      const docs = newCompanies.map((name: string) => ({
-        name: name.trim(),
-        paymentLink: '',
-        claimLink: '',
-        claimPhone: '',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        autoAdded: true,
-      }));
-
-      await db.collection('company_database').insertMany(docs);
-      console.log(`✅ Auto-added ${newCompanies.length} new companies: ${newCompanies.join(', ')}`);
-    }
-
-    // Now fetch all companies
+    // Read-only: auto-sync moved to POST /api/companies-sync (manual button)
     const companiesArray = await db
       .collection('company_database')
       .find({})
@@ -100,7 +67,6 @@ export async function GET() {
       companies: companyDatabase,
       meta: {
         totalCompanies: Object.keys(companyDatabase).length,
-        newlyAdded: newCompanies.length,
         source: 'mongodb',
       },
     });

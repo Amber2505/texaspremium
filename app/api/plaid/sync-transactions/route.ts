@@ -14,15 +14,25 @@ const plaidClient = new PlaidApi(new Configuration({
   },
 }));
 
-export async function POST() {
+export async function POST(request: Request) {
   const client = await clientPromise;
   const db = client.db("db");
 
   const config = await db.collection("plaid_config").findOne({ key: "chase_access_token" });
   if (!config) return NextResponse.json({ error: "Not connected" }, { status: 400 });
 
+  // Optional ?start=YYYY-MM-DD overrides the default 90-day window.
+  // Used for one-time backfills (e.g. ?start=2025-05-01).
+  // Daily cron passes nothing → falls back to 90 days.
+  const { searchParams } = new URL(request.url);
+  const startOverride = searchParams.get("start");
+
   const end = new Date().toISOString().split("T")[0];
-  const start = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const start = startOverride
+    ? startOverride
+    : new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+
+  console.log(`📅 Plaid sync window: ${start} → ${end}`);
 
   try {
     // Paginate through ALL transactions

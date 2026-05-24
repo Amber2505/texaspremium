@@ -188,6 +188,15 @@ const METHOD_COLOR: Record<string, string> = {
   Zelle: "bg-indigo-100 text-indigo-800",
   "E-Payment": "bg-teal-100 text-teal-800",
 };
+const METHOD_SHORT: Record<string, string> = {
+  "Credit Card": "CC",
+  Cash: "Cash",
+  Check: "Check",
+  Forward: "Fwd",
+  Wire: "Wire",
+  Zelle: "Zelle",
+  "E-Payment": "E-Pay",
+};
 const METHODS = [
   "Credit Card",
   "Cash",
@@ -880,8 +889,32 @@ function SquarePanel({
     (s, t) => s + t.sp.amount,
     0,
   );
+
+  // Also account for: CSV receipts on THIS day whose Square payments
+  // landed on DIFFERENT days (e.g. Praveen's receipt May 16, payments May 14-15)
+  const csvClaimedByOtherDays = csvReceiptTotals.reduce((total, csv, i) => {
+    if (usedCSV.has(i)) return total; // already matched locally
+    const authCodes = (csv.referenceNo || "")
+      .split("/")
+      .map((c) => c.trim())
+      .filter(Boolean);
+    if (authCodes.length > 0) {
+      const crossDayMatch = allSquarePaymentsGlobal.find((sp) => {
+        const spDate = toCST(sp.createdAt);
+        if (spDate === dateKey) return false; // same day, already handled
+        return authCodes.some(
+          (code) => normalizeAuth(sp.authCode) === normalizeAuth(code),
+        );
+      });
+      if (crossDayMatch) return total + csv.amount;
+    }
+    return total;
+  }, 0);
+
   const trueGrossDiff =
-    grossDiff - (grossDiff > 0 ? timezoneShiftedTotal : -timezoneShiftedTotal);
+    grossDiff +
+    csvClaimedByOtherDays -
+    (grossDiff > 0 ? timezoneShiftedTotal : -timezoneShiftedTotal);
   const trueMatch = Math.abs(trueGrossDiff) < 0.5;
 
   const dateEntries = payouts.flatMap((p) =>
@@ -1388,7 +1421,37 @@ function MonthCalendar({
       });
       return m ? s + sp.amount : s;
     }, 0);
-    const trueGrossDiff = grossDiff - (grossDiff > 0 ? shifted : -shifted);
+    // CSV receipts on this day whose Square payments landed on other days
+    const allSquarePayments = days.flatMap(
+      (d) => squareByDate[d.dateKey]?.payments || [],
+    );
+    const csvClaimedElsewhere =
+      days
+        .find((d) => d.dateKey === dateKey)
+        ?.receipts.filter((r) => r.methods.includes("Credit Card"))
+        .reduce((total, r) => {
+          const codes = (r.referenceNo || "")
+            .split("/")
+            .map((c) => c.trim())
+            .filter(Boolean);
+          if (!codes.length) return total;
+          const crossDay = allSquarePayments.find((sp) => {
+            const spDate = toCST(sp.createdAt);
+            if (spDate === dateKey) return false;
+            return codes.some(
+              (code) => normalizeAuth(sp.authCode) === normalizeAuth(code),
+            );
+          });
+          return crossDay
+            ? total +
+                r.rows
+                  .filter((row) => row.method === "Credit Card")
+                  .reduce((s, row) => s + row.total, 0)
+            : total;
+        }, 0) || 0;
+
+    const trueGrossDiff =
+      grossDiff + csvClaimedElsewhere - (grossDiff > 0 ? shifted : -shifted);
     return Math.abs(trueGrossDiff) < 0.5 ? "match" : "mismatch";
   };
 
@@ -1516,8 +1579,35 @@ function DayBlock({
             });
             return m ? s + sp.amount : s;
           }, 0);
+          const csvClaimedElsewhere = allCsvReceipts
+            .filter((r) => r.dateKey === day.dateKey)
+            .reduce((total, r) => {
+              const codes = (r.referenceNo || "")
+                .split("/")
+                .map((c) => c.trim())
+                .filter(Boolean);
+              if (!codes.length) return total;
+              const crossDay = Object.values(squareByDate)
+                .flatMap((d) => d.payments || [])
+                .find((sp) => {
+                  const spDate = toCST(sp.createdAt);
+                  if (spDate === day.dateKey) return false;
+                  return codes.some(
+                    (code) =>
+                      normalizeAuth(sp.authCode) === normalizeAuth(code),
+                  );
+                });
+              return crossDay
+                ? total +
+                    r.rows
+                      .filter((row) => row.method === "Credit Card")
+                      .reduce((s, row) => s + row.total, 0)
+                : total;
+            }, 0);
           const trueGrossDiff =
-            grossDiff - (grossDiff > 0 ? shifted : -shifted);
+            grossDiff +
+            csvClaimedElsewhere -
+            (grossDiff > 0 ? shifted : -shifted);
           return Math.abs(trueGrossDiff) < 0.5 ? (
             <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded">
               ✓ match
@@ -1536,7 +1626,7 @@ function DayBlock({
         onClick={() => setCollapsed(!collapsed)}
         className="w-full flex items-center justify-between mb-2"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
           <h2 className="text-base font-semibold text-gray-900">
             {day.dateLabel}
           </h2>
@@ -1544,6 +1634,20 @@ function DayBlock({
             {day.receipts.length} receipt{day.receipts.length !== 1 ? "s" : ""}
           </span>
           {statusPill}
+          <div className="flex flex-wrap gap-1 ml-1">
+            {Object.entries(day.byMethod)
+              .filter(([, v]) => v > 0)
+              .sort((a, b) => b[1] - a[1])
+              .map(([method]) => (
+                <span
+                  key={method}
+                  className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${METHOD_COLOR[method] || "bg-gray-100 text-gray-600"}`}
+                  title={`${method}: ${fmt(day.byMethod[method])}`}
+                >
+                  {METHOD_SHORT[method] || method}
+                </span>
+              ))}
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-base font-bold text-gray-900">
@@ -1559,7 +1663,7 @@ function DayBlock({
           <div className="space-y-2 mb-3">
             {day.receipts.map((r) => (
               <ReceiptCard
-                key={`${r.receiptNo}_${r.custId}`}
+                key={r._id ?? `${r.receiptNo}_${r.custId}`}
                 receipt={r}
                 onSave={onSaveReceipt}
               />
@@ -1770,14 +1874,18 @@ function DailySettlementTable({
     totalFees = 0,
     totalNet = 0,
     totalVerified = 0,
-    totalPending = 0;
+    totalInTransit = 0;
+  const countedSentPayoutIds = new Set<string>();
 
   const rows = ccDays.map((day) => {
     const ccAmount = day.byMethod["Credit Card"] || 0;
     const actual = actualByPaymentDate.get(day.dateKey);
-    const actualGross = actual?.gross || ccAmount;
-    const estimatedFee = actual?.fees ?? actualGross * 0.0302;
-    const estimatedNet = actual?.net ?? actualGross - estimatedFee;
+    // Fee rate from actual payout entries if available, else blended estimate
+    const feeRate =
+      actual && actual.gross > 0 ? actual.fees / actual.gross : 0.0302;
+    // Always base fee and net on ccAmount so the row is consistent
+    const estimatedFee = ccAmount * feeRate;
+    const estimatedNet = ccAmount - estimatedFee;
 
     const payoutInfo = entryDateToPayoutMap.get(day.dateKey);
     const plaidResult = payoutInfo
@@ -1793,15 +1901,23 @@ function DailySettlementTable({
     totalCC += ccAmount;
     totalFees += estimatedFee;
     totalNet += estimatedNet;
-    if (plaidMatch && plaidMatch !== "already_verified")
+
+    if (plaidMatch && plaidMatch !== "already_verified") {
       totalVerified += Math.abs((plaidMatch as any).amount);
-    else if (payoutInfo?.status === "SENT")
-      totalPending += payoutInfo.netAmount;
+    } else if (plaidMatch !== "already_verified") {
+      if (payoutInfo?.status === "SENT") {
+        if (!countedSentPayoutIds.has(payoutInfo.payoutId)) {
+          totalInTransit += payoutInfo.netAmount;
+          countedSentPayoutIds.add(payoutInfo.payoutId);
+        }
+      } else if (!payoutInfo) {
+        totalInTransit += estimatedNet;
+      }
+    }
 
     return {
       day,
       ccAmount,
-      actualGross,
       estimatedFee,
       estimatedNet,
       payoutInfo,
@@ -1851,9 +1967,13 @@ function DailySettlementTable({
         <div className="rounded-lg bg-amber-50 border border-amber-100 p-3">
           <p className="text-xs text-amber-600 mb-0.5">In transit / pending</p>
           <p className="text-lg font-bold text-amber-600">
-            {fmt(totalPending + (totalNet - totalVerified - totalPending))}
+            {fmt(totalInTransit)}
           </p>
-          <p className="text-[10px] text-amber-400">Not yet in Chase</p>
+          <p className="text-[10px] text-amber-400">
+            {countedSentPayoutIds.size > 0
+              ? `${countedSentPayoutIds.size} payouts sent to Chase`
+              : "Unbatched at Square"}
+          </p>
         </div>
       </div>
 
@@ -1875,7 +1995,6 @@ function DailySettlementTable({
                 ({
                   day,
                   ccAmount,
-                  actualGross,
                   estimatedFee,
                   estimatedNet,
                   payoutInfo,
@@ -1942,6 +2061,294 @@ function DailySettlementTable({
                 <td className="px-3 py-2 text-center text-green-700">
                   {fmt(totalVerified)} verified
                 </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CarrierCommissions({
+  plaidTransactions,
+  monthKey,
+}: {
+  plaidTransactions: any[];
+  monthKey: string;
+}) {
+  const [open, setOpen] = useState(true);
+
+  // Extract carrier name from "ORIG CO NAME:Kemper PMT" → "Kemper PMT"
+  const extractCarrier = (name: string): string => {
+    const match = name.match(/ORIG CO NAME:\s*(.+?)(?:\s+ORIG ID|\s*$)/i);
+    return match
+      ? match[1].trim()
+      : name.replace(/^ORIG CO NAME:\s*/i, "").trim();
+  };
+
+  // Rule: credit deposits whose name starts with "ORIG CO NAME:" and is NOT Square
+  const isCommission = (tx: any): boolean => {
+    if (typeof tx.amount !== "number" || tx.amount >= 0) return false;
+    const name = (tx.name || "").trim();
+    if (!name.startsWith("ORIG CO NAME:")) return false;
+    // Square payouts come through as "ORIG CO NAME:Square" — exclude
+    const carrier = extractCarrier(name).toLowerCase();
+    if (carrier.startsWith("square")) return false;
+    return true;
+  };
+
+  const commissionTxs = plaidTransactions.filter(isCommission);
+
+  // Current month group-by-carrier
+  const thisMonthTxs = commissionTxs.filter((tx) =>
+    (tx.date || "").startsWith(monthKey),
+  );
+
+  const byCarrier = new Map<
+    string,
+    {
+      total: number;
+      count: number;
+      deposits: { date: string; amount: number }[];
+    }
+  >();
+
+  thisMonthTxs.forEach((tx) => {
+    const carrier = extractCarrier(tx.name || "");
+    const amount = Math.abs(tx.amount);
+    const existing = byCarrier.get(carrier) || {
+      total: 0,
+      count: 0,
+      deposits: [],
+    };
+    existing.total += amount;
+    existing.count += 1;
+    existing.deposits.push({ date: tx.date, amount });
+    byCarrier.set(carrier, existing);
+  });
+
+  const carrierRows = Array.from(byCarrier.entries())
+    .map(([carrier, data]) => ({ carrier, ...data }))
+    .sort((a, b) => b.total - a.total);
+
+  const monthTotal = carrierRows.reduce((s, r) => s + r.total, 0);
+
+  // 6-month history for the chart
+  const monthlyTotals = new Map<string, number>();
+  commissionTxs.forEach((tx) => {
+    const m = (tx.date || "").slice(0, 7); // "2026-05"
+    if (!m) return;
+    monthlyTotals.set(m, (monthlyTotals.get(m) || 0) + Math.abs(tx.amount));
+  });
+
+  // Build last 6 months including current
+  const [yearStr, monthStr] = monthKey.split("-");
+  const currentDate = new Date(parseInt(yearStr), parseInt(monthStr) - 1, 1);
+  const chartData: {
+    month: string;
+    label: string;
+    total: number;
+    isCurrent: boolean;
+  }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(
+      currentDate.getFullYear(),
+      currentDate.getMonth() - i,
+      1,
+    );
+    const m = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    chartData.push({
+      month: m,
+      label: d.toLocaleDateString("en-US", { month: "short" }),
+      total: monthlyTotals.get(m) || 0,
+      isCurrent: m === monthKey,
+    });
+  }
+  const maxChart = Math.max(...chartData.map((c) => c.total), 1);
+
+  console.log(
+    "Commission txs found:",
+    commissionTxs.length,
+    "earliest:",
+    commissionTxs[0]?.date,
+    "latest:",
+    commissionTxs[commissionTxs.length - 1]?.date,
+    "viewing month:",
+    monthKey,
+    "this month count:",
+    thisMonthTxs.length,
+  );
+
+  if (commissionTxs.length === 0) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
+        <h2 className="text-sm font-semibold text-gray-900 mb-2">
+          Carrier Commissions
+        </h2>
+        <p className="text-xs text-gray-400">
+          No commission deposits found yet. Run Square Reconcile to load Plaid
+          data, or check that bank sync has run recently.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">
+            Carrier Commissions
+          </h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            ACH deposits identified as commission (excludes Square payouts)
+          </p>
+        </div>
+        <button
+          onClick={() => setOpen(!open)}
+          className="p-1 hover:bg-gray-100 rounded"
+        >
+          <ChevronDown
+            className={`w-4 h-4 text-gray-400 transition-transform ${open ? "" : "-rotate-90"}`}
+          />
+        </button>
+      </div>
+
+      {/* Summary strip */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="rounded-lg bg-green-50 border border-green-100 p-3">
+          <p className="text-xs text-green-700 mb-0.5">This month</p>
+          <p className="text-lg font-bold text-green-700">{fmt(monthTotal)}</p>
+          <p className="text-[10px] text-green-600">
+            {carrierRows.length} carrier{carrierRows.length !== 1 ? "s" : ""} ·{" "}
+            {thisMonthTxs.length} deposit{thisMonthTxs.length !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-3">
+          <p className="text-xs text-emerald-700 mb-0.5">6-month average</p>
+          <p className="text-lg font-bold text-emerald-700">
+            {fmt(
+              chartData
+                .filter((c) => c.total > 0)
+                .reduce((s, c) => s + c.total, 0) /
+                Math.max(chartData.filter((c) => c.total > 0).length, 1),
+            )}
+          </p>
+          <p className="text-[10px] text-emerald-600">
+            Months with data: {chartData.filter((c) => c.total > 0).length}/6
+          </p>
+        </div>
+        <div className="rounded-lg bg-teal-50 border border-teal-100 p-3">
+          <p className="text-xs text-teal-700 mb-0.5">Top carrier this month</p>
+          <p className="text-base font-bold text-teal-700 truncate">
+            {carrierRows[0]?.carrier || "—"}
+          </p>
+          <p className="text-[10px] text-teal-600">
+            {carrierRows[0] ? fmt(carrierRows[0].total) : ""}
+          </p>
+        </div>
+      </div>
+
+      {/* Bar chart */}
+      <div className="mb-4 border border-gray-100 rounded-lg p-4 bg-gradient-to-b from-green-50/30 to-white">
+        <p className="text-xs font-medium text-gray-600 mb-3">
+          Last 6 months — commission income
+        </p>
+        <div className="flex items-end justify-between gap-2 h-32">
+          {chartData.map((c) => {
+            const heightPct = (c.total / maxChart) * 100;
+            return (
+              <div
+                key={c.month}
+                className="flex-1 flex flex-col items-center gap-1.5"
+                title={`${c.label}: ${fmt(c.total)}`}
+              >
+                <div className="text-[10px] font-semibold text-gray-700">
+                  {c.total > 0 ? fmt(c.total).replace(/\.\d+$/, "") : "—"}
+                </div>
+                <div
+                  className="w-full flex items-end"
+                  style={{ height: "80px" }}
+                >
+                  <div
+                    className={`w-full rounded-t transition-all ${
+                      c.isCurrent
+                        ? "bg-gradient-to-t from-green-600 to-green-400"
+                        : "bg-gradient-to-t from-green-400 to-green-300"
+                    }`}
+                    style={{
+                      height: `${Math.max(heightPct, c.total > 0 ? 4 : 0)}%`,
+                      minHeight: c.total > 0 ? "4px" : "0",
+                    }}
+                  />
+                </div>
+                <div
+                  className={`text-[10px] ${
+                    c.isCurrent ? "font-bold text-green-700" : "text-gray-500"
+                  }`}
+                >
+                  {c.label}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {open && (
+        <div className="border border-gray-100 rounded-lg overflow-hidden">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-gray-50 text-gray-500 border-b border-gray-100">
+                <th className="px-3 py-2 text-left">Carrier</th>
+                <th className="px-3 py-2 text-center">Deposits</th>
+                <th className="px-3 py-2 text-left">Dates</th>
+                <th className="px-3 py-2 text-right">Total this month</th>
+                <th className="px-3 py-2 text-right">% of month</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {carrierRows.map((row) => (
+                <tr key={row.carrier} className="hover:bg-gray-50">
+                  <td className="px-3 py-2 font-medium text-gray-800">
+                    {row.carrier}
+                  </td>
+                  <td className="px-3 py-2 text-center text-gray-500">
+                    {row.count}
+                  </td>
+                  <td className="px-3 py-2 text-gray-500 text-[11px]">
+                    {row.deposits
+                      .sort((a, b) => a.date.localeCompare(b.date))
+                      .map((d) =>
+                        new Date(d.date + "T12:00:00").toLocaleDateString(
+                          "en-US",
+                          {
+                            month: "short",
+                            day: "numeric",
+                          },
+                        ),
+                      )
+                      .join(", ")}
+                  </td>
+                  <td className="px-3 py-2 text-right font-semibold text-green-700">
+                    {fmt(row.total)}
+                  </td>
+                  <td className="px-3 py-2 text-right text-gray-400">
+                    {((row.total / Math.max(monthTotal, 1)) * 100).toFixed(1)}%
+                  </td>
+                </tr>
+              ))}
+              <tr className="border-t-2 border-gray-200 bg-gray-50 font-semibold">
+                <td className="px-3 py-2 text-gray-700">Total</td>
+                <td className="px-3 py-2 text-center text-gray-500">
+                  {thisMonthTxs.length}
+                </td>
+                <td className="px-3 py-2" />
+                <td className="px-3 py-2 text-right text-green-700">
+                  {fmt(monthTotal)}
+                </td>
+                <td className="px-3 py-2 text-right text-gray-500">100%</td>
               </tr>
             </tbody>
           </table>
@@ -2186,7 +2593,9 @@ export default function AccountingPage() {
             body: JSON.stringify({ receipts }),
           });
           const data = await res.json();
-          setImportResult(`✓ ${data.inserted} new, ${data.updated} updated`);
+          setImportResult(
+            `✓ ${data.inserted} imported, ${data.deleted} replaced`,
+          );
           await loadFromDB();
         } catch {
           setImportResult("Import failed");
@@ -2565,189 +2974,6 @@ export default function AccountingPage() {
               {/* Global recon */}
               {globalRecon && <GlobalReconPanel recon={globalRecon} />}
 
-              {/* Square Payout Summary */}
-              {squarePayouts.length > 0 &&
-                (() => {
-                  const allEntries = squarePayouts.flatMap((p) => p.entries);
-                  const refundEntries = allEntries.filter(
-                    (e) => e.type === "REFUND",
-                  );
-
-                  const totalGross = squarePayouts.reduce(
-                    (s, p) =>
-                      s +
-                      p.entries
-                        .filter((e) => e.type === "CHARGE")
-                        .reduce((es, e) => es + (e.grossAmount || 0), 0),
-                    0,
-                  );
-                  const totalFees = squarePayouts.reduce(
-                    (s, p) =>
-                      s +
-                      p.entries
-                        .filter((e) => e.type === "CHARGE")
-                        .reduce((es, e) => es + Math.abs(e.feeAmount || 0), 0),
-                    0,
-                  );
-                  const totalNet = squarePayouts.reduce(
-                    (s, p) => s + (p.netAmount || 0),
-                    0,
-                  );
-                  const totalRefunds = refundEntries.reduce(
-                    (s, e) => s + Math.abs(e.grossAmount),
-                    0,
-                  );
-                  const blendedRate =
-                    totalGross > 0 ? (totalFees / totalGross) * 100 : 0;
-
-                  // Per-payout breakdown
-                  return (
-                    <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
-                      <h2 className="text-sm font-semibold text-gray-900 mb-4">
-                        Square Payouts — Deposited to Bank
-                      </h2>
-
-                      {/* Summary row */}
-                      {(() => {
-                        const totalSent = squarePendingPayouts.reduce(
-                          (s, p) => s + p.amount,
-                          0,
-                        );
-                        const inTransit =
-                          totalSent > 0
-                            ? totalSent
-                            : Math.max(0, totalCC - totalGross);
-                        const isReconciled =
-                          Math.abs(totalGross + inTransit - totalCC) < 1.0;
-                        return (
-                          <>
-                            <div className="grid grid-cols-4 gap-3 mb-3">
-                              <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
-                                <p className="text-xs text-gray-500 mb-0.5">
-                                  Total paid out (gross)
-                                </p>
-                                <p className="text-lg font-bold text-gray-900">
-                                  {fmt(totalGross)}
-                                </p>
-                                <p className="text-[10px] text-gray-400">
-                                  Already deposited to Chase
-                                </p>
-                              </div>
-                              <div className="rounded-lg bg-red-50 border border-red-100 p-3">
-                                <p className="text-xs text-red-600 mb-0.5">
-                                  Square fees taken
-                                </p>
-                                <p className="text-lg font-bold text-red-600">
-                                  −{fmt(totalFees)}
-                                </p>
-                                <p className="text-[10px] text-red-400">
-                                  {blendedRate.toFixed(2)}% avg rate
-                                </p>
-                              </div>
-                              <div className="rounded-lg bg-green-50 border border-green-100 p-3">
-                                <p className="text-xs text-green-600 mb-0.5">
-                                  Net deposited to bank
-                                </p>
-                                <p className="text-lg font-bold text-green-700">
-                                  {fmt(totalNet)}
-                                </p>
-                                <p className="text-[10px] text-green-500">
-                                  {squarePayouts.length} payout
-                                  {squarePayouts.length !== 1 ? "s" : ""}
-                                </p>
-                              </div>
-                              <div className="rounded-lg bg-blue-50 border border-blue-100 p-3">
-                                <p className="text-xs text-blue-600 mb-0.5">
-                                  In transit at Square
-                                </p>
-                                <p className="text-lg font-bold text-blue-700">
-                                  {fmt(
-                                    inTransit > 0
-                                      ? inTransit
-                                      : Math.max(0, totalCC - totalGross),
-                                  )}
-                                </p>
-                                <p className="text-[10px] text-blue-400">
-                                  {squarePendingPayouts.length > 0
-                                    ? `${squarePendingPayouts.length} payouts sent — Chase processes Monday`
-                                    : "Estimated — not yet batched by Square"}
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Reconciliation check row */}
-                            <div
-                              className={`rounded-lg px-4 py-2.5 mb-4 flex items-center justify-between text-xs ${isReconciled ? "bg-green-50 border border-green-100" : "bg-amber-50 border border-amber-200"}`}
-                            >
-                              <div className="flex items-center gap-4">
-                                <span className="text-gray-600">
-                                  CSV credit card:{" "}
-                                  <span className="font-semibold text-gray-900">
-                                    {fmt(totalCC)}
-                                  </span>
-                                </span>
-                                <span className="text-gray-400">=</span>
-                                <span className="text-gray-600">
-                                  Deposited:{" "}
-                                  <span className="font-semibold text-gray-900">
-                                    {fmt(totalGross)}
-                                  </span>
-                                </span>
-                                <span className="text-gray-400">+</span>
-                                <span className="text-gray-600">
-                                  In transit:{" "}
-                                  <span className="font-semibold text-blue-700">
-                                    {fmt(inTransit)}
-                                  </span>
-                                </span>
-                              </div>
-                              {isReconciled ? (
-                                <span className="flex items-center gap-1 text-green-700 font-medium">
-                                  <CheckCircle className="w-3.5 h-3.5" />{" "}
-                                  Reconciled
-                                </span>
-                              ) : (
-                                <span className="flex items-center gap-1 text-amber-700 font-medium">
-                                  <AlertTriangle className="w-3.5 h-3.5" /> Off
-                                  by{" "}
-                                  {fmt(
-                                    Math.abs(totalCC - totalGross - inTransit),
-                                  )}
-                                </span>
-                              )}
-                            </div>
-
-                            {totalRefunds > 0 && (
-                              <div className="rounded-lg bg-amber-50 border border-amber-100 p-3 mb-4 flex items-center justify-between text-xs">
-                                <div>
-                                  <p className="text-amber-700 font-medium mb-0.5">
-                                    Refunds issued
-                                  </p>
-                                  <p className="text-amber-500">
-                                    Returned to customers
-                                  </p>
-                                </div>
-                                <p className="text-lg font-bold text-amber-600">
-                                  −{fmt(totalRefunds)}
-                                </p>
-                              </div>
-                            )}
-                          </>
-                        );
-                      })()}
-
-                      {/* Per-payout breakdown */}
-                      <PayoutBreakdownTable
-                        squarePayouts={squarePayouts}
-                        totalGross={totalGross}
-                        totalFees={totalFees}
-                        totalNet={totalNet}
-                        blendedRate={blendedRate}
-                      />
-                    </div>
-                  );
-                })()}
-
               {/* Daily Settlement Ledger */}
               {squarePayouts.length > 0 && (
                 <DailySettlementTable
@@ -2755,6 +2981,14 @@ export default function AccountingPage() {
                   squareByDate={squareByDate}
                   squarePayouts={squarePayouts}
                   sentPayouts={squarePendingPayouts}
+                  plaidTransactions={plaidTransactions}
+                  monthKey={monthKey}
+                />
+              )}
+
+              {/* Carrier Commissions (from Plaid) */}
+              {plaidTransactions.length > 0 && (
+                <CarrierCommissions
                   plaidTransactions={plaidTransactions}
                   monthKey={monthKey}
                 />
