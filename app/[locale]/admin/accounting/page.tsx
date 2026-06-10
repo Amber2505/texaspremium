@@ -1748,7 +1748,7 @@ function DailySettlementTable({
   plaidTransactions: any[];
   monthKey: string;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   // Build map: effectiveAt date → payout info
   // Build map: payment date → payout (using actual entry effectiveAt)
@@ -1817,23 +1817,26 @@ function DailySettlementTable({
     return (name.includes("square") || name.includes("sq *")) && tx.amount < 0;
   });
 
-  // Track which payouts are verified to avoid double-counting
+  // Track used Plaid txs AND verified payouts to prevent double-matching
   const verifiedPayoutIds = new Set<string>();
+  const usedPlaidTxIds = new Set<string>();
 
   function findPlaidMatch(
     arrivalDate: string,
     netAmount: number,
     payoutId: string,
   ) {
-    // Already verified this payout via another day in same bundle
+    // Already verified this specific payout
     if (verifiedPayoutIds.has(payoutId)) return "already_verified";
     const match = squarePlaidDeposits.find(
       (tx) =>
+        !usedPlaidTxIds.has(tx.transaction_id || tx.name + tx.date) &&
         tx.date === arrivalDate &&
         Math.abs(Math.abs(tx.amount) - netAmount) < 2.0,
     );
     if (match) {
       verifiedPayoutIds.add(payoutId);
+      usedPlaidTxIds.add(match.transaction_id || match.name + match.date);
       return match;
     }
     return null;
@@ -2073,11 +2076,13 @@ function DailySettlementTable({
 function CarrierCommissions({
   plaidTransactions,
   monthKey,
+  onMonthSelect,
 }: {
   plaidTransactions: any[];
   monthKey: string;
+  onMonthSelect: (year: number, month: number) => void;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   // Extract carrier name from "ORIG CO NAME:Kemper PMT" → "Kemper PMT"
   const extractCarrier = (name: string): string => {
@@ -2167,19 +2172,6 @@ function CarrierCommissions({
   }
   const maxChart = Math.max(...chartData.map((c) => c.total), 1);
 
-  console.log(
-    "Commission txs found:",
-    commissionTxs.length,
-    "earliest:",
-    commissionTxs[0]?.date,
-    "latest:",
-    commissionTxs[commissionTxs.length - 1]?.date,
-    "viewing month:",
-    monthKey,
-    "this month count:",
-    thisMonthTxs.length,
-  );
-
   if (commissionTxs.length === 0) {
     return (
       <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
@@ -2261,8 +2253,12 @@ function CarrierCommissions({
             return (
               <div
                 key={c.month}
-                className="flex-1 flex flex-col items-center gap-1.5"
-                title={`${c.label}: ${fmt(c.total)}`}
+                className="flex-1 flex flex-col items-center gap-1.5 cursor-pointer group"
+                title={`${c.label}: ${fmt(c.total)} — click to view`}
+                onClick={() => {
+                  const [y, m] = c.month.split("-").map(Number);
+                  onMonthSelect(y, m - 1);
+                }}
               >
                 <div className="text-[10px] font-semibold text-gray-700">
                   {c.total > 0 ? fmt(c.total).replace(/\.\d+$/, "") : "—"}
@@ -2284,7 +2280,7 @@ function CarrierCommissions({
                   />
                 </div>
                 <div
-                  className={`text-[10px] ${
+                  className={`text-[10px] group-hover:text-green-700 transition-colors ${
                     c.isCurrent ? "font-bold text-green-700" : "text-gray-500"
                   }`}
                 >
@@ -2508,11 +2504,24 @@ export default function AccountingPage() {
   useEffect(() => {
     if (isCheckingAuth) return;
     loadFromDB();
+    loadPlaidTransactions();
     setSquareByDate({});
     setSquarePayouts([]);
     setGlobalRecon(null);
     setSelectedDate("all");
   }, [monthKey]);
+
+  const loadPlaidTransactions = async () => {
+    try {
+      const plaidRes = await fetch("/api/plaid/transactions");
+      if (plaidRes.ok) {
+        const plaidData = await plaidRes.json();
+        setPlaidTransactions(plaidData.transactions || []);
+      }
+    } catch {
+      /* silent — Plaid data is optional */
+    }
+  };
 
   const loadFromDB = async () => {
     setLoading(true);
@@ -2821,33 +2830,200 @@ export default function AccountingPage() {
 
                 return (
                   <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
-                    {/* Row 1 — totals */}
-                    <div className="grid grid-cols-3 gap-4 mb-4 pb-4 border-b border-gray-100">
-                      <div>
-                        <p className="text-xs text-gray-500 mb-0.5">
-                          Total collected
-                        </p>
-                        <p className="text-2xl font-bold text-gray-900">
-                          {fmt(totalRevenue)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-0.5">Premium</p>
-                        <p className="text-2xl font-bold text-blue-700">
-                          {fmt(totalPremium)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500 mb-0.5">
-                          Agency fees
-                        </p>
-                        <p
-                          className={`text-2xl font-bold ${totalFees >= 0 ? "text-green-700" : "text-red-600"}`}
-                        >
-                          {fmt(totalFees)}
-                        </p>
-                      </div>
-                    </div>
+                    {/* Row 1 — totals (revenue) + Row 1b — payroll outflows */}
+                    {(() => {
+                      // Commission for this month — same rule as CarrierCommissions component
+                      const monthCommission = plaidTransactions
+                        .filter((tx: any) => {
+                          if (typeof tx.amount !== "number" || tx.amount >= 0)
+                            return false;
+                          const name = (tx.name || "").trim();
+                          if (!name.startsWith("ORIG CO NAME:")) return false;
+                          const after = name
+                            .replace(/^ORIG CO NAME:\s*/i, "")
+                            .trim()
+                            .toLowerCase();
+                          if (after.startsWith("square")) return false;
+                          // Exclude payroll/Intuit so commission stays clean
+                          if (after.startsWith("intuit")) return false;
+                          return (tx.date || "").startsWith(monthKey);
+                        })
+                        .reduce(
+                          (s: number, tx: any) => s + Math.abs(tx.amount),
+                          0,
+                        );
+
+                      // Payroll outflows — Intuit ACH debits this month
+                      // amount > 0 means money OUT in Plaid convention
+                      // Threshold: $20 separates Intuit fees (small) from payroll (large)
+                      const INTUIT_FEE_THRESHOLD = 20;
+                      const intuitTxs = plaidTransactions.filter((tx: any) => {
+                        if (typeof tx.amount !== "number" || tx.amount <= 0)
+                          return false;
+                        const name = (tx.name || "").trim();
+                        if (!name.startsWith("ORIG CO NAME:")) return false;
+                        const after = name
+                          .replace(/^ORIG CO NAME:\s*/i, "")
+                          .trim()
+                          .toLowerCase();
+                        if (!after.startsWith("intuit")) return false;
+                        return (tx.date || "").startsWith(monthKey);
+                      });
+                      const monthPayroll = intuitTxs
+                        .filter(
+                          (tx: any) =>
+                            Math.abs(tx.amount) >= INTUIT_FEE_THRESHOLD,
+                        )
+                        .reduce(
+                          (s: number, tx: any) => s + Math.abs(tx.amount),
+                          0,
+                        );
+                      const monthPayrollFees = intuitTxs
+                        .filter(
+                          (tx: any) =>
+                            Math.abs(tx.amount) < INTUIT_FEE_THRESHOLD,
+                        )
+                        .reduce(
+                          (s: number, tx: any) => s + Math.abs(tx.amount),
+                          0,
+                        );
+
+                      const grossRevenue = totalFees + monthCommission;
+                      const netRevenue =
+                        grossRevenue - monthPayroll - monthPayrollFees;
+
+                      return (
+                        <>
+                          {/* Row 1a — revenue inflows */}
+                          <div className="grid grid-cols-5 gap-3 mb-3">
+                            <div>
+                              <p className="text-xs text-gray-500 mb-0.5">
+                                Total collected
+                              </p>
+                              <p className="text-xl font-bold text-gray-900">
+                                {fmt(totalRevenue)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 mb-0.5">
+                                Premium
+                              </p>
+                              <p className="text-xl font-bold text-blue-700">
+                                {fmt(totalPremium)}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-xs text-gray-500 mb-0.5">
+                                Agency fees
+                              </p>
+                              <p
+                                className={`text-xl font-bold ${totalFees >= 0 ? "text-green-700" : "text-red-600"}`}
+                              >
+                                {fmt(totalFees)}
+                              </p>
+                            </div>
+                            <div className="flex items-center">
+                              <span className="text-xl text-gray-300 font-light mr-2">
+                                +
+                              </span>
+                              <div>
+                                <p className="text-xs text-gray-500 mb-0.5">
+                                  Commission
+                                </p>
+                                <p className="text-xl font-bold text-emerald-700">
+                                  {fmt(monthCommission)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center">
+                              <span className="text-xl text-gray-300 font-light mr-2">
+                                =
+                              </span>
+                              <div>
+                                <p className="text-xs text-gray-500 mb-0.5">
+                                  Gross revenue
+                                </p>
+                                <p className="text-xl font-bold text-gray-900">
+                                  {fmt(grossRevenue)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Row 1b — outflows + net */}
+                          <div className="grid grid-cols-5 gap-3 mb-4 pb-4 border-b border-gray-100">
+                            <div>
+                              <p className="text-xs text-gray-500 mb-0.5">
+                                Gross revenue
+                              </p>
+                              <p className="text-xl font-bold text-gray-400">
+                                {fmt(grossRevenue)}
+                              </p>
+                            </div>
+                            <div className="flex items-center">
+                              <span className="text-xl text-gray-300 font-light mr-2">
+                                −
+                              </span>
+                              <div>
+                                <p className="text-xs text-gray-500 mb-0.5">
+                                  Payroll
+                                </p>
+                                <p
+                                  className="text-xl font-bold text-red-600"
+                                  title={`${
+                                    intuitTxs.filter(
+                                      (t: any) =>
+                                        Math.abs(t.amount) >=
+                                        INTUIT_FEE_THRESHOLD,
+                                    ).length
+                                  } Intuit payroll runs`}
+                                >
+                                  {fmt(monthPayroll)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex items-center">
+                              <span className="text-xl text-gray-300 font-light mr-2">
+                                −
+                              </span>
+                              <div>
+                                <p className="text-xs text-gray-500 mb-0.5">
+                                  Payroll fees
+                                </p>
+                                <p
+                                  className="text-xl font-bold text-red-500"
+                                  title={`${
+                                    intuitTxs.filter(
+                                      (t: any) =>
+                                        Math.abs(t.amount) >=
+                                        INTUIT_FEE_THRESHOLD,
+                                    ).length
+                                  } Intuit fees (< $${INTUIT_FEE_THRESHOLD})`}
+                                >
+                                  {fmt(monthPayrollFees)}
+                                </p>
+                              </div>
+                            </div>
+                            <div />
+                            <div className="flex items-center">
+                              <span className="text-xl text-gray-300 font-light mr-2">
+                                =
+                              </span>
+                              <div>
+                                <p className="text-xs text-gray-500 mb-0.5">
+                                  Net revenue
+                                </p>
+                                <p
+                                  className={`text-xl font-bold ${netRevenue >= 0 ? "text-gray-900" : "text-red-600"}`}
+                                >
+                                  {fmt(netRevenue)}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
 
                     {/* Row 2 — payment methods */}
                     <div className="grid grid-cols-4 gap-4">
@@ -2883,20 +3059,73 @@ export default function AccountingPage() {
                       </div>
 
                       {/* Cash */}
-                      <div className="rounded-lg bg-green-50 border border-green-100 p-3">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-                          <p className="text-xs text-green-700 font-medium">
-                            Cash
-                          </p>
-                        </div>
-                        <p className="text-base font-bold text-gray-900">
-                          {fmt(totalCash)}
-                        </p>
-                        <p className="text-[10px] text-green-600 mt-1.5">
-                          In-office payments
-                        </p>
-                      </div>
+                      {(() => {
+                        // ATM cash deposits from Plaid — negative = money IN
+                        const atmDeposits = plaidTransactions.filter(
+                          (tx: any) => {
+                            if (typeof tx.amount !== "number" || tx.amount >= 0)
+                              return false;
+                            const name = (tx.name || "").toUpperCase();
+                            return (
+                              name.includes("ATM") &&
+                              (name.includes("CASH DEPOSIT") ||
+                                name.includes("DEPOSIT")) &&
+                              (tx.date || "").startsWith(monthKey)
+                            );
+                          },
+                        );
+                        const totalAtmDeposited = atmDeposits.reduce(
+                          (s: number, tx: any) => s + Math.abs(tx.amount),
+                          0,
+                        );
+                        const cashDiff = totalCash - totalAtmDeposited;
+                        const hasAtmData = atmDeposits.length > 0;
+
+                        return (
+                          <div className="rounded-lg bg-green-50 border border-green-100 p-3">
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                              <p className="text-xs text-green-700 font-medium">
+                                Cash
+                              </p>
+                            </div>
+                            <p className="text-base font-bold text-gray-900">
+                              {fmt(totalCash)}
+                            </p>
+                            <p className="text-[10px] text-green-600 mt-1">
+                              In-office collected
+                            </p>
+                            {hasAtmData && (
+                              <div className="mt-1.5 pt-1.5 border-t border-green-200">
+                                <p className="text-[10px] text-green-600">
+                                  ATM deposited
+                                </p>
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {fmt(totalAtmDeposited)}
+                                </p>
+                                {Math.abs(cashDiff) > 0.5 ? (
+                                  <p
+                                    className="text-[10px] font-medium text-red-600 mt-0.5"
+                                    title={`Collected ${fmt(totalCash)} but only deposited ${fmt(totalAtmDeposited)}`}
+                                  >
+                                    ⚠ {fmt(Math.abs(cashDiff))}{" "}
+                                    {cashDiff > 0 ? "undeposited" : "over"}
+                                  </p>
+                                ) : (
+                                  <p className="text-[10px] text-green-600 mt-0.5">
+                                    ✓ fully deposited
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                            {!hasAtmData && (
+                              <p className="text-[10px] text-green-400 mt-1">
+                                No ATM deposits found this month
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* Zelle */}
                       <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-3">
@@ -2969,10 +3198,29 @@ export default function AccountingPage() {
                 );
               })()}
 
-              <AgencyFeeChart activeMonth={monthKey} />
+              <AgencyFeeChart
+                activeMonth={monthKey}
+                onMonthSelect={(key) => {
+                  const [y, m] = key.split("-").map(Number);
+                  setViewYear(y);
+                  setViewMonth(m - 1);
+                }}
+              />
 
               {/* Global recon */}
               {globalRecon && <GlobalReconPanel recon={globalRecon} />}
+
+              {/* Carrier Commissions (from Plaid) */}
+              {plaidTransactions.length > 0 && (
+                <CarrierCommissions
+                  plaidTransactions={plaidTransactions}
+                  monthKey={monthKey}
+                  onMonthSelect={(y, m) => {
+                    setViewYear(y);
+                    setViewMonth(m);
+                  }}
+                />
+              )}
 
               {/* Daily Settlement Ledger */}
               {squarePayouts.length > 0 && (
@@ -2981,14 +3229,6 @@ export default function AccountingPage() {
                   squareByDate={squareByDate}
                   squarePayouts={squarePayouts}
                   sentPayouts={squarePendingPayouts}
-                  plaidTransactions={plaidTransactions}
-                  monthKey={monthKey}
-                />
-              )}
-
-              {/* Carrier Commissions (from Plaid) */}
-              {plaidTransactions.length > 0 && (
-                <CarrierCommissions
                   plaidTransactions={plaidTransactions}
                   monthKey={monthKey}
                 />

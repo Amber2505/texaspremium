@@ -73,8 +73,10 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 export default function AgencyFeeChart({
   activeMonth,
+  onMonthSelect,
 }: {
   activeMonth: string;
+  onMonthSelect?: (monthKey: string) => void;
 }) {
   const [data, setData] = useState<MonthData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -213,7 +215,19 @@ export default function AgencyFeeChart({
             width={40}
           />
           <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f9fafb" }} />
-          <Bar dataKey={dataKey} radius={[4, 4, 0, 0]} maxBarSize={48}>
+          <Bar
+            dataKey={dataKey}
+            radius={[4, 4, 0, 0]}
+            maxBarSize={48}
+            cursor={onMonthSelect ? "pointer" : "default"}
+            onClick={(barData: any) => {
+              if (!onMonthSelect) return;
+              const clickedMonth = barData?.month || barData?.payload?.month;
+              if (clickedMonth && clickedMonth !== activeMonth) {
+                onMonthSelect(clickedMonth);
+              }
+            }}
+          >
             {data.map((entry) => {
               const val = entry[dataKey] ?? 0;
               const isNeg = val < 0;

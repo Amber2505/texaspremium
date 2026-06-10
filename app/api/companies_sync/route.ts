@@ -1,5 +1,4 @@
 // app/api/companies-sync/route.ts
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 

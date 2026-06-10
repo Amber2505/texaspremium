@@ -986,7 +986,7 @@ export default function SignConsentPage({ params }: PageProps) {
                     </button>
                   ) : (
                     <div className="py-6 border-2 border-gray-200 rounded-lg bg-white text-center relative">
-                      <img
+                      <Image
                         src={uploadedSignature}
                         alt="Uploaded signature"
                         className="max-h-28 mx-auto"

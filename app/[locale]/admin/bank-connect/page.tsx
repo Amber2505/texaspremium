@@ -41,6 +41,63 @@ export default function BankConnectPage() {
   );
   const [monthKey, setMonthKey] = useState(getMonthKey());
 
+  const [syncStatus, setSyncStatus] = useState<{
+    total: number;
+    oldestDate: string | null;
+    newestDate: string | null;
+    byMonth: { month: string; count: number }[];
+    gaps: string[];
+    plaidItemCreatedAt: string | null;
+  } | null>(null);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const PAGE_SIZE = 100;
+
+  const [importingCsv, setImportingCsv] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    imported: number;
+    skipped: number;
+    errors: number;
+    oldestImported: string | null;
+    newestImported: string | null;
+  } | null>(null);
+
+  const handleChaseCsvImport = async (file: File) => {
+    setImportingCsv(true);
+    setImportResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/plaid/import-csv", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(`Import failed: ${data.error || "Unknown error"}`);
+        return;
+      }
+      setImportResult({
+        imported: data.imported,
+        skipped: data.skipped,
+        errors: data.errors,
+        oldestImported: data.oldestImported,
+        newestImported: data.newestImported,
+      });
+      await loadData();
+    } catch (err) {
+      console.error("CSV import error:", err);
+      alert("Import failed. Please try again.");
+    } finally {
+      setImportingCsv(false);
+    }
+  };
+
+  // Reset to page 1 whenever the user switches months
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [monthKey]);
+
   const isOAuthRedirect =
     typeof window !== "undefined" &&
     window.location.href.includes("oauth_state_id");
@@ -89,9 +146,10 @@ export default function BankConnectPage() {
 
   const loadData = async () => {
     try {
-      const [txRes, analysisRes] = await Promise.all([
+      const [txRes, analysisRes, statusRes] = await Promise.all([
         fetch("/api/plaid/transactions"),
         fetch(`/api/plaid/bank-analysis?month=${monthKey}`),
+        fetch("/api/plaid/sync-status"),
       ]);
       if (txRes.ok) {
         const data = await txRes.json();
@@ -100,6 +158,10 @@ export default function BankConnectPage() {
       if (analysisRes.ok) {
         const data = await analysisRes.json();
         setAnalysis(data);
+      }
+      if (statusRes.ok) {
+        const data = await statusRes.json();
+        setSyncStatus(data);
       }
     } catch {}
   };
@@ -242,9 +304,192 @@ export default function BankConnectPage() {
                 >
                   {tokenLoading ? "Loading…" : "Reconnect"}
                 </button>
+                <label
+                  className={`px-3 py-2 rounded-lg text-sm font-medium cursor-pointer flex items-center gap-1.5 ${
+                    importingCsv
+                      ? "bg-indigo-300 text-white cursor-not-allowed"
+                      : "bg-indigo-600 text-white hover:bg-indigo-700"
+                  }`}
+                  title="Import historical transactions from Chase CSV export"
+                >
+                  {importingCsv ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Importing…
+                    </>
+                  ) : (
+                    "Import Chase CSV"
+                  )}
+                  <input
+                    type="file"
+                    accept=".csv,.CSV"
+                    className="hidden"
+                    disabled={importingCsv}
+                    onClick={(e) => {
+                      (e.target as HTMLInputElement).value = "";
+                    }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleChaseCsvImport(f);
+                    }}
+                  />
+                </label>
               </div>
             </div>
+            {importResult && (
+              <div className="mt-3 p-3 rounded-lg bg-indigo-50 border border-indigo-100 text-sm">
+                <div className="flex items-center gap-2 mb-1">
+                  <CheckCircle className="w-4 h-4 text-indigo-600" />
+                  <span className="font-semibold text-indigo-900">
+                    Chase CSV import complete
+                  </span>
+                </div>
+                <div className="text-xs text-indigo-800 grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                  <div>
+                    <span className="text-indigo-500">Imported: </span>
+                    <span className="font-semibold">
+                      {importResult.imported}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-indigo-500">
+                      Skipped (duplicates):{" "}
+                    </span>
+                    <span className="font-semibold">
+                      {importResult.skipped}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-indigo-500">Errors: </span>
+                    <span className="font-semibold">{importResult.errors}</span>
+                  </div>
+                  <div>
+                    <span className="text-indigo-500">Date range: </span>
+                    <span className="font-mono text-[11px]">
+                      {importResult.oldestImported || "—"} →{" "}
+                      {importResult.newestImported || "—"}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setImportResult(null)}
+                  className="text-[10px] text-indigo-500 hover:text-indigo-700 mt-2"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* Sync status / coverage */}
+          {syncStatus && (
+            <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-900">
+                    Plaid Sync Coverage
+                  </h2>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    What&apos;s actually in the database — useful for diagnosing
+                    missing months
+                  </p>
+                </div>
+                {syncStatus.gaps.length > 0 ? (
+                  <span className="text-[10px] px-2 py-0.5 bg-amber-100 text-amber-700 rounded font-medium flex items-center gap-1">
+                    <AlertTriangle className="w-3 h-3" />
+                    {syncStatus.gaps.length} month
+                    {syncStatus.gaps.length !== 1 ? "s" : ""} with no data
+                  </span>
+                ) : (
+                  <span className="text-[10px] px-2 py-0.5 bg-green-100 text-green-700 rounded font-medium flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" />
+                    No gaps in synced range
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-3 mb-4">
+                <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
+                  <p className="text-[10px] text-gray-500 mb-0.5">
+                    Total transactions
+                  </p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {syncStatus.total}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
+                  <p className="text-[10px] text-gray-500 mb-0.5">
+                    Oldest synced
+                  </p>
+                  <p className="text-lg font-bold text-gray-900 font-mono">
+                    {syncStatus.oldestDate || "—"}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
+                  <p className="text-[10px] text-gray-500 mb-0.5">
+                    Newest synced
+                  </p>
+                  <p className="text-lg font-bold text-gray-900 font-mono">
+                    {syncStatus.newestDate || "—"}
+                  </p>
+                </div>
+              </div>
+
+              {syncStatus.byMonth.length > 0 && (
+                <div className="border border-gray-100 rounded-lg overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-gray-50 text-gray-500">
+                        <th className="px-3 py-1.5 text-left">Month</th>
+                        <th className="px-3 py-1.5 text-right">Transactions</th>
+                        <th className="px-3 py-1.5 text-left">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {syncStatus.byMonth.map((m) => (
+                        <tr key={m.month} className="hover:bg-gray-50">
+                          <td className="px-3 py-1.5 font-mono text-gray-700">
+                            {m.month}
+                          </td>
+                          <td className="px-3 py-1.5 text-right text-gray-900">
+                            {m.count}
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <span className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded">
+                              ✓ synced
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                      {syncStatus.gaps.map((gap) => (
+                        <tr key={gap} className="bg-amber-50/40">
+                          <td className="px-3 py-1.5 font-mono text-amber-700">
+                            {gap}
+                          </td>
+                          <td className="px-3 py-1.5 text-right text-amber-500">
+                            0
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded">
+                              missing
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <p className="text-[10px] text-gray-400 mt-3">
+                Chase business checking via Plaid typically returns 90 days of
+                history by default. Older data depends on how long the Plaid
+                item has been connected. If a month shows as missing here, Plaid
+                does not have it — either the item wasn&apos;t connected yet, or
+                Chase doesn&apos;t expose that far back.
+              </p>
+            </div>
+          )}
 
           {/* Summary cards */}
           {s && (
@@ -424,79 +669,163 @@ export default function BankConnectPage() {
           )}
 
           {/* All transactions */}
-          {transactions.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-gray-900">
-                  All Transactions —{" "}
-                  {months.find((m) => m.key === monthKey)?.label}
-                </h2>
-                <span className="text-xs text-gray-400">
-                  {
-                    transactions.filter((tx) => tx.date?.startsWith(monthKey))
-                      .length
-                  }{" "}
-                  transactions
-                </span>
-              </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-gray-500 text-xs">
-                    <th className="px-4 py-2.5 text-left">Date</th>
-                    <th className="px-4 py-2.5 text-left">Description</th>
-                    <th className="px-4 py-2.5 text-left">Category</th>
-                    <th className="px-4 py-2.5 text-center">Status</th>
-                    <th className="px-4 py-2.5 text-right">Amount</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {transactions
-                    .filter((tx) => tx.date?.startsWith(monthKey))
-                    .slice(0, 100)
-                    .map((tx: any) => (
-                      <tr key={tx.transaction_id} className="hover:bg-gray-50">
-                        <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
-                          {tx.date}
-                        </td>
-                        <td className="px-4 py-2.5 text-gray-900 max-w-[220px] truncate">
-                          {tx.name}
-                        </td>
-                        <td className="px-4 py-2.5 text-gray-400 text-xs">
-                          {tx.category?.[0] || "—"}
-                        </td>
-                        <td className="px-4 py-2.5 text-center">
-                          {tx.pending ? (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded">
-                              Pending
+          {transactions.length > 0 &&
+            (() => {
+              const monthTxs = transactions.filter((tx) =>
+                tx.date?.startsWith(monthKey),
+              );
+              const totalCount = monthTxs.length;
+              const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+              const page = Math.min(currentPage, totalPages);
+              const startIdx = (page - 1) * PAGE_SIZE;
+              const endIdx = Math.min(startIdx + PAGE_SIZE, totalCount);
+              const pageRows = monthTxs.slice(startIdx, endIdx);
+
+              // Compact page-number list (1, …, 4, 5, 6, …, 20)
+              const pageNumbers: (number | "ellipsis")[] = [];
+              if (totalPages <= 7) {
+                for (let i = 1; i <= totalPages; i++) pageNumbers.push(i);
+              } else {
+                pageNumbers.push(1);
+                if (page > 3) pageNumbers.push("ellipsis");
+                for (
+                  let i = Math.max(2, page - 1);
+                  i <= Math.min(totalPages - 1, page + 1);
+                  i++
+                ) {
+                  pageNumbers.push(i);
+                }
+                if (page < totalPages - 2) pageNumbers.push("ellipsis");
+                pageNumbers.push(totalPages);
+              }
+
+              return (
+                <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+                  <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold text-gray-900">
+                      All Transactions —{" "}
+                      {months.find((m) => m.key === monthKey)?.label}
+                    </h2>
+                    <span className="text-xs text-gray-400">
+                      {totalCount} transactions
+                    </span>
+                  </div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-gray-500 text-xs">
+                        <th className="px-4 py-2.5 text-left">Date</th>
+                        <th className="px-4 py-2.5 text-left">Description</th>
+                        <th className="px-4 py-2.5 text-left">Category</th>
+                        <th className="px-4 py-2.5 text-center">Status</th>
+                        <th className="px-4 py-2.5 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {pageRows.map((tx: any) => (
+                        <tr
+                          key={tx.transaction_id}
+                          className="hover:bg-gray-50"
+                        >
+                          <td className="px-4 py-2.5 text-gray-500 text-xs whitespace-nowrap">
+                            {tx.date}
+                          </td>
+                          <td className="px-4 py-2.5 text-gray-900 max-w-[220px] truncate">
+                            {tx.name}
+                          </td>
+                          <td className="px-4 py-2.5 text-gray-400 text-xs">
+                            {tx.category?.[0] || "—"}
+                          </td>
+                          <td className="px-4 py-2.5 text-center">
+                            {tx.pending ? (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded">
+                                Pending
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded">
+                                Settled
+                              </span>
+                            )}
+                          </td>
+                          <td
+                            className={`px-4 py-2.5 text-right font-semibold tabular-nums ${tx.amount > 0 ? "text-red-600" : "text-green-600"}`}
+                          >
+                            {tx.amount > 0 ? "-" : "+"}
+                            {fmt(Math.abs(tx.amount))}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {totalCount > PAGE_SIZE && (
+                    <div className="px-5 py-3 border-t border-gray-100 flex items-center justify-between bg-gray-50">
+                      <p className="text-xs text-gray-500">
+                        Showing{" "}
+                        <span className="font-semibold text-gray-700">
+                          {startIdx + 1}–{endIdx}
+                        </span>{" "}
+                        of{" "}
+                        <span className="font-semibold text-gray-700">
+                          {totalCount}
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setCurrentPage(1)}
+                          disabled={page === 1}
+                          className="px-2 py-1 text-xs rounded hover:bg-white border border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed text-gray-600"
+                        >
+                          ‹‹
+                        </button>
+                        <button
+                          onClick={() => setCurrentPage(page - 1)}
+                          disabled={page === 1}
+                          className="px-2 py-1 text-xs rounded hover:bg-white border border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed text-gray-600"
+                        >
+                          ‹ Prev
+                        </button>
+                        {pageNumbers.map((p, i) =>
+                          p === "ellipsis" ? (
+                            <span
+                              key={`e-${i}`}
+                              className="px-2 py-1 text-xs text-gray-400"
+                            >
+                              …
                             </span>
                           ) : (
-                            <span className="text-[10px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded">
-                              Settled
-                            </span>
-                          )}
-                        </td>
-                        <td
-                          className={`px-4 py-2.5 text-right font-semibold tabular-nums ${tx.amount > 0 ? "text-red-600" : "text-green-600"}`}
+                            <button
+                              key={p}
+                              onClick={() => setCurrentPage(p)}
+                              className={`min-w-[28px] px-2 py-1 text-xs rounded border ${
+                                p === page
+                                  ? "bg-blue-600 border-blue-600 text-white font-semibold"
+                                  : "bg-white border-gray-200 text-gray-600 hover:bg-gray-100"
+                              }`}
+                            >
+                              {p}
+                            </button>
+                          ),
+                        )}
+                        <button
+                          onClick={() => setCurrentPage(page + 1)}
+                          disabled={page === totalPages}
+                          className="px-2 py-1 text-xs rounded hover:bg-white border border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed text-gray-600"
                         >
-                          {tx.amount > 0 ? "-" : "+"}
-                          {fmt(Math.abs(tx.amount))}
-                        </td>
-                      </tr>
-                    ))}
-                </tbody>
-              </table>
-              {transactions.filter((tx) => tx.date?.startsWith(monthKey))
-                .length > 100 && (
-                <p className="text-xs text-gray-400 text-center py-3">
-                  Showing 100 of{" "}
-                  {
-                    transactions.filter((tx) => tx.date?.startsWith(monthKey))
-                      .length
-                  }
-                </p>
-              )}
-            </div>
-          )}
+                          Next ›
+                        </button>
+                        <button
+                          onClick={() => setCurrentPage(totalPages)}
+                          disabled={page === totalPages}
+                          className="px-2 py-1 text-xs rounded hover:bg-white border border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed text-gray-600"
+                        >
+                          ››
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
           {transactions.length === 0 && (
             <div className="bg-white rounded-xl shadow-sm p-12 text-center text-gray-400 text-sm">

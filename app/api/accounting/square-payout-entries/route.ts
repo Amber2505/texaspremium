@@ -86,6 +86,11 @@ export async function GET(request: Request) {
       } while (pendingCursor);
     }
 
+    console.log("PAID payouts returned:", payouts.map(p => ({
+      id: p.id.slice(0,8),
+      arrival_date: p.arrival_date,
+    })));
+
     if (!payouts.length) {
       return NextResponse.json({ payouts: [] });
     }

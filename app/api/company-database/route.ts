@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+
 import { MongoClient } from 'mongodb';
 import { NextResponse } from 'next/server';
 

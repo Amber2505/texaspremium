@@ -67,6 +67,34 @@ export async function POST(request: Request) {
 
     // Upsert all to MongoDB
     for (const tx of allTransactions) {
+      // 1. If this settled transaction has a pending predecessor, remove it
+      if (!tx.pending && tx.pending_transaction_id) {
+        await db.collection("bank_transactions").deleteOne({
+          transaction_id: tx.pending_transaction_id,
+        });
+      }
+
+      // 2. Fallback: remove any still-pending record with same amount + name prefix
+      //    (catches cases where pending_transaction_id isn't populated)
+      if (!tx.pending) {
+        const namePrefix = (tx.name || "").substring(0, 20).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        await db.collection("bank_transactions").deleteOne({
+          pending: true,
+          amount: tx.amount,
+          name: { $regex: new RegExp("^" + namePrefix) },
+          transaction_id: { $ne: tx.transaction_id },
+        });
+      }
+
+      // 3. Evict any Chase CSV placeholder for the same transaction
+      const namePrefix = (tx.name || "").substring(0, 25).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      await db.collection("bank_transactions").deleteOne({
+        transaction_id: { $regex: /^chase_csv_/ },
+        date: tx.date,
+        amount: tx.amount,
+        name: { $regex: new RegExp("^" + namePrefix) },
+      });
+
       await db.collection("bank_transactions").updateOne(
         { transaction_id: tx.transaction_id },
         { $set: { ...tx, syncedAt: new Date() } },
