@@ -456,9 +456,24 @@ async function processPaymentReminders() {
       ],
     }).toArray();
 
+    // Group by phone number — one set of reminders per customer
+    // If multiple active links exist for same phone, use only the most recent one
+    const byPhone = new Map();
     for (const link of unpaidLinks) {
       const phone = link.customerPhone;
       if (!phone) continue;
+      const existing = byPhone.get(phone);
+      const thisTimestamp = link.createdAtTimestamp || new Date(link.createdAt).getTime();
+      const existingTimestamp = existing
+        ? (existing.createdAtTimestamp || new Date(existing.createdAt).getTime())
+        : 0;
+      if (!existing || thisTimestamp > existingTimestamp) {
+        byPhone.set(phone, link);
+      }
+    }
+
+    for (const link of byPhone.values()) {
+      const phone = link.customerPhone;
 
       const createdAt = link.createdAtTimestamp
         ? new Date(link.createdAtTimestamp)
