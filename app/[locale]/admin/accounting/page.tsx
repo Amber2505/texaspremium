@@ -2453,6 +2453,36 @@ export default function AccountingPage() {
   const [viewMonth, setViewMonth] = useState(now.getMonth());
 
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [accountingUnlocked, setAccountingUnlocked] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
+  const [pinLoading, setPinLoading] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+  const UNLOCK_DURATION = 5 * 60 * 1000; // 5 minutes
+
+  const verifyAccountingCode = async () => {
+    if (!pinInput.trim()) return;
+    setPinLoading(true);
+    setPinError("");
+    try {
+      const res = await fetch("/api/verify-accounting-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: pinInput.trim() }),
+      });
+      if (res.ok) {
+        sessionStorage.setItem("accounting_unlocked_at", String(Date.now()));
+        setAccountingUnlocked(true);
+      } else {
+        setPinError("Incorrect code. Try again.");
+        setPinInput("");
+      }
+    } catch {
+      setPinError("Server error. Try again.");
+    } finally {
+      setPinLoading(false);
+    }
+  };
   const [days, setDays] = useState<DaySummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -2494,12 +2524,62 @@ export default function AccountingPage() {
         window.location.href = "/admin";
       } else {
         setIsCheckingAuth(false);
+        // Check if already unlocked this session
+        const unlockedAt = sessionStorage.getItem("accounting_unlocked_at");
+        if (unlockedAt && Date.now() - parseInt(unlockedAt) < UNLOCK_DURATION) {
+          setAccountingUnlocked(true);
+        } else {
+          sessionStorage.removeItem("accounting_unlocked_at");
+        }
       }
     } catch {
       localStorage.removeItem("admin_session");
       window.location.href = "/admin";
     }
   }, []);
+
+  // Auto-lock after 5 minutes
+  useEffect(() => {
+    if (!accountingUnlocked) return;
+    // do nothing extra
+  }, [accountingUnlocked]);
+
+  // Countdown display — must be before any early returns
+  useEffect(() => {
+    if (!accountingUnlocked) {
+      setSecondsLeft(null);
+      return;
+    }
+    const tick = () => {
+      const unlockedAt = sessionStorage.getItem("accounting_unlocked_at");
+      if (!unlockedAt) {
+        setSecondsLeft(null);
+        return;
+      }
+      const remaining = Math.max(
+        0,
+        UNLOCK_DURATION - (Date.now() - parseInt(unlockedAt)),
+      );
+      setSecondsLeft(Math.ceil(remaining / 1000));
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [accountingUnlocked]);
+
+  useEffect(() => {
+    if (!accountingUnlocked) return;
+    const interval = setInterval(() => {
+      const unlockedAt = sessionStorage.getItem("accounting_unlocked_at");
+      if (!unlockedAt || Date.now() - parseInt(unlockedAt) >= UNLOCK_DURATION) {
+        sessionStorage.removeItem("accounting_unlocked_at");
+        setAccountingUnlocked(false);
+        setPinInput("");
+        setPinError("");
+      }
+    }, 30_000); // check every 30 seconds
+    return () => clearInterval(interval);
+  }, [accountingUnlocked]);
 
   useEffect(() => {
     if (isCheckingAuth) return;
@@ -2660,6 +2740,66 @@ export default function AccountingPage() {
     );
   }
 
+  if (!accountingUnlocked) {
+    return (
+      <AdminShell activePath="/admin/accounting">
+        <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-indigo-50">
+          <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
+            <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center mx-auto mb-5">
+              <svg
+                className="w-7 h-7 text-white"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                />
+              </svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900 text-center mb-1">
+              Accounting Access
+            </h2>
+            <p className="text-sm text-gray-500 text-center mb-6">
+              Enter your access code to view accounting data
+            </p>
+            <input
+              type="password"
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && verifyAccountingCode()}
+              placeholder="Enter code"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-center text-lg tracking-widest focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none mb-3"
+              autoFocus
+            />
+            {pinError && (
+              <p className="text-sm text-red-500 text-center mb-3">
+                {pinError}
+              </p>
+            )}
+            <button
+              onClick={verifyAccountingCode}
+              disabled={pinLoading || !pinInput.trim()}
+              className="w-full py-3 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
+            >
+              {pinLoading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{" "}
+                  Verifying…
+                </>
+              ) : (
+                "Unlock Accounting"
+              )}
+            </button>
+          </div>
+        </div>
+      </AdminShell>
+    );
+  }
+
   return (
     <AdminShell activePath="/admin/accounting">
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-6">
@@ -2687,7 +2827,36 @@ export default function AccountingPage() {
                   </svg>
                   Back to Admin
                 </button>
-                <h1 className="text-2xl font-bold text-gray-900">Accounting</h1>
+                <div className="flex items-center gap-3">
+                  <h1 className="text-2xl font-bold text-gray-900">
+                    Accounting
+                  </h1>
+                  {secondsLeft !== null && (
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full font-mono font-semibold flex items-center gap-1 ${
+                        secondsLeft <= 60
+                          ? "bg-red-100 text-red-600"
+                          : "bg-emerald-100 text-emerald-700"
+                      }`}
+                    >
+                      <svg
+                        className="w-3 h-3"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      {Math.floor(secondsLeft / 60)}:
+                      {String(secondsLeft % 60).padStart(2, "0")}
+                    </span>
+                  )}
+                </div>
                 {importResult && (
                   <p
                     className={`text-sm mt-0.5 ${importResult.startsWith("✓") ? "text-green-600" : "text-red-500"}`}

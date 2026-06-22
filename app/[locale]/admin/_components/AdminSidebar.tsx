@@ -12,6 +12,8 @@ import {
   FileText,
   Building2,
   LogOut,
+  BarChart2,
+  BookOpen,
 } from "lucide-react";
 
 interface NavItem {
@@ -106,6 +108,26 @@ const NAV_ITEMS: NavItem[] = [
     iconColor: "text-indigo-700",
     activeBg: "bg-indigo-50",
     activeText: "text-indigo-700",
+    section: "other",
+  },
+  {
+    label: "Accounting",
+    path: "/admin/accounting",
+    icon: <BarChart2 className="w-3.5 h-3.5" />,
+    iconBg: "bg-emerald-100",
+    iconColor: "text-emerald-700",
+    activeBg: "bg-emerald-50",
+    activeText: "text-emerald-700",
+    section: "other",
+  },
+  {
+    label: "Guides",
+    path: "/admin/guides",
+    icon: <BookOpen className="w-3.5 h-3.5" />,
+    iconBg: "bg-amber-100",
+    iconColor: "text-amber-700",
+    activeBg: "bg-amber-50",
+    activeText: "text-amber-700",
     section: "other",
   },
 ];
