@@ -237,6 +237,7 @@ async function connectMongoDB() {
     conversationsCollection = messagesDb.collection('texas_premium_messages');
     scheduleCollection = messagesDb.collection('schedule_message_storage');
     await scheduleCollection.createIndex({ status: 1, scheduledAt: 1 }).catch(() => { });
+    await paymentLinksCollection?.createIndex({ createdAtTimestamp: -1 }).catch(() => { });
     console.log('✅ Schedule collection connected');
 
     // Create index for faster message lookups
@@ -383,6 +384,183 @@ function scheduleDailyDisable() {
 
   console.log('⏰ Payment link auto-disable scheduled for 7:00-7:05 PM CST daily');
   console.log('   (Checking every 30 seconds for accuracy)');
+}
+
+
+// ================================================
+// PAYMENT REMINDER SYSTEM
+// Sends SMS reminders for unpaid, active payment links
+// ================================================
+
+function getCSTHour(date) {
+  return parseInt(new Date(date).toLocaleString('en-US', {
+    timeZone: 'America/Chicago', hour: 'numeric', hour12: false
+  }));
+}
+
+function getCSTMinute(date) {
+  return parseInt(new Date(date).toLocaleString('en-US', {
+    timeZone: 'America/Chicago', minute: 'numeric'
+  }));
+}
+
+function getCSTTimeDecimal(date) {
+  const h = getCSTHour(date);
+  const m = getCSTMinute(date);
+  return h + m / 60;
+}
+
+async function sendPaymentReminderSMS(phone, link, message) {
+  try {
+    const platform = await getRingCentralPlatform();
+    const FormData = require('form-data');
+    const formData = new FormData();
+    const body = {
+      from: { phoneNumber: MY_PHONE_NUMBER },
+      to: [{ phoneNumber: phone }],
+      text: message,
+    };
+    const jsonBuffer = Buffer.from(JSON.stringify(body), 'utf8');
+    formData.append('json', jsonBuffer, {
+      filename: 'request.json',
+      contentType: 'application/json',
+    });
+    await platform.post('/restapi/v1.0/account/~/extension/~/sms', formData);
+    console.log(`📱 Reminder sent to ${phone}`);
+    return true;
+  } catch (err) {
+    console.error(`❌ Reminder SMS failed to ${phone}:`, err.message);
+    return false;
+  }
+}
+
+async function processPaymentReminders() {
+  if (!paymentLinksCollection) return;
+
+  try {
+    const now = new Date();
+    const nowDecimal = getCSTTimeDecimal(now); // e.g. 14.5 = 2:30pm
+
+    // Only run between 6am and 7pm CST — no point outside business hours
+    if (nowDecimal < 6 || nowDecimal >= 19) return;
+
+    // Find unpaid, active payment links
+    const unpaidLinks = await paymentLinksCollection.find({
+      linkType: 'payment',
+      disabled: { $ne: true },
+      $or: [
+        { 'completedStages.payment': { $exists: false } },
+        { 'completedStages.payment': false },
+        { 'completedStages.payment': null },
+        { completedStages: { $exists: false } },
+      ],
+    }).toArray();
+
+    for (const link of unpaidLinks) {
+      const phone = link.customerPhone;
+      if (!phone) continue;
+
+      const createdAt = link.createdAtTimestamp
+        ? new Date(link.createdAtTimestamp)
+        : new Date(link.createdAt);
+
+      const createdDecimal = getCSTTimeDecimal(createdAt); // e.g. 10.0 = 10am
+      const sentReminders = link.sentReminders || [];
+      const generatedLink = link.generatedLink;
+
+      const isSpanish = link.language === 'es';
+
+      const MESSAGES = isSpanish ? {
+        reminder1: `Hola, le escribimos de Texas Premium Insurance Services. Queriamos avisarle que su enlace de pago sigue disponible por si lo necesita:\n${generatedLink}\n\nSi tiene alguna pregunta, con gusto le ayudamos al (469) 729-5185.\n\nNota: Este es un mensaje automático de recordatorio de pago.`,
+        reminder2: `Hola de nuevo, solo queríamos asegurarnos de que haya recibido su enlace de pago. Aquí lo tiene por si le es útil:\n${generatedLink}\n\nCualquier duda, estamos disponibles al (469) 729-5185.\n\nNota: Este es un mensaje automático de recordatorio de pago.`,
+        preExpire: `Hola, le recordamos que su enlace de pago estará disponible hasta las 7 PM de hoy. Si gusta completarlo, aquí está:\n${generatedLink}\n\nSi necesita ayuda o tiene preguntas, llámenos al (469) 729-5185.\n\nNota: Este es un mensaje automático de recordatorio de pago.`,
+        lastCall: `Hola, su enlace de pago vence esta noche a las 7 PM. Si desea completarlo antes de que expire, aquí lo tiene:\n${generatedLink}\n\nCualquier pregunta, estamos aquí al (469) 729-5185.\n\nNota: Este es un mensaje automático de recordatorio de pago.`,
+      } : {
+        reminder1: `Hi, this is Texas Premium Insurance Services. We just wanted to let you know your payment link is still available whenever you're ready:\n${generatedLink}\n\nIf you have any questions, feel free to give us a call at (469) 729-5185.\n\nNote: This is an automatic payment reminder message.`,
+        reminder2: `Hi again from Texas Premium Insurance Services. Just checking in to make sure you received your payment link — here it is in case you need it:\n${generatedLink}\n\nDon't hesitate to call us at (469) 729-5185 if you need anything.\n\nNote: This is an automatic payment reminder message.`,
+        preExpire: `Hi, just a heads up that your payment link will be available until 7 PM today. No rush, but here it is if you'd like to complete it:\n${generatedLink}\n\nIf you have any questions before then, we're happy to help at (469) 729-5185.\n\nNote: This is an automatic payment reminder message.`,
+        lastCall: `Hi, your payment link expires tonight at 7 PM. If you'd like to complete it before it expires, here it is:\n${generatedLink}\n\nQuestions? Give us a call at (469) 729-5185.\n\nNote: This is an automatic payment reminder message.`,
+      };
+
+      const hoursElapsed = (now - createdAt) / (1000 * 60 * 60);
+
+      // ── Reminder 1: 3 hrs after creation, only if result is before 6pm ──
+      if (
+        !sentReminders.includes('reminder1') &&
+        createdDecimal < 15 && // created before 3pm (so +3hrs lands before 6pm)
+        hoursElapsed >= 3 &&
+        nowDecimal < 18
+      ) {
+        const sent = await sendPaymentReminderSMS(phone, generatedLink, MESSAGES.reminder1);
+        if (sent) {
+          await paymentLinksCollection.updateOne(
+            { _id: link._id },
+            { $push: { sentReminders: 'reminder1' } }
+          );
+          console.log(`✅ Reminder 1 sent to ${phone}`);
+        }
+        continue; // one reminder per cycle per link
+      }
+
+      // ── Reminder 2: 6 hrs after creation (or 3 hrs after reminder 1),
+      //    only if result is before 6pm and link was created before noon ──
+      if (
+        !sentReminders.includes('reminder2') &&
+        sentReminders.includes('reminder1') &&
+        createdDecimal < 12 && // created before noon
+        hoursElapsed >= 6 &&
+        nowDecimal < 18
+      ) {
+        const sent = await sendPaymentReminderSMS(phone, generatedLink, MESSAGES.reminder2);
+        if (sent) {
+          await paymentLinksCollection.updateOne(
+            { _id: link._id },
+            { $push: { sentReminders: 'reminder2' } }
+          );
+          console.log(`✅ Reminder 2 sent to ${phone}`);
+        }
+        continue;
+      }
+
+      // ── Pre-expire: 6:30pm CST, for links created before 6:20pm ──
+      if (
+        !sentReminders.includes('preExpire') &&
+        createdDecimal < 18.33 && // created before 6:20pm
+        nowDecimal >= 18.5 &&     // now is 6:30pm or later
+        nowDecimal < 18.83        // but before 6:50pm
+      ) {
+        const sent = await sendPaymentReminderSMS(phone, generatedLink, MESSAGES.preExpire);
+        if (sent) {
+          await paymentLinksCollection.updateOne(
+            { _id: link._id },
+            { $push: { sentReminders: 'preExpire' } }
+          );
+          console.log(`✅ Pre-expire reminder sent to ${phone}`);
+        }
+        continue;
+      }
+
+      // ── Last call: 6:50pm CST, for links created between 6:20pm and 6:50pm ──
+      if (
+        !sentReminders.includes('lastCall') &&
+        createdDecimal >= 18.33 && // created at or after 6:20pm
+        createdDecimal < 18.83 &&  // but before 6:50pm
+        nowDecimal >= 18.83        // now is 6:50pm or later
+      ) {
+        const sent = await sendPaymentReminderSMS(phone, generatedLink, MESSAGES.lastCall);
+        if (sent) {
+          await paymentLinksCollection.updateOne(
+            { _id: link._id },
+            { $push: { sentReminders: 'lastCall' } }
+          );
+          console.log(`✅ Last call reminder sent to ${phone}`);
+        }
+        continue;
+      }
+    }
+  } catch (err) {
+    console.error('❌ Payment reminder processor error:', err.message);
+  }
 }
 
 // ================================================
@@ -1301,6 +1479,11 @@ async function startServer() {
     scheduleDailyDisable();
     await connectSecurityCodeDB();
     scheduleDailySecurityCode();
+
+    // Payment reminders — check every 2 minutes
+    setInterval(processPaymentReminders, 2 * 60 * 1000);
+    setTimeout(processPaymentReminders, 10000); // run once on startup too
+    console.log('⏰ Payment reminder system started');
     // Scheduled messages — run every 60 seconds
     setInterval(processScheduledMessages, 60 * 1000);
     // Run once on startup to catch anything missed during downtime/redeploy
