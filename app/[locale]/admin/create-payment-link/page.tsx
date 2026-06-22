@@ -712,6 +712,27 @@ export default function CreatePaymentLink() {
                     {linkType === "payment" && (
                       <>
                         <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Payment Amount{" "}
+                            <span className="text-red-500">*</span>
+                          </label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">
+                              $
+                            </span>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0.01"
+                              value={amount}
+                              onChange={(e) => setAmount(e.target.value)}
+                              placeholder="0.00"
+                              required
+                              className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                          </div>
+                        </div>
+                        <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
                             Description <span className="text-red-500">*</span>
                             {translating && (
