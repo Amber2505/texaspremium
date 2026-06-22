@@ -1,3 +1,4 @@
+// app/api/guides/[slug]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { MongoClient } from "mongodb";
 import { BlobServiceClient } from "@azure/storage-blob";
@@ -25,12 +26,19 @@ export async function GET(
 }
 
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
   try {
-    const col = await getCollection();
+    const code = new URL(req.url).searchParams.get("code") || "";
+    const col = await getCollection(); // connects the client first
+    const { ObjectId } = await import("mongodb");
+    const creds = await mongoClient.db("db").collection("data_login").findOne({ _id: new ObjectId("6a295793d14cfdba53c65fa0") });
+    if (!creds || String(creds.guides).trim() !== code.trim()) {
+      return NextResponse.json({ error: "Invalid code" }, { status: 403 });
+    }
+
     const guide = await col.findOne({ slug });
 
     if (guide?.blobName) {

@@ -43,7 +43,10 @@ interface Guide {
   category: string;
   duration: string;
   videoUrl: string;
+  fileType?: "video" | "pdf" | "embed";
+  embedUrl?: string;
   createdAt: string;
+  steps?: { title: string; description: string }[];
 }
 
 export default function AdminGuideViewerPage() {
@@ -201,18 +204,77 @@ export default function AdminGuideViewerPage() {
             <div className="h-0.5 bg-gradient-to-r from-[#A0103D] to-[#102a56]" />
           </div>
 
-          {/* ── Video player ── */}
-          <div className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-black">
-            <video
-              src={guide.videoUrl}
-              controls
-              controlsList="nodownload"
-              className="w-full block"
-              style={{ maxHeight: "65vh", display: "block" }}
-            >
-              Your browser does not support video playback.
-            </video>
+          {/* ── Embed / Video / PDF viewer ── */}
+          <div className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+            {guide.fileType === "embed" || guide.embedUrl ? (
+              <iframe
+                src={guide.embedUrl || guide.videoUrl}
+                sandbox="allow-scripts allow-top-navigation-by-user-activation allow-popups allow-same-origin"
+                title={guide.title}
+                width="100%"
+                height="500px"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+                className="block w-full border-0"
+              />
+            ) : guide.fileType === "pdf" ? (
+              <iframe
+                src={guide.videoUrl}
+                className="w-full block border-0"
+                style={{ height: "70vh" }}
+                title={guide.title}
+              />
+            ) : (
+              <video
+                src={guide.videoUrl}
+                controls
+                controlsList="nodownload"
+                className="w-full block"
+                style={{ maxHeight: "65vh", display: "block" }}
+              >
+                Your browser does not support video playback.
+              </video>
+            )}
           </div>
+
+          {/* ── Steps ── */}
+          {guide.steps && guide.steps.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+                <div className="w-5 h-5 rounded-lg bg-[#A0103D]/10 flex items-center justify-center">
+                  <Play className="w-3 h-3 text-[#A0103D] fill-[#A0103D]" />
+                </div>
+                <h2 className="text-sm font-semibold text-gray-800">
+                  Step-by-Step Instructions
+                </h2>
+                <span className="text-xs text-gray-400 ml-1">
+                  · {guide.steps.length} steps
+                </span>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {guide.steps.map((step, i) => (
+                  <div
+                    key={i}
+                    className="px-6 py-4 flex items-start gap-4 hover:bg-gray-50 transition"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#A0103D] to-[#102a56] text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 leading-snug">
+                        {step.title}
+                      </p>
+                      {step.description && (
+                        <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">
+                          {step.description}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <p className="text-center text-xs text-gray-300 pb-4">
             Texas Premium Insurance Services · Internal Use Only

@@ -31,10 +31,16 @@ export async function POST(req: NextRequest) {
     const description = (formData.get("description") as string) ?? "";
     const category    = (formData.get("category") as string) ?? "General";
     const duration    = (formData.get("duration") as string) ?? "";
+    const stepsRaw    = (formData.get("steps") as string) ?? "[]";
+    const steps       = JSON.parse(stepsRaw) as { title: string; description: string }[];
+    const embedUrl    = (formData.get("embedUrl") as string) ?? "";
     const videoFile   = formData.get("video") as File | null;
+    const pdfFile     = formData.get("pdf") as File | null;
+    const uploadFile  = videoFile ?? pdfFile;
+    const fileType    = embedUrl ? "embed" : pdfFile ? "pdf" : "video";
 
-    if (!title || !videoFile) {
-      return NextResponse.json({ error: "Title and video are required." }, { status: 400 });
+    if (!title || (!uploadFile && !embedUrl)) {
+      return NextResponse.json({ error: "Title and a file or embed URL are required." }, { status: 400 });
     }
 
     const slug = title
@@ -57,14 +63,19 @@ export async function POST(req: NextRequest) {
     );
     await containerClient.createIfNotExists({ access: "blob" });
 
-    const ext = videoFile.name.split(".").pop() ?? "mp4";
-    const blobName = `${slug}-${Date.now()}.${ext}`;
-    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+    let videoUrl = embedUrl;
+    let blobName = "";
 
-    const buffer = Buffer.from(await videoFile.arrayBuffer());
-    await blockBlobClient.uploadData(buffer, {
-      blobHTTPHeaders: { blobContentType: videoFile.type || "video/mp4" },
-    });
+    if (uploadFile) {
+      const ext = uploadFile.name.split(".").pop() ?? "mp4";
+      blobName = `${slug}-${Date.now()}.${ext}`;
+      const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+      const buffer = Buffer.from(await uploadFile.arrayBuffer());
+      await blockBlobClient.uploadData(buffer, {
+        blobHTTPHeaders: { blobContentType: uploadFile.type || "application/octet-stream" },
+      });
+      videoUrl = blockBlobClient.url;
+    }
 
     const doc = {
       slug,
@@ -72,7 +83,10 @@ export async function POST(req: NextRequest) {
       description,
       category,
       duration,
-      videoUrl: blockBlobClient.url,
+      steps,
+      fileType,
+      embedUrl,
+      videoUrl,
       blobName,
       createdAt: new Date(),
     };

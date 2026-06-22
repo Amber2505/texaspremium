@@ -99,6 +99,12 @@ export default function AdminGuidesPage() {
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    slug: string;
+    title: string;
+  } | null>(null);
+  const [deleteCode, setDeleteCode] = useState("");
+  const [deleteError, setDeleteError] = useState("");
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -110,7 +116,47 @@ export default function AdminGuidesPage() {
     description: "",
     category: "General",
     duration: "",
+    embedUrl: "",
   });
+  const [steps, setSteps] = useState<{ title: string; description: string }[]>(
+    [],
+  );
+  const [extracting, setExtracting] = useState(false);
+
+  async function extractStepsFromPdf(file: File) {
+    setExtracting(true);
+    try {
+      const fd = new FormData();
+      fd.append("pdf", file);
+      const res = await fetch("/api/guides/extract-steps", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      if (data.steps) setSteps(data.steps);
+      else setError("Could not extract steps from PDF.");
+    } catch {
+      setError("Step extraction failed.");
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  function addStep() {
+    setSteps((s) => [...s, { title: "", description: "" }]);
+  }
+  function updateStep(
+    i: number,
+    field: "title" | "description",
+    value: string,
+  ) {
+    setSteps((s) =>
+      s.map((step, idx) => (idx === i ? { ...step, [field]: value } : step)),
+    );
+  }
+  function removeStep(i: number) {
+    setSteps((s) => s.filter((_, idx) => idx !== i));
+  }
 
   useEffect(() => {
     const savedSession = localStorage.getItem("admin_session");
@@ -166,8 +212,8 @@ export default function AdminGuidesPage() {
       setError("Title is required.");
       return;
     }
-    if (!selectedFile) {
-      setError("Please select a video file.");
+    if (!selectedFile && !form.embedUrl.trim()) {
+      setError("Please select a file or provide an embed URL.");
       return;
     }
     setUploading(true);
@@ -179,7 +225,12 @@ export default function AdminGuidesPage() {
       fd.append("description", form.description);
       fd.append("category", form.category);
       fd.append("duration", form.duration);
-      fd.append("video", selectedFile);
+      fd.append("steps", JSON.stringify(steps));
+      fd.append("embedUrl", form.embedUrl);
+      if (selectedFile) {
+        const isPdf = selectedFile.name.toLowerCase().endsWith(".pdf");
+        fd.append(isPdf ? "pdf" : "video", selectedFile);
+      }
 
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -205,7 +256,10 @@ export default function AdminGuidesPage() {
         description: "",
         category: "General",
         duration: "",
+        embedUrl: "",
       });
+      setSteps([]);
+      setForm((f) => ({ ...f, embedUrl: "" }));
       setSelectedFile(null);
       if (fileRef.current) fileRef.current.value = "";
       setSuccessMsg("Guide uploaded successfully.");
@@ -219,10 +273,27 @@ export default function AdminGuidesPage() {
     }
   }
 
-  async function handleDelete(slug: string, title: string) {
-    if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
-    setDeletingSlug(slug);
-    await fetch(`/api/guides/${slug}`, { method: "DELETE" });
+  function handleDelete(slug: string, title: string) {
+    setDeleteTarget({ slug, title });
+    setDeleteCode("");
+    setDeleteError("");
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeletingSlug(deleteTarget.slug);
+    setDeleteError("");
+    const res = await fetch(
+      `/api/guides/${deleteTarget.slug}?code=${encodeURIComponent(deleteCode)}`,
+      { method: "DELETE" },
+    );
+    if (res.status === 403) {
+      setDeleteError("Incorrect code. Try again.");
+      setDeletingSlug(null);
+      return;
+    }
+    setDeleteTarget(null);
+    setDeleteCode("");
     setDeletingSlug(null);
     fetchGuides();
   }
@@ -338,20 +409,45 @@ export default function AdminGuidesPage() {
                           <Upload className="w-5 h-5 text-gray-400" />
                         </div>
                         <p className="text-sm font-medium text-gray-500">
-                          Click to select a video file
+                          Click to select a file
                         </p>
-                        <p className="text-xs text-gray-400">MP4, MOV, WebM</p>
+                        <p className="text-xs text-gray-400">
+                          MP4, MOV, WebM or PDF
+                        </p>
                       </>
                     )}
                   </button>
+                  {selectedFile?.name.toLowerCase().endsWith(".pdf") &&
+                    steps.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => extractStepsFromPdf(selectedFile)}
+                        disabled={extracting}
+                        className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-gradient-to-r from-[#A0103D] to-[#102a56] text-white text-xs font-semibold hover:opacity-90 transition disabled:opacity-60"
+                      >
+                        {extracting ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />{" "}
+                            Extracting steps with AI…
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-3.5 h-3.5" /> Auto-Extract Steps
+                            with AI
+                          </>
+                        )}
+                      </button>
+                    )}
                   <input
                     ref={fileRef}
                     type="file"
-                    accept="video/*"
+                    accept="video/*,.pdf"
                     className="hidden"
-                    onChange={(e) =>
-                      setSelectedFile(e.target.files?.[0] ?? null)
-                    }
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      setSelectedFile(f);
+                      setSteps([]);
+                    }}
                   />
                 </div>
 
@@ -434,6 +530,92 @@ export default function AdminGuidesPage() {
                       setForm((f) => ({ ...f, duration: e.target.value }))
                     }
                   />
+                </div>
+
+                {/* Embed URL */}
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                    Embed URL{" "}
+                    <span className="text-gray-300 normal-case font-normal">
+                      (optional — paste MagicHow/Loom/YouTube embed src)
+                    </span>
+                  </label>
+                  <input
+                    className={inp}
+                    placeholder="https://www.magichow.co/embed/..."
+                    value={form.embedUrl}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, embedUrl: e.target.value }))
+                    }
+                  />
+                  {form.embedUrl && (
+                    <p className="text-[10px] text-emerald-600 mt-1">
+                      ✓ Embed URL set — file upload is optional when using an
+                      embed
+                    </p>
+                  )}
+                </div>
+
+                {/* Steps editor */}
+                <div className="md:col-span-2">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Steps{" "}
+                      <span className="text-gray-300 normal-case font-normal">
+                        (optional)
+                      </span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={addStep}
+                      className="flex items-center gap-1 text-xs font-semibold text-[#A0103D] hover:opacity-80 transition"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5" /> Add Step
+                    </button>
+                  </div>
+                  {steps.length === 0 && (
+                    <p className="text-xs text-gray-300 italic">
+                      No steps yet — click Add Step to guide staff through this
+                      process.
+                    </p>
+                  )}
+                  <div className="space-y-3">
+                    {steps.map((step, i) => (
+                      <div
+                        key={i}
+                        className="flex gap-3 items-start bg-gray-50 rounded-xl p-3 border border-gray-100"
+                      >
+                        <div className="w-6 h-6 rounded-full bg-[#102a56] text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-1">
+                          {i + 1}
+                        </div>
+                        <div className="flex-1 space-y-2">
+                          <input
+                            className={inp}
+                            placeholder={`Step ${i + 1} title (e.g. Click on Payment Links)`}
+                            value={step.title}
+                            onChange={(e) =>
+                              updateStep(i, "title", e.target.value)
+                            }
+                          />
+                          <input
+                            className={inp}
+                            placeholder="Description (optional)"
+                            value={step.description}
+                            onChange={(e) =>
+                              updateStep(i, "description", e.target.value)
+                            }
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeStep(i)}
+                          className="text-gray-300 hover:text-rose-500 transition mt-1"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -665,6 +847,71 @@ export default function AdminGuidesPage() {
           )}
         </div>
       </div>
+      {/* Delete confirmation modal */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 w-full max-w-sm mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-800">
+                  Delete Guide
+                </p>
+                <p className="text-xs text-gray-400 line-clamp-1">
+                  &ldquo;{deleteTarget.title}&ldquo;
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Enter the admin delete code to confirm. This cannot be undone.
+            </p>
+            <input
+              type="password"
+              className="w-full px-3.5 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition placeholder-gray-300 mb-2"
+              placeholder="Enter delete code"
+              value={deleteCode}
+              onChange={(e) => {
+                setDeleteCode(e.target.value);
+                setDeleteError("");
+              }}
+              onKeyDown={(e) => e.key === "Enter" && confirmDelete()}
+              autoFocus
+            />
+            {deleteError && (
+              <p className="text-xs text-rose-600 flex items-center gap-1 mb-2">
+                <AlertCircle className="w-3.5 h-3.5" /> {deleteError}
+              </p>
+            )}
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => {
+                  setDeleteTarget(null);
+                  setDeleteCode("");
+                  setDeleteError("");
+                }}
+                disabled={!!deletingSlug}
+                className="flex-1 text-xs px-4 py-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={!deleteCode || !!deletingSlug}
+                className="flex-1 flex items-center justify-center gap-1.5 text-xs px-4 py-2 rounded-lg bg-rose-600 text-white font-semibold hover:bg-rose-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deletingSlug ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminShell>
   );
 }
