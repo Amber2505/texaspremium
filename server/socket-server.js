@@ -321,7 +321,7 @@ async function disableTodaysPaymentLinks() {
         $set: {
           disabled: true,
           disabledAt: new Date().toISOString(),
-          disabledReason: 'Auto-disabled at 10 PM CST',
+          disabledReason: 'Auto-disabled at 7 PM CST',
           autoDisabled: true
         }
       }
@@ -356,10 +356,10 @@ function scheduleDailyDisable() {
     const minute = cstTime.getMinutes();
     const todayDate = cstTime.toDateString(); // e.g., "Mon Feb 02 2026"
 
-    // ✅ IMPROVED: Run between 10:00 PM and 10:05 PM (5-minute window)
-    // ✅ IMPROVED: Only run once per day using lastDisableDate flag
-    if (hour === 22 && minute >= 0 && minute < 5 && lastDisableDate !== todayDate) {
-      console.log('🕙 10 PM CST window detected - Running payment link auto-disable...');
+    // Run between 7:00 PM and 7:05 PM (5-minute window)
+    // Only run once per day using lastDisableDate flag
+    if (hour === 19 && minute >= 0 && minute < 5 && lastDisableDate !== todayDate) {
+      console.log('🕖 7 PM CST window detected - Running payment link auto-disable...');
       console.log(`   Current CST time: ${cstTime.toLocaleTimeString()}`);
 
       const result = await disableTodaysPaymentLinks();
@@ -381,7 +381,7 @@ function scheduleDailyDisable() {
     }
   }, 30000); // ✅ Check every 30 seconds instead of 60
 
-  console.log('⏰ Payment link auto-disable scheduled for 10:00-10:05 PM CST daily');
+  console.log('⏰ Payment link auto-disable scheduled for 7:00-7:05 PM CST daily');
   console.log('   (Checking every 30 seconds for accuracy)');
 }
 

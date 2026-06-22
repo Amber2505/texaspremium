@@ -13,6 +13,8 @@ import {
   Link2,
   FileText,
   ChevronRight,
+  BarChart2,
+  BookOpen,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
@@ -224,6 +226,22 @@ export default function AdminLoginPage() {
       icon: <Building2 className="w-5 h-5" />,
       accent: "#4338ca",
       iconBg: "bg-indigo-100 text-indigo-700",
+    },
+    {
+      label: "Accounting",
+      description: "Revenue, reconciliation & Square payouts",
+      path: "/admin/accounting",
+      icon: <BarChart2 className="w-5 h-5" />,
+      accent: "#059669",
+      iconBg: "bg-emerald-100 text-emerald-700",
+    },
+    {
+      label: "Guides",
+      description: "Staff training videos & documents",
+      path: "/admin/guides",
+      icon: <BookOpen className="w-5 h-5" />,
+      accent: "#b45309",
+      iconBg: "bg-amber-100 text-amber-700",
     },
   ];
 

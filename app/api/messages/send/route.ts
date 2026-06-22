@@ -1,3 +1,4 @@
+// app/api/messages/send/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from "@/lib/mongodb";
 import { SDK } from "@ringcentral/sdk";
