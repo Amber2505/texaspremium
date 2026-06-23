@@ -41,9 +41,11 @@ export async function POST(request: NextRequest) {
     const db = client.db("db");
     const collection = db.collection("payment_link_generated");
 
-    const result = await collection.updateOne(query, {
-      $set: { disabled: disabled, updatedAt: new Date() },
-    });
+    const updateOp = disabled
+      ? { $set: { disabled: true, updatedAt: new Date() } }
+      : { $set: { disabled: false, reEnabledAt: Date.now(), updatedAt: new Date() }, $unset: { sentReminders: "" } };
+
+    const result = await collection.updateOne(query, updateOp);
 
     if (result.matchedCount === 0) {
       return NextResponse.json({ error: "Link not found" }, { status: 404 });

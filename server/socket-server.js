@@ -475,11 +475,15 @@ async function processPaymentReminders() {
     for (const link of byPhone.values()) {
       const phone = link.customerPhone;
 
-      const createdAt = link.createdAtTimestamp
-        ? new Date(link.createdAtTimestamp)
-        : new Date(link.createdAt);
+      // If link was re-enabled, base the schedule off re-enable time, not creation time
+      const startTime = link.reEnabledAt
+        ? new Date(link.reEnabledAt)
+        : link.createdAtTimestamp
+          ? new Date(link.createdAtTimestamp)
+          : new Date(link.createdAt);
 
-      const createdDecimal = getCSTTimeDecimal(createdAt); // e.g. 10.0 = 10am
+      const createdAt = startTime;
+      const createdDecimal = getCSTTimeDecimal(startTime);// e.g. 10.0 = 10am
       const sentReminders = link.sentReminders || [];
       const generatedLink = link.generatedLink;
 
