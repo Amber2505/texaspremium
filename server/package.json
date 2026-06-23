@@ -6,10 +6,12 @@
     "start": "node socket-server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.7.2",
-    "mongodb": "^6.3.0",
     "@azure/storage-blob": "^12.17.0",
-    "@ringcentral/sdk": "^4.7.2"
+    "@ringcentral/sdk": "^4.7.2",
+    "express": "^4.18.2",
+    "imapflow": "^1.4.2",
+    "mailparser": "^3.9.11",
+    "mongodb": "^6.3.0",
+    "socket.io": "^4.7.2"
   }
 }
