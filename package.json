@@ -59,7 +59,9 @@
     "socket.io-client": "^4.8.1",
     "square": "^44.0.0",
     "tailwind-merge": "^3.3.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "imapflow": "^1.0.98",
+    "mailparser": "^3.7.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
