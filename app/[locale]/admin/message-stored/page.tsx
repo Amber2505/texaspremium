@@ -54,6 +54,69 @@ interface ScheduledConvSummary {
   messages: ScheduledMessage[];
 }
 
+function InlineTranslate({
+  text,
+  direction = "to-en",
+  label = "Translate",
+}: {
+  text: string;
+  direction?: string;
+  label?: string;
+}) {
+  const [translated, setTranslated] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [shown, setShown] = useState(false);
+
+  const translate = async () => {
+    if (shown) {
+      setShown(false);
+      return;
+    }
+    if (translated) {
+      setShown(true);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/messages/translate-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, direction }),
+      });
+      const data = await res.json();
+      if (data.translated) {
+        setTranslated(data.translated);
+        setShown(true);
+      }
+    } catch {
+      /* silent */
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-1 mb-1">
+      <button
+        onClick={translate}
+        className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-blue-500 transition-colors"
+      >
+        {loading ? (
+          <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <span>🌐</span>
+        )}
+        {loading ? "Translating…" : shown ? "Hide" : label}
+      </button>
+      {shown && translated && (
+        <div className="mt-1 px-2 py-1.5 bg-blue-50 border border-blue-100 rounded-lg text-xs text-gray-700 italic">
+          {translated}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MessageStoredPage() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -146,6 +209,18 @@ export default function MessageStoredPage() {
   const [showInlineSearch, setShowInlineSearch] = useState(false);
   const [inlineSearchInput, setInlineSearchInput] = useState("");
   const inlineSearchRef = useRef<HTMLInputElement>(null);
+
+  // Translation state
+  const [conversationLanguage, setConversationLanguage] = useState<"en" | "es">(
+    "en",
+  );
+  const [showTranslatePreview, setShowTranslatePreview] = useState(false);
+  const [translatedText, setTranslatedText] = useState("");
+  const [translating, setTranslating] = useState(false);
+  const [togglingLanguage, setTogglingLanguage] = useState(false);
+  const [pendingTranslation, setPendingTranslation] = useState("");
+  const [pendingTranslationInput, setPendingTranslationInput] = useState("");
+  const translateDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const audioUnlockedRef = useRef(false);
 
@@ -765,6 +840,7 @@ export default function MessageStoredPage() {
     setHasMoreMessages(true);
     setActiveSearchText("");
     setMatchingMessageIndices([]);
+    setConversationLanguage("en");
 
     // Only scroll to bottom if NOT searching
     setShouldScrollToBottom(!searchText);
@@ -812,6 +888,7 @@ export default function MessageStoredPage() {
       setConversation(data.messages || []);
       setHasMoreMessages(data.hasMore || false);
       setMessagesSkip(data.messages?.length || 0);
+      setConversationLanguage(data.language || "en");
 
       if (searchText && searchText.trim()) {
         const normalize = (s: string) =>
@@ -1140,10 +1217,12 @@ export default function MessageStoredPage() {
     }
   };
 
-  const sendMessage = async () => {
+  const sendMessage = async (overrideText?: string) => {
+    const effectiveInput =
+      overrideText !== undefined ? overrideText : messageInput;
     if (
       !selectedConversationId ||
-      (!messageInput.trim() && selectedFiles.length === 0) ||
+      (!effectiveInput.trim() && selectedFiles.length === 0) ||
       sending ||
       isSendingRef.current
     )
@@ -1151,7 +1230,7 @@ export default function MessageStoredPage() {
 
     isSendingRef.current = true;
 
-    const text = messageInput.trim();
+    const text = effectiveInput.trim();
     setMessageInput("");
     if (selectedConversationId) {
       localStorage.removeItem(`draft_${selectedConversationId}`);
@@ -1197,6 +1276,10 @@ export default function MessageStoredPage() {
 
       setConversation((prev) => [...prev, optimisticMsg]);
       setShouldScrollToBottom(true);
+
+      // Release UI immediately — optimistic message is already showing
+      setSending(false);
+      isSendingRef.current = false;
 
       setConversations((prev) =>
         prev.map((c) => {
@@ -1250,9 +1333,6 @@ export default function MessageStoredPage() {
       setConversation((prev) =>
         prev.filter((m) => !m.id?.startsWith("optimistic-")),
       );
-    } finally {
-      setSending(false);
-      isSendingRef.current = false;
     }
   };
 
@@ -1425,6 +1505,74 @@ export default function MessageStoredPage() {
     } finally {
       setSavingScheduledEdit(false);
     }
+  };
+
+  const toggleLanguage = async () => {
+    if (!selectedConversationId) return;
+    const newLang = conversationLanguage === "en" ? "es" : "en";
+    setTogglingLanguage(true);
+    try {
+      await fetch("/api/messages/set-language", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversationId: selectedConversationId,
+          language: newLang,
+        }),
+      });
+      setConversationLanguage(newLang);
+    } catch {
+      alert("Failed to update language setting");
+    } finally {
+      setTogglingLanguage(false);
+    }
+  };
+
+  const handleSendWithTranslation = async () => {
+    if (!messageInput.trim() && selectedFiles.length === 0) return;
+    if (conversationLanguage === "es" && messageInput.trim()) {
+      // If pre-translation matches current input, use it instantly — no wait
+      if (
+        pendingTranslation &&
+        pendingTranslationInput === messageInput.trim()
+      ) {
+        setTranslatedText(pendingTranslation);
+        setShowTranslatePreview(true);
+        return;
+      }
+      // Otherwise translate now (fallback for fast typers)
+      setTranslating(true);
+      try {
+        const res = await fetch("/api/messages/translate-preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: messageInput.trim(),
+            direction: "to-es",
+          }),
+        });
+        const data = await res.json();
+        if (!data.translated) throw new Error("Translation failed");
+        setTranslatedText(data.translated);
+        setShowTranslatePreview(true);
+      } catch {
+        alert("Translation failed — please try again");
+      } finally {
+        setTranslating(false);
+      }
+    } else {
+      sendMessage();
+    }
+  };
+
+  const confirmAndSendTranslated = async () => {
+    const textToSend = translatedText;
+    setShowTranslatePreview(false);
+    setTranslatedText("");
+    setMessageInput("");
+    setPendingTranslation("");
+    setPendingTranslationInput("");
+    await sendMessage(textToSend);
   };
 
   // Render text with clickable links, emails, and phone numbers
@@ -2377,6 +2525,31 @@ export default function MessageStoredPage() {
                       </div>
                     </div>
 
+                    {/* Language toggle */}
+                    {!selectMode && (
+                      <button
+                        onClick={toggleLanguage}
+                        disabled={togglingLanguage}
+                        title={
+                          conversationLanguage === "es"
+                            ? "Spanish mode ON — click to disable"
+                            : "Click to enable Spanish translation"
+                        }
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all border ${
+                          conversationLanguage === "es"
+                            ? "bg-orange-500 text-white border-orange-500 shadow-sm"
+                            : "bg-gray-100 text-gray-500 border-gray-200 hover:border-orange-300 hover:text-orange-500"
+                        } ${togglingLanguage ? "opacity-50 cursor-not-allowed" : ""}`}
+                      >
+                        {togglingLanguage ? (
+                          <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <span>🌐</span>
+                        )}
+                        {conversationLanguage === "es" ? "ES" : "EN"}
+                      </button>
+                    )}
+
                     {selectMode ? (
                       <div className="flex items-center gap-2 sm:gap-4">
                         <span className="text-xs sm:text-sm text-gray-600">
@@ -2752,6 +2925,27 @@ export default function MessageStoredPage() {
                                 </div>
                               )}
 
+                              {/* Inline translation for inbound messages */}
+                              {!isOutbound &&
+                                msg.subject &&
+                                conversationLanguage === "es" && (
+                                  <InlineTranslate
+                                    text={msg.subject}
+                                    direction="to-en"
+                                    label="Translate"
+                                  />
+                                )}
+                              {/* Show English original for outbound translated messages */}
+                              {isOutbound &&
+                                msg.subject &&
+                                conversationLanguage === "es" && (
+                                  <InlineTranslate
+                                    text={msg.subject}
+                                    direction="to-en"
+                                    label="View in English"
+                                  />
+                                )}
+
                               {/* Show sender in group messages */}
                               {!isOutbound &&
                                 selectedParticipants.length > 1 &&
@@ -2781,7 +2975,9 @@ export default function MessageStoredPage() {
                                 </div>
                               )}
                               {msg.subject && (
-                                <p className="break-words whitespace-pre-wrap mb-2 text-sm sm:text-base">
+                                <p
+                                  className={`break-words whitespace-pre-wrap text-sm sm:text-base ${msg.attachments?.length ? "mb-2" : ""}`}
+                                >
                                   {isMatchingMessage && activeSearchText
                                     ? (() => {
                                         const text = msg.subject;
@@ -3175,6 +3371,17 @@ export default function MessageStoredPage() {
                 {/* Input */}
                 {!selectMode && (
                   <div className="bg-white border-t border-gray-200 p-2 sm:p-4 safe-area-bottom">
+                    {/* Spanish mode indicator */}
+                    {conversationLanguage === "es" && (
+                      <div className="mb-2 flex items-center gap-2 px-3 py-2 bg-orange-50 border border-orange-200 rounded-lg">
+                        <span className="text-sm">🌐</span>
+                        <p className="text-xs text-orange-700 font-medium">
+                          Spanish mode — messages will be translated before
+                          sending
+                        </p>
+                      </div>
+                    )}
+
                     {selectedFiles.length > 0 && (
                       <div className="mb-2 sm:mb-3 flex flex-wrap gap-2">
                         {selectedFiles.map((file, i) => {
@@ -3582,18 +3789,54 @@ export default function MessageStoredPage() {
                         ref={messageInputRef}
                         value={messageInput}
                         onChange={(e) => {
-                          setMessageInput(e.target.value);
+                          const val = e.target.value;
+                          setMessageInput(val);
                           if (selectedConversationId) {
-                            if (e.target.value.trim()) {
+                            if (val.trim()) {
                               localStorage.setItem(
                                 `draft_${selectedConversationId}`,
-                                e.target.value,
+                                val,
                               );
                             } else {
                               localStorage.removeItem(
                                 `draft_${selectedConversationId}`,
                               );
                             }
+                          }
+                          // Pre-translate while typing if Spanish mode is on
+                          if (conversationLanguage === "es" && val.trim()) {
+                            if (translateDebounceRef.current)
+                              clearTimeout(translateDebounceRef.current);
+                            translateDebounceRef.current = setTimeout(
+                              async () => {
+                                try {
+                                  const res = await fetch(
+                                    "/api/messages/translate-preview",
+                                    {
+                                      method: "POST",
+                                      headers: {
+                                        "Content-Type": "application/json",
+                                      },
+                                      body: JSON.stringify({
+                                        text: val.trim(),
+                                        direction: "to-es",
+                                      }),
+                                    },
+                                  );
+                                  const data = await res.json();
+                                  if (data.translated) {
+                                    setPendingTranslation(data.translated);
+                                    setPendingTranslationInput(val.trim());
+                                  }
+                                } catch {
+                                  /* silent — will fall back to on-send */
+                                }
+                              },
+                              600,
+                            );
+                          } else {
+                            setPendingTranslation("");
+                            setPendingTranslationInput("");
                           }
                         }}
                         onKeyDown={(e) => {
@@ -3651,20 +3894,24 @@ export default function MessageStoredPage() {
                       />
 
                       <button
-                        onClick={sendMessage}
+                        onClick={handleSendWithTranslation}
                         className={`p-2 sm:px-6 sm:py-3 rounded-xl font-medium transition-all flex items-center justify-center flex-shrink-0 ${
                           (messageInput.trim() || selectedFiles.length > 0) &&
-                          !sending
-                            ? "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
+                          !sending &&
+                          !translating
+                            ? conversationLanguage === "es"
+                              ? "bg-orange-500 text-white hover:bg-orange-600 shadow-md"
+                              : "bg-blue-600 text-white hover:bg-blue-700 shadow-md"
                             : "bg-gray-300 text-gray-500 cursor-not-allowed"
                         }`}
                         disabled={
                           (!messageInput.trim() &&
                             selectedFiles.length === 0) ||
-                          sending
+                          sending ||
+                          translating
                         }
                       >
-                        {sending ? (
+                        {sending || translating ? (
                           <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         ) : (
                           <>
@@ -3681,7 +3928,11 @@ export default function MessageStoredPage() {
                                 d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
                               />
                             </svg>
-                            <span className="hidden sm:inline">Send</span>
+                            <span className="hidden sm:inline">
+                              {conversationLanguage === "es"
+                                ? "🌐 Send"
+                                : "Send"}
+                            </span>
                           </>
                         )}
                       </button>
@@ -3770,6 +4021,75 @@ export default function MessageStoredPage() {
                     </>
                   )}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Translation Preview Modal */}
+        {showTranslatePreview && (
+          <div className="fixed inset-0 backdrop-blur-sm bg-black/40 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
+              <div className="bg-orange-500 px-6 py-4">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  🌐 Translation Preview
+                </h3>
+                <p className="text-orange-100 text-xs mt-0.5">
+                  Review before sending
+                </p>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Your message (English)
+                  </label>
+                  <div className="mt-1.5 p-3 bg-gray-50 rounded-xl border border-gray-200 text-sm text-gray-700 whitespace-pre-wrap">
+                    {messageInput}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 h-px bg-orange-200" />
+                  <span className="text-orange-500 text-sm font-semibold">
+                    → translated to Spanish
+                  </span>
+                  <div className="flex-1 h-px bg-orange-200" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    Will be sent as (Spanish)
+                  </label>
+                  <textarea
+                    value={translatedText}
+                    onChange={(e) => setTranslatedText(e.target.value)}
+                    rows={4}
+                    className="mt-1.5 w-full p-3 bg-orange-50 rounded-xl border border-orange-200 text-sm text-gray-800 resize-none focus:ring-2 focus:ring-orange-400 focus:border-orange-400 outline-none"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    You can edit the translation above before sending.
+                  </p>
+                </div>
+                <div className="flex gap-3 pt-1">
+                  <button
+                    onClick={() => {
+                      setShowTranslatePreview(false);
+                      setTranslatedText("");
+                    }}
+                    className="flex-1 py-3 border-2 border-gray-200 rounded-xl text-gray-700 hover:bg-gray-50 font-semibold text-sm"
+                  >
+                    Back to Edit
+                  </button>
+                  <button
+                    onClick={confirmAndSendTranslated}
+                    disabled={!translatedText.trim() || sending}
+                    className="flex-1 bg-orange-500 text-white py-3 rounded-xl hover:bg-orange-600 disabled:opacity-50 font-semibold text-sm flex items-center justify-center gap-2"
+                  >
+                    {sending ? (
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <>🌐 Send in Spanish</>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
