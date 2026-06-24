@@ -2505,42 +2505,7 @@ export default function AccountingPage() {
   const [plaidTransactions, setPlaidTransactions] = useState<any[]>([]);
   const [squareLoading, setSquareLoading] = useState(false);
   const [squareError, setSquareError] = useState("");
-  const [csvCatchingUp, setCsvCatchingUp] = useState(false);
-  const [csvCatchUpResult, setCsvCatchUpResult] = useState("");
 
-  const runCsvCatchUp = async () => {
-    setCsvCatchingUp(true);
-    setCsvCatchUpResult("");
-    try {
-      const wsUrl = process.env
-        .NEXT_PUBLIC_RAILWAY_WS_URL!.replace("wss://", "https://")
-        .replace("ws://", "http://");
-      const res = await fetch(`${wsUrl}/catch-up-csv`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ daysBack: 7 }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        const imported = data.results.filter(
-          (r: any) => r.status === "imported",
-        ).length;
-        const skipped = data.results.filter(
-          (r: any) => r.status === "skipped",
-        ).length;
-        setCsvCatchUpResult(
-          `✓ ${imported} imported, ${skipped} already up to date`,
-        );
-        if (imported > 0) loadFromDB();
-      } else {
-        setCsvCatchUpResult(`❌ ${data.error}`);
-      }
-    } catch {
-      setCsvCatchUpResult("❌ Failed to connect to server");
-    } finally {
-      setCsvCatchingUp(false);
-    }
-  };
   const [globalRecon, setGlobalRecon] = useState<GlobalReconciliation | null>(
     null,
   );
@@ -2903,13 +2868,6 @@ export default function AccountingPage() {
                 {squareError && (
                   <p className="text-sm mt-0.5 text-red-500">{squareError}</p>
                 )}
-                {csvCatchUpResult && (
-                  <p
-                    className={`text-sm mt-0.5 ${csvCatchUpResult.startsWith("✓") ? "text-green-600" : "text-red-500"}`}
-                  >
-                    {csvCatchUpResult}
-                  </p>
-                )}
               </div>
               <div className="flex gap-2 items-center">
                 {/* Month navigator */}
@@ -2955,23 +2913,7 @@ export default function AccountingPage() {
                     )}
                   </button>
                 )}
-                <button
-                  onClick={runCsvCatchUp}
-                  disabled={csvCatchingUp}
-                  title="Scan last 7 days of emails and import any missing CSVs"
-                  className={`px-3 py-2 rounded-lg transition flex items-center gap-1.5 text-sm font-medium ${csvCatchingUp ? "bg-amber-400 text-white cursor-not-allowed" : "bg-amber-600 text-white hover:bg-amber-700"}`}
-                >
-                  {csvCatchingUp ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{" "}
-                      Scanning…
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-4 h-4" /> Catch-Up
-                    </>
-                  )}
-                </button>
+
                 <label
                   className={`px-3 py-2 rounded-lg transition flex items-center gap-1.5 cursor-pointer text-sm font-medium ${importing ? "bg-blue-400 text-white cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
                 >
