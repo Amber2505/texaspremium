@@ -221,6 +221,8 @@ export default function MessageStoredPage() {
   const [pendingTranslation, setPendingTranslation] = useState("");
   const [pendingTranslationInput, setPendingTranslationInput] = useState("");
   const translateDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [scheduleTranslatedText, setScheduleTranslatedText] = useState("");
+  const [translatingForSchedule, setTranslatingForSchedule] = useState(false);
 
   const audioUnlockedRef = useRef(false);
 
@@ -1340,6 +1342,13 @@ export default function MessageStoredPage() {
     if (!selectedConversationId || !messageInput.trim() || !scheduledDateTime)
       return;
 
+    const textToSchedule =
+      conversationLanguage === "es" && scheduleTranslatedText
+        ? scheduleTranslatedText
+        : messageInput.trim();
+
+    const footer = conversationLanguage === "es" ? FOOTER_ES : FOOTER_EN;
+
     setScheduling(true);
     try {
       const response = await fetch("/api/messages/schedule", {
@@ -1348,7 +1357,7 @@ export default function MessageStoredPage() {
         body: JSON.stringify({
           conversationId: selectedConversationId,
           phoneNumbers: selectedParticipants,
-          message: messageInput.trim() + getFooter(messageInput.trim()),
+          message: textToSchedule + footer,
           scheduledAt: new Date(scheduledDateTime).toISOString(),
         }),
       });
@@ -3727,24 +3736,69 @@ export default function MessageStoredPage() {
                         </svg>
                       </button>
                       <button
-                        onClick={() => setShowScheduleModal(true)}
-                        disabled={!messageInput.trim()}
+                        onClick={async () => {
+                          if (!messageInput.trim()) return;
+                          if (conversationLanguage === "es") {
+                            // Use pre-translation if available, otherwise fetch
+                            if (
+                              pendingTranslation &&
+                              pendingTranslationInput === messageInput.trim()
+                            ) {
+                              setScheduleTranslatedText(pendingTranslation);
+                            } else {
+                              setTranslatingForSchedule(true);
+                              try {
+                                const res = await fetch(
+                                  "/api/messages/translate-preview",
+                                  {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                    },
+                                    body: JSON.stringify({
+                                      text: messageInput.trim(),
+                                      direction: "to-es",
+                                    }),
+                                  },
+                                );
+                                const data = await res.json();
+                                setScheduleTranslatedText(
+                                  data.translated || messageInput.trim(),
+                                );
+                              } catch {
+                                setScheduleTranslatedText(messageInput.trim());
+                              } finally {
+                                setTranslatingForSchedule(false);
+                              }
+                            }
+                          } else {
+                            setScheduleTranslatedText("");
+                          }
+                          setShowScheduleModal(true);
+                        }}
+                        disabled={
+                          !messageInput.trim() || translatingForSchedule
+                        }
                         className="p-2 sm:px-3 sm:py-3 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-xl flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                         title="Schedule message"
                       >
-                        <svg
-                          className="w-6 h-6"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                          />
-                        </svg>
+                        {translatingForSchedule ? (
+                          <div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <svg
+                            className="w-6 h-6"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+                            />
+                          </svg>
+                        )}
                       </button>
                       <input
                         type="file"
@@ -3957,14 +4011,40 @@ export default function MessageStoredPage() {
                   .join(", ")}
               </p>
 
-              <div className="bg-gray-50 rounded-lg p-3 mb-4 border border-gray-200 max-h-32 overflow-y-auto">
-                <p className="text-sm font-medium text-gray-700 mb-1">
-                  Message preview:
-                </p>
-                <p className="text-sm text-gray-600 break-words whitespace-pre-wrap">
-                  {messageInput + getFooter(messageInput)}
-                </p>
-              </div>
+              {conversationLanguage === "es" && scheduleTranslatedText ? (
+                <div className="space-y-2 mb-4">
+                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 max-h-28 overflow-y-auto">
+                    <p className="text-xs font-semibold text-gray-400 mb-1">
+                      Your message (English)
+                    </p>
+                    <p className="text-sm text-gray-500 break-words whitespace-pre-wrap">
+                      {messageInput}
+                    </p>
+                  </div>
+                  <div className="bg-orange-50 rounded-lg p-3 border border-orange-200 max-h-28 overflow-y-auto">
+                    <p className="text-xs font-semibold text-orange-500 mb-1">
+                      🌐 Will be sent in Spanish
+                    </p>
+                    <textarea
+                      value={scheduleTranslatedText}
+                      onChange={(e) =>
+                        setScheduleTranslatedText(e.target.value)
+                      }
+                      rows={3}
+                      className="w-full text-sm text-gray-700 bg-transparent outline-none resize-none"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-gray-50 rounded-lg p-3 mb-4 border border-gray-200 max-h-32 overflow-y-auto">
+                  <p className="text-sm font-medium text-gray-700 mb-1">
+                    Message preview:
+                  </p>
+                  <p className="text-sm text-gray-600 break-words whitespace-pre-wrap">
+                    {messageInput + getFooter(messageInput)}
+                  </p>
+                </div>
+              )}
 
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -3990,6 +4070,7 @@ export default function MessageStoredPage() {
                   onClick={() => {
                     setShowScheduleModal(false);
                     setScheduledDateTime("");
+                    setScheduleTranslatedText("");
                   }}
                   className="flex-1 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
                 >

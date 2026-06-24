@@ -1358,10 +1358,10 @@ async function processScheduledMessages() {
       console.log(`📤 Sending scheduled message ${jobId}`);
       console.log(`   To: [${job.phoneNumbers.join(', ')}]`);
       console.log(`   Scheduled: ${scheduledAt.toISOString()}`);
-      const FOOTER = `\n\nNote: This is a scheduled reminder. If this has already been taken care of, please disregard — or reply to update your status.`;
-      const messageText = job.message.includes('Note: This is a scheduled reminder')
-        ? job.message
-        : job.message + FOOTER;
+      const alreadyHasFooter = 
+        job.message.includes('Note: This is a scheduled reminder') ||
+        job.message.includes('Nota: Este es un recordatorio programado');
+      const messageText = alreadyHasFooter ? job.message : job.message + `\n\nNote: This is a scheduled reminder. If this has already been taken care of, please disregard — or reply to update your status.`;
 
 
       try {
