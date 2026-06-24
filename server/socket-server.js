@@ -386,14 +386,6 @@ function scheduleDailyDisable() {
   console.log('   (Checking every 30 seconds for accuracy)');
 }
 
-
-// ================================================
-// AUTO CSV EMAIL IMPORTER
-// Checks for AgencyMatrix CSV email daily at 1:30 AM CST
-// ================================================
-const { ImapFlow } = require('imapflow');
-const { simpleParser } = require('mailparser');
-
 let lastCsvImportDate = null;
 
 async function checkAndImportCsvEmail() {
@@ -1794,10 +1786,6 @@ async function startServer() {
       }
     }, 30000);
     console.log('⏰ Plaid bank sync scheduled for 2:00 AM CST daily');
-
-    scheduleCsvEmailImport();
-    // On startup, catch up any missed CSVs from the last 7 days
-    setTimeout(() => catchUpCsvImports(7), 15000);
 
     // Generate code on startup if none exists for today
     if (securityCodeCollection) {
