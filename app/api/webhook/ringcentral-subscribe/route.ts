@@ -23,9 +23,7 @@ export async function POST() {
       deliveryMode: {
         transportType: "WebHook",
         address: webhookUrl,
-        verificationToken: process.env.RINGCENTRAL_WEBHOOK_TOKEN,
       },
-      expiresIn: 630720000, // ~20 years
     });
 
     const data = await response.json();

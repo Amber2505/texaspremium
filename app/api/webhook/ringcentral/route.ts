@@ -6,8 +6,6 @@ import { azureStorage } from "@/lib/services/azureStorage";
 import { SDK } from "@ringcentral/sdk";
 
 export const dynamic = "force-dynamic";
-
-const VALIDATION_TOKEN = process.env.RINGCENTRAL_WEBHOOK_TOKEN || "";
 const RAILWAY_NOTIFY_URL = process.env.RAILWAY_NOTIFY_URL;
 const MY_PHONE = process.env.RINGCENTRAL_PHONE_NUMBER || "";
 
