@@ -3896,7 +3896,7 @@ export default function MessageStoredPage() {
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
-                            sendMessage();
+                            handleSendWithTranslation();
                           }
                         }}
                         rows={1}

@@ -1,16 +1,14 @@
 // admin/create-quote-proposal/page.tsx
 /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Shield, Loader2 } from "lucide-react";
 import AdminShell from "../_components/AdminShell";
+import { useLoadScript, Autocomplete } from "@react-google-maps/api";
 
-declare global {
-  interface Window {
-    google: any;
-  }
-}
+const MAPS_LIBRARIES: "places"[] = ["places"];
 
 type Vehicle = {
   year: string;
@@ -27,6 +25,11 @@ type Vehicle = {
 };
 
 export default function CreateQuoteProposal() {
+  const { isLoaded } = useLoadScript({
+    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
+    libraries: MAPS_LIBRARIES,
+  });
+
   const [loading, setLoading] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [vinLoading, setVinLoading] = useState<number | null>(null);
@@ -42,7 +45,6 @@ export default function CreateQuoteProposal() {
     setQuoteHistory((prev) => prev.filter((q) => q._id.toString() !== id));
     setDeleting(null);
   }
-  const addressRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<any>(null);
   const turboRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
@@ -135,52 +137,6 @@ export default function CreateQuoteProposal() {
     const iv = setInterval(checkAuth, 60000);
     return () => clearInterval(iv);
   }, []);
-
-  // Google Maps Places autocomplete
-  const initAutocomplete = useCallback(() => {
-    if (!addressRef.current || !window.google?.maps?.places) return;
-    if (autocompleteRef.current) return;
-    autocompleteRef.current = new window.google.maps.places.Autocomplete(
-      addressRef.current,
-      {
-        types: ["address"],
-        componentRestrictions: { country: "us" },
-      },
-    );
-    autocompleteRef.current.addListener("place_changed", () => {
-      const place = autocompleteRef.current.getPlace();
-      if (place?.formatted_address) {
-        setFormData((prev) => ({
-          ...prev,
-          customerAddress: place.formatted_address,
-        }));
-      }
-    });
-  }, []);
-
-  useEffect(() => {
-    if (window.google?.maps?.places) {
-      initAutocomplete();
-      return;
-    }
-    const key = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-    if (!key) return;
-    const existing = document.getElementById("gmaps-script");
-    if (existing) {
-      existing.addEventListener("load", initAutocomplete);
-      return;
-    }
-    const script = document.createElement("script");
-    script.id = "gmaps-script";
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=places`;
-    script.async = true;
-    script.onload = initAutocomplete;
-    document.head.appendChild(script);
-  }, [initAutocomplete]);
-
-  useEffect(() => {
-    if (!isCheckingAuth) initAutocomplete();
-  }, [isCheckingAuth, initAutocomplete]);
 
   useEffect(() => {
     fetch("/api/quote-history")
@@ -597,20 +553,52 @@ export default function CreateQuoteProposal() {
                   <label className="block text-xs font-medium text-gray-600 mb-1">
                     Address *
                   </label>
-                  <input
-                    ref={addressRef}
-                    type="text"
-                    value={formData.customerAddress}
-                    placeholder="Start typing address…"
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        customerAddress: e.target.value,
-                      })
-                    }
-                    className={inp}
-                    autoComplete="off"
-                  />
+                  {isLoaded ? (
+                    <Autocomplete
+                      onLoad={(ac) => (autocompleteRef.current = ac)}
+                      onPlaceChanged={() => {
+                        const place = autocompleteRef.current?.getPlace();
+                        if (place?.formatted_address) {
+                          setFormData((prev) => ({
+                            ...prev,
+                            customerAddress: place.formatted_address,
+                          }));
+                        }
+                      }}
+                      options={{
+                        types: ["address"],
+                        componentRestrictions: { country: "us" },
+                      }}
+                    >
+                      <input
+                        type="text"
+                        defaultValue={formData.customerAddress}
+                        placeholder="Start typing address…"
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            customerAddress: e.target.value,
+                          })
+                        }
+                        className={inp}
+                        autoComplete="off"
+                      />
+                    </Autocomplete>
+                  ) : (
+                    <input
+                      type="text"
+                      value={formData.customerAddress}
+                      placeholder="Loading maps…"
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          customerAddress: e.target.value,
+                        })
+                      }
+                      className={inp}
+                      autoComplete="off"
+                    />
+                  )}
                 </div>
               </div>
             </section>

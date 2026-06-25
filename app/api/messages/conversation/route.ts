@@ -1,3 +1,6 @@
+// api/messages/conversation/route.ts
+/*eslint-disable @typescript-eslint/no-explicit-any*/
+/*eslint-disable @typescript-eslint/no-unused-vars*/
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from "@/lib/mongodb";
 
@@ -219,6 +222,7 @@ export async function GET(request: NextRequest) {
           conversationId: conversation.conversationId || conversation.phoneNumber,
           isGroup,
           participants,
+          language: (conversation as any).language || 'en',
         });
       }
       
@@ -239,17 +243,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         messages,
         total,
-        skip: startIndex,
-        limit: messages.length,
+        skip: 0,
+        limit,
         hasMore: startIndex > 0,
-        hasMoreAfter: endIndex < total,
         searchText,
-        matchingIndices: relativeMatchingIndices,
-        firstMatchIndex: relativeMatchingIndices[0] || 0,
-        absoluteFirstMatch: firstMatchIndex,
+        matchingIndices: [],
+        firstMatchIndex: -1,
         conversationId: conversation.conversationId || conversation.phoneNumber,
         isGroup,
         participants,
+        language: (conversation as any).language || 'en',
       });
     }
     
@@ -266,6 +269,7 @@ export async function GET(request: NextRequest) {
         conversationId: conversation.conversationId || conversation.phoneNumber,
         isGroup,
         participants,
+        language: (conversation as any).language || 'en',
       });
     }
     
@@ -288,6 +292,7 @@ export async function GET(request: NextRequest) {
       conversationId: conversation.conversationId || conversation.phoneNumber,
       isGroup,
       participants,
+      language: (conversation as any).language || 'en',
     });
   } catch (error: unknown) {
     console.error('❌ Get conversation error:', error);

@@ -1,4 +1,5 @@
 // app/api/send/route.ts
+/*eslint-disable @typescript-eslint/no-explicit-any*/
 import { NextRequest, NextResponse } from 'next/server';
 import connectToDatabase from "@/lib/mongodb";
 import { azureStorage } from "@/lib/services/azureStorage";
@@ -324,6 +325,8 @@ export async function POST(request: NextRequest) {
 
     // Add message to conversation
     // Check if sync already saved this message (race condition guard)
+    // Always ensure our Azure URLs are saved — sync may have beaten us
+    // and saved RC's auth-protected URIs instead
     const alreadySaved = await conversationsCollection.findOne({
       conversationId: conversationId,
       'messages.id': result.id.toString(),
@@ -333,12 +336,11 @@ export async function POST(request: NextRequest) {
       await conversationsCollection.updateOne(
         { conversationId: conversationId },
         {
-          $push: { 
+          $push: {
             messages: {
               $each: [messageObj],
               $sort: { creationTime: 1 }
             }
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           } as any,
           $set: {
             lastMessageTime: messageObj.creationTime,
@@ -353,9 +355,19 @@ export async function POST(request: NextRequest) {
         },
         { upsert: true }
       );
+    } else if (uploadedAttachments.length > 0) {
+      // Message was already saved by sync without Azure URLs — patch them in
+      await conversationsCollection.updateOne(
+        { conversationId: conversationId, 'messages.id': result.id.toString() },
+        {
+          $set: {
+            'messages.$.attachments': uploadedAttachments,
+            'messages.$.type': 'MMS',
+          }
+        }
+      );
+      console.log(`🔧 Patched Azure URLs onto existing message ${result.id}`);
     }
-
-    console.log(`💾 Message saved to conversation ${conversationId} (group: ${isGroup})`);
 
     return NextResponse.json({
       success: true,
