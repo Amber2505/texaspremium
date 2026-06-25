@@ -1,4 +1,5 @@
 // app/api/webhook/ringcentral/route.ts
+/*eslint-disable @typescript-eslint/no-unused-vars*/
 import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/mongodb";
 import { azureStorage } from "@/lib/services/azureStorage";
@@ -92,13 +93,14 @@ async function getRingCentralClient() {
 
 export async function GET(request: NextRequest) {
   const token = request.headers.get("validation-token");
-  if (token === VALIDATION_TOKEN) {
-    return new Response(VALIDATION_TOKEN, {
+  if (token) {
+    // Echo back whatever token RingCentral sends
+    return new Response(token, {
       status: 200,
-      headers: { "Validation-Token": VALIDATION_TOKEN },
+      headers: { "Validation-Token": token },
     });
   }
-  return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+  return NextResponse.json({ ok: true }, { status: 200 });
 }
 
 export async function POST(request: NextRequest) {
