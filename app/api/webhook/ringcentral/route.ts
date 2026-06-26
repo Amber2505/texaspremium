@@ -108,6 +108,18 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Handle RingCentral validation — echoes token back immediately
+    const validationToken = request.headers.get("validation-token");
+    if (validationToken) {
+      return new Response("", {
+        status: 200,
+        headers: {
+          "Validation-Token": validationToken,
+          "Content-Type": "application/json",
+        },
+      });
+    }
+
     const body: WebhookEvent[] = await request.json();
 
     for (const event of body) {
