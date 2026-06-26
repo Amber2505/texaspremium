@@ -92,13 +92,18 @@ async function getRingCentralClient() {
 export async function GET(request: NextRequest) {
   const token = request.headers.get("validation-token");
   if (token) {
-    // Echo back whatever token RingCentral sends
-    return new Response(token, {
+    return new Response("", {
       status: 200,
-      headers: { "Validation-Token": token },
+      headers: {
+        "Validation-Token": token,
+        "Content-Type": "application/json",
+      },
     });
   }
-  return NextResponse.json({ ok: true }, { status: 200 });
+  return new Response("", {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 export async function POST(request: NextRequest) {
