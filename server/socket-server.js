@@ -691,16 +691,13 @@ async function startRingCentralWebSocket() {
     const { SDK } = require('@ringcentral/sdk');
     const { Subscriptions } = require('@ringcentral/subscriptions');
 
-    const platform = await getCachedRCPlatform();
-    console.log('✅ RC WebSocket: Using cached platform');
-
-    const { SDK } = require('@ringcentral/sdk');
     const rcsdk = new SDK({
       server: process.env.RINGCENTRAL_SERVER || RINGCENTRAL_SERVER,
       clientId: process.env.RINGCENTRAL_CLIENT_ID,
       clientSecret: process.env.RINGCENTRAL_CLIENT_SECRET,
     });
     await rcsdk.platform().login({ jwt: process.env.RINGCENTRAL_JWT });
+    console.log('✅ RC WebSocket: Logged in');
 
     const subscriptions = new Subscriptions({ sdk: rcsdk });
     const subscription = subscriptions.createSubscription();
