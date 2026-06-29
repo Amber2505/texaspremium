@@ -1,4 +1,9 @@
 // socket-server.js
+
+// Fix for Azure SDK: crypto must be global before any imports
+const { webcrypto } = require('crypto');
+if (!globalThis.crypto) globalThis.crypto = webcrypto;
+
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const { MongoClient } = require('mongodb');
