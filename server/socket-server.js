@@ -415,9 +415,22 @@ function getCSTTimeDecimal(date) {
   return h + m / 60;
 }
 
+let cachedRCPlatform = null;
+let cachedRCPlatformExpiry = 0;
+
+async function getCachedRCPlatform() {
+  // Reuse platform for up to 50 minutes (tokens last 60 min)
+  if (cachedRCPlatform && Date.now() < cachedRCPlatformExpiry) {
+    return cachedRCPlatform;
+  }
+  cachedRCPlatform = await getRingCentralPlatform();
+  cachedRCPlatformExpiry = Date.now() + 50 * 60 * 1000;
+  return cachedRCPlatform;
+}
+
 async function sendPaymentReminderSMS(phone, link, message) {
   try {
-    const platform = await getRingCentralPlatform();
+    const platform = await getCachedRCPlatform();
     const FormData = require('form-data');
     const formData = new FormData();
     const body = {
@@ -678,15 +691,16 @@ async function startRingCentralWebSocket() {
     const { SDK } = require('@ringcentral/sdk');
     const { Subscriptions } = require('@ringcentral/subscriptions');
 
+    const platform = await getCachedRCPlatform();
+    console.log('✅ RC WebSocket: Using cached platform');
+
+    const { SDK } = require('@ringcentral/sdk');
     const rcsdk = new SDK({
       server: process.env.RINGCENTRAL_SERVER || RINGCENTRAL_SERVER,
       clientId: process.env.RINGCENTRAL_CLIENT_ID,
       clientSecret: process.env.RINGCENTRAL_CLIENT_SECRET,
     });
-
-    const platform = rcsdk.platform();
-    await platform.login({ jwt: process.env.RINGCENTRAL_JWT });
-    console.log('✅ RC WebSocket: Logged in');
+    await rcsdk.platform().login({ jwt: process.env.RINGCENTRAL_JWT });
 
     const subscriptions = new Subscriptions({ sdk: rcsdk });
     const subscription = subscriptions.createSubscription();
@@ -728,6 +742,7 @@ let rateLimitedUntil = null;
 let consecutiveErrors = 0;
 let isSyncing = false;
 let pendingSyncQueued = false;
+let lastMissedCallSync = null;
 
 async function getRingCentralPlatform() {
   const SDK = require('@ringcentral/sdk').SDK;
@@ -781,7 +796,7 @@ async function syncRingCentralMessages() {
   }
 
   try {
-    const platform = await getRingCentralPlatform();
+    const platform = await getCachedRCPlatform();
     const authData = await platform.auth().data();
     const authToken = authData.access_token;
 
@@ -1064,7 +1079,12 @@ async function syncRingCentralMessages() {
 
     const duration = Date.now() - startTime;
     lastSyncTime = new Date().toISOString();
-    await syncMissedCalls();
+    // Only sync missed calls every 10 minutes, not every sync cycle
+    const now = Date.now();
+    if (!lastMissedCallSync || now - lastMissedCallSync > 10 * 60 * 1000) {
+      await syncMissedCalls(platform);
+      lastMissedCallSync = now;
+    }
     consecutiveErrors = 0;
     rateLimitedUntil = null;
 
@@ -1130,11 +1150,11 @@ async function syncRingCentralMessages() {
 // ================================================
 // MISSED CALLS SYNC
 // ================================================
-async function syncMissedCalls() {
+async function syncMissedCalls(platform) {
   if (!conversationsCollection) return;
 
   try {
-    const platform = await getRingCentralPlatform();
+    if (!platform) platform = await getRingCentralPlatform();
     const dateFrom = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     const response = await platform.get('/restapi/v1.0/account/~/extension/~/call-log', {
@@ -1373,7 +1393,7 @@ async function processScheduledMessages() {
     // Authenticate ONCE before the loop
     let platform;
     try {
-      platform = await getRingCentralPlatform();
+      platform = await getCachedRCPlatform();
     } catch (authError) {
       console.error('❌ Failed to authenticate with RingCentral:', authError.message);
       isProcessingScheduled = false;
