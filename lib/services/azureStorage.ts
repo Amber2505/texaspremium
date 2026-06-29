@@ -1,5 +1,10 @@
 // lib/services/azureStorage.ts
 
+// Railway/Node.js fix: Azure SDK requires crypto to be globally available
+import { webcrypto } from 'crypto';
+if (typeof globalThis.crypto === 'undefined') {
+  (globalThis as unknown as { crypto: typeof webcrypto }).crypto = webcrypto;
+}
 
 import { BlobServiceClient, ContainerClient } from '@azure/storage-blob';
 
