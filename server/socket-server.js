@@ -670,6 +670,56 @@ function scheduleDailySecurityCode() {
 
 
 // ================================================
+// RINGCENTRAL WEBSOCKET SUBSCRIPTION
+// Instant push instead of 60s polling
+// ================================================
+async function startRingCentralWebSocket() {
+  try {
+    const { SDK } = require('@ringcentral/sdk');
+    const { Subscriptions } = require('@ringcentral/subscriptions');
+
+    const rcsdk = new SDK({
+      server: process.env.RINGCENTRAL_SERVER || RINGCENTRAL_SERVER,
+      clientId: process.env.RINGCENTRAL_CLIENT_ID,
+      clientSecret: process.env.RINGCENTRAL_CLIENT_SECRET,
+    });
+
+    const platform = rcsdk.platform();
+    await platform.login({ jwt: process.env.RINGCENTRAL_JWT });
+    console.log('✅ RC WebSocket: Logged in');
+
+    const subscriptions = new Subscriptions({ sdk: rcsdk });
+    const subscription = subscriptions.createSubscription();
+
+    subscription.on(subscription.events.notification, async (evt) => {
+      console.log('⚡ RC WebSocket: Instant message notification received');
+      await syncRingCentralMessages();
+    });
+
+    subscription.on(subscription.events.renewError, async () => {
+      console.error('❌ RC WebSocket: Subscription renewal failed, reconnecting...');
+      setTimeout(startRingCentralWebSocket, 5000);
+    });
+
+    subscription.on(subscription.events.removeSuccess, () => {
+      console.log('RC WebSocket: Subscription removed, reconnecting...');
+      setTimeout(startRingCentralWebSocket, 5000);
+    });
+
+    await subscription
+      .setEventFilters([
+        '/restapi/v1.0/account/~/extension/~/message-store/instant?type=SMS'
+      ])
+      .register();
+
+    console.log('✅ RC WebSocket: Subscribed to instant SMS notifications');
+  } catch (err) {
+    console.error('❌ RC WebSocket setup failed:', err.message);
+    setTimeout(startRingCentralWebSocket, 30000);
+  }
+}
+
+// ================================================
 // RINGCENTRAL SYNC FUNCTION (WITH FIXED DUPLICATE PREVENTION)
 // ================================================
 let lastSyncTime = null;
@@ -1574,7 +1624,7 @@ async function startServer() {
   console.log(`☁️  Azure Storage: ${azureConfigured ? 'Configured' : 'NOT configured - attachments will not be saved'}`);
 
   if (rcConfigured) {
-    const syncIntervalMs = parseInt(process.env.SYNC_INTERVAL_MS || '60000', 10);
+    const syncIntervalMs = parseInt(process.env.SYNC_INTERVAL_MS || '300000', 10);
 
     console.log(`\n📅 RingCentral Sync Interval: ${syncIntervalMs}ms (${syncIntervalMs / 1000}s)`);
 
@@ -1582,6 +1632,9 @@ async function startServer() {
       console.log('🚀 Running initial RingCentral sync...');
       syncRingCentralMessages();
     }, 5000);
+
+    // ⚡ Start instant push notifications
+    setTimeout(startRingCentralWebSocket, 8000);
 
     setInterval(async () => {
       await syncRingCentralMessages();
