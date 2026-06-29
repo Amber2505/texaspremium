@@ -698,12 +698,12 @@ async function startRingCentralWebSocket() {
 
     subscription.on(subscription.events.renewError, async () => {
       console.error('❌ RC WebSocket: Subscription renewal failed, reconnecting...');
-      setTimeout(startRingCentralWebSocket, 5000);
+      setTimeout(startRingCentralWebSocket, 60000); // wait 60s before retry
     });
 
     subscription.on(subscription.events.removeSuccess, () => {
       console.log('RC WebSocket: Subscription removed, reconnecting...');
-      setTimeout(startRingCentralWebSocket, 5000);
+      setTimeout(startRingCentralWebSocket, 60000); // wait 60s before retry
     });
 
     await subscription
@@ -715,7 +715,7 @@ async function startRingCentralWebSocket() {
     console.log('✅ RC WebSocket: Subscribed to instant SMS notifications');
   } catch (err) {
     console.error('❌ RC WebSocket setup failed:', err.message);
-    setTimeout(startRingCentralWebSocket, 30000);
+    setTimeout(startRingCentralWebSocket, 120000); // wait 2 min before retry
   }
 }
 
@@ -1624,7 +1624,7 @@ async function startServer() {
   console.log(`☁️  Azure Storage: ${azureConfigured ? 'Configured' : 'NOT configured - attachments will not be saved'}`);
 
   if (rcConfigured) {
-    const syncIntervalMs = parseInt(process.env.SYNC_INTERVAL_MS || '300000', 10);
+    const syncIntervalMs = parseInt(process.env.SYNC_INTERVAL_MS || '120000', 10); // 2 min while WS stabilizes
 
     console.log(`\n📅 RingCentral Sync Interval: ${syncIntervalMs}ms (${syncIntervalMs / 1000}s)`);
 
@@ -1633,8 +1633,8 @@ async function startServer() {
       syncRingCentralMessages();
     }, 5000);
 
-    // ⚡ Start instant push notifications
-    setTimeout(startRingCentralWebSocket, 8000);
+    // ⚡ Start instant push notifications — delay to avoid rate limit on startup
+setTimeout(startRingCentralWebSocket, 15000);
 
     setInterval(async () => {
       await syncRingCentralMessages();
