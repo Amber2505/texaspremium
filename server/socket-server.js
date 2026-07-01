@@ -704,6 +704,47 @@ async function startRingCentralWebSocket() {
 
     subscription.on(subscription.events.notification, async (evt) => {
       console.log('⚡ RC WebSocket: Instant message notification received');
+      console.log('⚡ Event data:', JSON.stringify(evt?.body || evt, null, 2));
+
+      // Immediately broadcast to all open conversations so UI refreshes NOW
+      // The full sync will save it to MongoDB
+      try {
+        const body = evt?.body || {};
+        const from = body.from?.phoneNumber;
+        const to = (body.to || []).map(t => t.phoneNumber).filter(Boolean);
+        const subject = body.subject || '';
+        const messageId = body.id?.toString();
+
+        if (from) {
+          // Build conversationId the same way getConversationInfo does
+          const myPhone = normalizePhone(MY_PHONE_NUMBER);
+          const fromNorm = normalizePhone(from);
+          const toNorm = to.map(p => normalizePhone(p)).filter(p => p !== myPhone);
+          
+          const participants = body.direction === 'Inbound'
+            ? [fromNorm, ...toNorm].filter(Boolean).sort()
+            : toNorm.sort();
+          
+          const conversationId = participants.join(',');
+
+          if (conversationId) {
+            console.log(`⚡ Instant broadcast to conversation:${conversationId}`);
+            io.to(`conversation:${conversationId}`).emit('newRingCentralMessage', {
+              conversationId,
+              phoneNumber: body.direction === 'Inbound' ? fromNorm : participants[0],
+              messageId,
+              timestamp: body.creationTime || new Date().toISOString(),
+              subject,
+              direction: body.direction,
+              isGroup: participants.length > 1,
+            });
+          }
+        }
+      } catch (broadcastErr) {
+        console.error('⚡ Broadcast error:', broadcastErr.message);
+      }
+
+      // Then do the full sync to save to MongoDB
       await syncRingCentralMessages();
     });
 
