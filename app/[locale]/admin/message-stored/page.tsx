@@ -223,6 +223,25 @@ export default function MessageStoredPage() {
   const translateDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const [scheduleTranslatedText, setScheduleTranslatedText] = useState("");
   const [translatingForSchedule, setTranslatingForSchedule] = useState(false);
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurringExpirationDate, setRecurringExpirationDate] = useState("");
+
+  const getMonthlyDates = (
+    startDatetime: string,
+    expirationDate: string,
+  ): string[] => {
+    const dates: string[] = [];
+    const start = new Date(startDatetime);
+    const expiry = new Date(expirationDate);
+    expiry.setHours(23, 59, 59, 999); // include expiration day
+    let current = new Date(start);
+    while (current <= expiry) {
+      dates.push(current.toISOString());
+      current = new Date(current);
+      current.setMonth(current.getMonth() + 1);
+    }
+    return dates;
+  };
 
   const audioUnlockedRef = useRef(false);
 
@@ -1341,6 +1360,7 @@ export default function MessageStoredPage() {
   const scheduleMessage = async () => {
     if (!selectedConversationId || !messageInput.trim() || !scheduledDateTime)
       return;
+    if (isRecurring && !recurringExpirationDate) return;
 
     const textToSchedule =
       conversationLanguage === "es" && scheduleTranslatedText
@@ -1348,29 +1368,64 @@ export default function MessageStoredPage() {
         : messageInput.trim();
 
     const footer = conversationLanguage === "es" ? FOOTER_ES : FOOTER_EN;
+    const finalMessage = textToSchedule + footer;
 
     setScheduling(true);
     try {
-      const response = await fetch("/api/messages/schedule", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversationId: selectedConversationId,
-          phoneNumbers: selectedParticipants,
-          message: textToSchedule + footer,
-          scheduledAt: new Date(scheduledDateTime).toISOString(),
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
+      if (isRecurring) {
+        const dates = getMonthlyDates(
+          scheduledDateTime,
+          recurringExpirationDate,
+        );
+        // Fire all schedule requests in parallel
+        const results = await Promise.all(
+          dates.map((date) =>
+            fetch("/api/messages/schedule", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                conversationId: selectedConversationId,
+                phoneNumbers: selectedParticipants,
+                message: finalMessage,
+                scheduledAt: date,
+                recurring: true,
+                expirationDate: recurringExpirationDate,
+              }),
+            }).then((r) => r.json()),
+          ),
+        );
+        const failed = results.filter((r) => !r.success && r.error);
+        if (failed.length > 0)
+          throw new Error(`${failed.length} failed to schedule`);
+      } else {
+        const response = await fetch("/api/messages/schedule", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: selectedConversationId,
+            phoneNumbers: selectedParticipants,
+            message: finalMessage,
+            scheduledAt: new Date(scheduledDateTime).toISOString(),
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error);
+      }
 
       setMessageInput("");
       setShowScheduleModal(false);
       setScheduledDateTime("");
+      setIsRecurring(false);
+      setRecurringExpirationDate("");
 
-      // Refresh scheduled messages list immediately and open the panel
+      // Clear draft so scheduled message doesn't reappear as a draft
       if (selectedConversationId) {
+        localStorage.removeItem(`draft_${selectedConversationId}`);
+        setDrafts((prev) => {
+          const n = { ...prev };
+          delete n[selectedConversationId];
+          return n;
+        });
         await fetchScheduledMessages(selectedConversationId);
       }
       setShowScheduledPanel(false);
@@ -1537,6 +1592,34 @@ export default function MessageStoredPage() {
     }
   };
 
+  // Extracts URLs from text, translates only non-URL parts, reassembles
+  const translatePreservingLinks = async (text: string): Promise<string> => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    const translated: string[] = [];
+
+    for (const part of parts) {
+      if (urlRegex.test(part)) {
+        // It's a URL — keep as-is
+        translated.push(part);
+        urlRegex.lastIndex = 0; // reset regex state
+      } else if (part.trim()) {
+        // It's text — translate it
+        const res = await fetch("/api/messages/translate-preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: part, direction: "to-es" }),
+        });
+        const data = await res.json();
+        translated.push(data.translated || part);
+      } else {
+        translated.push(part);
+      }
+    }
+
+    return translated.join("");
+  };
+
   const handleSendWithTranslation = async () => {
     if (!messageInput.trim() && selectedFiles.length === 0) return;
     if (conversationLanguage === "es" && messageInput.trim()) {
@@ -1552,17 +1635,9 @@ export default function MessageStoredPage() {
       // Otherwise translate now (fallback for fast typers)
       setTranslating(true);
       try {
-        const res = await fetch("/api/messages/translate-preview", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: messageInput.trim(),
-            direction: "to-es",
-          }),
-        });
-        const data = await res.json();
-        if (!data.translated) throw new Error("Translation failed");
-        setTranslatedText(data.translated);
+        const translated = await translatePreservingLinks(messageInput.trim());
+        if (!translated) throw new Error("Translation failed");
+        setTranslatedText(translated);
         setShowTranslatePreview(true);
       } catch {
         alert("Translation failed — please try again");
@@ -3864,22 +3939,10 @@ export default function MessageStoredPage() {
                             translateDebounceRef.current = setTimeout(
                               async () => {
                                 try {
-                                  const res = await fetch(
-                                    "/api/messages/translate-preview",
-                                    {
-                                      method: "POST",
-                                      headers: {
-                                        "Content-Type": "application/json",
-                                      },
-                                      body: JSON.stringify({
-                                        text: val.trim(),
-                                        direction: "to-es",
-                                      }),
-                                    },
-                                  );
-                                  const data = await res.json();
-                                  if (data.translated) {
-                                    setPendingTranslation(data.translated);
+                                  const translated =
+                                    await translatePreservingLinks(val.trim());
+                                  if (translated) {
+                                    setPendingTranslation(translated);
                                     setPendingTranslationInput(val.trim());
                                   }
                                 } catch {
@@ -4046,24 +4109,121 @@ export default function MessageStoredPage() {
                 </div>
               )}
 
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Send at
-                </label>
-                <input
-                  type="datetime-local"
-                  value={scheduledDateTime}
-                  min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
-                  max="9999-12-31T23:59"
-                  onChange={(e) => setScheduledDateTime(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                />
-                {scheduledDateTime && (
-                  <p className="text-xs text-purple-600 mt-2">
-                    📅 Will send: {new Date(scheduledDateTime).toLocaleString()}
-                  </p>
-                )}
+              {/* Recurring toggle */}
+              <div className="mb-4">
+                <button
+                  onClick={() => setIsRecurring((v) => !v)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    isRecurring
+                      ? "bg-purple-50 border-purple-300 text-purple-700"
+                      : "bg-gray-50 border-gray-200 text-gray-600 hover:border-purple-200"
+                  }`}
+                >
+                  <div
+                    className={`w-4 h-4 rounded border-2 flex items-center justify-center ${isRecurring ? "bg-purple-600 border-purple-600" : "border-gray-400"}`}
+                  >
+                    {isRecurring && (
+                      <svg
+                        className="w-3 h-3 text-white"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                    )}
+                  </div>
+                  🔁 Recurring monthly reminder
+                </button>
               </div>
+
+              {!isRecurring ? (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Send at
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={scheduledDateTime}
+                    min={new Date(Date.now() + 60000)
+                      .toISOString()
+                      .slice(0, 16)}
+                    max="9999-12-31T23:59"
+                    onChange={(e) => setScheduledDateTime(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                  />
+                  {scheduledDateTime && (
+                    <p className="text-xs text-purple-600 mt-2">
+                      📅 Will send:{" "}
+                      {new Date(scheduledDateTime).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="mb-6 space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      First send date
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={scheduledDateTime}
+                      min={new Date(Date.now() + 60000)
+                        .toISOString()
+                        .slice(0, 16)}
+                      max="9999-12-31T23:59"
+                      onChange={(e) => setScheduledDateTime(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Policy expiration date
+                    </label>
+                    <input
+                      type="date"
+                      value={recurringExpirationDate}
+                      min={new Date().toISOString().slice(0, 10)}
+                      onChange={(e) =>
+                        setRecurringExpirationDate(e.target.value)
+                      }
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                    />
+                  </div>
+                  {scheduledDateTime &&
+                    recurringExpirationDate &&
+                    (() => {
+                      const dates = getMonthlyDates(
+                        scheduledDateTime,
+                        recurringExpirationDate,
+                      );
+                      return (
+                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+                          <p className="text-xs font-semibold text-purple-700 mb-1">
+                            📅 {dates.length} reminders will be scheduled:
+                          </p>
+                          <div className="space-y-0.5 max-h-24 overflow-y-auto">
+                            {dates.map((d, i) => (
+                              <p key={i} className="text-xs text-purple-600">
+                                •{" "}
+                                {new Date(d).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </p>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                </div>
+              )}
 
               <div className="flex gap-3">
                 <button
@@ -4071,6 +4231,8 @@ export default function MessageStoredPage() {
                     setShowScheduleModal(false);
                     setScheduledDateTime("");
                     setScheduleTranslatedText("");
+                    setIsRecurring(false);
+                    setRecurringExpirationDate("");
                   }}
                   className="flex-1 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
                 >
@@ -4078,7 +4240,11 @@ export default function MessageStoredPage() {
                 </button>
                 <button
                   onClick={scheduleMessage}
-                  disabled={!scheduledDateTime || scheduling}
+                  disabled={
+                    !scheduledDateTime ||
+                    scheduling ||
+                    (isRecurring && !recurringExpirationDate)
+                  }
                   className="flex-1 bg-purple-600 text-white py-3 rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium flex items-center justify-center gap-2"
                 >
                   {scheduling ? (
@@ -4098,7 +4264,7 @@ export default function MessageStoredPage() {
                           d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
                         />
                       </svg>
-                      Schedule
+                      {isRecurring ? "Schedule All" : "Schedule"}
                     </>
                   )}
                 </button>
@@ -4149,7 +4315,20 @@ export default function MessageStoredPage() {
                     You can edit the translation above before sending.
                   </p>
                 </div>
-                <div className="flex gap-3 pt-1">
+                <div
+                  className="flex gap-3 pt-1"
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" &&
+                      !e.shiftKey &&
+                      translatedText.trim() &&
+                      !sending
+                    ) {
+                      e.preventDefault();
+                      confirmAndSendTranslated();
+                    }
+                  }}
+                >
                   <button
                     onClick={() => {
                       setShowTranslatePreview(false);
@@ -4162,6 +4341,7 @@ export default function MessageStoredPage() {
                   <button
                     onClick={confirmAndSendTranslated}
                     disabled={!translatedText.trim() || sending}
+                    autoFocus
                     className="flex-1 bg-orange-500 text-white py-3 rounded-xl hover:bg-orange-600 disabled:opacity-50 font-semibold text-sm flex items-center justify-center gap-2"
                   >
                     {sending ? (
