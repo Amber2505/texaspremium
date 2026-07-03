@@ -3530,11 +3530,11 @@ export default function MessageStoredPage() {
 
                     {/* Scheduled Messages Banner */}
                     {scheduledMessages.length > 0 && (
-                      <button
-                        onClick={() => setShowScheduledPanel((v) => !v)}
-                        className="flex items-center justify-between w-full px-4 py-2.5 bg-purple-600 hover:bg-purple-700 transition-colors rounded-t-lg"
-                      >
-                        <div className="flex items-center gap-2">
+                      <div className="flex items-center bg-purple-600 rounded-t-lg overflow-hidden">
+                        <button
+                          onClick={() => setShowScheduledPanel((v) => !v)}
+                          className="flex items-center gap-2 flex-1 px-4 py-2.5 hover:bg-purple-700 transition-colors"
+                        >
                           <svg
                             className="w-4 h-4 text-white"
                             fill="none"
@@ -3552,21 +3552,65 @@ export default function MessageStoredPage() {
                             {scheduledMessages.length} Scheduled Message
                             {scheduledMessages.length > 1 ? "s" : ""}
                           </span>
-                        </div>
-                        <svg
-                          className={`w-4 h-4 text-white transition-transform ${showScheduledPanel ? "rotate-180" : ""}`}
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
+                          <svg
+                            className={`w-4 h-4 text-white transition-transform ml-auto ${showScheduledPanel ? "rotate-180" : ""}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M19 9l-7 7-7-7"
+                            />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (
+                              !confirm(
+                                `Cancel all ${scheduledMessages.length} scheduled message${scheduledMessages.length > 1 ? "s" : ""} for this conversation?`,
+                              )
+                            )
+                              return;
+                            try {
+                              await Promise.all(
+                                scheduledMessages.map((sm) =>
+                                  fetch("/api/messages/schedule", {
+                                    method: "DELETE",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                    },
+                                    body: JSON.stringify({ id: sm._id }),
+                                  }),
+                                ),
+                              );
+                              setScheduledMessages([]);
+                              setShowScheduledPanel(false);
+                            } catch {
+                              alert("Failed to cancel scheduled messages");
+                            }
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-2.5 text-purple-200 hover:text-white hover:bg-purple-700 transition-colors text-xs font-medium whitespace-nowrap border-l border-purple-500"
+                          title="Cancel all scheduled messages"
                         >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M19 9l-7 7-7-7"
-                          />
-                        </svg>
-                      </button>
+                          <svg
+                            className="w-3.5 h-3.5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M6 18L18 6M6 6l12 12"
+                            />
+                          </svg>
+                          Cancel All
+                        </button>
+                      </div>
                     )}
 
                     {/* Scheduled Messages Panel */}
