@@ -26,7 +26,7 @@ type Vehicle = {
 
 export default function CreateQuoteProposal() {
   const { isLoaded } = useLoadScript({
-    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "",
+    googleMapsApiKey: "AIzaSyBmzpqcVcNNEuoCpgrmIcB3mNcRx0Z05zs",
     libraries: MAPS_LIBRARIES,
   });
 
