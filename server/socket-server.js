@@ -157,14 +157,18 @@ app.post('/notify/ringcentral', (req, res) => {
 
     console.log(`📡 Broadcasting to conversation:${roomId} (group: ${isGroup})`);
 
-    io.to(`conversation:${roomId}`).emit('newRingCentralMessage', {
+    const payload = {
       conversationId: roomId,
       phoneNumber,
       messageId,
       timestamp,
       subject: subject || "New message",
       isGroup,
-    });
+      direction: 'Inbound',
+    };
+
+    io.to(`conversation:${roomId}`).emit('newRingCentralMessage', payload);
+    io.to('sms-admins').emit('newRingCentralMessage', payload);
 
     res.json({ success: true });
   } catch (error) {
@@ -743,7 +747,7 @@ async function startRingCentralWebSocket() {
 
           if (conversationId) {
             console.log(`⚡ Instant broadcast to conversation:${conversationId}`);
-            io.to(`conversation:${conversationId}`).emit('newRingCentralMessage', {
+            const instantPayload = {
               conversationId,
               phoneNumber: body.direction === 'Inbound' ? fromNorm : participants[0],
               messageId,
@@ -751,7 +755,11 @@ async function startRingCentralWebSocket() {
               subject,
               direction: body.direction,
               isGroup: participants.length > 1,
-            });
+            };
+            io.to(`conversation:${conversationId}`).emit('newRingCentralMessage', instantPayload);
+            if (body.direction === 'Inbound') {
+              io.to('sms-admins').emit('newRingCentralMessage', instantPayload);
+            }
           }
         }
       } catch (broadcastErr) {
@@ -1095,7 +1103,7 @@ async function syncRingCentralMessages() {
       }
 
       // Broadcast new message
-      io.to(`conversation:${conversationId}`).emit('newRingCentralMessage', {
+      const syncBroadcastPayload = {
         conversationId: conversationId,
         phoneNumber: primaryPhone,
         messageId: messageId,
@@ -1104,7 +1112,11 @@ async function syncRingCentralMessages() {
         direction: fullMessage.direction,
         hasAttachments: processedAttachments.length > 0,
         isGroup: isGroup,
-      });
+      };
+      io.to(`conversation:${conversationId}`).emit('newRingCentralMessage', syncBroadcastPayload);
+      if (fullMessage.direction === 'Inbound') {
+        io.to('sms-admins').emit('newRingCentralMessage', syncBroadcastPayload);
+      }
     }
 
     // ════════════════════════════════════════════════════════════════
@@ -1910,6 +1922,13 @@ io.on('connection', (socket) => {
       socket.leave(`conversation:${roomId}`);
       console.log(`Socket ${socket.id} left conversation:${roomId}`);
     }
+  });
+
+  // Global room for SMS notifications — independent of which conversation
+  // is currently open, so agents get notified no matter what they're doing
+  socket.on('join-sms-admin-room', () => {
+    socket.join('sms-admins');
+    console.log(`Socket ${socket.id} joined sms-admins room`);
   });
 
   socket.on('admin-join', async () => {

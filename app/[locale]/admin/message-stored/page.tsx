@@ -5,6 +5,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { RingCentralMessage } from "@/lib/models/message";
+import { io, Socket } from "socket.io-client";
 import Image from "next/image";
 import { franc } from "franc"; //helpful for determining whether to use English or Spanish footer in scheduled messages based on message content
 import AdminShell from "../_components/AdminShell";
@@ -246,6 +247,8 @@ export default function MessageStoredPage() {
   };
 
   const audioUnlockedRef = useRef(false);
+  const socketRef = useRef<Socket | null>(null);
+  const notificationPermissionRef = useRef(false);
 
   // Unlock audio on first user interaction (Chrome requires this)
   useEffect(() => {
@@ -260,6 +263,20 @@ export default function MessageStoredPage() {
           audioUnlockedRef.current = true;
         })
         .catch(() => {});
+
+      // Browsers require a user gesture to prompt for notification
+      // permission — piggyback on the same click/keydown as the audio unlock
+      if (
+        typeof Notification !== "undefined" &&
+        Notification.permission === "default"
+      ) {
+        Notification.requestPermission().then((perm) => {
+          notificationPermissionRef.current = perm === "granted";
+        });
+      } else if (typeof Notification !== "undefined") {
+        notificationPermissionRef.current =
+          Notification.permission === "granted";
+      }
     };
     document.addEventListener("click", unlock);
     document.addEventListener("keydown", unlock);
@@ -636,32 +653,66 @@ export default function MessageStoredPage() {
     loadMoreMessages,
   ]);
 
+  // Single persistent Socket.IO connection for the whole page — joins a
+  // global "sms-admins" room so notifications fire regardless of which
+  // conversation (if any) is currently open.
   useEffect(() => {
-    if (!selectedConversationId) return;
+    if (!mounted) return;
 
-    const ws = new WebSocket(process.env.NEXT_PUBLIC_RAILWAY_WS_URL!);
+    const socket = io(process.env.NEXT_PUBLIC_RAILWAY_WS_URL!, {
+      transports: ["websocket", "polling"],
+    });
+    socketRef.current = socket;
 
-    ws.onopen = () => {
-      ws.send(
-        JSON.stringify({
-          type: "join",
-          room: `conversation:${selectedConversationId}`,
-        }),
-      );
-    };
+    socket.on("connect", () => {
+      socket.emit("join-sms-admin-room");
+      if (selectedConversationId) {
+        socket.emit("join-conversation", {
+          conversationId: selectedConversationId,
+        });
+      }
+    });
 
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === "newRingCentralMessage") {
-        // 🔔 Play notification sound for inbound messages
-        if (data.direction === "Inbound" || !data.direction) {
-          if (audioUnlockedRef.current) {
-            const audio = new Audio("/notification_message.wav");
-            audio.volume = 1.0;
-            audio.play().catch((err) => console.log("Audio failed:", err));
+    socket.on("newRingCentralMessage", (data: any) => {
+      const isInbound = data.direction === "Inbound" || !data.direction;
+      const convId = data.conversationId || data.phoneNumber;
+
+      if (isInbound) {
+        if (audioUnlockedRef.current) {
+          const audio = new Audio("/notification_message.wav");
+          audio.volume = 1.0;
+          audio.play().catch((err) => console.log("Audio failed:", err));
+        }
+
+        // Native browser notification — fires even if the tab isn't focused
+        if (notificationPermissionRef.current && document.hidden) {
+          try {
+            const notif = new Notification("New message", {
+              body: data.subject || "You have a new message",
+              icon: "/logo.png",
+              tag: convId,
+            });
+            notif.onclick = () => {
+              window.focus();
+              notif.close();
+            };
+          } catch {
+            /* silent — sound + badge still cover it */
           }
         }
-        // Fetch latest messages and merge with existing
+
+        // Bump the sidebar unread badge even if it's not the open conversation
+        setConversations((prev) =>
+          prev.map((c) =>
+            (c.conversationId || c.phoneNumber) === convId
+              ? { ...c, unreadCount: (c.unreadCount ?? 0) + 1 }
+              : c,
+          ),
+        );
+      }
+
+      // If it's the conversation currently open, fetch and merge it in
+      if (selectedConversationId && convId === selectedConversationId) {
         fetch(
           `/api/messages/conversation?conversationId=${encodeURIComponent(
             selectedConversationId,
@@ -670,7 +721,6 @@ export default function MessageStoredPage() {
           .then((r) => r.json())
           .then((d) => {
             const newMessages = d.messages || [];
-            // Merge: keep older messages that aren't in the new batch
             setConversation((prev) => {
               const newMessageIds = new Set(
                 newMessages.map((m: StoredMessage) => m.id),
@@ -683,19 +733,38 @@ export default function MessageStoredPage() {
             scrollToBottom();
           });
       }
-      if (data.type === "readStatusChanged") {
-        setConversations((prev) =>
-          prev.map((c) =>
-            (c.conversationId || c.phoneNumber) === data.conversationId
-              ? { ...c, unreadCount: data.unreadCount }
-              : c,
-          ),
-        );
-      }
-    };
+    });
 
-    return () => ws.close();
-  }, [selectedConversationId, scrollToBottom]);
+    socket.on("readStatusChanged", (data: any) => {
+      setConversations((prev) =>
+        prev.map((c) =>
+          (c.conversationId || c.phoneNumber) === data.conversationId
+            ? { ...c, unreadCount: data.unreadCount }
+            : c,
+        ),
+      );
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted, scrollToBottom]);
+
+  // Keep room membership in sync as the user switches conversations,
+  // without tearing down the whole socket connection
+  useEffect(() => {
+    const socket = socketRef.current;
+    const convId = selectedConversationId;
+    if (!socket || !convId) return;
+
+    socket.emit("join-conversation", { conversationId: convId });
+
+    return () => {
+      socket.emit("leave-conversation", { conversationId: convId });
+    };
+  }, [selectedConversationId]);
 
   // Server-side infinite scroll
   useEffect(() => {
