@@ -49,6 +49,7 @@ export async function GET(request: NextRequest) {
     const skip = parseInt(searchParams.get('skip') || '0', 10);
     const limit = fetchAll ? 10000 : parseInt(searchParams.get('limit') || '10', 10);
     const searchText = searchParams.get('searchText') || '';
+    const since = searchParams.get('since') || '';
     
     if (!phoneNumber && !conversationId) {
       return NextResponse.json(
@@ -273,6 +274,28 @@ export async function GET(request: NextRequest) {
       });
     }
     
+    // Since-based fetch — return ALL messages newer than timestamp, no limit
+    if (since) {
+      const sinceDate = new Date(since);
+      const newMessages = uniqueMessages.filter((msg: StoredMessage & { creationTime?: string }) =>
+        msg.creationTime && new Date(msg.creationTime) > sinceDate
+      );
+      console.log(`   ✅ Since ${since}: returning ${newMessages.length} new messages`);
+      return NextResponse.json({
+        messages: newMessages,
+        total,
+        skip: 0,
+        limit: newMessages.length,
+        hasMore: false,
+        searchText: '',
+        matchingIndices: [],
+        conversationId: conversation.conversationId || conversation.phoneNumber,
+        isGroup,
+        participants,
+        language: (conversation as any).language || 'en',
+      });
+    }
+
     // Normal pagination
     const startIndex = Math.max(0, total - skip - limit);
     const endIndex = total - skip;

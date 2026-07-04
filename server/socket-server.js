@@ -205,6 +205,20 @@ app.post('/trigger-sync', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// Read status sync endpoint — called when agent opens a conversation
+app.post('/sync-read-status', async (req, res) => {
+  try {
+    if (!conversationsCollection) {
+      return res.status(500).json({ error: 'DB not connected' });
+    }
+    const platform = await getCachedRCPlatform();
+    const result = await syncReadStatus(platform);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 // ================================================
 // MONGODB CONNECTION
 // ================================================
@@ -844,7 +858,7 @@ async function syncRingCentralMessages() {
       return { success: false, error: 'No auth token' };
     }
 
-    const dateFrom = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const dateFrom = new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
 
     const response = await platform.get('/restapi/v1.0/account/~/extension/~/message-store', {
       messageType: 'SMS',

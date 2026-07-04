@@ -474,29 +474,31 @@ export default function MessageStoredPage() {
 
     const pollConversation = async () => {
       try {
+        // Get the timestamp of the last real message we have
+        const lastRealMsg = [...conversation]
+          .reverse()
+          .find((m) => !m.id?.startsWith("optimistic-"));
+        const sinceParam = lastRealMsg?.creationTime
+          ? `&since=${encodeURIComponent(lastRealMsg.creationTime)}`
+          : "&skip=0&limit=50";
+
         const res = await fetch(
           `/api/messages/conversation?conversationId=${encodeURIComponent(
             selectedConversationId,
-          )}&skip=0&limit=20`,
+          )}${sinceParam}`,
         );
         const data = await res.json();
         const newMessages: RingCentralMessage[] = data.messages || [];
         if (newMessages.length === 0) return;
-
-        // Get last real (non-optimistic) message we currently have
-        const lastRealMsg = [...conversation]
-          .reverse()
-          .find((m) => !m.id?.startsWith("optimistic-"));
-        const lastPolledMsg = newMessages[newMessages.length - 1];
 
         // Check if there are optimistic messages that need replacing
         const hasOptimistic = conversation.some((m) =>
           m.id?.startsWith("optimistic-"),
         );
 
-        // Update if: new message arrived OR optimistic messages need replacing
-        const hasNewMessage =
-          lastPolledMsg?.id && lastPolledMsg.id !== lastRealMsg?.id;
+        // When using 'since', any returned messages are by definition new
+        // When using skip/limit fallback, check if last message changed
+        const hasNewMessage = newMessages.length > 0;
 
         if (hasNewMessage || hasOptimistic) {
           // Capture scroll position BEFORE state update
@@ -509,10 +511,12 @@ export default function MessageStoredPage() {
             : true;
 
           setConversation((prev) => {
+            // Remove optimistic messages and any that are now confirmed
             const newIds = new Set(newMessages.map((m) => m.id));
             const preserved = prev.filter(
               (m) => !newIds.has(m.id) && !m.id?.startsWith("optimistic-"),
             );
+            // Append new messages in order
             return [...preserved, ...newMessages];
           });
 
@@ -930,18 +934,28 @@ export default function MessageStoredPage() {
 
       await markAsRead(conversationId);
 
-      const unreadIds = (data.messages || [])
-        .filter(
-          (m: StoredMessage) =>
-            m.direction === "Inbound" && m.readStatus === "Unread" && m.id,
-        )
-        .map((m: StoredMessage) => m.id);
+      // Pull RC's actual read status for all inbound messages in this conversation
+      // This fixes messages that were read in RingCentral but still show unread here
+      const allInboundIds = (data.messages || [])
+        .filter((m: StoredMessage) => m.direction === "Inbound" && m.id)
+        .map((m: StoredMessage) => m.id as string);
 
-      if (unreadIds.length > 0) {
+      if (allInboundIds.length > 0) {
+        // Mark as read in RingCentral
         await fetch("/api/messages/mark-read-ringcentral", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messageIds: unreadIds }),
+          body: JSON.stringify({ messageIds: allInboundIds }),
+        });
+
+        // Also trigger a Railway sync to pull any RC read-state changes back down
+        fetch(
+          `${process.env.NEXT_PUBLIC_RAILWAY_WS_URL?.replace("wss://", "https://").replace("ws://", "http://")}/trigger-sync`,
+          {
+            method: "POST",
+          },
+        ).catch(() => {
+          /* silent — sync will catch up on next interval */
         });
       }
 
