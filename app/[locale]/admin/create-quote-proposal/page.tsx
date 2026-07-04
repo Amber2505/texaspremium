@@ -307,10 +307,12 @@ export default function CreateQuoteProposal() {
       });
       if (!res.ok) throw new Error("Failed");
 
+      const { pdfBase64, fileName, pdfUrl } = await res.json();
+
       fetch("/api/quote-history", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...formData, totals }),
+        body: JSON.stringify({ ...formData, totals, pdfUrl }),
       })
         .then((r) => r.json())
         .then((d) => {
@@ -322,6 +324,7 @@ export default function CreateQuoteProposal() {
                 customerPhone: formData.customerPhone,
                 vehicles: formData.vehicles,
                 paidInFull: totals.paidInFull,
+                pdfUrl,
                 status: "active",
                 createdAt: new Date().toISOString(),
               },
@@ -329,11 +332,12 @@ export default function CreateQuoteProposal() {
             ]);
         });
 
-      const blob = await res.blob();
+      const byteArr = Uint8Array.from(atob(pdfBase64), (c) => c.charCodeAt(0));
+      const blob = new Blob([byteArr], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Quote_${formData.customerName.replace(/\s/g, "_")}_${Date.now()}.pdf`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       URL.revokeObjectURL(url);

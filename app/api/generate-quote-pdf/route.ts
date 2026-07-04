@@ -375,16 +375,12 @@ export async function POST(request: NextRequest) {
       console.error("Azure upload error (non-fatal):", azureErr);
     }
 
-    // Return PDF as download + pdfUrl in header for the frontend to save
-    const response = new NextResponse(Buffer.from(pdfBytes), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="Quote_${data.customerName.replace(/\s/g, "_")}.pdf"`,
-        ...(pdfUrl ? { "X-PDF-URL": pdfUrl } : {}),
-      },
+    // Return JSON with pdfUrl + base64 PDF so the header isn't stripped
+    return NextResponse.json({
+      pdfBase64: Buffer.from(pdfBytes).toString("base64"),
+      fileName: `Quote_${data.customerName.replace(/\s/g, "_")}.pdf`,
+      pdfUrl,
     });
-    return response;
   } catch (err) {
     console.error("PDF error:", err);
     return NextResponse.json({ error: "Failed to generate PDF" }, { status: 500 });
