@@ -47,6 +47,7 @@ export default function CreateQuoteProposal() {
   }
   const autocompleteRef = useRef<any>(null);
   const turboRef = useRef<HTMLInputElement>(null);
+  const addressInputRef = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
 
@@ -563,6 +564,10 @@ export default function CreateQuoteProposal() {
                             ...prev,
                             customerAddress: place.formatted_address,
                           }));
+                          if (addressInputRef.current) {
+                            addressInputRef.current.value =
+                              place.formatted_address;
+                          }
                         }
                       }}
                       options={{
@@ -571,8 +576,9 @@ export default function CreateQuoteProposal() {
                       }}
                     >
                       <input
+                        ref={addressInputRef}
                         type="text"
-                        defaultValue={formData.customerAddress}
+                        value={formData.customerAddress}
                         placeholder="Start typing address…"
                         onChange={(e) =>
                           setFormData({
@@ -1278,6 +1284,16 @@ export default function CreateQuoteProposal() {
                         </p>
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
+                        {q.pdfUrl && (
+                          <a
+                            href={q.pdfUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1 bg-gray-600 text-white text-xs font-semibold rounded-full hover:bg-gray-700"
+                          >
+                            View PDF
+                          </a>
+                        )}
                         {q.status === "sold" ? (
                           <span className="px-3 py-1 bg-green-600 text-white text-xs font-bold rounded-full">
                             ✓ SOLD

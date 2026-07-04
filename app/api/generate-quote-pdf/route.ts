@@ -351,13 +351,40 @@ export async function POST(request: NextRequest) {
     });
 
     const pdfBytes = await pdfDoc.save();
-    return new NextResponse(Buffer.from(pdfBytes), {
+
+    // Upload to Azure and return URL alongside the PDF
+    let pdfUrl: string | null = null;
+    try {
+      const { BlobServiceClient } = await import("@azure/storage-blob");
+      const blobServiceClient = BlobServiceClient.fromConnectionString(
+        process.env.AZURE_STORAGE_CONNECTION_STRING!
+      );
+      const containerClient = blobServiceClient.getContainerClient("quote-pdfs");
+      await containerClient.createIfNotExists({ access: "blob" });
+
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const safeName = data.customerName.replace(/\s/g, "_").replace(/[^a-zA-Z0-9_]/g, "");
+      const blobName = `Quote_${safeName}_${timestamp}.pdf`;
+
+      const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+      await blockBlobClient.uploadData(Buffer.from(pdfBytes), {
+        blobHTTPHeaders: { blobContentType: "application/pdf" },
+      });
+      pdfUrl = blockBlobClient.url;
+    } catch (azureErr) {
+      console.error("Azure upload error (non-fatal):", azureErr);
+    }
+
+    // Return PDF as download + pdfUrl in header for the frontend to save
+    const response = new NextResponse(Buffer.from(pdfBytes), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="Quote_${data.customerName.replace(/\s/g, "_")}.pdf"`,
+        ...(pdfUrl ? { "X-PDF-URL": pdfUrl } : {}),
       },
     });
+    return response;
   } catch (err) {
     console.error("PDF error:", err);
     return NextResponse.json({ error: "Failed to generate PDF" }, { status: 500 });

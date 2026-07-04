@@ -30,6 +30,7 @@ export async function POST(req: NextRequest) {
       downPayment: body.downPayment,
       term: body.term,
       status: "active",
+      pdfUrl: body.pdfUrl || null,
       createdAt: new Date(),
     };
     const result = await col.insertOne(doc);
