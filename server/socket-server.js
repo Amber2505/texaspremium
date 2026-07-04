@@ -1211,7 +1211,6 @@ async function syncMissedCalls(platform) {
 
     const response = await platform.get('/restapi/v1.0/account/~/extension/~/call-log', {
       type: 'Voice',
-      result: 'Missed',
       direction: 'Inbound',
       dateFrom,
       perPage: 100,
@@ -1231,14 +1230,20 @@ async function syncMissedCalls(platform) {
       const exists = await conversationsCollection.findOne({ 'messages.id': `call_${callId}` });
       if (exists) continue;
 
+      const isMissed = call.result === 'Missed';
+      const isAnswered = call.result === 'Accepted' || call.result === 'Connected';
+
+      // Skip calls that are neither missed nor answered (e.g. voicemail, busy)
+      if (!isMissed && !isAnswered) continue;
+
       const messageObj = {
         id: `call_${callId}`,
         direction: 'Inbound',
-        type: 'MissedCall',
+        type: isMissed ? 'MissedCall' : 'AnsweredCall',
         subject: '',
         creationTime: call.startTime,
         lastModifiedTime: call.startTime,
-        readStatus: 'Unread',
+        readStatus: 'Read', // answered calls don't need attention
         messageStatus: 'Received',
         from: { phoneNumber: callerPhone },
         to: [{ phoneNumber: MY_PHONE_NUMBER }],
@@ -1257,7 +1262,8 @@ async function syncMissedCalls(platform) {
             isGroup: false,
             lastMessageTime: call.startTime,
           },
-          $inc: { unreadCount: 1 },
+          // Only increment unread for missed calls
+          ...(isMissed ? { $inc: { unreadCount: 1 } } : {}),
         },
         { upsert: true }
       );
