@@ -51,6 +51,8 @@ interface LinkHistory {
     consent?: boolean;
     autopaySetup?: boolean;
   };
+  sentReminders?: string[];
+  reEnabledAt?: string;
   timestamps?: {
     payment?: string;
     consent?: string;
@@ -1722,6 +1724,34 @@ export default function CreatePaymentLink() {
                             ${(link.amount / 100).toFixed(2)}
                           </p>
                         )}
+
+                        {/* Reminder status */}
+                        <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                          <span className="text-[10px] font-semibold opacity-70">
+                            Reminders:
+                          </span>
+                          {[
+                            { key: "reminder1", label: "1st" },
+                            { key: "reminder2", label: "2nd" },
+                            { key: "preExpire", label: "3rd" },
+                            { key: "lastCall", label: "4th" },
+                          ].map(({ key, label }) => {
+                            const sent = link.sentReminders?.includes(key);
+                            return (
+                              <span
+                                key={key}
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5 ${
+                                  sent
+                                    ? "bg-green-200 text-green-800"
+                                    : "bg-white/50 opacity-50"
+                                }`}
+                              >
+                                {sent && <Check className="w-2.5 h-2.5" />}
+                                {label}
+                              </span>
+                            );
+                          })}
+                        </div>
 
                         {/* Mini progress */}
                         <div className="flex items-center gap-1 mb-3">
