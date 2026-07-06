@@ -672,7 +672,7 @@ export default function MessageStoredPage() {
   useEffect(() => {
     if (!mounted) return;
 
-    const socket = io(process.env.NEXT_PUBLIC_RAILWAY_WS_URL!, {
+    const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL!, {
       transports: ["websocket", "polling"],
     });
     socketRef.current = socket;
@@ -1035,7 +1035,7 @@ export default function MessageStoredPage() {
 
         // Also trigger a Railway sync to pull any RC read-state changes back down
         fetch(
-          `${process.env.NEXT_PUBLIC_RAILWAY_WS_URL?.replace("wss://", "https://").replace("ws://", "http://")}/trigger-sync`,
+          `${process.env.NEXT_PUBLIC_SOCKET_URL?.replace("wss://", "https://").replace("ws://", "http://")}/trigger-sync`,
           {
             method: "POST",
           },
