@@ -254,7 +254,7 @@ export default function MessageStoredPage() {
   useEffect(() => {
     const unlock = () => {
       if (audioUnlockedRef.current) return;
-      const audio = new Audio("/notification_message.wav");
+      const audio = new Audio("/message_sound.mp3");
       audio.volume = 0;
       audio
         .play()
@@ -294,6 +294,11 @@ export default function MessageStoredPage() {
       }
     }
   }, [shouldScrollToBottom]);
+
+  const scrollToBottomRef = useRef(scrollToBottom);
+  useEffect(() => {
+    scrollToBottomRef.current = scrollToBottom;
+  }, [scrollToBottom]);
 
   // Lightbox functions - memoized for useEffect dependency
   const closeLightbox = useCallback(() => setLightboxImage(null), []);
@@ -357,6 +362,14 @@ export default function MessageStoredPage() {
   };
 
   useEffect(() => setMounted(true), []);
+
+  // Sync notification permission on mount so an already-granted permission
+  // doesn't stay false until the first click
+  useEffect(() => {
+    if (typeof Notification !== "undefined") {
+      notificationPermissionRef.current = Notification.permission === "granted";
+    }
+  }, []);
 
   // Load all drafts from localStorage on mount
   useEffect(() => {
@@ -674,18 +687,19 @@ export default function MessageStoredPage() {
     });
 
     socket.on("newRingCentralMessage", (data: any) => {
+      console.log("📨 socket event received", data);
       const isInbound = data.direction === "Inbound" || !data.direction;
       const convId = data.conversationId || data.phoneNumber;
 
       if (isInbound) {
         if (audioUnlockedRef.current) {
-          const audio = new Audio("/notification_message.wav");
+          const audio = new Audio("/message_sound.mp3");
           audio.volume = 1.0;
           audio.play().catch((err) => console.log("Audio failed:", err));
         }
 
         // Native browser notification — fires even if the tab isn't focused
-        if (notificationPermissionRef.current && document.hidden) {
+        if (notificationPermissionRef.current) {
           try {
             const notif = new Notification("New message", {
               body: data.subject || "You have a new message",
@@ -730,7 +744,7 @@ export default function MessageStoredPage() {
               );
               return [...olderMessages, ...newMessages];
             });
-            scrollToBottom();
+            scrollToBottomRef.current();
           });
       }
     });
@@ -750,7 +764,7 @@ export default function MessageStoredPage() {
       socketRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, scrollToBottom]);
+  }, [mounted]);
 
   // Keep room membership in sync as the user switches conversations,
   // without tearing down the whole socket connection
