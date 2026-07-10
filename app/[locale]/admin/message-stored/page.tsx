@@ -1691,32 +1691,61 @@ export default function MessageStoredPage() {
     }
   };
 
-  // Extracts URLs from text, translates only non-URL parts, reassembles
+  // Translates the WHOLE message in one call (best quality — the model keeps
+  // full sentence context), while protecting links and spacing by swapping
+  // each link out for a placeholder before translating and restoring it after.
   const translatePreservingLinks = async (text: string): Promise<string> => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const parts = text.split(urlRegex);
-    const translated: string[] = [];
+    const urlRegex = /(?:https?:\/\/|www\.)[^\s]+/gi;
 
-    for (const part of parts) {
-      if (urlRegex.test(part)) {
-        // It's a URL — keep as-is
-        translated.push(part);
-        urlRegex.lastIndex = 0; // reset regex state
-      } else if (part.trim()) {
-        // It's text — translate it
-        const res = await fetch("/api/messages/translate-preview", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: part, direction: "to-es" }),
-        });
-        const data = await res.json();
-        translated.push(data.translated || part);
-      } else {
-        translated.push(part);
-      }
+    // 1. Pull out every link, replace with a stable placeholder the model
+    //    won't translate or reflow.
+    const links: string[] = [];
+    const placeholdered = text.replace(urlRegex, (match) => {
+      links.push(match);
+      return `[[LINK_${links.length - 1}]]`;
+    });
+
+    // Nothing with real words to translate → return original untouched
+    if (!/[\p{L}\p{N}]/u.test(placeholdered.replace(/\[\[LINK_\d+\]\]/g, ""))) {
+      return text;
     }
 
-    return translated.join("");
+    const looksLikeRefusal = (out: string) =>
+      /no hay texto para traducir|there is no text to translate|no text to translate/i.test(
+        out,
+      );
+
+    try {
+      const res = await fetch("/api/messages/translate-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: placeholdered, direction: "to-es" }),
+      });
+      const data = await res.json();
+      let out: string = data.translated;
+
+      if (!out || looksLikeRefusal(out)) return text;
+
+      // 2. Restore the links. Handle minor placeholder mangling the model
+      //    might introduce (spaces, lost brackets).
+      links.forEach((link, i) => {
+        const variants = [
+          new RegExp(`\\[\\[LINK_${i}\\]\\]`, "g"),
+          new RegExp(`\\[\\[\\s*LINK_${i}\\s*\\]\\]`, "gi"),
+          new RegExp(`LINK_${i}`, "g"),
+        ];
+        for (const v of variants) {
+          if (v.test(out)) {
+            out = out.replace(v, link);
+            break;
+          }
+        }
+      });
+
+      return out;
+    } catch {
+      return text;
+    }
   };
 
   const handleSendWithTranslation = async () => {
