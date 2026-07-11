@@ -202,9 +202,9 @@ app.post('/notify/payment-progress', (req, res) => {
 // Manual sync trigger endpoint
 app.post('/trigger-sync', async (req, res) => {
   try {
-    console.log('📱 Manual sync triggered via HTTP');
-    const result = await syncRingCentralMessages();
-    res.json(result);
+    console.log('📱 Sync requested via HTTP (debounced)');
+    requestSync(3000);
+    res.json({ success: true, queued: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -798,8 +798,15 @@ async function startRingCentralWebSocket() {
         console.error('⚡ Broadcast error:', broadcastErr.message);
       }
 
-      // Then do the full sync to save to MongoDB
-      await syncRingCentralMessages();
+      // Save straight from the payload. Only fall back to a debounced sync
+      // when we actually need the API (media attachments).
+      try {
+        const saved = await saveMessageFromNotification(evt?.body || {});
+        if (!saved) requestSync(5000);
+      } catch (saveErr) {
+        console.error('⚡ Direct save failed, falling back to sync:', saveErr.message);
+        requestSync(5000);
+      }
     });
 
     subscription.on(subscription.events.renewError, async () => {
@@ -835,6 +842,79 @@ let consecutiveErrors = 0;
 let isSyncing = false;
 let pendingSyncQueued = false;
 let lastMissedCallSync = null;
+let lastReadStatusSync = null;
+let syncDebounceTimer = null;
+
+// Coalesce sync requests — many triggers in a burst collapse into one call
+function requestSync(delayMs = 8000) {
+  if (syncDebounceTimer) return;
+  syncDebounceTimer = setTimeout(() => {
+    syncDebounceTimer = null;
+    syncRingCentralMessages();
+  }, delayMs);
+}
+
+// The WebSocket payload already has the whole message. Save it straight to
+// Mongo — zero RingCentral API calls. Returns false only when we genuinely
+// need a sync (media attachments must be downloaded and pushed to Azure).
+async function saveMessageFromNotification(body) {
+  if (!conversationsCollection) return false;
+
+  const messageId = body.id?.toString();
+  if (!messageId) return false;
+
+  const hasMedia = (body.attachments || []).some(
+    a => a.contentType && !a.contentType.startsWith('text/')
+  );
+  if (hasMedia) return false;
+
+  const { conversationId, participants, isGroup, primaryPhone } = getConversationInfo(body);
+  if (!conversationId) return false;
+
+  const exists = await conversationsCollection.findOne({ 'messages.id': messageId });
+  if (exists) return true;
+
+  const readStatus = body.readStatus || (body.direction === 'Inbound' ? 'Unread' : 'Read');
+
+  const messageObj = {
+    id: messageId,
+    direction: body.direction,
+    type: body.type || 'SMS',
+    subject: body.subject || '',
+    creationTime: body.creationTime,
+    lastModifiedTime: body.lastModifiedTime || body.creationTime,
+    readStatus,
+    messageStatus: body.messageStatus,
+    from: body.from,
+    to: body.to,
+    attachments: [],
+  };
+
+  const updateOperation = {
+    $push: { messages: { $each: [messageObj], $sort: { creationTime: 1 } } },
+    $set: {
+      conversationId,
+      participants,
+      isGroup,
+      phoneNumber: primaryPhone,
+      lastMessageTime: body.creationTime,
+      lastMessageId: messageId,
+    },
+  };
+
+  if (body.direction === 'Inbound' && readStatus === 'Unread') {
+    updateOperation.$inc = { unreadCount: 1 };
+  }
+
+  await conversationsCollection.updateOne(
+    { conversationId },
+    updateOperation,
+    { upsert: true }
+  );
+
+  console.log(`⚡ Saved from WS payload (0 API calls): ${conversationId} - "${(body.subject || '').substring(0, 30)}"`);
+  return true;
+}
 
 async function getRingCentralPlatform() {
   const SDK = require('@ringcentral/sdk').SDK;
@@ -1166,7 +1246,10 @@ async function syncRingCentralMessages() {
     let readStatusSynced = 0;
     let unreadStatusSynced = 0;
 
-    if (!(rateLimitedUntil && Date.now() < rateLimitedUntil)) {
+    const readSyncDue = !lastReadStatusSync || Date.now() - lastReadStatusSync > 5 * 60 * 1000;
+
+    if (readSyncDue && !(rateLimitedUntil && Date.now() < rateLimitedUntil)) {
+      lastReadStatusSync = Date.now();
       try {
         // Set a timeout for read status sync (15 seconds max)
         const readSyncPromise = syncReadStatus(platform);
