@@ -435,15 +435,47 @@ function getCSTTimeDecimal(date) {
 
 let cachedRCPlatform = null;
 let cachedRCPlatformExpiry = 0;
+let cachedRCSdk = null;
+let rcPlatformPromise = null;
+
+function invalidateRCPlatform() {
+  console.warn('♻️ Invalidating cached RingCentral platform — will re-login on next use');
+  cachedRCPlatform = null;
+  cachedRCSdk = null;
+  cachedRCPlatformExpiry = 0;
+  rcPlatformPromise = null;
+}
 
 async function getCachedRCPlatform() {
-  // Reuse platform for up to 50 minutes (tokens last 60 min)
+  // Reuse the platform, but verify the token is actually still there
   if (cachedRCPlatform && Date.now() < cachedRCPlatformExpiry) {
-    return cachedRCPlatform;
+    try {
+      const auth = await cachedRCPlatform.auth().data();
+      if (auth && auth.access_token) return cachedRCPlatform;
+    } catch (e) {
+      // fall through to re-login
+    }
+    invalidateRCPlatform();
   }
-  cachedRCPlatform = await getRingCentralPlatform();
-  cachedRCPlatformExpiry = Date.now() + 50 * 60 * 1000;
-  return cachedRCPlatform;
+
+  // Single-flight: don't let 3 callers trigger 3 logins at once
+  if (rcPlatformPromise) return rcPlatformPromise;
+
+  rcPlatformPromise = (async () => {
+    const platform = await getRingCentralPlatform();
+    cachedRCPlatform = platform;
+    cachedRCPlatformExpiry = Date.now() + 30 * 60 * 1000; // 30 min, safely inside 60
+    return platform;
+  })();
+
+  try {
+    return await rcPlatformPromise;
+  } catch (e) {
+    invalidateRCPlatform();
+    throw e;
+  } finally {
+    rcPlatformPromise = null;
+  }
 }
 
 async function sendPaymentReminderSMS(phone, link, message) {
@@ -706,18 +738,15 @@ function scheduleDailySecurityCode() {
 // ================================================
 async function startRingCentralWebSocket() {
   try {
-    const { SDK } = require('@ringcentral/sdk');
     const { Subscriptions } = require('@ringcentral/subscriptions');
 
-    const rcsdk = new SDK({
-      server: process.env.RINGCENTRAL_SERVER || RINGCENTRAL_SERVER,
-      clientId: process.env.RINGCENTRAL_CLIENT_ID,
-      clientSecret: process.env.RINGCENTRAL_CLIENT_SECRET,
-    });
-    await rcsdk.platform().login({ jwt: process.env.RINGCENTRAL_JWT });
-    console.log('✅ RC WebSocket: Logged in');
+    // Reuse the ONE shared RC session — a second JWT login revokes the first
+    // session's refresh token ("Refresh token is missing")
+    await getCachedRCPlatform();
+    if (!cachedRCSdk) throw new Error('RC SDK not initialized');
+    console.log('✅ RC WebSocket: Reusing shared RC session');
 
-    const subscriptions = new Subscriptions({ sdk: rcsdk });
+    const subscriptions = new Subscriptions({ sdk: cachedRCSdk });
     const subscription = subscriptions.createSubscription();
 
     subscription.on(subscription.events.notification, async (evt) => {
@@ -815,6 +844,7 @@ async function getRingCentralPlatform() {
 
   const platform = rcsdk.platform();
   await platform.login({ jwt: process.env.RINGCENTRAL_JWT });
+  cachedRCSdk = rcsdk;
   return platform;
 }
 
@@ -856,12 +886,20 @@ async function syncRingCentralMessages() {
   }
 
   try {
-    const platform = await getCachedRCPlatform();
-    const authData = await platform.auth().data();
-    const authToken = authData.access_token;
+    let platform = await getCachedRCPlatform();
+    let authData = await platform.auth().data();
+    let authToken = authData?.access_token;
 
     if (!authToken) {
-      console.error('❌ No auth token available');
+      console.warn('⚠️ Cached platform has no token — forcing fresh login');
+      invalidateRCPlatform();
+      platform = await getCachedRCPlatform();
+      authData = await platform.auth().data();
+      authToken = authData?.access_token;
+    }
+
+    if (!authToken) {
+      console.error('❌ No auth token available even after re-login');
       isSyncing = false;
       return { success: false, error: 'No auth token' };
     }
@@ -1138,6 +1176,9 @@ async function syncRingCentralMessages() {
         unreadStatusSynced = readSyncResult.unreadSynced || 0;
       } catch (readSyncError) {
         console.error('❌ Read status sync error:', readSyncError.message);
+        if (/refresh token|access token|401|unauthor|invalid_grant/i.test(readSyncError.message || '')) {
+          invalidateRCPlatform();
+        }
       }
     }
 
