@@ -784,6 +784,9 @@ async function startRingCentralWebSocket() {
               subject,
               direction: body.direction,
               isGroup: participants.length > 1,
+              hasAttachments: (body.attachments || []).some(
+                a => a.contentType && !a.contentType.startsWith('text/')
+              ),
             };
             io.to(`conversation:${conversationId}`).emit('newRingCentralMessage', instantPayload);
             if (body.direction === 'Inbound') {

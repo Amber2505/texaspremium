@@ -701,8 +701,24 @@ export default function MessageStoredPage() {
         // Native browser notification — fires even if the tab isn't focused
         if (notificationPermissionRef.current) {
           try {
-            const notif = new Notification("New message", {
-              body: data.subject || "You have a new message",
+            // Title = sender's number (group chats show the first participant + count)
+            const senders = String(convId || "")
+              .split(",")
+              .filter(Boolean);
+            const notifTitle =
+              senders.length > 1
+                ? `${formatPhoneNumber(senders[0])} +${senders.length - 1}`
+                : senders.length === 1
+                  ? formatPhoneNumber(senders[0])
+                  : "New message";
+
+            // No text = it's an attachment-only MMS
+            const notifBody =
+              data.subject?.trim() ||
+              (data.hasAttachments ? "Shared an image" : "Shared an image");
+
+            const notif = new Notification(notifTitle, {
+              body: notifBody,
               icon: "/logo.png",
               tag: convId,
             });
