@@ -12,15 +12,30 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const search = searchParams.get("search")?.trim() || "";
+    const status = searchParams.get("status") || "all"; // all | paid | unpaid
 
     client = await MongoClient.connect(uri);
     const db = client.db("db");
     const collection = db.collection("payment_link_generated");
 
+    // Only payment links can be paid/unpaid — autopay-only links have no payment stage
+    const paidQuery = { "completedStages.payment": true };
+    const unpaidQuery = {
+      linkType: "payment",
+      $or: [
+        { "completedStages.payment": { $exists: false } },
+        { "completedStages.payment": false },
+        { "completedStages.payment": null },
+        { completedStages: { $exists: false } },
+      ],
+    };
+    const baseQuery: Record<string, unknown> =
+      status === "paid" ? paidQuery : status === "unpaid" ? unpaidQuery : {};
+
     if (search) {
-      // ── Search mode: scan all records, no pagination ──────────────────────
+      // ── Search mode: scan all matching records, no pagination ─────────────
       const all = await collection
-        .find({})
+        .find(baseQuery)
         .sort({ createdAtTimestamp: -1 })
         .toArray();
 
@@ -54,12 +69,12 @@ export async function GET(request: Request) {
     }
 
     // ── Paginated mode ────────────────────────────────────────────────────────
-    const total = await collection.countDocuments();
+    const total = await collection.countDocuments(baseQuery);
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
     const safePage = Math.min(page, totalPages);
 
     const links = await collection
-      .find({})
+      .find(baseQuery)
       .sort({ createdAtTimestamp: -1 })
       .skip((safePage - 1) * PAGE_SIZE)
       .limit(PAGE_SIZE)

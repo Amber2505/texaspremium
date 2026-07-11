@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { PDFDocument, rgb, StandardFonts, PDFPage, PDFFont } from "pdf-lib";
 import nodemailer from "nodemailer";
 import crypto from "crypto";
@@ -796,7 +796,9 @@ By signing this form, I represent and confirm the following:
       // Don't block — email still sends even if DB write fails
     }
 
-    // Send email
+    // Send emails AFTER the response is sent — don't block the customer's redirect
+    after(async () => {
+     try {
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
@@ -889,10 +891,14 @@ By signing this form, I represent and confirm the following:
         content: pdfBase64, encoding: "base64",
       }],
     });
+     } catch (err) {
+       console.error("⚠️ Post-response email send failed:", err);
+     }
+    });
 
     return NextResponse.json({
       success: true,
-      message: "PDF generated and emailed successfully",
+      message: "PDF generated; emails queued after response",
       documentId,
       envelopeId,
     });

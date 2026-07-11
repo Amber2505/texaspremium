@@ -112,6 +112,9 @@ export default function CreatePaymentLink() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalLinks, setTotalLinks] = useState(0);
   const [isSearchMode, setIsSearchMode] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"all" | "paid" | "unpaid">(
+    "all",
+  );
 
   // PDF download state
   const [downloadingPdfId, setDownloadingPdfId] = useState<string | null>(null);
@@ -161,6 +164,12 @@ export default function CreatePaymentLink() {
 
   const wsRef = useRef<WebSocket | null>(null);
   const generatedLinkRef = useRef<HTMLDivElement>(null);
+
+  // Keep the WS closure from capturing a stale filter
+  const unpaidFilterRef = useRef(unpaidFilter);
+  useEffect(() => {
+    unpaidFilterRef.current = unpaidFilter;
+  }, [unpaidFilter]);
 
   const formatPhoneDisplay = (phone: string): string => {
     const cleaned = phone.replace(/\D/g, "");
@@ -216,6 +225,7 @@ export default function CreatePaymentLink() {
       const data = JSON.parse(event.data);
       if (data.type === "paymentLinkUpdated") {
         if (!isSearchMode) fetchHistory(currentPage);
+        fetchUnpaid(unpaidFilterRef.current);
       }
     };
     wsRef.current = ws;
@@ -223,10 +233,12 @@ export default function CreatePaymentLink() {
   }, [isCheckingAuth]);
 
   // ── Fetch paginated page ────────────────────────────────────────────────────
-  const fetchHistory = async (page = 1) => {
+  const fetchHistory = async (page = 1, status = statusFilter) => {
     setHistoryLoading(true);
     try {
-      const res = await fetch(`/api/payment-link-history?page=${page}`);
+      const res = await fetch(
+        `/api/payment-link-history?page=${page}&status=${status}`,
+      );
       const data = await res.json();
       if (data.success) {
         setHistoryLinks(data.links);
@@ -244,16 +256,16 @@ export default function CreatePaymentLink() {
   };
 
   // ── Search all records server-side ─────────────────────────────────────────
-  const handleSearch = async (q: string) => {
+  const handleSearch = async (q: string, status = statusFilter) => {
     setSearchQuery(q);
     if (!q.trim()) {
-      fetchHistory(1);
+      fetchHistory(1, status);
       return;
     }
     setSearchLoading(true);
     try {
       const res = await fetch(
-        `/api/payment-link-history?search=${encodeURIComponent(q.trim())}`,
+        `/api/payment-link-history?search=${encodeURIComponent(q.trim())}&status=${status}`,
       );
       const data = await res.json();
       if (data.success) {
@@ -385,6 +397,7 @@ export default function CreatePaymentLink() {
           }),
         });
         setGeneratedLink(proxyLink);
+        fetchUnpaid(unpaidFilter);
         setTimeout(
           () =>
             generatedLinkRef.current?.scrollIntoView({
@@ -1046,6 +1059,34 @@ export default function CreatePaymentLink() {
                       <X className="w-4 h-4" />
                     </button>
                   )}
+                </div>
+
+                {/* Paid / Unpaid segmented filter */}
+                <div className="flex gap-1 mb-5 p-1 bg-gray-100 rounded-lg">
+                  {(
+                    [
+                      { key: "all", label: "All Links" },
+                      { key: "paid", label: "Paid" },
+                      { key: "unpaid", label: "Unpaid" },
+                    ] as const
+                  ).map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        setStatusFilter(key);
+                        if (searchQuery.trim()) handleSearch(searchQuery, key);
+                        else fetchHistory(1, key);
+                      }}
+                      disabled={historyLoading || searchLoading}
+                      className={`flex-1 py-2 text-sm font-semibold rounded-md transition disabled:opacity-60 ${
+                        statusFilter === key
+                          ? "bg-white text-gray-900 shadow-sm"
+                          : "text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
                 </div>
 
                 {historyLoading && historyLinks.length === 0 ? (
