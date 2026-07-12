@@ -20,14 +20,71 @@ if (process.env.NODE_ENV === 'development') {
   clientPromise = client.connect();
 }
 
-// Normalize a company name for fuzzy comparison.
-// Lowercase, strip punctuation, collapse whitespace.
+// Words that carry no identifying information — two carriers are the same
+// whether or not someone typed "Inc" or "Insurance Company" on the end.
+const NOISE_WORDS = new Set([
+  'inc', 'incorporated', 'llc', 'llp', 'ltd', 'corp', 'corporation', 'co',
+  'company', 'insurance', 'insurers', 'assurance', 'underwriters',
+  'underwriting', 'group', 'agency', 'general', 'mga', 'services',
+  'the', 'of', 'and',
+]);
+
+// Normalize a company name down to its identifying core.
+// Lowercase → strip punctuation → drop noise words → REMOVE ALL SPACES.
+// Removing spaces catches "Assurance America" vs "AssuranceAmerica".
 function normalize(name: string): string {
-  return name
+  const words = name
     .toLowerCase()
-    .replace(/[.,\-()'"]/g, '')
+    .replace(/[.,\-()'"&/]/g, ' ')
     .replace(/\s+/g, ' ')
-    .trim();
+    .trim()
+    .split(' ')
+    .filter((w) => w && !NOISE_WORDS.has(w));
+
+  // If stripping noise leaves nothing, fall back to the punctuation-stripped form
+  if (words.length === 0) {
+    return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+  return words.join('');
+}
+
+// Levenshtein distance — catches typos like "Causalty" vs "Casualty".
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const curr = [i];
+    for (let j = 1; j <= n; j++) {
+      curr[j] = Math.min(
+        prev[j] + 1,
+        curr[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+    prev = curr;
+  }
+  return prev[n];
+}
+
+// Two normalized names are "close enough" if one contains the other
+// (Loop ⊂ LoopMobility) or they're within a small edit distance (typos).
+function isLikelyDuplicate(a: string, b: string): boolean {
+  if (a === b) return true;
+
+  // Containment — but only when the shorter is substantial enough to be
+  // meaningful. "Loop" (4 chars) inside "loopmobility" counts; "co" doesn't.
+  const shorter = a.length <= b.length ? a : b;
+  const longer = a.length <= b.length ? b : a;
+  if (shorter.length >= 4 && longer.includes(shorter)) return true;
+
+  // Typo tolerance — scale with length so short names aren't over-matched
+  const maxLen = Math.max(a.length, b.length);
+  const threshold = maxLen <= 8 ? 1 : maxLen <= 16 ? 2 : 3;
+  return levenshtein(a, b) <= threshold;
 }
 
 // Build a Map of normalized → canonical so we can detect likely duplicates.
@@ -37,6 +94,20 @@ function buildNormalizedMap(names: string[]): Map<string, string> {
     if (n && n.trim()) map.set(normalize(n), n);
   });
   return map;
+}
+
+// Find an existing company whose normalized name is close to `norm`.
+function findExistingMatch(
+  norm: string,
+  existingNormalized: Map<string, string>
+): string | null {
+  const exact = existingNormalized.get(norm);
+  if (exact) return exact;
+
+  for (const [existingNorm, canonical] of existingNormalized) {
+    if (isLikelyDuplicate(norm, existingNorm)) return canonical;
+  }
+  return null;
 }
 
 // GET /api/companies-sync — preview what a sync would do
@@ -64,7 +135,7 @@ export async function GET() {
       if (existingExact.has(trimmed)) return; // already there exactly
 
       const norm = normalize(trimmed);
-      const existingMatch = existingNormalized.get(norm);
+      const existingMatch = findExistingMatch(norm, existingNormalized);
       if (existingMatch) {
         likelyDuplicates.push({ policyName: trimmed, matchesExisting: existingMatch });
       } else {
@@ -128,7 +199,8 @@ export async function POST(request: Request) {
       const trimmed = name.trim();
       if (existingExact.has(trimmed)) return;
       const norm = normalize(trimmed);
-      if (existingNormalized.has(norm) && !approvedSet.has(trimmed)) return;
+      const match = findExistingMatch(norm, existingNormalized);
+      if (match && !approvedSet.has(trimmed)) return;
       toAdd.push(trimmed);
     });
 
