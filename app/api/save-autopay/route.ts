@@ -1,6 +1,7 @@
 // api/save-autopay/route.ts
 import { NextResponse } from 'next/server';
 import connectToDatabase from "@/lib/mongodb";
+import { ObjectId } from "mongodb";
 import { encrypt, validateCardNumber, validateRoutingNumber } from '@/lib/encryption';
 import { sendAutopayNotification } from '@/lib/email';
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -13,6 +14,7 @@ export async function POST(request: Request) {
       method, 
       customerName, 
       customerPhone,
+      linkId,
       ...paymentDetails 
     } = body;
 
@@ -28,11 +30,38 @@ export async function POST(request: Request) {
     const db = client_db.db("db");
     const autopayCollection = db.collection("autopay_customers");
 
+    // ── Idempotency: if this payment link already completed autopay, stop here ──
+    // Without this, reopening the link or a slow double-tap saves the card twice.
+    if (linkId) {
+      let linkQuery: any = null;
+      if (/^[a-f0-9]{32}$/i.test(linkId)) {
+        linkQuery = { publicLinkId: linkId };
+      } else if (linkId.length === 24 && ObjectId.isValid(linkId)) {
+        linkQuery = { _id: new ObjectId(linkId) };
+      }
+
+      if (linkQuery) {
+        const link = await db
+          .collection("payment_link_generated")
+          .findOne(linkQuery);
+
+        if (link?.completedStages?.autopaySetup === true) {
+          console.log(`⏭️ Autopay already completed for linkId ${linkId} — skipping duplicate save`);
+          return NextResponse.json({
+            success: true,
+            alreadyComplete: true,
+            message: "Autopay was already set up for this link.",
+          });
+        }
+      }
+    }
+
     // Prepare the base record
     let recordToSave: any = {
       customerName: customerName.trim(),
       customerPhone: customerPhone.replace(/\D/g, ''),
       method: method,
+      linkId: linkId || null,
       status: 'active',
       createdAt: new Date(),
       updatedAt: new Date(),

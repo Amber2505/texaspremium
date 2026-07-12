@@ -1,7 +1,7 @@
 //app/[locale]/(root)/setup-autopay/SetupAutopayContent.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { motion } from "framer-motion";
@@ -82,6 +82,7 @@ export default function SetupAutopayContent() {
 
   const [agreed, setAgreed] = useState(false);
   const [cardType, setCardType] = useState<CardType>(null);
+  const isSubmittingRef = useRef(false);
 
   // ✅ CHECK IF AUTOPAY IS ALREADY COMPLETE ON PAGE LOAD
   useEffect(() => {
@@ -260,6 +261,8 @@ export default function SetupAutopayContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Synchronous guard — `loading` state can't stop a fast double-tap
+    if (isSubmittingRef.current) return;
     if (!agreed) {
       setError(t("errors.agreeToTerms"));
       return;
@@ -286,6 +289,7 @@ export default function SetupAutopayContent() {
       }
     }
 
+    isSubmittingRef.current = true;
     setLoading(true);
     setError("");
 
@@ -296,6 +300,7 @@ export default function SetupAutopayContent() {
         body: JSON.stringify({
           method: activeTab,
           transactionId,
+          linkId,
           customerName:
             activeTab === "card" ? formData.cardholderName : formData.fullName,
           customerEmail,
@@ -348,6 +353,7 @@ export default function SetupAutopayContent() {
       setError(t("errors.setupFailed"));
     } finally {
       setLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 
