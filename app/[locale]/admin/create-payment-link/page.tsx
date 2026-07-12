@@ -20,7 +20,6 @@ import {
   Phone,
   ExternalLink,
   Mail,
-  Info,
   Search,
   Eye,
   X,
@@ -29,6 +28,9 @@ import AdminShell from "../_components/AdminShell";
 
 type LinkType = "payment" | "autopay-only";
 type TabType = "create" | "history";
+
+// Square's quick_pay.name hard limit
+const DESCRIPTION_MAX = 255;
 
 interface LinkHistory {
   _id: string;
@@ -182,6 +184,12 @@ export default function CreatePaymentLink() {
 
   // In search mode the server returns all matches; in paginated mode it returns one page
   const filteredLinks = historyLinks;
+
+  const descLength = description.length;
+  const descOver = descLength - DESCRIPTION_MAX;
+  const descIsOver = descOver > 0;
+  const descPct = Math.min(100, (descLength / DESCRIPTION_MAX) * 100);
+  const descNearLimit = !descIsOver && descLength > DESCRIPTION_MAX * 0.85;
 
   useEffect(() => {
     const checkAuth = () => {
@@ -382,7 +390,26 @@ export default function CreatePaymentLink() {
       });
       const data = await response.json();
 
-      if (response.ok) {
+      if (!response.ok) {
+        // Square rejected it — remove the placeholder row we just created
+        try {
+          await fetch("/api/delete-payment-link", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ linkId }),
+          });
+        } catch {
+          // non-fatal — worst case an orphan row remains
+        }
+        setError(
+          data.error ||
+            "Square rejected the request. Check the description length and amount.",
+        );
+        setLoading(false);
+        return;
+      }
+
+      {
         const squarePaymentLink = data.paymentLink;
         const squareLinkId = data.squareLinkId || null;
         const proxyLink = `https://www.texaspremiumins.com/${language}/pay/${linkId}`;
@@ -406,8 +433,6 @@ export default function CreatePaymentLink() {
             }),
           100,
         );
-      } else {
-        setError(data.error || "Failed to create payment link");
       }
     } catch (err) {
       console.error("Error creating link:", err);
@@ -757,15 +782,32 @@ export default function CreatePaymentLink() {
                               </span>
                             )}
                           </label>
-                          <input
-                            type="text"
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            placeholder="e.g., Auto Insurance Payment - Policy #12345"
-                            required
-                            disabled={translating}
-                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-60"
-                          />
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={description}
+                              onChange={(e) => setDescription(e.target.value)}
+                              placeholder="e.g., Auto Insurance Payment - Policy #12345"
+                              required
+                              disabled={translating}
+                              className={`w-full px-4 py-3 pr-20 border rounded-lg outline-none transition disabled:opacity-60 ${
+                                descIsOver
+                                  ? "border-red-400 focus:ring-2 focus:ring-red-500 focus:border-red-500 bg-red-50/40"
+                                  : "border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              }`}
+                            />
+                            <span
+                              className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold tabular-nums transition-colors ${
+                                descIsOver
+                                  ? "text-red-600"
+                                  : descNearLimit
+                                    ? "text-amber-600"
+                                    : "text-gray-300"
+                              }`}
+                            >
+                              {descLength}/{DESCRIPTION_MAX}
+                            </span>
+                          </div>
                         </div>
                       </>
                     )}
@@ -878,7 +920,11 @@ export default function CreatePaymentLink() {
 
                     <button
                       type="submit"
-                      disabled={loading || !customerPhone}
+                      disabled={
+                        loading ||
+                        !customerPhone ||
+                        (linkType === "payment" && descIsOver)
+                      }
                       className="w-full px-6 py-3 bg-gradient-to-r from-red-700 to-blue-800 text-white rounded-lg font-medium hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {loading ? (
