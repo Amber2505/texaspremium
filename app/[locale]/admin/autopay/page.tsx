@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Shield, Loader2, LogOut } from "lucide-react";
+import { Shield, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import AdminShell from "../_components/AdminShell";
 
@@ -285,11 +285,6 @@ export default function AdminAutopayDashboard() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("admin_session");
-    router.push("/admin");
-  };
-
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     alert("Copied!");
@@ -397,13 +392,6 @@ export default function AdminAutopayDashboard() {
               }}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-64"
             />
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              <span className="text-sm font-medium">Logout</span>
-            </button>
           </div>
         </div>
 
