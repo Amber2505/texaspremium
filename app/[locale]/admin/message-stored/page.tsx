@@ -224,6 +224,7 @@ export default function MessageStoredPage() {
   const [pendingTranslation, setPendingTranslation] = useState("");
   const [pendingTranslationInput, setPendingTranslationInput] = useState("");
   const translateDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const translationCacheRef = useRef<Map<string, string>>(new Map());
   const [scheduleTranslatedText, setScheduleTranslatedText] = useState("");
   const [translatingForSchedule, setTranslatingForSchedule] = useState(false);
   const [isRecurring, setIsRecurring] = useState(false);
@@ -1711,15 +1712,30 @@ export default function MessageStoredPage() {
   // full sentence context), while protecting links and spacing by swapping
   // each link out for a placeholder before translating and restoring it after.
   const translatePreservingLinks = async (text: string): Promise<string> => {
+    // Identical text → identical translation. Skip the API call entirely.
+    const cached = translationCacheRef.current.get(text);
+    if (cached) return cached;
+
     const urlRegex = /(?:https?:\/\/|www\.)[^\s]+/gi;
 
-    // 1. Pull out every link, replace with a stable placeholder the model
-    //    won't translate or reflow.
-    const links: string[] = [];
-    const placeholdered = text.replace(urlRegex, (match) => {
-      links.push(match);
-      return `[[LINK_${links.length - 1}]]`;
-    });
+    // 1. Pull out every link, replace with a stable placeholder. Remember the
+    //    line it sat on so we can restore it even if the model drops it.
+    const links: { url: string; lineIndex: number; ownLine: boolean }[] = [];
+    const originalLines = text.split("\n");
+    const placeholdered = originalLines
+      .map((line, lineIndex) => {
+        // A line is "link-only" if stripping every URL leaves nothing behind
+        const isLinkOnlyLine = line.replace(urlRegex, "").trim() === "";
+        return line.replace(urlRegex, (match) => {
+          links.push({
+            url: match,
+            lineIndex,
+            ownLine: isLinkOnlyLine,
+          });
+          return `[[LINK_${links.length - 1}]]`;
+        });
+      })
+      .join("\n");
 
     // Nothing with real words to translate → return original untouched
     if (!/[\p{L}\p{N}]/u.test(placeholdered.replace(/\[\[LINK_\d+\]\]/g, ""))) {
@@ -1752,12 +1768,36 @@ export default function MessageStoredPage() {
         ];
         for (const v of variants) {
           if (v.test(out)) {
-            out = out.replace(v, link);
+            out = out.replace(v, link.url);
             break;
           }
         }
       });
 
+      // 3. The model sometimes deletes the placeholder outright — most often
+      //    when it opens the message. Put any missing link back on its line.
+      const missing = links
+        .filter((l) => !out.includes(l.url))
+        .sort((a, b) => a.lineIndex - b.lineIndex);
+
+      if (missing.length > 0) {
+        const outLines = out.split("\n");
+        for (const link of missing) {
+          if (link.ownLine) {
+            const idx = Math.min(link.lineIndex, outLines.length);
+            outLines.splice(idx, 0, link.url);
+          } else {
+            const idx = Math.max(
+              0,
+              Math.min(link.lineIndex, outLines.length - 1),
+            );
+            outLines[idx] = `${outLines[idx]} ${link.url}`.trim();
+          }
+        }
+        out = outLines.join("\n");
+      }
+
+      translationCacheRef.current.set(text, out);
       return out;
     } catch {
       return text;
@@ -4055,22 +4095,12 @@ export default function MessageStoredPage() {
                             } else {
                               setTranslatingForSchedule(true);
                               try {
-                                const res = await fetch(
-                                  "/api/messages/translate-preview",
-                                  {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                    },
-                                    body: JSON.stringify({
-                                      text: messageInput.trim(),
-                                      direction: "to-es",
-                                    }),
-                                  },
-                                );
-                                const data = await res.json();
+                                const translated =
+                                  await translatePreservingLinks(
+                                    messageInput.trim(),
+                                  );
                                 setScheduleTranslatedText(
-                                  data.translated || messageInput.trim(),
+                                  translated || messageInput.trim(),
                                 );
                               } catch {
                                 setScheduleTranslatedText(messageInput.trim());
@@ -4181,7 +4211,7 @@ export default function MessageStoredPage() {
                                   /* silent — will fall back to on-send */
                                 }
                               },
-                              600,
+                              1200,
                             );
                           } else {
                             setPendingTranslation("");
