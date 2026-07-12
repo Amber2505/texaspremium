@@ -1677,7 +1677,8 @@
       "cvv": "CVV",
       "cvvPlaceholder": "123",
       "zipCode": "Código postal de facturación",
-      "zipCodePlaceholder": "12345"
+      "zipCodePlaceholder": "12345",
+      "amexNotice": "Aviso: no todas las aseguradoras aceptan American Express para el pago automático recurrente — las tarifas de procesamiento de Amex son más altas, por lo que algunas compañías solo permiten Visa, Mastercard o Discover. Puede enviar esta tarjeta de todos modos y lo confirmaremos con su aseguradora. Si no la aceptan, un agente se comunicará con usted para configurar otro método de pago."
     },
     "bank": {
       "fullName": "Nombre completo en la cuenta",
@@ -1709,7 +1710,11 @@
     "errors": {
       "agreeToTerms": "Acepte los términos para continuar",
       "accountMismatch": "Los números de cuenta no coinciden",
-      "setupFailed": "Error al configurar el pago automático. Vuelva a intentarlo."
+      "setupFailed": "Error al configurar el pago automático. Vuelva a intentarlo.",
+      "cardExpired": "Esta tarjeta ya venció — verifique la fecha de vencimiento.",
+      "invalidMonth": "Ingrese un mes entre 01 y 12.",
+      "invalidYear": "Ingrese un año de vencimiento válido.",
+      "invalidCvv": "El CVV debe tener {count} dígitos para esta tarjeta."
     }
   },
   "thankYou": {

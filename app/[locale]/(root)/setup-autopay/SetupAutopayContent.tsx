@@ -22,6 +22,14 @@ const detectCardType = (number: string): CardType => {
   return null;
 };
 
+// "28" → 2028, "2028" → 2028, anything else → null
+const normalizeYear = (raw: string): number | null => {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 2) return 2000 + parseInt(digits, 10);
+  if (digits.length === 4) return parseInt(digits, 10);
+  return null;
+};
+
 // Card brand colors (for styling)
 const cardBrandColors: Record<string, string> = {
   visa: "#1434CB",
@@ -129,11 +137,47 @@ export default function SetupAutopayContent() {
     confirmAccountNumber: "",
   });
 
+  const expiryError = (() => {
+    if (activeTab !== "card") return "";
+    const { expiryMonth, expiryYear } = formData;
+    if (!expiryMonth || !expiryYear) return "";
+
+    const m = parseInt(expiryMonth, 10);
+    if (!m || m < 1 || m > 12) return t("errors.invalidMonth");
+
+    // Wait until they've typed a full 2- or 4-digit year
+    const y = normalizeYear(expiryYear);
+    if (y === null) return "";
+
+    const now = new Date();
+    const curYear = now.getFullYear();
+    const curMonth = now.getMonth() + 1;
+
+    if (y < curYear || (y === curYear && m < curMonth))
+      return t("errors.cardExpired");
+    if (y > curYear + 25) return t("errors.invalidYear");
+    return "";
+  })();
+
+  const requiredCvvLength = cardType === "amex" ? 4 : 3;
+  const cvvError =
+    activeTab === "card" &&
+    formData.cvv.length > 0 &&
+    formData.cvv.length !== requiredCvvLength
+      ? t("errors.invalidCvv", { count: requiredCvvLength })
+      : "";
+
   // ✅ ENHANCED CARD NUMBER HANDLING (supports Amex 15 digits)
   const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/\s/g, "");
     const detectedType = detectCardType(value);
     setCardType(detectedType);
+
+    // Amex CVV is 4 digits; every other brand is 3. If the brand changes
+    // after they've typed a CVV, trim it so a stale 4th digit can't linger.
+    if (detectedType !== "amex" && formData.cvv.length > 3) {
+      setFormData((prev) => ({ ...prev, cvv: prev.cvv.slice(0, 3) }));
+    }
 
     // Amex: 15 digits (format: 4-6-5)
     // Others: 16 digits (format: 4-4-4-4)
@@ -163,12 +207,34 @@ export default function SetupAutopayContent() {
   };
 
   const handleExpiryMonthChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, "").slice(0, 2);
-    setFormData({ ...formData, expiryMonth: value });
-    if (value.length === 2) document.getElementById("expiry-year")?.focus();
+    const digits = e.target.value.replace(/\D/g, "");
+
+    // Autofill / paste of a full expiry: "12/28", "12/2028", "1228", "122028"
+    if (digits.length > 2) {
+      setFormData({
+        ...formData,
+        expiryMonth: digits.slice(0, 2),
+        expiryYear: digits.slice(2, 6),
+      });
+      document.getElementById("cvv")?.focus();
+      return;
+    }
+
+    setFormData({ ...formData, expiryMonth: digits });
+    if (digits.length === 2) document.getElementById("expiry-year")?.focus();
+  };
+
+  // Pad "3" → "03" once they leave the field
+  const handleExpiryMonthBlur = () => {
+    setFormData((prev) =>
+      prev.expiryMonth.length === 1
+        ? { ...prev, expiryMonth: `0${prev.expiryMonth}` }
+        : prev,
+    );
   };
 
   const handleExpiryYearChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Accept both MM/YY and MM/YYYY — 2 or 4 digits
     const value = e.target.value.replace(/\D/g, "").slice(0, 4);
     setFormData({ ...formData, expiryYear: value });
     if (value.length === 4) document.getElementById("cvv")?.focus();
@@ -205,6 +271,20 @@ export default function SetupAutopayContent() {
       setError(t("errors.accountMismatch"));
       return;
     }
+    if (activeTab === "card") {
+      if (expiryError) {
+        setError(expiryError);
+        return;
+      }
+      if (normalizeYear(formData.expiryYear) === null) {
+        setError(t("errors.invalidYear"));
+        return;
+      }
+      if (formData.cvv.length !== requiredCvvLength) {
+        setError(t("errors.invalidCvv", { count: requiredCvvLength }));
+        return;
+      }
+    }
 
     setLoading(true);
     setError("");
@@ -223,8 +303,9 @@ export default function SetupAutopayContent() {
           ...(activeTab === "card"
             ? {
                 cardNumber: formData.cardNumber,
-                expiryMonth: formData.expiryMonth,
-                expiryYear: formData.expiryYear,
+                expiryMonth: formData.expiryMonth.padStart(2, "0"),
+                // Always send 4 digits regardless of what they typed
+                expiryYear: String(normalizeYear(formData.expiryYear)),
                 cvv: formData.cvv,
                 zipCode: formData.zipCode,
                 cardholderName: formData.cardholderName,
@@ -345,6 +426,8 @@ export default function SetupAutopayContent() {
                   <input
                     type="text"
                     required
+                    name="cc-name"
+                    autoComplete="cc-name"
                     value={formData.cardholderName}
                     onChange={(e) =>
                       setFormData({
@@ -365,6 +448,9 @@ export default function SetupAutopayContent() {
                       type="text"
                       required
                       maxLength={cardType === "amex" ? 17 : 19} // Amex: 15 digits + 2 spaces, Others: 16 + 3 spaces
+                      name="cc-number"
+                      autoComplete="cc-number"
+                      inputMode="numeric"
                       value={formData.cardNumber}
                       onChange={handleCardNumberChange}
                       className="w-full px-4 py-3 pr-20 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
@@ -372,6 +458,27 @@ export default function SetupAutopayContent() {
                     />
                     <CardBrandIcon type={cardType} />
                   </div>
+
+                  {cardType === "amex" && (
+                    <div className="mt-2 flex items-start gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                      <svg
+                        className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                        />
+                      </svg>
+                      <p className="text-xs text-amber-800 leading-relaxed">
+                        {t("card.amexNotice")}
+                      </p>
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -381,25 +488,45 @@ export default function SetupAutopayContent() {
                     <div className="flex gap-2">
                       <input
                         id="expiry-month"
+                        name="cc-exp-month"
+                        autoComplete="cc-exp-month"
+                        inputMode="numeric"
                         type="text"
                         required
-                        maxLength={2}
+                        maxLength={7}
                         placeholder={t("card.monthPlaceholder")}
                         value={formData.expiryMonth}
                         onChange={handleExpiryMonthChange}
-                        className="w-1/2 px-4 py-3 border border-gray-200 rounded-xl outline-none"
+                        onBlur={handleExpiryMonthBlur}
+                        className={`w-1/2 px-4 py-3 border rounded-xl outline-none transition ${
+                          expiryError
+                            ? "border-red-400 bg-red-50/40"
+                            : "border-gray-200"
+                        }`}
                       />
                       <input
                         id="expiry-year"
+                        name="cc-exp-year"
+                        autoComplete="cc-exp-year"
+                        inputMode="numeric"
                         type="text"
                         required
                         maxLength={4}
                         placeholder={t("card.yearPlaceholder")}
                         value={formData.expiryYear}
                         onChange={handleExpiryYearChange}
-                        className="w-1/2 px-4 py-3 border border-gray-200 rounded-xl outline-none"
+                        className={`w-1/2 px-4 py-3 border rounded-xl outline-none transition ${
+                          expiryError
+                            ? "border-red-400 bg-red-50/40"
+                            : "border-gray-200"
+                        }`}
                       />
                     </div>
+                    {expiryError && (
+                      <p className="mt-1.5 text-xs text-red-600 font-medium">
+                        {expiryError}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
@@ -410,13 +537,25 @@ export default function SetupAutopayContent() {
                       type="text"
                       required
                       maxLength={cardType === "amex" ? 4 : 3}
+                      name="cc-csc"
+                      autoComplete="cc-csc"
+                      inputMode="numeric"
                       value={formData.cvv}
                       onChange={handleCvvChange}
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl outline-none"
                       placeholder={
                         cardType === "amex" ? "1234" : t("card.cvvPlaceholder")
                       }
+                      className={`w-full px-4 py-3 border rounded-xl outline-none transition ${
+                        cvvError
+                          ? "border-red-400 bg-red-50/40"
+                          : "border-gray-200"
+                      }`}
                     />
+                    {cvvError && (
+                      <p className="mt-1.5 text-xs text-red-600 font-medium">
+                        {cvvError}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div>
@@ -572,7 +711,7 @@ export default function SetupAutopayContent() {
 
             <button
               type="submit"
-              disabled={loading || !agreed}
+              disabled={loading || !agreed || !!expiryError || !!cvvError}
               className="w-full py-4 bg-[#A0103D] hover:bg-[#800d31] text-white font-bold rounded-xl shadow-lg transition-all transform hover:scale-[1.01] disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading ? (

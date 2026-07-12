@@ -787,7 +787,7 @@ export default function CreatePaymentLink() {
                               type="text"
                               value={description}
                               onChange={(e) => setDescription(e.target.value)}
-                              placeholder="e.g., Auto Insurance Payment - Policy #12345"
+                              placeholder="e.g., Customer Name - (Why you sending him the link ? eg Monthly pay, etc)"
                               required
                               disabled={translating}
                               className={`w-full px-4 py-3 pr-20 border rounded-lg outline-none transition disabled:opacity-60 ${

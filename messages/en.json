@@ -1676,7 +1676,8 @@
       "cvv": "CVV",
       "cvvPlaceholder": "123",
       "zipCode": "Billing ZIP Code",
-      "zipCodePlaceholder": "12345"
+      "zipCodePlaceholder": "12345",
+      "amexNotice": "Heads up: not every carrier accepts American Express for recurring autopay — Amex processing fees are higher, so some companies only allow Visa, Mastercard, or Discover. You can still submit this card, and we'll confirm with your carrier. If they don't accept it, an agent will reach out to set up a different payment method."
     },
     "bank": {
       "fullName": "Full Name on Account",
@@ -1708,7 +1709,11 @@
     "errors": {
       "agreeToTerms": "Please agree to the terms to continue",
       "accountMismatch": "Account numbers do not match",
-      "setupFailed": "Failed to set up autopay. Please try again."
+      "setupFailed": "Failed to set up autopay. Please try again.",
+      "cardExpired": "This card has expired — please check the expiration date.",
+      "invalidMonth": "Enter a month between 01 and 12.",
+      "invalidYear": "Enter a valid expiration year.",
+      "invalidCvv": "CVV must be {count} digits for this card."
     }
   },
   "thankYou": {
