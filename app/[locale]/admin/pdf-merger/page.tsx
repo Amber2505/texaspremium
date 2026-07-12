@@ -55,6 +55,7 @@ const POLICY_TYPES = [
 ];
 
 type PaymentMethod = "none" | "cc" | "eft";
+type PaymentMethodChoice = PaymentMethod | "";
 type ReceiptType = "card" | "cash";
 
 interface ExtraDoc {
@@ -240,7 +241,7 @@ export default function PdfMergerPage() {
 
   const [policyType, setPolicyType] = useState("Auto");
   const [nonOwner, setNonOwner] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cc");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodChoice>("");
   const [receiptType, setReceiptType] = useState<ReceiptType>("card");
   const [customerName, setCustomerName] = useState("");
   const [companyApp, setCompanyApp] = useState<File | null>(null);
@@ -280,6 +281,7 @@ export default function PdfMergerPage() {
   const canMerge =
     customerName.trim() &&
     companyApp &&
+    !!paymentMethod &&
     !isPolicyTbd &&
     (noReceipt ||
       (officeReceipt && receiptFieldsReady && !receiptInfo?.notAReceipt)) &&
@@ -878,7 +880,7 @@ export default function PdfMergerPage() {
     setExpirationDate("");
     setPolicyType("Auto");
     setNonOwner(false);
-    setPaymentMethod("cc");
+    setPaymentMethod("");
     setReceiptType("card");
     setCompanyApp(null);
     setExtraDocs([]);
@@ -907,7 +909,8 @@ export default function PdfMergerPage() {
   // ─── Merge order preview ─────────────────────────────────────────────────────
   const afterCompany = extraDocs.length;
   const baseCount = hasTemplates ? templates.length : 0;
-  const paymentOffset = paymentMethod !== "none" ? 1 : 0;
+  const paymentOffset =
+    paymentMethod === "cc" || paymentMethod === "eft" ? 1 : 0;
   const nonOwnerOffset = nonOwner ? 1 : 0;
 
   const displayDocs = [
@@ -931,7 +934,7 @@ export default function PdfMergerPage() {
           type: "static" as const,
         }))
       : []),
-    ...(paymentMethod !== "none"
+    ...(paymentMethod === "cc" || paymentMethod === "eft"
       ? [
           {
             num: baseCount + afterCompany + 2,
@@ -1133,7 +1136,7 @@ export default function PdfMergerPage() {
                   </div>
 
                   <div className="md:col-span-2">
-                    <FieldLabel>Payment method on file</FieldLabel>
+                    <FieldLabel required>Payment method on file</FieldLabel>
                     <div className="grid grid-cols-3 gap-2">
                       {[
                         {
@@ -1804,13 +1807,15 @@ export default function PdfMergerPage() {
                       ? "Enter customer name to get started"
                       : !companyApp
                         ? "Upload the company application to continue"
-                        : noReceipt
-                          ? "Ready to merge"
-                          : !officeReceipt
-                            ? "Upload the Office Copy of the receipt, or toggle No Receipt"
-                            : !receiptFieldsReady
-                              ? "Fill in paid amount, next due date, and monthly payment"
-                              : "Upload a CC receipt or switch to Cash"}
+                        : !paymentMethod
+                          ? "Select a payment method on file — Card, Bank (EFT), or None"
+                          : noReceipt
+                            ? "Ready to merge"
+                            : !officeReceipt
+                              ? "Upload the Office Copy of the receipt, or toggle No Receipt"
+                              : !receiptFieldsReady
+                                ? "Fill in paid amount, next due date, and monthly payment"
+                                : "Upload a CC receipt or switch to Cash"}
                 </div>
               )}
             </div>
