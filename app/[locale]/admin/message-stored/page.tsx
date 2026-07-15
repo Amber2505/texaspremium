@@ -1797,6 +1797,18 @@ export default function MessageStoredPage() {
         out = outLines.join("\n");
       }
 
+      // The model sometimes hallucinates [[LINK_n]] tokens even when the input
+      // had none — the system prompt primes it to expect them. Strip any
+      // placeholder that doesn't correspond to a real extracted link.
+      out = out.replace(/\[?\[?\s*LINK[\s_]*\d+\s*\]?\]?/gi, (m) => {
+        const idx = parseInt(m.replace(/\D/g, ""), 10);
+        return links[idx] ? m : "";
+      });
+      out = out
+        .replace(/[ \t]{2,}/g, " ")
+        .replace(/ +\n/g, "\n")
+        .trim();
+
       translationCacheRef.current.set(text, out);
       return out;
     } catch {

@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
     const unpaid = await col.find({
       createdAtTimestamp: { $gte: since },
       linkType: "payment",
+      generatedLink: { $exists: true, $nin: [null, "", "placeholder"] },
       $or: [
         { "completedStages.payment": { $exists: false } },
         { "completedStages.payment": false },

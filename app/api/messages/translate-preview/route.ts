@@ -8,6 +8,10 @@ export async function POST(req: NextRequest) {
     const { text, direction } = await req.json();
     if (!text?.trim()) return NextResponse.json({ error: "No text" }, { status: 400 });
 
+    // Only mention placeholder tokens if the text actually contains one.
+    // Otherwise the model invents [[LINK_0]] on short messages.
+    const hasPlaceholder = /\[\[LINK_\d+\]\]/.test(text);
+
     const targetLang = direction === "to-es" ? "Spanish" : "English";
 const sourceLang = direction === "to-es" ? "English" : "Spanish";
 
@@ -34,9 +38,8 @@ CRITICAL RULES — follow these exactly:
 5. Keep payment terms like "Monthly payment", "Down payment" translated naturally but keep any names or identifiers next to them intact
 6. Use natural, conversational Latin American Spanish — not formal Castilian Spanish
 7. Sound like a friendly local insurance agent, not a robot or formal document
-8. Preserve placeholder tokens of the form [[LINK_0]], [[LINK_1]], etc. EXACTLY as written — same spelling, same brackets, same position in the text. These are stand-ins for URLs. Do not translate them, do not remove them, do not move them to a different line, and do not add surrounding text. A placeholder on its own line MUST stay on its own line. A placeholder at the very start of the message MUST remain at the very start.
-9. Preserve the original line breaks and blank lines exactly — if the input has 3 lines, the output has 3 lines
-10. Return ONLY the translated text — no explanations, no quotation marks, no preamble`,
+${hasPlaceholder ? `8. Preserve placeholder tokens of the form [[LINK_0]], [[LINK_1]], etc. EXACTLY as written — same spelling, same brackets, same position in the text. These are stand-ins for URLs. Do not translate them, do not remove them, do not move them to a different line, and do not add surrounding text. A placeholder on its own line MUST stay on its own line. A placeholder at the very start of the message MUST remain at the very start.\n` : ""}${hasPlaceholder ? "9" : "8"}. Preserve the original line breaks and blank lines exactly — if the input has the same number of lines in and out
+${hasPlaceholder ? "10" : "9"}. Return ONLY the translated text — no explanations, no quotation marks, no preamble`,
           },
           {
             role: "user",

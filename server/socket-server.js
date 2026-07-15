@@ -516,6 +516,7 @@ async function processPaymentReminders() {
     const unpaidLinks = await paymentLinksCollection.find({
       linkType: 'payment',
       disabled: { $ne: true },
+      generatedLink: { $exists: true, $nin: [null, '', 'placeholder'] },
       $or: [
         { 'completedStages.payment': { $exists: false } },
         { 'completedStages.payment': false },
@@ -554,6 +555,11 @@ async function processPaymentReminders() {
       const createdDecimal = getCSTTimeDecimal(startTime);// e.g. 10.0 = 10am
       const sentReminders = link.sentReminders || [];
       const generatedLink = link.generatedLink;
+
+      // Never send a reminder with an unresolved link
+      if (!generatedLink || !/^https?:\/\//i.test(generatedLink)) {
+        continue;
+      }
 
       const isSpanish = link.language === 'es';
 

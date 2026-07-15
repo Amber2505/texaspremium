@@ -413,7 +413,7 @@ export default function CreatePaymentLink() {
         const squarePaymentLink = data.paymentLink;
         const squareLinkId = data.squareLinkId || null;
         const proxyLink = `https://www.texaspremiumins.com/${language}/pay/${linkId}`;
-        await fetch("/api/update-payment-link", {
+        const updateRes = await fetch("/api/update-payment-link", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -423,6 +423,24 @@ export default function CreatePaymentLink() {
             squareLinkId,
           }),
         });
+
+        if (!updateRes.ok) {
+          // Real /pay/ link never got written — delete the stub so the
+          // reminder job doesn't text "placeholder" to the customer.
+          try {
+            await fetch("/api/delete-payment-link", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ linkId }),
+            });
+          } catch {}
+          setError(
+            "Link was created but couldn't be finalized. Please try again.",
+          );
+          setLoading(false);
+          return;
+        }
+
         setGeneratedLink(proxyLink);
         fetchUnpaid(unpaidFilter);
         setTimeout(
