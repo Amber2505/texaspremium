@@ -104,9 +104,9 @@ export async function extractPdfSteps(
       result.push(
         parsed[i] && parsed[i].title
           ? {
-              title: String(parsed[i].title).slice(0, 120),
-              description: String(parsed[i].description ?? ""),
-            }
+            title: String(parsed[i].title).slice(0, 120),
+            description: String(parsed[i].description ?? ""),
+          }
           : { title: `Step ${i + 1}`, description: pageTexts[i] ?? "" },
       );
     }

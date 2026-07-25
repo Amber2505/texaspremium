@@ -199,6 +199,56 @@ export default function AdminGuidesPage() {
     return acc;
   }, {});
 
+  // Uploads a file straight to Azure Blob Storage via a short-lived SAS URL
+  // — bypasses this server entirely, so there's no Vercel body-size limit
+  // to hit regardless of how big the PDF or video is. Progress is tracked
+  // on the PUT itself so the existing progress bar still works.
+  async function uploadFileDirectToAzure(file: File): Promise<string> {
+    const urlRes = await fetch("/api/guides/upload-url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: file.name }),
+    });
+    if (!urlRes.ok) {
+      throw new Error("Could not prepare upload. Please try again.");
+    }
+    const { uploadUrl, blobName } = await urlRes.json();
+
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", uploadUrl);
+      xhr.setRequestHeader("x-ms-blob-type", "BlockBlob");
+      xhr.setRequestHeader(
+        "Content-Type",
+        file.type || "application/octet-stream",
+      );
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable)
+          setUploadPct(Math.round((e.loaded / e.total) * 100));
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve();
+        else reject(new Error("File upload to storage failed."));
+      };
+      xhr.onerror = () => reject(new Error("Network error during upload."));
+      xhr.send(file);
+    });
+
+    return blobName;
+  }
+
+  // Safely parses a fetch Response as JSON — falls back to the raw status
+  // text instead of throwing an uncaught SyntaxError when the server (or
+  // the platform in front of it) returns a non-JSON error body.
+  async function safeJson(res: Response): Promise<any> {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { error: text || `Request failed (${res.status})` };
+    }
+  }
+
   async function handleSave() {
     if (!form.title.trim()) {
       setError("Title is required.");
@@ -210,37 +260,41 @@ export default function AdminGuidesPage() {
     }
     setUploading(true);
     setError("");
+    setUploadPct(0);
 
     try {
-      const fd = new FormData();
-      fd.append("title", form.title);
-      fd.append("description", form.description);
-      fd.append("category", form.category);
-      fd.append("duration", form.duration);
-      fd.append("steps", JSON.stringify(steps));
-      fd.append("embedUrl", form.embedUrl);
+      let pdfBlobName: string | null = null;
+      let videoBlobName: string | null = null;
+
       if (selectedFile) {
         const isPdf = selectedFile.name.toLowerCase().endsWith(".pdf");
-        fd.append(isPdf ? "pdf" : "video", selectedFile);
+        const blobName = await uploadFileDirectToAzure(selectedFile);
+        if (isPdf) pdfBlobName = blobName;
+        else videoBlobName = blobName;
       }
 
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", "/api/guides");
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable)
-            setUploadPct(Math.round((e.loaded / e.total) * 100));
-        };
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) resolve();
-          else
-            reject(
-              new Error(JSON.parse(xhr.responseText).error ?? "Upload failed."),
-            );
-        };
-        xhr.onerror = () => reject(new Error("Network error."));
-        xhr.send(fd);
+      // Metadata-only JSON — small regardless of file size, so this never
+      // comes close to any server body limit.
+      const res = await fetch("/api/guides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: form.title,
+          description: form.description,
+          category: form.category,
+          duration: form.duration,
+          steps,
+          embedUrl: form.embedUrl,
+          pdfBlobName,
+          videoBlobName,
+          videoContentType: selectedFile?.type || undefined,
+        }),
       });
+
+      if (!res.ok) {
+        const data = await safeJson(res);
+        throw new Error(data.error ?? "Upload failed.");
+      }
 
       setShowForm(false);
       setForm({
@@ -258,7 +312,7 @@ export default function AdminGuidesPage() {
       setTimeout(() => setSuccessMsg(""), 4000);
       fetchGuides();
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message ?? "Upload failed.");
     } finally {
       setUploading(false);
       setUploadPct(0);

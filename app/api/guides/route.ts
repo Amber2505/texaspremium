@@ -9,7 +9,7 @@ import { extractPdfSteps } from "../../../lib/extractPdfSteps";
 
 // PDF → images rendering needs the Node runtime (not edge) and a little headroom
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300; // 30MB+ PDFs need more headroom than 60s (Vercel Pro+ only — Hobby caps at 60s regardless)
 
 const mongoClient = new MongoClient(process.env.MONGODB_URI!);
 
@@ -29,24 +29,31 @@ export async function GET() {
   }
 }
 
-// POST /api/guides — multipart: title, description, category, duration, video (file)
+// POST /api/guides — JSON body: title, description, category, duration,
+// steps, embedUrl, and EITHER pdfBlobName OR videoBlobName (already
+// uploaded straight to Azure by the client via /api/guides/upload-url).
+// No raw file bytes travel through this route — that's what keeps every
+// request well under Vercel's 4.5MB serverless body limit, even for a
+// 30MB+ PDF.
 export async function POST(req: NextRequest) {
   try {
-    const formData = await req.formData();
-    const title       = formData.get("title") as string;
-    const description = (formData.get("description") as string) ?? "";
-    const category    = (formData.get("category") as string) ?? "General";
-    const duration    = (formData.get("duration") as string) ?? "";
-    const stepsRaw    = (formData.get("steps") as string) ?? "[]";
-    let   steps       = JSON.parse(stepsRaw) as { title: string; description: string }[];
-    const embedUrl    = (formData.get("embedUrl") as string) ?? "";
-    const videoFile   = formData.get("video") as File | null;
-    const pdfFile     = formData.get("pdf") as File | null;
-    const uploadFile  = videoFile ?? pdfFile;
-    const fileType    = embedUrl ? "embed" : pdfFile ? "pdf" : "video";
+    const body = await req.json();
+    const title: string = body.title ?? "";
+    const description: string = body.description ?? "";
+    const category: string = body.category ?? "General";
+    const duration: string = body.duration ?? "";
+    let steps: { title: string; description: string }[] = Array.isArray(body.steps)
+      ? body.steps
+      : [];
+    const embedUrl: string = body.embedUrl ?? "";
+    const pdfBlobName: string | null = body.pdfBlobName ?? null;
+    const videoBlobName: string | null = body.videoBlobName ?? null;
 
-    if (!title || (!uploadFile && !embedUrl)) {
-      return NextResponse.json({ error: "Title and a file or embed URL are required." }, { status: 400 });
+    if (!title || (!pdfBlobName && !videoBlobName && !embedUrl)) {
+      return NextResponse.json(
+        { error: "Title and a file or embed URL are required." },
+        { status: 400 },
+      );
     }
 
     // ── Slug + collection (needed by every path, PDF included) ──
@@ -58,10 +65,13 @@ export async function POST(req: NextRequest) {
 
     const col = await getCollection();
     if (await col.findOne({ slug })) {
-      return NextResponse.json({ error: "A guide with that title already exists." }, { status: 409 });
+      return NextResponse.json(
+        { error: "A guide with that title already exists." },
+        { status: 409 },
+      );
     }
 
-    // ── Azure container (shared by PDF page images and the normal upload) ──
+    // ── Azure container (files already live here — client uploaded direct) ──
     const blobServiceClient = BlobServiceClient.fromConnectionString(
       process.env.AZURE_STORAGE_CONNECTION_STRING!,
     );
@@ -71,17 +81,19 @@ export async function POST(req: NextRequest) {
     await containerClient.createIfNotExists({ access: "blob" });
 
     // ════════════════════════════════════════════════════════════════════════
-    // PDF PATH: render each page → crop guidemaker banner → upload page images
-    // → auto-extract steps → save as a clean "pdf-steps" guide (no raw PDF).
+    // PDF PATH: download the already-uploaded PDF from Azure (server-side
+    // fetch — not subject to the client→Vercel body limit), render pages,
+    // extract steps, upload the clean page images, delete the temp PDF.
     // ════════════════════════════════════════════════════════════════════════
-    if (pdfFile) {
-      const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer());
+    if (pdfBlobName) {
+      const pdfBlob = containerClient.getBlockBlobClient(pdfBlobName);
+      const pdfBuffer = await pdfBlob.downloadToBuffer();
 
-      // 1. Render + crop pages (page 1 cover skipped inside the helper)
+      // 1. Extract clean screenshots (page 1 cover skipped inside the helper)
       const rendered = await renderPdfToImages(pdfBuffer, {
         scale: 2.0,
-        cropTop: 0.09,     // removes the "Guidemaker/MagicHow" top banner
-        cropBottom: 0.07,  // removes the "Made with…" footer
+        cropTop: 0.09,
+        cropBottom: 0.07,
         skipFirstPage: true,
       });
 
@@ -113,16 +125,19 @@ export async function POST(req: NextRequest) {
         description: steps[i]?.description ?? "",
       }));
 
+      // 5. Clean up the temp source PDF — we only needed it for rendering.
+      await pdfBlob.deleteIfExists();
+
       const doc = {
         slug,
         title,
         description,
         category,
         duration,
-        steps,                 // kept for the existing steps card
-        pages,                 // NEW: image + text per step for the viewer
-        fileType: "pdf-steps", // NEW type → viewer renders clean layout
-        videoUrl: "",          // no raw PDF/video stored
+        steps,
+        pages,
+        fileType: "pdf-steps",
+        videoUrl: "",
         embedUrl: "",
         blobName: "",
         createdAt: new Date(),
@@ -132,18 +147,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ guide: doc });
     }
 
+    // ════════════════════════════════════════════════════════════════════════
+    // VIDEO / EMBED PATH — video was already uploaded direct to Azure too;
+    // just reference the blob that's already there.
+    // ════════════════════════════════════════════════════════════════════════
     let videoUrl = embedUrl;
     let blobName = "";
+    const fileType = embedUrl ? "embed" : videoBlobName ? "video" : "embed";
 
-    if (uploadFile) {
-      const ext = uploadFile.name.split(".").pop() ?? "mp4";
-      blobName = `${slug}-${Date.now()}.${ext}`;
-      const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-      const buffer = Buffer.from(await uploadFile.arrayBuffer());
-      await blockBlobClient.uploadData(buffer, {
-        blobHTTPHeaders: { blobContentType: uploadFile.type || "application/octet-stream" },
-      });
-      videoUrl = blockBlobClient.url;
+    if (videoBlobName) {
+      blobName = videoBlobName;
+      videoUrl = containerClient.getBlockBlobClient(videoBlobName).url;
     }
 
     const doc = {
