@@ -41,7 +41,7 @@ export default function ViewDocuments() {
   const [hasSearched, setHasSearched] = useState(false);
   const [loadCount, setLoadCount] = useState(0);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(
-    null
+    null,
   );
   const [previewUrl, setPreviewUrl] = useState<string>("");
 
@@ -55,7 +55,7 @@ export default function ViewDocuments() {
   const fetchAttachments = async (
     email: string,
     skip: number = 0,
-    append: boolean = false
+    append: boolean = false,
   ) => {
     const limit = getCurrentLimit();
     if (skip === 0) {
@@ -69,8 +69,8 @@ export default function ViewDocuments() {
     try {
       const response = await fetch(
         `https://astraldbapi.herokuapp.com/attachments?search_email=${encodeURIComponent(
-          email
-        )}&limit=${limit}&skip=${skip}`
+          email,
+        )}&limit=${limit}&skip=${skip}`,
       );
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));

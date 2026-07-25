@@ -292,14 +292,26 @@ export default function AdminAutopayDashboard() {
 
   const markAsUnviewed = async (id: string) => {
     try {
+      // Mark unread
       await fetch("/api/autopay/mark-unviewed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-      setCustomers((prev) =>
-        prev.map((c) => (c._id === id ? { ...c, viewed: false } : c)),
-      );
+      // If it was in Completed, reopen it so it goes back to Pending with a NEW flag
+      if (activeTab === "completed") {
+        await fetch("/api/autopay/update-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id, completed: false }),
+        });
+        // Remove it from the current (Completed) list immediately
+        setCustomers((prev) => prev.filter((c) => c._id !== id));
+      } else {
+        setCustomers((prev) =>
+          prev.map((c) => (c._id === id ? { ...c, viewed: false } : c)),
+        );
+      }
       fetchCustomers(true, currentPage, pageSize, true);
     } catch {
       alert("Failed to mark as unviewed");
