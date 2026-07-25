@@ -87,6 +87,18 @@ function scoreGuide(query: string, guide: Guide): number {
   return 0;
 }
 
+// Turns "How-to-Create-a-Payment-Link-in-Admin-portal.pdf" into
+// "How To Create A Payment Link In Admin Portal" so the title is pre-filled
+// the moment a file is picked — admins can still edit it before saving.
+function titleFromFilename(name: string): string {
+  const base = name.replace(/\.[^/.]+$/, "");
+  const spaced = base.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  return spaced
+    .split(" ")
+    .map((w) => (w.length ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
 const inp =
   "w-full px-3.5 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A0103D]/20 focus:border-[#A0103D] transition placeholder-gray-300";
 
@@ -121,26 +133,6 @@ export default function AdminGuidesPage() {
   const [steps, setSteps] = useState<{ title: string; description: string }[]>(
     [],
   );
-  const [extracting, setExtracting] = useState(false);
-
-  async function extractStepsFromPdf(file: File) {
-    setExtracting(true);
-    try {
-      const fd = new FormData();
-      fd.append("pdf", file);
-      const res = await fetch("/api/guides/extract-steps", {
-        method: "POST",
-        body: fd,
-      });
-      const data = await res.json();
-      if (data.steps) setSteps(data.steps);
-      else setError("Could not extract steps from PDF.");
-    } catch {
-      setError("Step extraction failed.");
-    } finally {
-      setExtracting(false);
-    }
-  }
 
   function addStep() {
     setSteps((s) => [...s, { title: "", description: "" }]);
@@ -417,27 +409,12 @@ export default function AdminGuidesPage() {
                       </>
                     )}
                   </button>
-                  {selectedFile?.name.toLowerCase().endsWith(".pdf") &&
-                    steps.length === 0 && (
-                      <button
-                        type="button"
-                        onClick={() => extractStepsFromPdf(selectedFile)}
-                        disabled={extracting}
-                        className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-gradient-to-r from-[#A0103D] to-[#102a56] text-white text-xs font-semibold hover:opacity-90 transition disabled:opacity-60"
-                      >
-                        {extracting ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />{" "}
-                            Extracting steps with AI…
-                          </>
-                        ) : (
-                          <>
-                            <Play className="w-3.5 h-3.5" /> Auto-Extract Steps
-                            with AI
-                          </>
-                        )}
-                      </button>
-                    )}
+                  {selectedFile?.name.toLowerCase().endsWith(".pdf") && (
+                    <p className="mt-2 text-[11px] text-gray-400 text-center">
+                      Screenshots and steps are extracted automatically after
+                      upload — nothing else to do here.
+                    </p>
+                  )}
                   <input
                     ref={fileRef}
                     type="file"
@@ -447,6 +424,14 @@ export default function AdminGuidesPage() {
                       const f = e.target.files?.[0] ?? null;
                       setSelectedFile(f);
                       setSteps([]);
+                      // Auto-fill the title from the filename if the admin
+                      // hasn't typed one yet.
+                      if (f && !form.title.trim()) {
+                        setForm((prev) => ({
+                          ...prev,
+                          title: titleFromFilename(f.name),
+                        }));
+                      }
                     }}
                   />
                 </div>

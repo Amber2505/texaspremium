@@ -5,6 +5,12 @@ const withNextIntl = createNextIntlPlugin();
 
 /** @type {import('next').NextConfig} */
 const nextConfig: NextConfig = {
+  // pdfjs-dist and canvas must stay as real files on disk at runtime — if
+  // webpack bundles them into a vendor chunk, pdfjs's Node "fake worker"
+  // fallback can't find pdf.worker.mjs next to it and throws
+  // "Cannot find module .../pdf.worker.mjs".
+  serverExternalPackages: ["pdfjs-dist", "canvas"],
+
   async redirects() {
     return [
       {
@@ -15,9 +21,13 @@ const nextConfig: NextConfig = {
     ];
   },
 
-  webpack: (config) => {
-    config.resolve.alias.canvas = false;
-    config.externals = [...(config.externals || []), { canvas: "canvas" }];
+  webpack: (config, { isServer }) => {
+    // Stub "canvas" out ONLY for the client bundle — pdfjs-dist's browser
+    // build probes for it. The server route needs the real module to render
+    // PDF pages, so it must never be aliased away there.
+    if (!isServer) {
+      config.resolve.alias.canvas = false;
+    }
     return config;
   },
 };

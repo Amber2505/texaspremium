@@ -41,14 +41,32 @@ export async function DELETE(
 
     const guide = await col.findOne({ slug });
 
-    if (guide?.blobName) {
+    if (guide?.blobName || (guide?.pages && guide.pages.length > 0)) {
       const blobServiceClient = BlobServiceClient.fromConnectionString(
         process.env.AZURE_STORAGE_CONNECTION_STRING!
       );
       const containerClient = blobServiceClient.getContainerClient(
         process.env.AZURE_GUIDES_CONTAINER ?? "guides"
       );
-      await containerClient.getBlockBlobClient(guide.blobName).deleteIfExists();
+
+      // Single-file guides (video/pdf) store one blobName
+      if (guide.blobName) {
+        await containerClient.getBlockBlobClient(guide.blobName).deleteIfExists();
+      }
+
+      // pdf-steps guides store an array of page image URLs — delete each one
+      if (Array.isArray(guide.pages)) {
+        for (const pg of guide.pages) {
+          if (!pg?.image) continue;
+          // Blob name is the last path segment of the URL
+          const blobName = decodeURIComponent(
+            new URL(pg.image).pathname.split("/").pop() || ""
+          );
+          if (blobName) {
+            await containerClient.getBlockBlobClient(blobName).deleteIfExists();
+          }
+        }
+      }
     }
 
     await col.deleteOne({ slug });
