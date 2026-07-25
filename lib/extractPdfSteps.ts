@@ -1,12 +1,17 @@
 //app/lib/extractPdfSteps.ts
-//
 // Extracts one step (title + description) per PDF page. Reads the PDF's text
 // layer directly with pdf.js — no pdf-parse, no sending PDFs to GPT (both of
 // which caused errors before). OpenAI is used only to tidy raw page text into
 // a clean {title, description}. Falls back to raw text if OpenAI is unavailable.
 
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import OpenAI from "openai";
+
+// pdfjs-dist v3's legacy build is CommonJS. A plain require() sidesteps
+// webpack's ESM/CJS interop, which can resolve to undefined for the default
+// export depending on how the module gets bundled (see lib/pdfToImages.ts).
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pdfjsLegacy = require("pdfjs-dist/legacy/build/pdf.js");
+const { getDocument } = pdfjsLegacy;
 
 export interface GuideStep {
   title: string;

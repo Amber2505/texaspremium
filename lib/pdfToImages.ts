@@ -1,5 +1,5 @@
 //app/lib/pdfToImages.ts
-//
+/*eslint-disable @typescript-eslint/no-require-imports*/
 // Pulls the actual embedded screenshot out of each PDF page, instead of
 // rendering the whole page and cropping fixed top/bottom fractions.
 //
@@ -15,8 +15,17 @@
 // Requires: pdfjs-dist and canvas (node-canvas)
 //   npm install pdfjs-dist@4.0.379 canvas
 
-import { getDocument, OPS } from "pdfjs-dist/legacy/build/pdf.mjs";
 import { createCanvas, ImageData, type Canvas } from "canvas";
+
+// pdfjs-dist v3's legacy build is CommonJS. `import pkg from "..."` goes
+// through webpack's ESM/CJS interop, which can resolve to `undefined` for
+// the default export depending on how the module gets bundled — this is
+// what broke the production build ("Cannot destructure property
+// 'getDocument' of ... undefined"). A plain require() sidesteps that
+// interop entirely and always returns the raw CommonJS exports object.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const pdfjsLegacy = require("pdfjs-dist/legacy/build/pdf.js");
+const { getDocument, OPS } = pdfjsLegacy;
 
 // pdf.js needs a canvas factory in Node for the page-render fallback path.
 const CanvasFactory = {
