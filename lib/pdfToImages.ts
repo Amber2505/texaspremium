@@ -14,7 +14,6 @@
 //
 // Requires: pdfjs-dist and canvas (node-canvas)
 //   npm install pdfjs-dist@4.0.379 canvas
-
 import { createCanvas, ImageData, type Canvas } from "canvas";
 
 // pdfjs-dist v3's legacy build is CommonJS. `import pkg from "..."` goes
@@ -23,9 +22,20 @@ import { createCanvas, ImageData, type Canvas } from "canvas";
 // what broke the production build ("Cannot destructure property
 // 'getDocument' of ... undefined"). A plain require() sidesteps that
 // interop entirely and always returns the raw CommonJS exports object.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const pdfjsLegacy = require("pdfjs-dist/legacy/build/pdf.js");
 const { getDocument, OPS } = pdfjsLegacy;
+
+// Tell pdf.js exactly where its worker file lives instead of letting it
+// guess a relative path at runtime — that guess is what fails on Vercel
+// ("Cannot find module './pdf.worker.js'") once the deployment bundle
+// restructures node_modules. require.resolve only succeeds if the file is
+// actually present, so this fails loudly at import time instead of deep
+// inside a request if outputFileTracingIncludes is ever misconfigured.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+pdfjsLegacy.GlobalWorkerOptions.workerSrc = require.resolve(
+  "pdfjs-dist/legacy/build/pdf.worker.js",
+);
 
 // pdf.js needs a canvas factory in Node for the page-render fallback path.
 const CanvasFactory = {

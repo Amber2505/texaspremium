@@ -13,6 +13,12 @@ import OpenAI from "openai";
 const pdfjsLegacy = require("pdfjs-dist/legacy/build/pdf.js");
 const { getDocument } = pdfjsLegacy;
 
+// Same worker-path fix as lib/pdfToImages.ts — see comment there.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+pdfjsLegacy.GlobalWorkerOptions.workerSrc = require.resolve(
+  "pdfjs-dist/legacy/build/pdf.worker.js",
+);
+
 export interface GuideStep {
   title: string;
   description: string;

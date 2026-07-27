@@ -7,9 +7,18 @@ const withNextIntl = createNextIntlPlugin();
 const nextConfig: NextConfig = {
   // pdfjs-dist and canvas must stay as real files on disk at runtime — if
   // webpack bundles them into a vendor chunk, pdfjs's Node "fake worker"
-  // fallback can't find pdf.worker.mjs next to it and throws
-  // "Cannot find module .../pdf.worker.mjs".
+  // fallback can't find pdf.worker.js next to it and throws
+  // "Cannot find module .../pdf.worker.js".
   serverExternalPackages: ["pdfjs-dist", "canvas"],
+
+  // Vercel's serverless bundler only packages files it can statically trace
+  // via import/require analysis. pdf.js loads its worker file with a
+  // dynamic, non-analyzable require() at runtime, so the tracer skips it —
+  // this forces the whole legacy build folder (worker included) into the
+  // deployed function for the guides upload route.
+  outputFileTracingIncludes: {
+    "/api/guides": ["./node_modules/pdfjs-dist/legacy/build/**"],
+  },
 
   async redirects() {
     return [
