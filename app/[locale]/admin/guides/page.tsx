@@ -120,7 +120,11 @@ export default function AdminGuidesPage() {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const fileRef = useRef<HTMLInputElement>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [batchProgress, setBatchProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   const [form, setForm] = useState({
@@ -249,51 +253,89 @@ export default function AdminGuidesPage() {
     }
   }
 
-  async function handleSave() {
-    if (!form.title.trim()) {
-      setError("Title is required.");
-      return;
+  // Uploads one file (if any) + posts its metadata as one guide. Shared by
+  // both the single-file flow and each iteration of a batch upload.
+  async function uploadOneGuide(params: {
+    title: string;
+    file: File | null;
+  }): Promise<void> {
+    const { title, file } = params;
+    let pdfBlobName: string | null = null;
+    let videoBlobName: string | null = null;
+
+    if (file) {
+      const isPdf = file.name.toLowerCase().endsWith(".pdf");
+      const blobName = await uploadFileDirectToAzure(file);
+      if (isPdf) pdfBlobName = blobName;
+      else videoBlobName = blobName;
     }
-    if (!selectedFile && !form.embedUrl.trim()) {
+
+    const res = await fetch("/api/guides", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title,
+        description: form.description,
+        category: form.category,
+        duration: form.duration,
+        // Manually-typed steps only make sense for a single upload — a
+        // batch relies on each PDF's own auto-extraction instead.
+        steps: selectedFiles.length <= 1 ? steps : [],
+        embedUrl: form.embedUrl,
+        pdfBlobName,
+        videoBlobName,
+        videoContentType: file?.type || undefined,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await safeJson(res);
+      throw new Error(data.error ?? "Upload failed.");
+    }
+  }
+
+  async function handleSave() {
+    const isBatch = selectedFiles.length > 1;
+
+    if (selectedFiles.length === 0 && !form.embedUrl.trim()) {
       setError("Please select a file or provide an embed URL.");
       return;
     }
+    if (!isBatch && !form.title.trim()) {
+      setError("Title is required.");
+      return;
+    }
+
     setUploading(true);
     setError("");
     setUploadPct(0);
+    setBatchProgress(null);
+
+    const totalFiles = selectedFiles.length;
+    let failureCount = 0;
+    const failureMessages: string[] = [];
 
     try {
-      let pdfBlobName: string | null = null;
-      let videoBlobName: string | null = null;
-
-      if (selectedFile) {
-        const isPdf = selectedFile.name.toLowerCase().endsWith(".pdf");
-        const blobName = await uploadFileDirectToAzure(selectedFile);
-        if (isPdf) pdfBlobName = blobName;
-        else videoBlobName = blobName;
-      }
-
-      // Metadata-only JSON — small regardless of file size, so this never
-      // comes close to any server body limit.
-      const res = await fetch("/api/guides", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      if (!isBatch) {
+        await uploadOneGuide({
           title: form.title,
-          description: form.description,
-          category: form.category,
-          duration: form.duration,
-          steps,
-          embedUrl: form.embedUrl,
-          pdfBlobName,
-          videoBlobName,
-          videoContentType: selectedFile?.type || undefined,
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await safeJson(res);
-        throw new Error(data.error ?? "Upload failed.");
+          file: selectedFiles[0] ?? null,
+        });
+      } else {
+        // Sequential on purpose — each PDF already does real work
+        // (rendering, TTS per step, video encoding), so running several
+        // at once risks overwhelming rate limits. Slower, but reliable.
+        for (let i = 0; i < selectedFiles.length; i++) {
+          setBatchProgress({ current: i + 1, total: totalFiles });
+          setUploadPct(0);
+          const file = selectedFiles[i];
+          try {
+            await uploadOneGuide({ title: titleFromFilename(file.name), file });
+          } catch (err: any) {
+            failureCount++;
+            failureMessages.push(`${file.name}: ${err.message ?? "failed"}`);
+          }
+        }
       }
 
       setShowForm(false);
@@ -305,17 +347,28 @@ export default function AdminGuidesPage() {
         embedUrl: "",
       });
       setSteps([]);
-      setForm((f) => ({ ...f, embedUrl: "" }));
-      setSelectedFile(null);
+      setSelectedFiles([]);
       if (fileRef.current) fileRef.current.value = "";
-      setSuccessMsg("Guide uploaded successfully.");
-      setTimeout(() => setSuccessMsg(""), 4000);
+
+      if (failureCount > 0) {
+        setError(
+          `${totalFiles - failureCount} of ${totalFiles} uploaded. Failed: ${failureMessages.join("; ")}`,
+        );
+      } else {
+        setSuccessMsg(
+          isBatch
+            ? `${totalFiles} guides uploaded.`
+            : "Guide uploaded successfully.",
+        );
+        setTimeout(() => setSuccessMsg(""), 4000);
+      }
       fetchGuides();
     } catch (err: any) {
       setError(err.message ?? "Upload failed.");
     } finally {
       setUploading(false);
       setUploadPct(0);
+      setBatchProgress(null);
     }
   }
 
@@ -431,22 +484,28 @@ export default function AdminGuidesPage() {
                     type="button"
                     onClick={() => fileRef.current?.click()}
                     className={`w-full flex flex-col items-center justify-center gap-2 py-8 border-2 border-dashed rounded-2xl transition-all text-center ${
-                      selectedFile
+                      selectedFiles.length > 0
                         ? "border-[#A0103D] bg-rose-50"
                         : "border-gray-200 hover:border-[#A0103D]/40 hover:bg-rose-50/30"
                     }`}
                   >
-                    {selectedFile ? (
+                    {selectedFiles.length > 0 ? (
                       <>
                         <div className="w-10 h-10 rounded-2xl bg-[#A0103D]/10 flex items-center justify-center">
                           <Play className="w-5 h-5 text-[#A0103D]" />
                         </div>
                         <p className="text-sm font-semibold text-[#A0103D]">
-                          {selectedFile.name}
+                          {selectedFiles.length === 1
+                            ? selectedFiles[0].name
+                            : `${selectedFiles.length} files selected`}
                         </p>
                         <p className="text-xs text-[#A0103D]/60">
-                          {(selectedFile.size / 1024 / 1024).toFixed(1)} MB ·
-                          click to change
+                          {(
+                            selectedFiles.reduce((sum, f) => sum + f.size, 0) /
+                            1024 /
+                            1024
+                          ).toFixed(1)}{" "}
+                          MB total · click to change
                         </p>
                       </>
                     ) : (
@@ -455,35 +514,73 @@ export default function AdminGuidesPage() {
                           <Upload className="w-5 h-5 text-gray-400" />
                         </div>
                         <p className="text-sm font-medium text-gray-500">
-                          Click to select a file
+                          Click to select one or more files
                         </p>
                         <p className="text-xs text-gray-400">
-                          MP4, MOV, WebM or PDF
+                          MP4, MOV, WebM or PDF — select multiple for a batch
+                          upload
                         </p>
                       </>
                     )}
                   </button>
-                  {selectedFile?.name.toLowerCase().endsWith(".pdf") && (
+
+                  {selectedFiles.length > 1 && (
+                    <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+                      {selectedFiles.map((f, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center justify-between gap-2 bg-gray-50 rounded-lg px-3 py-1.5"
+                        >
+                          <span className="text-xs text-gray-600 truncate">
+                            {f.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedFiles((prev) =>
+                                prev.filter((_, idx) => idx !== i),
+                              )
+                            }
+                            className="text-gray-300 hover:text-rose-500 transition flex-shrink-0"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {selectedFiles.length === 1 &&
+                    selectedFiles[0].name.toLowerCase().endsWith(".pdf") && (
+                      <p className="mt-2 text-[11px] text-gray-400 text-center">
+                        Screenshots and steps are extracted automatically after
+                        upload — nothing else to do here.
+                      </p>
+                    )}
+                  {selectedFiles.length > 1 && (
                     <p className="mt-2 text-[11px] text-gray-400 text-center">
-                      Screenshots and steps are extracted automatically after
-                      upload — nothing else to do here.
+                      Each file becomes its own guide, titled from its filename
+                      — edit titles afterward if needed.
                     </p>
                   )}
+
                   <input
                     ref={fileRef}
                     type="file"
                     accept="video/*,.pdf"
+                    multiple
                     className="hidden"
                     onChange={(e) => {
-                      const f = e.target.files?.[0] ?? null;
-                      setSelectedFile(f);
+                      const files = Array.from(e.target.files ?? []);
+                      setSelectedFiles(files);
                       setSteps([]);
-                      // Auto-fill the title from the filename if the admin
-                      // hasn't typed one yet.
-                      if (f && !form.title.trim()) {
+                      // Auto-fill the title from the filename — only
+                      // meaningful for a single file; a batch derives each
+                      // guide's title from its own filename instead.
+                      if (files.length === 1 && !form.title.trim()) {
                         setForm((prev) => ({
                           ...prev,
-                          title: titleFromFilename(f.name),
+                          title: titleFromFilename(files[0].name),
                         }));
                       }
                     }}
@@ -493,16 +590,25 @@ export default function AdminGuidesPage() {
                 {/* Title */}
                 <div className="md:col-span-2">
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                    Title <span className="text-rose-400 normal-case">*</span>
+                    Title{" "}
+                    {selectedFiles.length <= 1 && (
+                      <span className="text-rose-400 normal-case">*</span>
+                    )}
                   </label>
                   <input
-                    className={inp}
+                    className={`${inp} ${selectedFiles.length > 1 ? "opacity-50 cursor-not-allowed" : ""}`}
                     placeholder="How To Create a Custom Payment Link"
                     value={form.title}
+                    disabled={selectedFiles.length > 1}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, title: e.target.value }))
                     }
                   />
+                  {selectedFiles.length > 1 && (
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      Titles are generated per file for batch uploads.
+                    </p>
+                  )}
                 </div>
 
                 {/* Description */}
@@ -662,7 +768,11 @@ export default function AdminGuidesPage() {
               {uploading && (
                 <div className="mt-4">
                   <div className="flex justify-between text-xs text-gray-400 mb-1.5">
-                    <span>Uploading to Azure…</span>
+                    <span>
+                      {batchProgress
+                        ? `Uploading file ${batchProgress.current} of ${batchProgress.total}…`
+                        : "Uploading to Azure…"}
+                    </span>
                     <span>{uploadPct}%</span>
                   </div>
                   <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
@@ -695,12 +805,17 @@ export default function AdminGuidesPage() {
                 >
                   {uploading ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Uploading{" "}
-                      {uploadPct}%…
+                      <Loader2 className="w-4 h-4 animate-spin" />{" "}
+                      {batchProgress
+                        ? `File ${batchProgress.current}/${batchProgress.total} — ${uploadPct}%…`
+                        : `Uploading ${uploadPct}%…`}
                     </>
                   ) : (
                     <>
-                      <Upload className="w-4 h-4" /> Save Guide
+                      <Upload className="w-4 h-4" />{" "}
+                      {selectedFiles.length > 1
+                        ? `Upload ${selectedFiles.length} Guides`
+                        : "Save Guide"}
                     </>
                   )}
                 </button>
