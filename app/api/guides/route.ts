@@ -9,7 +9,7 @@ import { extractPdfSteps } from "../../../lib/extractPdfSteps";
 import { generateTutorialVideo } from "../../../lib/generateTutorialVideo";
 // PDF → images rendering needs the Node runtime (not edge) and a little headroom
 export const runtime = "nodejs";
-export const maxDuration = 800; // PDF render + per-step TTS + ffmpeg encode needs real headroom (Vercel Pro+ with Fluid Compute; Hobby caps at 60s regardless)
+export const maxDuration = 300; // Hobby plan hard caps at 300s — this is the max allowed. Upgrade to Pro (with Fluid Compute) for more headroom on large PDFs with many steps.
 
 const mongoClient = new MongoClient(process.env.MONGODB_URI!);
 
