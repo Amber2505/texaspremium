@@ -26,16 +26,15 @@ import { createCanvas, ImageData, type Canvas } from "canvas";
 const pdfjsLegacy = require("pdfjs-dist/legacy/build/pdf.js");
 const { getDocument, OPS } = pdfjsLegacy;
 
-// Tell pdf.js exactly where its worker file lives instead of letting it
-// guess a relative path at runtime — that guess is what fails on Vercel
-// ("Cannot find module './pdf.worker.js'") once the deployment bundle
-// restructures node_modules. require.resolve only succeeds if the file is
-// actually present, so this fails loudly at import time instead of deep
-// inside a request if outputFileTracingIncludes is ever misconfigured.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-pdfjsLegacy.GlobalWorkerOptions.workerSrc = require.resolve(
-  "pdfjs-dist/legacy/build/pdf.worker.js",
-);
+// Do NOT set GlobalWorkerOptions.workerSrc here. With disableWorker: true,
+// pdf.js's Node "fake worker" path requires ./pdf.worker.js internally via
+// a plain relative require and needs no workerSrc at all — setting it to a
+// real path instead pushes pdf.js into its browser-style worker-loading
+// logic, which crashes in Node ("e.endsWith is not a function") because
+// that path expects a browser Worker/URL context that doesn't exist here.
+// outputFileTracingIncludes in next.config.ts is what actually fixes the
+// "Cannot find module" error, by making sure pdf.worker.js physically
+// ships next to pdf.js in the deployed bundle.
 
 // pdf.js needs a canvas factory in Node for the page-render fallback path.
 const CanvasFactory = {

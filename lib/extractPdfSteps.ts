@@ -13,11 +13,10 @@ import OpenAI from "openai";
 const pdfjsLegacy = require("pdfjs-dist/legacy/build/pdf.js");
 const { getDocument } = pdfjsLegacy;
 
-// Same worker-path fix as lib/pdfToImages.ts — see comment there.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-pdfjsLegacy.GlobalWorkerOptions.workerSrc = require.resolve(
-  "pdfjs-dist/legacy/build/pdf.worker.js",
-);
+// Do NOT set GlobalWorkerOptions.workerSrc — see the comment in
+// lib/pdfToImages.ts. outputFileTracingIncludes handles making the worker
+// file available; workerSrc is irrelevant to Node's fake-worker path and
+// setting it breaks pdf.js in this environment.
 
 export interface GuideStep {
   title: string;
