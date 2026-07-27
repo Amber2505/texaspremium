@@ -63,8 +63,8 @@ export interface RenderedPage {
 export interface RenderOptions {
   // Upscale factor used ONLY by the full-page fallback (rare — see below).
   scale?: number;
-  // Fallback-only crop fractions, used ONLY if a page has no extractable
-  // embedded image and we fall back to rendering the whole page.
+  // Fallback-only crop fractions, used ONLY if skipPagesWithNoImage is
+  // false AND a page has no extractable embedded image.
   cropTop?: number;
   cropBottom?: number;
   // Skip the first page (guidemaker title/cover page). Default true.
@@ -73,6 +73,13 @@ export interface RenderOptions {
   // giving up on it. Some images live in nested transparency groups pdf.js
   // never resolves — this keeps one bad reference from hanging the render.
   imageResolveTimeoutMs?: number;
+  // When a page has no extractable embedded image, skip it entirely rather
+  // than falling back to a full-page render. Guidemaker/MagicHow exports
+  // often end with a decorative "closing card" page that has no real
+  // screenshot on it — without this, that page turns into a blank gray
+  // step tile. Default true. Set false only if you know a real step page
+  // in your PDFs is a vector-only mockup with no raster screenshot.
+  skipPagesWithNoImage?: boolean;
 }
 
 interface PdfImage {
@@ -233,13 +240,11 @@ export async function renderPdfToImages(
     cropBottom = 0.07,
     skipFirstPage = true,
     imageResolveTimeoutMs = 800,
+    skipPagesWithNoImage = true,
   } = opts;
 
   const data = new Uint8Array(pdfBuffer);
-  const doc = await getDocument({
-    data,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any).promise;
+  const doc = await getDocument({ data, disableWorker: true }).promise;
 
   const pages: RenderedPage[] = [];
   const startPage = skipFirstPage ? 2 : 1;
@@ -249,7 +254,12 @@ export async function renderPdfToImages(
 
     let result = await extractLargestPageImage(page, imageResolveTimeoutMs);
     if (!result) {
-      // No embedded image found on this page — fall back to page render.
+      if (skipPagesWithNoImage) {
+        // No real screenshot on this page — most likely a decorative
+        // closing/title card, not an actual step. Drop it rather than
+        // rendering a blank fallback tile.
+        continue;
+      }
       result = await renderCroppedFallback(page, scale, cropTop, cropBottom);
     }
 

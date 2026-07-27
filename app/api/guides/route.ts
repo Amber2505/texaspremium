@@ -89,7 +89,9 @@ export async function POST(req: NextRequest) {
       const pdfBlob = containerClient.getBlockBlobClient(pdfBlobName);
       const pdfBuffer = await pdfBlob.downloadToBuffer();
 
-      // 1. Extract clean screenshots (page 1 cover skipped inside the helper)
+      // 1. Extract clean screenshots (page 1 cover skipped inside the
+      //    helper; pages with no real screenshot — e.g. a closing card —
+      //    are skipped too, so `rendered` may have gaps in pageNumber).
       const rendered = await renderPdfToImages(pdfBuffer, {
         scale: 2.0,
         cropTop: 0.09,
@@ -97,33 +99,45 @@ export async function POST(req: NextRequest) {
         skipFirstPage: true,
       });
 
-      // 2. Upload each page image to Azure
-      const pageImageUrls: string[] = [];
+      // 2. Upload each page image to Azure, keeping its source pageNumber
+      const uploadedPages: { pageNumber: number; url: string }[] = [];
       for (const pg of rendered) {
         const blobName = `${slug}-p${pg.pageNumber}-${Date.now()}.png`;
         const blob = containerClient.getBlockBlobClient(blobName);
         await blob.uploadData(pg.png, {
           blobHTTPHeaders: { blobContentType: "image/png" },
         });
-        pageImageUrls.push(blob.url);
+        uploadedPages.push({ pageNumber: pg.pageNumber, url: blob.url });
       }
 
-      // 3. Extract steps if the admin didn't type any in manually
+      // 3. Extract steps if the admin didn't type any in manually. This
+      //    returns one entry per PDF page (page 1 skipped, same as above),
+      //    so stepsFromPdf[k] corresponds to page number (2 + k).
+      const startPage = 2; // matches skipFirstPage: true above
+      let stepsFromPdf: { title: string; description: string }[] = [];
       if (!steps || steps.length === 0) {
         try {
-          steps = await extractPdfSteps(pdfBuffer, true);
+          stepsFromPdf = await extractPdfSteps(pdfBuffer, true);
         } catch (e) {
           console.error("PDF step extraction failed:", e);
-          steps = [];
+          stepsFromPdf = [];
         }
       }
 
-      // 4. Pair each step with its page image (image count is source of truth)
-      const pages = pageImageUrls.map((url, i) => ({
-        image: url,
-        title: steps[i]?.title ?? `Step ${i + 1}`,
-        description: steps[i]?.description ?? "",
-      }));
+      // 4. Pair each uploaded page image with the step text for that EXACT
+      //    page number — not array position — so a skipped closing-card
+      //    page in the middle/end can never shift later steps' text.
+      const pages = uploadedPages.map((pg, i) => {
+        const stepForPage = stepsFromPdf[pg.pageNumber - startPage];
+        return {
+          image: pg.url,
+          title: steps[i]?.title ?? stepForPage?.title ?? `Step ${i + 1}`,
+          description: steps[i]?.description ?? stepForPage?.description ?? "",
+        };
+      });
+      if (stepsFromPdf.length > 0 && (!steps || steps.length === 0)) {
+        steps = stepsFromPdf;
+      }
 
       // 5. Clean up the temp source PDF — we only needed it for rendering.
       await pdfBlob.deleteIfExists();
