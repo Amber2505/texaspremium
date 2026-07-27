@@ -6,10 +6,10 @@ import { MongoClient } from "mongodb";
 import { BlobServiceClient } from "@azure/storage-blob";
 import { renderPdfToImages } from "../../../lib/pdfToImages";
 import { extractPdfSteps } from "../../../lib/extractPdfSteps";
-
+import { generateTutorialVideo } from "../../../lib/generateTutorialVideo";
 // PDF → images rendering needs the Node runtime (not edge) and a little headroom
 export const runtime = "nodejs";
-export const maxDuration = 300; // 30MB+ PDFs need more headroom than 60s (Vercel Pro+ only — Hobby caps at 60s regardless)
+export const maxDuration = 800; // PDF render + per-step TTS + ffmpeg encode needs real headroom (Vercel Pro+ with Fluid Compute; Hobby caps at 60s regardless)
 
 const mongoClient = new MongoClient(process.env.MONGODB_URI!);
 
@@ -142,6 +142,29 @@ export async function POST(req: NextRequest) {
       // 5. Clean up the temp source PDF — we only needed it for rendering.
       await pdfBlob.deleteIfExists();
 
+      // 6. Auto-generate a narrated walkthrough video. Best-effort: if TTS
+      //    or ffmpeg fails, the guide still saves fine with its images and
+      //    text — a video failure should never block the upload itself.
+      let narratedVideoUrl = "";
+      try {
+        const videoSteps = rendered.map((pg, i) => ({
+          imageBuffer: pg.png,
+          narration:
+            [pages[i]?.title, pages[i]?.description].filter(Boolean).join(". ") ||
+            `Step ${i + 1}.`,
+        }));
+        const videoBuffer = await generateTutorialVideo(videoSteps);
+
+        const videoBlobName = `${slug}-tutorial-${Date.now()}.mp4`;
+        const videoBlob = containerClient.getBlockBlobClient(videoBlobName);
+        await videoBlob.uploadData(videoBuffer, {
+          blobHTTPHeaders: { blobContentType: "video/mp4" },
+        });
+        narratedVideoUrl = videoBlob.url;
+      } catch (e) {
+        console.error("Narrated video generation failed (guide still saved):", e);
+      }
+
       const doc = {
         slug,
         title,
@@ -152,6 +175,7 @@ export async function POST(req: NextRequest) {
         pages,
         fileType: "pdf-steps",
         videoUrl: "",
+        narratedVideoUrl, // auto-generated narrated walkthrough, "" if generation failed
         embedUrl: "",
         blobName: "",
         createdAt: new Date(),

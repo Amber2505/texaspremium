@@ -48,6 +48,7 @@ interface Guide {
   createdAt: string;
   steps?: { title: string; description: string }[];
   pages?: { image: string; title: string; description: string }[];
+  narratedVideoUrl?: string;
 }
 
 export default function AdminGuideViewerPage() {
@@ -204,6 +205,29 @@ export default function AdminGuideViewerPage() {
             {/* Red accent line */}
             <div className="h-0.5 bg-gradient-to-r from-[#A0103D] to-[#102a56]" />
           </div>
+
+          {/* ── Auto-generated narrated walkthrough video ── */}
+          {guide.narratedVideoUrl && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
+                <div className="w-5 h-5 rounded-lg bg-[#A0103D]/10 flex items-center justify-center">
+                  <Play className="w-3 h-3 text-[#A0103D] fill-[#A0103D]" />
+                </div>
+                <h2 className="text-sm font-semibold text-gray-800">
+                  Narrated Walkthrough
+                </h2>
+              </div>
+              <video
+                src={guide.narratedVideoUrl}
+                controls
+                controlsList="nodownload"
+                className="w-full block"
+                style={{ maxHeight: "65vh" }}
+              >
+                Your browser does not support video playback.
+              </video>
+            </div>
+          )}
 
           {/* ── Rendered PDF step-images (clean, no guidemaker branding) ── */}
           {guide.fileType === "pdf-steps" &&

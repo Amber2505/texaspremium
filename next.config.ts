@@ -17,7 +17,13 @@ const nextConfig: NextConfig = {
   // this forces the whole legacy build folder (worker included) into the
   // deployed function for the guides upload route.
   outputFileTracingIncludes: {
-    "/api/guides": ["./node_modules/pdfjs-dist/legacy/build/**"],
+    // pdf.js worker (see earlier fix) + the prebuilt ffmpeg binary. Both are
+    // loaded via a dynamic runtime path, not a static require/import, so
+    // Vercel's file tracer misses them unless told explicitly.
+    "/api/guides": [
+      "./node_modules/pdfjs-dist/legacy/build/**",
+      "./node_modules/ffmpeg-static/**",
+    ],
   },
 
   async redirects() {
