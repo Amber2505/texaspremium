@@ -38,14 +38,16 @@ function run(cmd: string, args: string[]): Promise<void> {
 }
 
 async function synthesizeNarration(text: string): Promise<Buffer> {
+  // tts-1-hd (unlike gpt-4o-mini-tts) has no steerable "instructions" field —
+  // every call renders the same voice the same way, with nothing for the
+  // model to reinterpret differently step to step. That determinism is what
+  // fixes the "different people talking" issue: gpt-4o-mini-tts re-reads the
+  // instructions fresh on every independent call and can land on a slightly
+  // different pitch/pacing/energy each time.
   const response = await client.audio.speech.create({
-    model: "gpt-4o-mini-tts",
+    model: "tts-1-hd",
     voice: "coral",
     input: text,
-    instructions:
-      "Speak warmly and naturally, like a friendly, calm human narrator " +
-      "walking someone through a task step by step — not a robotic or " +
-      "overly formal reading. Normal conversational pacing, clear but relaxed.",
   });
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer);
