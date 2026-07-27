@@ -62,6 +62,15 @@ export async function generateTutorialVideo(steps: VideoStep[]): Promise<Buffer>
   if (!ffmpegPath) throw new Error("ffmpeg binary not found (ffmpeg-static)");
   if (steps.length === 0) throw new Error("No steps to generate a video from");
 
+  // Vercel's file-tracing bundling commonly strips the executable bit off
+  // ffmpeg-static's binary, causing a silent "spawn EACCES" that looks
+  // identical to any other failure. Force it back before every run.
+  try {
+    await fs.chmod(ffmpegPath, 0o755);
+  } catch (e) {
+    console.error("Could not chmod ffmpeg binary:", e);
+  }
+
   const workDir = await fs.mkdtemp(path.join(os.tmpdir(), "tutorial-"));
 
   try {

@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
   // webpack bundles them into a vendor chunk, pdfjs's Node "fake worker"
   // fallback can't find pdf.worker.js next to it and throws
   // "Cannot find module .../pdf.worker.js".
-  serverExternalPackages: ["pdfjs-dist", "canvas"],
+  serverExternalPackages: ["pdfjs-dist", "canvas", "ffmpeg-static"],
 
   // Vercel's serverless bundler only packages files it can statically trace
   // via import/require analysis. pdf.js loads its worker file with a
