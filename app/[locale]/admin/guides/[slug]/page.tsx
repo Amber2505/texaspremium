@@ -14,7 +14,13 @@ import {
   Clock,
   Loader2,
   AlertCircle,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
+
+const editInp =
+  "w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#A0103D]/20 focus:border-[#A0103D] transition";
 
 const CATEGORY_STYLES: Record<
   string,
@@ -59,6 +65,97 @@ export default function AdminGuideViewerPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  // ── Inline text editing ──────────────────────────────────────────────
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Guide | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  function startEdit() {
+    if (!guide) return;
+    setDraft(JSON.parse(JSON.stringify(guide)) as Guide);
+    setSaveError("");
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setDraft(null);
+    setSaveError("");
+  }
+
+  function updateField(field: "title" | "description", value: string) {
+    setDraft((d) => (d ? { ...d, [field]: value } : d));
+  }
+
+  function updatePage(
+    i: number,
+    field: "title" | "description",
+    value: string,
+  ) {
+    setDraft((d) =>
+      d
+        ? {
+            ...d,
+            pages: (d.pages ?? []).map((p, idx) =>
+              idx === i ? { ...p, [field]: value } : p,
+            ),
+          }
+        : d,
+    );
+  }
+
+  function updateStep(
+    i: number,
+    field: "title" | "description",
+    value: string,
+  ) {
+    setDraft((d) =>
+      d
+        ? {
+            ...d,
+            steps: (d.steps ?? []).map((st, idx) =>
+              idx === i ? { ...st, [field]: value } : st,
+            ),
+          }
+        : d,
+    );
+  }
+
+  async function saveEdits() {
+    if (!draft) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      const res = await fetch(`/api/guides/${slug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: draft.title,
+          description: draft.description,
+          steps: draft.steps ?? [],
+          // Only text is sent — image URLs stay server-side so a bad
+          // payload can never wipe the rendered screenshots.
+          pages: (draft.pages ?? []).map((p) => ({
+            title: p.title,
+            description: p.description,
+          })),
+        }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || `Save failed (${res.status})`);
+      }
+      setGuide(draft);
+      setEditing(false);
+      setDraft(null);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Could not save changes.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   useEffect(() => {
     const savedSession = localStorage.getItem("admin_session");
@@ -126,6 +223,8 @@ export default function AdminGuideViewerPage() {
   }
 
   const s = CATEGORY_STYLES[guide.category] ?? CATEGORY_STYLES["General"];
+  // While editing, everything renders from the draft copy
+  const view = editing && draft ? draft : guide;
 
   return (
     <AdminShell activePath="/admin/guides">
@@ -151,16 +250,54 @@ export default function AdminGuideViewerPage() {
               </div>
             </div>
 
-            <div
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold ${s.bg} ${s.text}`}
-            >
-              <div className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
-              {guide.category}
+            <div className="flex items-center gap-2">
+              {editing ? (
+                <>
+                  <button
+                    onClick={cancelEdit}
+                    disabled={saving}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition font-semibold disabled:opacity-50"
+                  >
+                    <X className="w-3.5 h-3.5" /> Cancel
+                  </button>
+                  <button
+                    onClick={saveEdits}
+                    disabled={saving}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#A0103D] to-[#102a56] text-white font-semibold hover:opacity-90 transition disabled:opacity-50"
+                  >
+                    {saving ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Check className="w-3.5 h-3.5" />
+                    )}
+                    Save
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={startEdit}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:border-[#A0103D]/40 hover:text-[#A0103D] transition font-semibold"
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Edit Text
+                </button>
+              )}
+              <div
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-semibold ${s.bg} ${s.text}`}
+              >
+                <div className={`w-1.5 h-1.5 rounded-full ${s.dot}`} />
+                {guide.category}
+              </div>
             </div>
           </div>
         </div>
 
         <div className="max-w-5xl mx-auto px-6 py-8 space-y-5">
+          {saveError && (
+            <div className="flex items-center gap-3 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-sm font-medium">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {saveError}
+            </div>
+          )}
           {/* ── Guide header card ── */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="px-6 py-5 flex items-start gap-4 border-b border-gray-100">
@@ -171,13 +308,34 @@ export default function AdminGuideViewerPage() {
                 <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1">
                   How-To Guide · Internal Use Only
                 </p>
-                <h1 className="text-lg font-bold text-gray-800 leading-snug">
-                  {guide.title}
-                </h1>
-                {guide.description && (
-                  <p className="text-sm text-gray-400 mt-1 leading-relaxed">
-                    {guide.description}
-                  </p>
+                {editing ? (
+                  <div className="space-y-2">
+                    <input
+                      className={`${editInp} text-base font-bold text-gray-900`}
+                      value={view.title}
+                      onChange={(e) => updateField("title", e.target.value)}
+                      placeholder="Guide title"
+                    />
+                    <input
+                      className={`${editInp} text-gray-600`}
+                      value={view.description ?? ""}
+                      onChange={(e) =>
+                        updateField("description", e.target.value)
+                      }
+                      placeholder="Short description"
+                    />
+                  </div>
+                ) : (
+                  <>
+                    <h1 className="text-2xl font-bold text-gray-900 leading-tight tracking-tight">
+                      {view.title}
+                    </h1>
+                    {view.description && (
+                      <p className="text-sm text-gray-500 mt-1.5 leading-relaxed">
+                        {view.description}
+                      </p>
+                    )}
+                  </>
                 )}
                 <div className="flex items-center gap-4 mt-3">
                   {guide.duration && (
@@ -234,7 +392,7 @@ export default function AdminGuideViewerPage() {
           guide.pages &&
           guide.pages.length > 0 ? (
             <div className="space-y-5">
-              {guide.pages.map((pg, i) => (
+              {(view.pages ?? []).map((pg, i) => (
                 <div
                   key={i}
                   className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden"
@@ -244,13 +402,37 @@ export default function AdminGuideViewerPage() {
                       {i + 1}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-800 leading-snug">
-                        {pg.title}
-                      </p>
-                      {pg.description && (
-                        <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">
-                          {pg.description}
-                        </p>
+                      {editing ? (
+                        <div className="space-y-2">
+                          <input
+                            className={`${editInp} font-semibold text-gray-900`}
+                            value={pg.title}
+                            onChange={(e) =>
+                              updatePage(i, "title", e.target.value)
+                            }
+                            placeholder={`Step ${i + 1} title`}
+                          />
+                          <textarea
+                            className={`${editInp} text-gray-600 resize-y`}
+                            rows={2}
+                            value={pg.description ?? ""}
+                            onChange={(e) =>
+                              updatePage(i, "description", e.target.value)
+                            }
+                            placeholder="Description (optional)"
+                          />
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-[17px] font-bold text-gray-900 leading-snug">
+                            {pg.title}
+                          </p>
+                          {pg.description && (
+                            <p className="text-[13px] text-gray-600 mt-1 leading-relaxed">
+                              {pg.description}
+                            </p>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -308,7 +490,7 @@ export default function AdminGuideViewerPage() {
                   <div className="w-5 h-5 rounded-lg bg-[#A0103D]/10 flex items-center justify-center">
                     <Play className="w-3 h-3 text-[#A0103D] fill-[#A0103D]" />
                   </div>
-                  <h2 className="text-sm font-semibold text-gray-800">
+                  <h2 className="text-base font-bold text-gray-900">
                     Step-by-Step Instructions
                   </h2>
                   <span className="text-xs text-gray-400 ml-1">
@@ -316,7 +498,7 @@ export default function AdminGuideViewerPage() {
                   </span>
                 </div>
                 <div className="divide-y divide-gray-50">
-                  {guide.steps.map((step, i) => (
+                  {(view.steps ?? []).map((step, i) => (
                     <div
                       key={i}
                       className="px-6 py-4 flex items-start gap-4 hover:bg-gray-50 transition"
@@ -325,13 +507,37 @@ export default function AdminGuideViewerPage() {
                         {i + 1}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-800 leading-snug">
-                          {step.title}
-                        </p>
-                        {step.description && (
-                          <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">
-                            {step.description}
-                          </p>
+                        {editing ? (
+                          <div className="space-y-2">
+                            <input
+                              className={`${editInp} font-semibold text-gray-900`}
+                              value={step.title}
+                              onChange={(e) =>
+                                updateStep(i, "title", e.target.value)
+                              }
+                              placeholder={`Step ${i + 1} title`}
+                            />
+                            <textarea
+                              className={`${editInp} text-gray-600 resize-y`}
+                              rows={2}
+                              value={step.description ?? ""}
+                              onChange={(e) =>
+                                updateStep(i, "description", e.target.value)
+                              }
+                              placeholder="Description (optional)"
+                            />
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-[17px] font-bold text-gray-900 leading-snug">
+                              {step.title}
+                            </p>
+                            {step.description && (
+                              <p className="text-[13px] text-gray-600 mt-1 leading-relaxed">
+                                {step.description}
+                              </p>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>

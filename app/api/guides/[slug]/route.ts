@@ -28,7 +28,7 @@ export async function GET(
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ slug: string }> }
-) {
+  ) {
   const { slug } = await params;
   try {
     const code = new URL(req.url).searchParams.get("code") || "";
@@ -74,4 +74,51 @@ export async function DELETE(
   } catch {
     return NextResponse.json({ error: "Failed to delete guide" }, { status: 500 });
   }
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ slug: string }> },
+) {
+  const { slug } = await params;
+  const body = await req.json();
+
+    const col = await getCollection(); // db.admin_guides — same as GET/DELETE
+
+  const existing = await col.findOne({ slug });
+  if (!existing) {
+    return NextResponse.json({ error: "Guide not found" }, { status: 404 });
+  }
+
+  const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const update: Record<string, unknown> = { updatedAt: new Date().toISOString() };
+
+  if (str(body.title)) update.title = str(body.title);
+  if (typeof body.description === "string") {
+    update.description = str(body.description);
+  }
+
+  if (Array.isArray(body.steps)) {
+    update.steps = body.steps.map((s: any) => ({
+      title: str(s?.title),
+      description: str(s?.description),
+    }));
+  }
+
+  // Merge by index against the stored pages so `image` is preserved —
+  // the client never sends image URLs.
+  if (Array.isArray(body.pages) && Array.isArray(existing.pages)) {
+    update.pages = existing.pages.map((p: any, i: number) => ({
+      ...p,
+      title: str(body.pages[i]?.title) || p.title,
+      description:
+        typeof body.pages[i]?.description === "string"
+          ? str(body.pages[i].description)
+          : p.description,
+    }));
+  }
+
+  await col.updateOne({ slug }, { $set: update });
+  return NextResponse.json({ ok: true });
 }
