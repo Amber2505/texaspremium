@@ -1,3 +1,4 @@
+// lib/services/ringcentral.ts
 import { RingCentralMessage } from '@/lib/models/message';
 
 const RINGCENTRAL_SERVER = 'https://platform.ringcentral.com';

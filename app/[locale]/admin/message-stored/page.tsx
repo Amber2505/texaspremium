@@ -37,6 +37,7 @@ interface MessageAttachment {
   type?: string;
   contentType?: string;
   filename?: string;
+  textContent?: string; // cached body of a text/plain part (see attachment-text route)
 }
 
 interface ScheduledMessage {
@@ -141,6 +142,63 @@ function mergeMessages(
   return Array.from(byId.values()).sort(
     (a, b) =>
       new Date(a.creationTime).getTime() - new Date(b.creationTime).getTime(),
+  );
+}
+
+// RingCentral delivers an inline "reply to a message" as an MMS whose real
+// text lives in a tiny text/plain part instead of `subject` — which is just
+// the placeholder "Replied to a message:". Without this the words never
+// render at all and staff have to download a .txt to read "Hi how are you".
+// Goes through /api/download to dodge CORS on the blob.
+// RingCentral delivers an inline "reply to a message" as an MMS whose real
+// text lives in a text/plain part with NO uri — only an attachment id. It has
+// to be pulled from RC's message-store content endpoint with a token, so this
+// goes through our own route, which caches the result into Mongo so each
+// attachment costs exactly one RC call, ever.
+function InlineTextAttachment({
+  messageId,
+  isOutbound,
+  cachedText,
+}: {
+  messageId: string;
+  isOutbound: boolean;
+  cachedText?: string;
+}) {
+  const [text, setText] = useState<string | null>(cachedText ?? null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (cachedText !== undefined) return; // already stored — no request at all
+    let cancelled = false;
+    fetch(
+      `/api/messages/attachment-text?messageId=${encodeURIComponent(messageId)}`,
+    )
+      .then((r) =>
+        r.ok ? r.json() : Promise.reject(new Error("fetch failed")),
+      )
+      .then((d) => {
+        if (!cancelled) setText((d.text ?? "").trim());
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [messageId, cachedText]);
+
+  if (failed || text === "") return null;
+  if (text === null)
+    return <span className="text-xs opacity-50">Loading reply…</span>;
+
+  return (
+    <p
+      className={`break-words whitespace-pre-wrap text-sm sm:text-base ${
+        isOutbound ? "text-white" : "text-gray-900"
+      }`}
+    >
+      {text}
+    </p>
   );
 }
 
@@ -466,7 +524,9 @@ export default function MessageStoredPage() {
             filterType === "unread" ? "&unreadOnly=true" : ""
           }`,
         )
-          .then((r) => r.json())
+          .then((r) =>
+            r.ok ? r.json() : Promise.reject(new Error(r.statusText)),
+          )
           .then((data) => {
             const newConversations = data.conversations || [];
             // CRITICAL FIX: Replace state entirely with fresh API data
@@ -475,6 +535,9 @@ export default function MessageStoredPage() {
               setConversations(newConversations);
               setTotalCount(data.total || 0);
             }
+          })
+          .catch(() => {
+            /* transient — next tick in 10s will pick it up */
           });
       }
     }, 10000); // 10 seconds
@@ -3410,6 +3473,21 @@ export default function MessageStoredPage() {
                                       )}
                                 </p>
                               )}
+
+                              {/* RC puts the real words of an inline reply in a
+                                  text/plain part with no uri — the sync may not
+                                  store it at all, so key off the placeholder
+                                  subject and let the server resolve the part. */}
+                              {msg.id &&
+                                /^Replied to a message/i.test(
+                                  msg.subject || "",
+                                ) && (
+                                  <InlineTextAttachment
+                                    messageId={msg.id}
+                                    isOutbound={isOutbound}
+                                    cachedText={(msg as any).replyText}
+                                  />
+                                )}
 
                               {/* Attachments (continuing from previous section - keeping attachment rendering logic the same) */}
                               {msg.attachments?.length ? (
