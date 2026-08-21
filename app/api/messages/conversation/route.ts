@@ -50,6 +50,7 @@ export async function GET(request: NextRequest) {
     const limit = fetchAll ? 10000 : parseInt(searchParams.get('limit') || '10', 10);
     const searchText = searchParams.get('searchText') || '';
     const since = searchParams.get('since') || '';
+    const beforeId = searchParams.get('beforeId') || '';
     
     if (!phoneNumber && !conversationId) {
       return NextResponse.json(
@@ -294,6 +295,55 @@ export async function GET(request: NextRequest) {
         participants,
         language: (conversation as any).language || 'en',
       });
+    }
+
+        // Cursor-based paging for older messages. The client sends the id of
+    // the oldest message it currently holds and we return the window
+    // immediately older than it. Unlike skip=, this can't drift when new
+    // messages land at the end of the array mid-scroll — which is what
+    // was stepping over ranges and leaving holes in the thread.
+    if (beforeId) {
+      const anchorIndex = uniqueMessages.findIndex(
+        (m: StoredMessage) => m.id === beforeId,
+      );
+
+      if (anchorIndex === 0) {
+        console.log(`   ✅ beforeId ${beforeId} is the oldest message — nothing older`);
+        return NextResponse.json({
+          messages: [],
+          total,
+          skip: 0,
+          limit,
+          hasMore: false,
+          searchText: '',
+          matchingIndices: [],
+          conversationId: conversation.conversationId || conversation.phoneNumber,
+          isGroup,
+          participants,
+          language: (conversation as any).language || 'en',
+        });
+      }
+
+      if (anchorIndex > 0) {
+        const cursorStart = Math.max(0, anchorIndex - limit);
+        const olderMessages = uniqueMessages.slice(cursorStart, anchorIndex);
+        console.log(`   ✅ beforeId ${beforeId}: returning ${olderMessages.length} older (indices ${cursorStart}-${anchorIndex})`);
+        return NextResponse.json({
+          messages: olderMessages,
+          total,
+          skip: 0,
+          limit,
+          hasMore: cursorStart > 0,
+          searchText: '',
+          matchingIndices: [],
+          conversationId: conversation.conversationId || conversation.phoneNumber,
+          isGroup,
+          participants,
+          language: (conversation as any).language || 'en',
+        });
+      }
+      // anchor not found (message deleted?) — fall through to skip paging
+      console.log(`   ⚠️ beforeId ${beforeId} not found — falling back to skip paging`);
     }
 
     // Normal pagination

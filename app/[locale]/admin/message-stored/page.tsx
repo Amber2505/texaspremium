@@ -120,6 +120,30 @@ function InlineTranslate({
   );
 }
 
+// Single source of truth for merging message batches: dedupe by id (the
+// server copy always wins) and re-sort chronologically. Without the sort,
+// any batch that comes back out of order re-appends mid-thread messages
+// to the bottom, which reads as "old messages disappeared, then moved."
+function mergeMessages(
+  existing: RingCentralMessage[],
+  incoming: RingCentralMessage[],
+  { dropOptimistic = false } = {},
+): RingCentralMessage[] {
+  const byId = new Map<string, RingCentralMessage>();
+  for (const m of existing) {
+    if (!m.id) continue;
+    if (dropOptimistic && m.id.startsWith("optimistic-")) continue;
+    byId.set(m.id, m);
+  }
+  for (const m of incoming) {
+    if (m.id) byId.set(m.id, m);
+  }
+  return Array.from(byId.values()).sort(
+    (a, b) =>
+      new Date(a.creationTime).getTime() - new Date(b.creationTime).getTime(),
+  );
+}
+
 export default function MessageStoredPage() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -135,6 +159,9 @@ export default function MessageStoredPage() {
     [],
   ); // NEW
   const [conversation, setConversation] = useState<RingCentralMessage[]>([]);
+  // Mirror of `conversation` so callbacks can read the latest messages
+  // without re-creating themselves on every incoming message.
+  const conversationRef = useRef<RingCentralMessage[]>([]);
   const [mounted, setMounted] = useState(false);
   const [messageInput, setMessageInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -364,6 +391,10 @@ export default function MessageStoredPage() {
 
   useEffect(() => setMounted(true), []);
 
+  useEffect(() => {
+    conversationRef.current = conversation;
+  }, [conversation]);
+
   // Sync notification permission on mount so an already-granted permission
   // doesn't stay false until the first click
   useEffect(() => {
@@ -543,15 +574,9 @@ export default function MessageStoredPage() {
               150
             : true;
 
-          setConversation((prev) => {
-            // Remove optimistic messages and any that are now confirmed
-            const newIds = new Set(newMessages.map((m) => m.id));
-            const preserved = prev.filter(
-              (m) => !newIds.has(m.id) && !m.id?.startsWith("optimistic-"),
-            );
-            // Append new messages in order
-            return [...preserved, ...newMessages];
-          });
+          setConversation((prev) =>
+            mergeMessages(prev, newMessages, { dropOptimistic: true }),
+          );
 
           await markAsRead(selectedConversationId);
 
@@ -600,35 +625,43 @@ export default function MessageStoredPage() {
     const previousScrollHeight = container?.scrollHeight || 0;
 
     try {
+      // Anchor on the oldest message we actually hold rather than a count.
+      // messagesSkip stays as a fallback for the case where the anchor is
+      // gone from the server's array (deleted message).
+      const oldestId = conversationRef.current.find((m) => m.id)?.id;
+      const pageParam = oldestId
+        ? `&beforeId=${encodeURIComponent(oldestId)}`
+        : `&skip=${messagesSkip}`;
+
       const res = await fetch(
         `/api/messages/conversation?conversationId=${encodeURIComponent(
           selectedConversationId,
-        )}&skip=${messagesSkip}&limit=10`,
+        )}${pageParam}&limit=10`,
       );
       const data = await res.json();
       const olderMessages = data.messages || [];
 
       if (olderMessages.length > 0) {
-        // DEDUPLICATION: Filter out messages that already exist
-        setConversation((prev) => {
-          const existingIds = new Set(prev.map((m) => m.id));
-          const newUniqueMessages = olderMessages.filter(
-            (msg: { id?: string }) => msg.id && !existingIds.has(msg.id),
-          );
+        const existingIds = new Set(conversationRef.current.map((m) => m.id));
+        const newUniqueMessages = olderMessages.filter(
+          (msg: { id?: string }) => msg.id && !existingIds.has(msg.id),
+        );
 
-          if (newUniqueMessages.length > 0) {
-            // Restore scroll position after render
-            requestAnimationFrame(() => {
-              if (container) {
-                const newScrollHeight = container.scrollHeight;
-                container.scrollTop = newScrollHeight - previousScrollHeight;
-              }
-            });
-            return [...newUniqueMessages, ...prev];
-          }
-          return prev;
-        });
-        setMessagesSkip((prev) => prev + olderMessages.length);
+        if (newUniqueMessages.length > 0) {
+          setConversation((prev) => mergeMessages(prev, newUniqueMessages));
+          // Restore scroll position after render
+          requestAnimationFrame(() => {
+            if (container) {
+              const newScrollHeight = container.scrollHeight;
+              container.scrollTop = newScrollHeight - previousScrollHeight;
+            }
+          });
+        }
+        // Advance by what we actually kept, not the raw batch size —
+        // counting duplicates here is what walks skip= past a window of
+        // older messages and leaves a hole in the thread. Overlap on the
+        // next page is harmless; a gap isn't.
+        setMessagesSkip((prev) => prev + newUniqueMessages.length);
         setHasMoreMessages(data.hasMore || false);
       } else {
         setHasMoreMessages(false);
@@ -752,15 +785,7 @@ export default function MessageStoredPage() {
           .then((r) => r.json())
           .then((d) => {
             const newMessages = d.messages || [];
-            setConversation((prev) => {
-              const newMessageIds = new Set(
-                newMessages.map((m: StoredMessage) => m.id),
-              );
-              const olderMessages = prev.filter(
-                (m) => !newMessageIds.has(m.id),
-              );
-              return [...olderMessages, ...newMessages];
-            });
+            setConversation((prev) => mergeMessages(prev, newMessages));
             scrollToBottomRef.current();
           });
       }
@@ -1038,8 +1063,13 @@ export default function MessageStoredPage() {
 
       // Pull RC's actual read status for all inbound messages in this conversation
       // This fixes messages that were read in RingCentral but still show unread here
+      // Only messages RC still thinks are unread — re-marking already-read
+      // ids burns RC quota on every conversation open for no effect.
       const allInboundIds = (data.messages || [])
-        .filter((m: StoredMessage) => m.direction === "Inbound" && m.id)
+        .filter(
+          (m: StoredMessage) =>
+            m.direction === "Inbound" && m.readStatus === "Unread" && m.id,
+        )
         .map((m: StoredMessage) => m.id as string);
 
       if (allInboundIds.length > 0) {
