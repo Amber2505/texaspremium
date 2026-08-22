@@ -1329,10 +1329,16 @@ export default function MessageStoredPage() {
       // This fixes messages that were read in RingCentral but still show unread here
       // Only messages RC still thinks are unread — re-marking already-read
       // ids burns RC quota on every conversation open for no effect.
+      // Voicemails and call-log entries carry synthetic ids (vm_/call_) that
+      // RingCentral's SMS message-store doesn't know about — sending them
+      // would just burn quota on errors.
       const allInboundIds = (data.messages || [])
         .filter(
           (m: StoredMessage) =>
-            m.direction === "Inbound" && m.readStatus === "Unread" && m.id,
+            m.direction === "Inbound" &&
+            m.readStatus === "Unread" &&
+            m.id &&
+            !/^(vm_|call_)/.test(m.id),
         )
         .map((m: StoredMessage) => m.id as string);
 
@@ -1419,7 +1425,10 @@ export default function MessageStoredPage() {
       const data = await response.json();
 
       const inboundMessageIds = (data.messages || [])
-        .filter((m: StoredMessage) => m.direction === "Inbound" && m.id)
+        .filter(
+          (m: StoredMessage) =>
+            m.direction === "Inbound" && m.id && !/^(vm_|call_)/.test(m.id),
+        )
         .map((m: StoredMessage) => m.id);
 
       console.log(
@@ -1486,7 +1495,10 @@ export default function MessageStoredPage() {
           const ids = (data.messages || [])
             .filter(
               (m: StoredMessage) =>
-                m.direction === "Inbound" && m.readStatus === "Unread" && m.id,
+                m.direction === "Inbound" &&
+                m.readStatus === "Unread" &&
+                m.id &&
+                !/^(vm_|call_)/.test(m.id),
             )
             .map((m: StoredMessage) => m.id as string);
           allUnreadIds.push(...ids);
@@ -2850,7 +2862,24 @@ export default function MessageStoredPage() {
                             <p
                               className={`text-sm truncate flex items-center gap-1 ${lastMsg?.type === "MissedCall" ? "text-red-500" : "text-gray-600"}`}
                             >
-                              {lastMsg?.type === "MissedCall" ? (
+                              {lastMsg?.type === "Voicemail" ? (
+                                <>
+                                  <svg
+                                    className="w-4 h-4 flex-shrink-0 text-purple-500"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                                    />
+                                  </svg>
+                                  {lastMsg?.subject || "Voicemail"}
+                                </>
+                              ) : lastMsg?.type === "MissedCall" ? (
                                 <>
                                   <svg
                                     className="w-4 h-4 flex-shrink-0"
@@ -3586,8 +3615,57 @@ export default function MessageStoredPage() {
                                     />
                                   </svg>
                                   <span className="text-sm font-medium text-red-400">
-                                    Missed call
+                                    {(msg as any).hasVoicemail
+                                      ? "Missed call — left a voicemail"
+                                      : "Missed call"}
                                   </span>
+                                </div>
+                              )}
+                              {msg.type === "Voicemail" && (
+                                <div className="py-1 space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    <svg
+                                      className="w-4 h-4 text-purple-500 flex-shrink-0"
+                                      fill="none"
+                                      stroke="currentColor"
+                                      viewBox="0 0 24 24"
+                                    >
+                                      <path
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        strokeWidth={2}
+                                        d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                                      />
+                                    </svg>
+                                    <span className="text-sm font-semibold text-purple-600">
+                                      Voicemail
+                                    </span>
+                                    {(msg as any).callDuration ? (
+                                      <span className="text-xs text-gray-400">
+                                        {Math.floor(
+                                          ((msg as any)
+                                            .callDuration as number) / 60,
+                                        )}
+                                        :
+                                        {String(
+                                          ((msg as any)
+                                            .callDuration as number) % 60,
+                                        ).padStart(2, "0")}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  {msg.attachments
+                                    ?.filter((a: MessageAttachment) =>
+                                      a.contentType?.startsWith("audio/"),
+                                    )
+                                    .map((a: MessageAttachment, ai: number) => (
+                                      <audio
+                                        key={ai}
+                                        controls
+                                        src={a.azureUrl || a.uri}
+                                        className="w-full max-w-xs"
+                                      />
+                                    ))}
                                 </div>
                               )}
                               {msg.type === "AnsweredCall" && (
@@ -3716,7 +3794,8 @@ export default function MessageStoredPage() {
                                 )}
 
                               {/* Attachments (continuing from previous section - keeping attachment rendering logic the same) */}
-                              {msg.attachments?.length ? (
+                              {msg.attachments?.length &&
+                              msg.type !== "Voicemail" ? (
                                 <div className="space-y-2 mt-2">
                                   {msg.attachments.map(
                                     (att: MessageAttachment, i: number) => {

@@ -1278,8 +1278,9 @@ async function syncRingCentralMessages() {
     lastSyncTime = new Date().toISOString();
     // Only sync missed calls every 10 minutes, not every sync cycle
     const now = Date.now();
-    if (!lastMissedCallSync || now - lastMissedCallSync > 10 * 60 * 1000) {
+        if (!lastMissedCallSync || now - lastMissedCallSync > 10 * 60 * 1000) {
       await syncMissedCalls(platform);
+      await syncVoicemails(platform);
       lastMissedCallSync = now;
     }
     consecutiveErrors = 0;
@@ -1347,6 +1348,12 @@ async function syncRingCentralMessages() {
 // ================================================
 // MISSED CALLS SYNC
 // ================================================
+const ANSWERED_RESULTS = new Set(['Accepted', 'Call connected', 'Received']);
+const MISSED_RESULTS = new Set([
+  'Missed', 'Voicemail', 'No Answer', 'Hang Up',
+  'Rejected', 'Busy', 'Abandoned', 'Declined', 'Blocked',
+]);
+
 async function syncMissedCalls(platform) {
   if (!conversationsCollection) return;
 
@@ -1375,11 +1382,19 @@ async function syncMissedCalls(platform) {
       const exists = await conversationsCollection.findOne({ 'messages.id': `call_${callId}` });
       if (exists) continue;
 
-      const isMissed = call.result === 'Missed';
-      const isAnswered = call.result === 'Accepted' || call.result === 'Connected';
+            // RC does NOT report an after-hours call as "Missed" — a call that rings
+      // out to the greeting comes back as "Voicemail", and the old filter threw
+      // it away. As far as staff are concerned, anything nobody picked up is a
+      // missed call. ("Call connected" has a space — plain "Connected" never
+      // matched, so those answered calls were being dropped too.)
+      const isAnswered = ANSWERED_RESULTS.has(call.result);
+      const isMissed = MISSED_RESULTS.has(call.result);
+      const wentToVoicemail = call.result === 'Voicemail';
 
-      // Skip calls that are neither missed nor answered (e.g. voicemail, busy)
-      if (!isMissed && !isAnswered) continue;
+      if (!isMissed && !isAnswered) {
+        console.log(`   ⏭️ Skipping call with result "${call.result}"`);
+        continue;
+      }
 
       const messageObj = {
         id: `call_${callId}`,
@@ -1388,12 +1403,16 @@ async function syncMissedCalls(platform) {
         subject: '',
         creationTime: call.startTime,
         lastModifiedTime: call.startTime,
-        readStatus: 'Read', // answered calls don't need attention
+        // Must match what syncReadStatus recomputes from, or the badge
+        // gets zeroed out the next time that conversation is recounted.
+        readStatus: isMissed ? 'Unread' : 'Read',
         messageStatus: 'Received',
         from: { phoneNumber: callerPhone },
         to: [{ phoneNumber: MY_PHONE_NUMBER }],
-        attachments: [],
+                attachments: [],
         callDuration: call.duration || 0,
+        callResult: call.result,        // raw RC result, useful when triaging
+        hasVoicemail: wentToVoicemail,  // the voicemail itself syncs separately
       };
 
       await conversationsCollection.updateOne(
@@ -1418,19 +1437,160 @@ async function syncMissedCalls(platform) {
         phoneNumber: callerPhone,
         messageId: `call_${callId}`,
         timestamp: call.startTime,
-        subject: '📵 Missed call',
+                subject: isAnswered
+          ? '📞 Call received'
+          : wentToVoicemail
+            ? '📼 Missed call — voicemail'
+            : '📵 Missed call',
         direction: 'Inbound',
-        type: 'MissedCall',
+        type: isMissed ? 'MissedCall' : 'AnsweredCall',
       });
 
       synced++;
-      console.log(`📵 Missed call from ${callerPhone} at ${call.startTime}`);
+      console.log(
+        `${isAnswered ? '📞' : '📵'} ${call.result} from ${callerPhone} at ${call.startTime}`,
+      );
     }
 
     if (synced > 0) console.log(`✅ Synced ${synced} missed calls`);
     return { synced };
   } catch (error) {
     console.error('❌ Missed call sync error:', error.message);
+    return { synced: 0 };
+  }
+}
+
+// ================================================
+// VOICEMAIL SYNC
+// Call Log knows a call *went* to voicemail; only Message Store has the
+// recording. One extra API call per cycle, plus a download per new voicemail.
+// ================================================
+async function syncVoicemails(platform) {
+  if (!conversationsCollection) return { synced: 0 };
+
+  try {
+    if (!platform) platform = await getCachedRCPlatform();
+    const authData = await platform.auth().data();
+    const authToken = authData?.access_token;
+    if (!authToken) return { synced: 0 };
+
+    const dateFrom = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const response = await platform.get('/restapi/v1.0/account/~/extension/~/message-store', {
+      messageType: 'VoiceMail',
+      direction: 'Inbound',
+      dateFrom,
+      perPage: 50,
+    });
+
+    const data = await response.json();
+    const voicemails = data.records || [];
+    let synced = 0;
+
+    for (const vm of voicemails) {
+      const vmId = `vm_${vm.id}`;
+      const callerPhone = normalizePhone(vm.from?.phoneNumber || '');
+      if (!callerPhone) continue;
+
+      const exists = await conversationsCollection.findOne({ 'messages.id': vmId });
+      if (exists) continue;
+
+      const conversationId = callerPhone;
+      const attachments = [];
+      let transcript = '';
+
+      for (const att of (vm.attachments || [])) {
+        if (!att.contentType || !att.uri) continue;
+
+        // Audio → Azure, so the browser can play it without an RC token
+        if (att.contentType.startsWith('audio/')) {
+          const ext = att.contentType.split('/')[1] || 'mp3';
+          const azureUrl = await downloadAndUploadAttachment(
+            att.uri, `${vmId}_${att.id}.${ext}`, att.contentType, authToken,
+          );
+          if (azureUrl) {
+            attachments.push({
+              id: att.id?.toString(),
+              uri: att.uri,
+              type: att.type,
+              contentType: att.contentType,
+              azureUrl,
+              filename: `voicemail.${ext}`,
+            });
+          }
+          continue;
+        }
+
+        // Transcription, when the account has it enabled
+        if (att.contentType.startsWith('text/')) {
+          try {
+            const r = await fetch(att.uri, { headers: { Authorization: `Bearer ${authToken}` } });
+            if (r.ok) transcript = (await r.text()).trim();
+          } catch (e) {
+            console.log(`   ⚠️ Voicemail transcript fetch failed: ${e.message}`);
+          }
+        }
+      }
+
+      const messageObj = {
+        id: vmId,
+        direction: 'Inbound',
+        type: 'Voicemail',
+        subject: transcript,
+        creationTime: vm.creationTime,
+        lastModifiedTime: vm.lastModifiedTime || vm.creationTime,
+        readStatus: 'Unread',
+        messageStatus: 'Received',
+        from: { phoneNumber: callerPhone },
+        to: [{ phoneNumber: MY_PHONE_NUMBER }],
+        attachments,
+        callDuration: vm.duration || 0,
+        isVoicemail: true,
+      };
+
+      await conversationsCollection.updateOne(
+        { conversationId },
+        {
+          $push: { messages: { $each: [messageObj], $sort: { creationTime: 1 } } },
+          $set: {
+            conversationId,
+            phoneNumber: callerPhone,
+            participants: [callerPhone],
+            isGroup: false,
+            lastMessageTime: vm.creationTime,
+          },
+          $inc: { unreadCount: 1 },
+        },
+        { upsert: true },
+      );
+
+      io.to(`conversation:${conversationId}`).emit('newRingCentralMessage', {
+        conversationId,
+        phoneNumber: callerPhone,
+        messageId: vmId,
+        timestamp: vm.creationTime,
+        subject: transcript || '📼 Voicemail',
+        direction: 'Inbound',
+        type: 'Voicemail',
+      });
+      io.to('sms-admins').emit('newRingCentralMessage', {
+        conversationId,
+        phoneNumber: callerPhone,
+        messageId: vmId,
+        timestamp: vm.creationTime,
+        subject: transcript || '📼 Voicemail',
+        direction: 'Inbound',
+        type: 'Voicemail',
+      });
+
+      synced++;
+      console.log(`📼 Voicemail from ${callerPhone} (${vm.duration || 0}s)`);
+    }
+
+    if (synced > 0) console.log(`✅ Synced ${synced} voicemails`);
+    return { synced };
+  } catch (error) {
+    console.error('❌ Voicemail sync error:', error.message);
     return { synced: 0 };
   }
 }
