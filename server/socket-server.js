@@ -1277,12 +1277,8 @@ async function syncRingCentralMessages() {
     const duration = Date.now() - startTime;
     lastSyncTime = new Date().toISOString();
     // Only sync missed calls every 10 minutes, not every sync cycle
-    const now = Date.now();
-        if (!lastMissedCallSync || now - lastMissedCallSync > 10 * 60 * 1000) {
-      await syncMissedCalls(platform);
-      await syncVoicemails(platform);
-      lastMissedCallSync = now;
-    }
+    // Calls now run on their own cadence (see startServer) so they aren't
+    // gated behind the message sync's 10-minute window.
     consecutiveErrors = 0;
     rateLimitedUntil = null;
 
@@ -1358,7 +1354,9 @@ async function syncMissedCalls(platform) {
   if (!conversationsCollection) return;
 
   try {
-    if (!platform) platform = await getRingCentralPlatform();
+    // Must be the CACHED platform — a bare getRingCentralPlatform() does a
+    // second JWT login, which revokes the shared session's refresh token.
+    if (!platform) platform = await getCachedRCPlatform();
     const dateFrom = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     const response = await platform.get('/restapi/v1.0/account/~/extension/~/call-log', {
@@ -2017,11 +2015,43 @@ async function startServer() {
     }, 5000);
 
     // ⚡ Start instant push notifications — delay to avoid rate limit on startup
-setTimeout(startRingCentralWebSocket, 15000);
+    setTimeout(startRingCentralWebSocket, 15000);
 
-    setInterval(async () => {
+      setInterval(async () => {
       await syncRingCentralMessages();
     }, syncIntervalMs);
+
+    // Calls have no instant-push equivalent to the SMS WebSocket filter, so
+    // polling is the only option. 60s keeps missed calls near RC's own ~30s
+    // call-log write delay. Voicemails stay slower — they land after the
+    // call anyway and each new one costs an audio download.
+    let callSyncRunning = false;
+    setInterval(async () => {
+      if (callSyncRunning) return;
+      if (rateLimitedUntil && Date.now() < rateLimitedUntil) return;
+      callSyncRunning = true;
+      try {
+        await syncMissedCalls();
+      } catch (e) {
+        console.error('❌ Missed call timer error:', e.message);
+      } finally {
+        callSyncRunning = false;
+      }
+    }, 60 * 1000);
+
+    let vmSyncRunning = false;
+    setInterval(async () => {
+      if (vmSyncRunning) return;
+      if (rateLimitedUntil && Date.now() < rateLimitedUntil) return;
+      vmSyncRunning = true;
+      try {
+        await syncVoicemails();
+      } catch (e) {
+        console.error('❌ Voicemail timer error:', e.message);
+      } finally {
+        vmSyncRunning = false;
+      }
+    }, 5 * 60 * 1000);
 
     const updateNextSyncTime = () => {
       nextSyncTime = new Date(Date.now() + syncIntervalMs).toISOString();
