@@ -202,6 +202,191 @@ function InlineTextAttachment({
   );
 }
 
+const EMOJI_GROUPS: { label: string; emojis: string[] }[] = [
+  {
+    label: "Common",
+    emojis: ["👍", "🙏", "✅", "😊", "❤️", "👌", "🎉", "😂", "🙌", "👏"],
+  },
+  {
+    label: "Smileys",
+    emojis: [
+      "😀",
+      "😃",
+      "😄",
+      "😁",
+      "😅",
+      "😊",
+      "🙂",
+      "😉",
+      "😍",
+      "🥰",
+      "😘",
+      "😎",
+      "🤗",
+      "🤔",
+      "😐",
+      "😕",
+      "🙁",
+      "😢",
+      "😭",
+      "😅",
+      "😳",
+      "🤝",
+      "🫡",
+      "😴",
+    ],
+  },
+  {
+    label: "Business",
+    emojis: [
+      "📄",
+      "📋",
+      "📅",
+      "💳",
+      "💰",
+      "🚗",
+      "🏠",
+      "📞",
+      "📧",
+      "⏰",
+      "✍️",
+      "📎",
+      "🔒",
+      "🧾",
+      "🏦",
+      "📊",
+    ],
+  },
+  {
+    label: "Symbols",
+    emojis: [
+      "✅",
+      "❌",
+      "⚠️",
+      "❗",
+      "❓",
+      "⭐",
+      "🔴",
+      "🟢",
+      "🟡",
+      "➡️",
+      "🔁",
+      "💯",
+      "🆗",
+      "🔔",
+      "📌",
+      "➕",
+    ],
+  },
+];
+
+// GSM-7 basic + extension sets. Anything outside these forces the whole
+// message to UCS-2, which cuts the per-segment limit from 160 chars to 70 —
+// one emoji in a 150-char reminder turns 1 segment into 3.
+const GSM7_BASIC =
+  "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?" +
+  "¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
+const GSM7_EXTENDED = "^{}\\[~]|€";
+
+function smsInfo(text: string): {
+  encoding: "GSM-7" | "UCS-2";
+  chars: number;
+  segments: number;
+  remaining: number;
+} {
+  const isGsm = [...text].every(
+    (c) => GSM7_BASIC.includes(c) || GSM7_EXTENDED.includes(c),
+  );
+
+  if (isGsm) {
+    // Extended chars occupy two septets each
+    const units = [...text].reduce(
+      (n, c) => n + (GSM7_EXTENDED.includes(c) ? 2 : 1),
+      0,
+    );
+    const single = 160;
+    const multi = 153; // 7 septets go to the concatenation header
+    const segments =
+      units === 0 ? 0 : units <= single ? 1 : Math.ceil(units / multi);
+    const cap = segments <= 1 ? single : multi * segments;
+    return {
+      encoding: "GSM-7",
+      chars: units,
+      segments,
+      remaining: cap - units,
+    };
+  }
+
+  // UCS-2 counts UTF-16 code units, so an emoji outside the BMP costs 2
+  const units = text.length;
+  const single = 70;
+  const multi = 67;
+  const segments =
+    units === 0 ? 0 : units <= single ? 1 : Math.ceil(units / multi);
+  const cap = segments <= 1 ? single : multi * segments;
+  return { encoding: "UCS-2", chars: units, segments, remaining: cap - units };
+}
+
+function EmojiPicker({
+  onPick,
+  onClose,
+}: {
+  onPick: (emoji: string) => void;
+  onClose: () => void;
+}) {
+  const [group, setGroup] = useState(0);
+
+  return (
+    <div className="absolute bottom-full mb-2 left-0 z-50 w-72 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+      <div className="flex border-b border-gray-100">
+        {EMOJI_GROUPS.map((g, i) => (
+          <button
+            key={g.label}
+            onClick={() => setGroup(i)}
+            className={`flex-1 px-2 py-2 text-[11px] font-semibold transition-colors ${
+              group === i
+                ? "text-blue-600 border-b-2 border-blue-600"
+                : "text-gray-400 hover:text-gray-600"
+            }`}
+          >
+            {g.label}
+          </button>
+        ))}
+        <button
+          onClick={onClose}
+          className="px-2 text-gray-300 hover:text-gray-500"
+          title="Close"
+        >
+          <svg
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      </div>
+      <div className="grid grid-cols-8 gap-0.5 p-2 max-h-48 overflow-y-auto">
+        {EMOJI_GROUPS[group].emojis.map((e, i) => (
+          <button
+            key={`${e}-${i}`}
+            onClick={() => onPick(e)}
+            className="text-xl leading-none p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+          >
+            {e}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function MessageStoredPage() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -294,6 +479,8 @@ export default function MessageStoredPage() {
   const isSendingRef = useRef(false);
   const chatMenuRef = useRef<HTMLDivElement>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
   const [showInlineSearch, setShowInlineSearch] = useState(false);
   const [inlineSearchInput, setInlineSearchInput] = useState("");
   const inlineSearchRef = useRef<HTMLInputElement>(null);
@@ -920,6 +1107,20 @@ export default function MessageStoredPage() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [lightboxImage, closeLightbox, navigateLightbox]);
+
+  useEffect(() => {
+    if (!showEmojiPicker) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        emojiPickerRef.current &&
+        !emojiPickerRef.current.contains(event.target as Node)
+      ) {
+        setShowEmojiPicker(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showEmojiPicker]);
 
   // Cleanup search timeout on unmount
   useEffect(() => {
@@ -1907,6 +2108,31 @@ export default function MessageStoredPage() {
     } catch {
       return text;
     }
+  };
+
+  // Inserts at the caret rather than appending, and mirrors the same draft
+  // persistence the textarea's own onChange does.
+  const insertEmoji = (emoji: string) => {
+    const el = messageInputRef.current;
+    const start = el?.selectionStart ?? messageInput.length;
+    const end = el?.selectionEnd ?? messageInput.length;
+    const next = messageInput.slice(0, start) + emoji + messageInput.slice(end);
+
+    setMessageInput(next);
+
+    if (selectedConversationId) {
+      if (next.trim()) {
+        localStorage.setItem(`draft_${selectedConversationId}`, next);
+      } else {
+        localStorage.removeItem(`draft_${selectedConversationId}`);
+      }
+    }
+
+    requestAnimationFrame(() => {
+      const caret = start + emoji.length;
+      el?.focus();
+      el?.setSelectionRange(caret, caret);
+    });
   };
 
   const handleSendWithTranslation = async () => {
@@ -4183,7 +4409,41 @@ export default function MessageStoredPage() {
                       </div>
                     )}
 
-                    <div className="flex gap-2 sm:gap-3 items-end">
+                    <div className="relative flex gap-2 sm:gap-3 items-end">
+                      <div
+                        className="relative flex-shrink-0"
+                        ref={emojiPickerRef}
+                      >
+                        {showEmojiPicker && (
+                          <EmojiPicker
+                            onPick={insertEmoji}
+                            onClose={() => setShowEmojiPicker(false)}
+                          />
+                        )}
+                        <button
+                          onClick={() => setShowEmojiPicker((v) => !v)}
+                          className={`p-2 sm:px-3 sm:py-3 rounded-xl transition-colors ${
+                            showEmojiPicker
+                              ? "text-amber-500 bg-amber-50"
+                              : "text-gray-600 hover:text-amber-500 hover:bg-amber-50"
+                          }`}
+                          title="Insert emoji"
+                        >
+                          <svg
+                            className="w-6 h-6"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                        </button>
+                      </div>
                       <button
                         onClick={() => fileInputRef.current?.click()}
                         className="p-2 sm:px-3 sm:py-3 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl flex-shrink-0"
@@ -4391,6 +4651,31 @@ export default function MessageStoredPage() {
                         className="flex-1 px-3 sm:px-4 py-2 sm:py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-sm sm:text-base resize-none max-h-40 overflow-y-auto"
                         disabled={false}
                       />
+                      {messageInput.length > 0 &&
+                        (() => {
+                          const info = smsInfo(messageInput);
+                          return (
+                            <div
+                              className="absolute bottom-1 right-28 sm:right-32 flex items-center gap-1.5 text-[10px] pointer-events-none"
+                              title={`${info.encoding} encoding · ${info.segments} SMS segment${info.segments === 1 ? "" : "s"}`}
+                            >
+                              {info.encoding === "UCS-2" && (
+                                <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">
+                                  UCS-2
+                                </span>
+                              )}
+                              <span
+                                className={
+                                  info.segments > 1
+                                    ? "text-amber-600 font-semibold"
+                                    : "text-gray-400"
+                                }
+                              >
+                                {info.remaining} · {info.segments} SMS
+                              </span>
+                            </div>
+                          );
+                        })()}
 
                       <button
                         onClick={handleSendWithTranslation}
