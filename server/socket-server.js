@@ -1358,13 +1358,21 @@ async function fetchCallRecording(call, callId, authToken) {
   const contentUri = call.recording?.contentUri;
   if (!contentUri || !authToken) return null;
 
-  const azureUrl = await downloadAndUploadAttachment(
+    const azureUrl = await downloadAndUploadAttachment(
     contentUri,
     `call_${callId}.mp3`,
     'audio/mpeg',
     authToken,
   );
-  if (!azureUrl) return null;
+
+  // A failed copy must be loud: RC eventually purges their side, and a silent
+  // null here is indistinguishable from "this call wasn't recorded."
+  if (!azureUrl) {
+    console.error(
+      `🚨 RECORDING COPY FAILED for call ${callId} — RC still has it at ${contentUri}, but we do not.`,
+    );
+    return null;
+  }
 
   return {
     id: call.recording.id?.toString(),
@@ -1420,12 +1428,20 @@ async function syncMissedCalls(platform) {
         );
         if (!hasRecording && call.recording?.contentUri) {
           const rec = await fetchCallRecording(call, callId, authToken);
-          if (rec) {
+            if (rec) {
             await conversationsCollection.updateOne(
               { 'messages.id': `call_${callId}` },
-              { $set: { 'messages.$.attachments': [rec] } },
+              {
+                $set: { 'messages.$.attachments': [rec] },
+                $unset: { 'messages.$.recordingCopyFailed': '' },
+              },
             );
             console.log(`🎙️ Backfilled recording for call ${callId}`);
+          } else {
+            await conversationsCollection.updateOne(
+              { 'messages.id': `call_${callId}` },
+              { $set: { 'messages.$.recordingCopyFailed': true } },
+            );
           }
         }
         continue;
