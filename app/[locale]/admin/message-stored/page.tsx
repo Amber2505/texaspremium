@@ -3695,6 +3695,23 @@ export default function MessageStoredPage() {
                                   <div className="flex-1 h-px bg-gray-200" />
                                 </div>
                               )}
+                              {msg.type === "AnsweredCall" &&
+                                msg.attachments
+                                  ?.filter((a: MessageAttachment) =>
+                                    a.contentType?.startsWith("audio/"),
+                                  )
+                                  .map((a: MessageAttachment, ai: number) => (
+                                    <div key={ai} className="pb-1">
+                                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">
+                                        Call recording
+                                      </p>
+                                      <audio
+                                        controls
+                                        src={a.azureUrl || a.uri}
+                                        className="w-full max-w-xs"
+                                      />
+                                    </div>
+                                  ))}
                               {msg.subject && (
                                 <p
                                   className={`break-words whitespace-pre-wrap text-sm sm:text-base ${msg.attachments?.length ? "mb-2" : ""}`}
@@ -3795,7 +3812,8 @@ export default function MessageStoredPage() {
 
                               {/* Attachments (continuing from previous section - keeping attachment rendering logic the same) */}
                               {msg.attachments?.length &&
-                              msg.type !== "Voicemail" ? (
+                              msg.type !== "Voicemail" &&
+                              msg.type !== "AnsweredCall" ? (
                                 <div className="space-y-2 mt-2">
                                   {msg.attachments.map(
                                     (att: MessageAttachment, i: number) => {

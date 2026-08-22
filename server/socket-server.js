@@ -1350,6 +1350,32 @@ const MISSED_RESULTS = new Set([
   'Rejected', 'Busy', 'Abandoned', 'Declined', 'Blocked',
 ]);
 
+
+// Pulls a call recording to Azure so the browser can play it without an RC
+// token. Returns null when the call wasn't recorded or RC hasn't finished
+// processing the audio yet — both are normal, not errors.
+async function fetchCallRecording(call, callId, authToken) {
+  const contentUri = call.recording?.contentUri;
+  if (!contentUri || !authToken) return null;
+
+  const azureUrl = await downloadAndUploadAttachment(
+    contentUri,
+    `call_${callId}.mp3`,
+    'audio/mpeg',
+    authToken,
+  );
+  if (!azureUrl) return null;
+
+  return {
+    id: call.recording.id?.toString(),
+    uri: contentUri,
+    type: 'CallRecording',
+    contentType: 'audio/mpeg',
+    azureUrl,
+    filename: `call-recording-${callId}.mp3`,
+  };
+}
+
 async function syncMissedCalls(platform) {
   if (!conversationsCollection) return;
 
@@ -1357,6 +1383,8 @@ async function syncMissedCalls(platform) {
     // Must be the CACHED platform — a bare getRingCentralPlatform() does a
     // second JWT login, which revokes the shared session's refresh token.
     if (!platform) platform = await getCachedRCPlatform();
+    const callAuth = await platform.auth().data();
+    const authToken = callAuth?.access_token;
     const dateFrom = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     const response = await platform.get('/restapi/v1.0/account/~/extension/~/call-log', {
@@ -1364,6 +1392,7 @@ async function syncMissedCalls(platform) {
       direction: 'Inbound',
       dateFrom,
       perPage: 100,
+      view: 'Detailed', // the `recording` object only comes back in Detailed
     });
 
     const data = await response.json();
@@ -1377,8 +1406,30 @@ async function syncMissedCalls(platform) {
 
       const conversationId = callerPhone;
 
-      const exists = await conversationsCollection.findOne({ 'messages.id': `call_${callId}` });
-      if (exists) continue;
+      const existingCall = await conversationsCollection.findOne(
+        { 'messages.id': `call_${callId}` },
+        { projection: { 'messages.$': 1 } },
+      );
+
+      if (existingCall) {
+        // The recording usually isn't ready on the first pass — attach it on
+        // a later cycle instead of leaving the call without audio forever.
+        const stored = existingCall.messages?.[0];
+        const hasRecording = stored?.attachments?.some(
+          a => a.type === 'CallRecording',
+        );
+        if (!hasRecording && call.recording?.contentUri) {
+          const rec = await fetchCallRecording(call, callId, authToken);
+          if (rec) {
+            await conversationsCollection.updateOne(
+              { 'messages.id': `call_${callId}` },
+              { $set: { 'messages.$.attachments': [rec] } },
+            );
+            console.log(`🎙️ Backfilled recording for call ${callId}`);
+          }
+        }
+        continue;
+      }
 
             // RC does NOT report an after-hours call as "Missed" — a call that rings
       // out to the greeting comes back as "Voicemail", and the old filter threw
@@ -1394,6 +1445,8 @@ async function syncMissedCalls(platform) {
         continue;
       }
 
+      const recording = await fetchCallRecording(call, callId, authToken);
+
       const messageObj = {
         id: `call_${callId}`,
         direction: 'Inbound',
@@ -1407,7 +1460,7 @@ async function syncMissedCalls(platform) {
         messageStatus: 'Received',
         from: { phoneNumber: callerPhone },
         to: [{ phoneNumber: MY_PHONE_NUMBER }],
-                attachments: [],
+        attachments: recording ? [recording] : [],
         callDuration: call.duration || 0,
         callResult: call.result,        // raw RC result, useful when triaging
         hasVoicemail: wentToVoicemail,  // the voicemail itself syncs separately
