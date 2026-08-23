@@ -5,6 +5,7 @@
 
 import React, { useState, useCallback, useEffect } from "react";
 import AdminShell from "../_components/AdminShell";
+import CodeGate from "../_components/CodeGate";
 import AgencyFeeChart from "./_components/AgencyFeeChart";
 import {
   Upload,
@@ -2453,36 +2454,6 @@ export default function AccountingPage() {
   const [viewMonth, setViewMonth] = useState(now.getMonth());
 
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [accountingUnlocked, setAccountingUnlocked] = useState(false);
-  const [pinInput, setPinInput] = useState("");
-  const [pinError, setPinError] = useState("");
-  const [pinLoading, setPinLoading] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
-  const UNLOCK_DURATION = 5 * 60 * 1000; // 5 minutes
-
-  const verifyAccountingCode = async () => {
-    if (!pinInput.trim()) return;
-    setPinLoading(true);
-    setPinError("");
-    try {
-      const res = await fetch("/api/verify-accounting-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: pinInput.trim() }),
-      });
-      if (res.ok) {
-        sessionStorage.setItem("accounting_unlocked_at", String(Date.now()));
-        setAccountingUnlocked(true);
-      } else {
-        setPinError("Incorrect code. Try again.");
-        setPinInput("");
-      }
-    } catch {
-      setPinError("Server error. Try again.");
-    } finally {
-      setPinLoading(false);
-    }
-  };
   const [days, setDays] = useState<DaySummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -2525,62 +2496,12 @@ export default function AccountingPage() {
         window.location.href = "/admin";
       } else {
         setIsCheckingAuth(false);
-        // Check if already unlocked this session
-        const unlockedAt = sessionStorage.getItem("accounting_unlocked_at");
-        if (unlockedAt && Date.now() - parseInt(unlockedAt) < UNLOCK_DURATION) {
-          setAccountingUnlocked(true);
-        } else {
-          sessionStorage.removeItem("accounting_unlocked_at");
-        }
       }
     } catch {
       localStorage.removeItem("admin_session");
       window.location.href = "/admin";
     }
   }, []);
-
-  // Auto-lock after 5 minutes
-  useEffect(() => {
-    if (!accountingUnlocked) return;
-    // do nothing extra
-  }, [accountingUnlocked]);
-
-  // Countdown display — must be before any early returns
-  useEffect(() => {
-    if (!accountingUnlocked) {
-      setSecondsLeft(null);
-      return;
-    }
-    const tick = () => {
-      const unlockedAt = sessionStorage.getItem("accounting_unlocked_at");
-      if (!unlockedAt) {
-        setSecondsLeft(null);
-        return;
-      }
-      const remaining = Math.max(
-        0,
-        UNLOCK_DURATION - (Date.now() - parseInt(unlockedAt)),
-      );
-      setSecondsLeft(Math.ceil(remaining / 1000));
-    };
-    tick();
-    const iv = setInterval(tick, 1000);
-    return () => clearInterval(iv);
-  }, [accountingUnlocked]);
-
-  useEffect(() => {
-    if (!accountingUnlocked) return;
-    const interval = setInterval(() => {
-      const unlockedAt = sessionStorage.getItem("accounting_unlocked_at");
-      if (!unlockedAt || Date.now() - parseInt(unlockedAt) >= UNLOCK_DURATION) {
-        sessionStorage.removeItem("accounting_unlocked_at");
-        setAccountingUnlocked(false);
-        setPinInput("");
-        setPinError("");
-      }
-    }, 30_000); // check every 30 seconds
-    return () => clearInterval(interval);
-  }, [accountingUnlocked]);
 
   useEffect(() => {
     if (isCheckingAuth) return;
@@ -2741,708 +2662,633 @@ export default function AccountingPage() {
     );
   }
 
-  if (!accountingUnlocked) {
-    return (
-      <AdminShell activePath="/admin/accounting">
-        <div className="h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-indigo-50">
-          <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
-            <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center mx-auto mb-5">
-              <svg
-                className="w-7 h-7 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                />
-              </svg>
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 text-center mb-1">
-              Accounting Access
-            </h2>
-            <p className="text-sm text-gray-500 text-center mb-6">
-              Enter your access code to view accounting data
-            </p>
-            <input
-              type="password"
-              value={pinInput}
-              onChange={(e) => setPinInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && verifyAccountingCode()}
-              placeholder="Enter code"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-center text-lg tracking-widest focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none mb-3"
-              autoFocus
-            />
-            {pinError && (
-              <p className="text-sm text-red-500 text-center mb-3">
-                {pinError}
-              </p>
-            )}
-            <button
-              onClick={verifyAccountingCode}
-              disabled={pinLoading || !pinInput.trim()}
-              className="w-full py-3 bg-emerald-600 text-white font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2"
-            >
-              {pinLoading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />{" "}
-                  Verifying…
-                </>
-              ) : (
-                "Unlock Accounting"
-              )}
-            </button>
-          </div>
-        </div>
-      </AdminShell>
-    );
-  }
-
   return (
     <AdminShell activePath="/admin/accounting">
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-6">
-        <div className="max-w-5xl mx-auto">
-          {/* Header */}
-          <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <button
-                  onClick={() => (window.location.href = "/admin")}
-                  className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-1.5 transition-colors"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+      <CodeGate
+        title="Accounting Access"
+        subtitle="Enter your access code to view accounting data"
+        storageKey="accounting_unlocked_at"
+      >
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 p-6">
+          <div className="max-w-5xl mx-auto">
+            {/* Header */}
+            <div className="bg-white rounded-xl shadow-sm p-5 mb-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <button
+                    onClick={() => (window.location.href = "/admin")}
+                    className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 mb-1.5 transition-colors"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 19l-7-7 7-7"
-                    />
-                  </svg>
-                  Back to Admin
-                </button>
-                <div className="flex items-center gap-3">
+                    <svg
+                      className="w-4 h-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 19l-7-7 7-7"
+                      />
+                    </svg>
+                    Back to Admin
+                  </button>
                   <h1 className="text-2xl font-bold text-gray-900">
                     Accounting
                   </h1>
-                  {secondsLeft !== null && (
-                    <span
-                      className={`text-xs px-2 py-1 rounded-full font-mono font-semibold flex items-center gap-1 ${
-                        secondsLeft <= 60
-                          ? "bg-red-100 text-red-600"
-                          : "bg-emerald-100 text-emerald-700"
-                      }`}
+                  {importResult && (
+                    <p
+                      className={`text-sm mt-0.5 ${importResult.startsWith("✓") ? "text-green-600" : "text-red-500"}`}
                     >
-                      <svg
-                        className="w-3 h-3"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
-                      {Math.floor(secondsLeft / 60)}:
-                      {String(secondsLeft % 60).padStart(2, "0")}
-                    </span>
+                      {importResult}
+                    </p>
+                  )}
+                  {squareError && (
+                    <p className="text-sm mt-0.5 text-red-500">{squareError}</p>
                   )}
                 </div>
-                {importResult && (
-                  <p
-                    className={`text-sm mt-0.5 ${importResult.startsWith("✓") ? "text-green-600" : "text-red-500"}`}
-                  >
-                    {importResult}
-                  </p>
-                )}
-                {squareError && (
-                  <p className="text-sm mt-0.5 text-red-500">{squareError}</p>
-                )}
-              </div>
-              <div className="flex gap-2 items-center">
-                {/* Month navigator */}
-                <div className="flex items-center gap-1 border border-gray-200 rounded-lg overflow-hidden">
+                <div className="flex gap-2 items-center">
+                  {/* Month navigator */}
+                  <div className="flex items-center gap-1 border border-gray-200 rounded-lg overflow-hidden">
+                    <button
+                      onClick={() => changeMonth(-1)}
+                      className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 transition"
+                    >
+                      ←
+                    </button>
+                    <span className="px-3 py-2 text-sm font-medium text-gray-900 min-w-[130px] text-center">
+                      {getMonthLabel(viewYear, viewMonth)}
+                    </span>
+                    <button
+                      onClick={() => changeMonth(1)}
+                      className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 transition"
+                    >
+                      →
+                    </button>
+                  </div>
                   <button
-                    onClick={() => changeMonth(-1)}
-                    className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 transition"
+                    onClick={loadFromDB}
+                    className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition flex items-center gap-1.5 text-sm"
                   >
-                    ←
+                    <RefreshCw className="w-4 h-4" />
                   </button>
-                  <span className="px-3 py-2 text-sm font-medium text-gray-900 min-w-[130px] text-center">
-                    {getMonthLabel(viewYear, viewMonth)}
-                  </span>
-                  <button
-                    onClick={() => changeMonth(1)}
-                    className="px-3 py-2 text-sm text-gray-600 hover:bg-gray-50 transition"
-                  >
-                    →
-                  </button>
-                </div>
-                <button
-                  onClick={loadFromDB}
-                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition flex items-center gap-1.5 text-sm"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
-                {days.length > 0 && (
-                  <button
-                    onClick={fetchSquareData}
-                    disabled={squareLoading}
-                    className={`px-3 py-2 rounded-lg transition flex items-center gap-1.5 text-sm font-medium ${squareLoading ? "bg-purple-300 text-white cursor-not-allowed" : "bg-purple-600 text-white hover:bg-purple-700"}`}
-                  >
-                    {squareLoading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Fetching…
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle className="w-4 h-4" />
-                        Square Reconcile
-                      </>
-                    )}
-                  </button>
-                )}
-
-                <label
-                  className={`px-3 py-2 rounded-lg transition flex items-center gap-1.5 cursor-pointer text-sm font-medium ${importing ? "bg-blue-400 text-white cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
-                >
-                  <Upload className="w-4 h-4" />
-                  {importing ? "Importing…" : "Import CSV"}
-                  <input
-                    type="file"
-                    accept=".csv,.CSV"
-                    className="hidden"
-                    disabled={importing}
-                    onClick={(e) => {
-                      (e.target as HTMLInputElement).value = "";
-                    }}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) handleFile(f);
-                    }}
-                  />
-                </label>
-              </div>
-            </div>
-          </div>
-
-          {/* Empty */}
-          {!days.length && !loading && (
-            <label className="block border-2 border-dashed border-gray-300 rounded-xl p-16 text-center bg-white cursor-pointer hover:border-blue-400 transition">
-              <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-              <p className="font-medium text-gray-700 mb-1">
-                Import Transaction Detail CSV for{" "}
-                {getMonthLabel(viewYear, viewMonth)}
-              </p>
-              <p className="text-sm text-gray-500">
-                Data saved to MongoDB — switch months anytime
-              </p>
-              <input
-                type="file"
-                accept=".csv,.CSV"
-                className="hidden"
-                onClick={(e) => {
-                  (e.target as HTMLInputElement).value = "";
-                }}
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleFile(f);
-                }}
-              />
-            </label>
-          )}
-
-          {loading && (
-            <div className="bg-white rounded-xl p-16 text-center shadow-sm">
-              <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-3" />
-              <p className="text-gray-500 text-sm">
-                Loading {getMonthLabel(viewYear, viewMonth)}…
-              </p>
-            </div>
-          )}
-
-          {days.length > 0 && !loading && (
-            <>
-              {/* Summary cards */}
-              {(() => {
-                const totalCash = days.reduce(
-                  (s, d) => s + (d.byMethod["Cash"] || 0),
-                  0,
-                );
-                const totalZelle = days.reduce((s, d) => {
-                  // Zelle can appear as E-Payment with ref "Zelle" or as its own method
-                  // const ePayment = d.byMethod["E-Payment"] || 0;
-                  const zelle = d.byMethod["Zelle"] || 0;
-                  // Check receipts for Zelle ref to separate from other E-Payments
-                  const zelleFromEPayment = d.receipts.reduce((rs, r) => {
-                    const isZelle =
-                      (r.referenceNo || "").toLowerCase() === "zelle";
-                    if (!isZelle) return rs;
-                    return (
-                      rs +
-                      r.rows
-                        .filter((row) => row.method === "E-Payment")
-                        .reduce((s, row) => s + row.total, 0)
-                    );
-                  }, 0);
-                  return s + zelle + zelleFromEPayment;
-                }, 0);
-
-                return (
-                  <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
-                    {/* Row 1 — totals (revenue) + Row 1b — payroll outflows */}
-                    {(() => {
-                      // Commission for this month — same rule as CarrierCommissions component
-                      const monthCommission = plaidTransactions
-                        .filter((tx: any) => {
-                          if (typeof tx.amount !== "number" || tx.amount >= 0)
-                            return false;
-                          const name = (tx.name || "").trim();
-                          if (!name.startsWith("ORIG CO NAME:")) return false;
-                          const after = name
-                            .replace(/^ORIG CO NAME:\s*/i, "")
-                            .trim()
-                            .toLowerCase();
-                          if (after.startsWith("square")) return false;
-                          // Exclude payroll/Intuit so commission stays clean
-                          if (after.startsWith("intuit")) return false;
-                          return (tx.date || "").startsWith(monthKey);
-                        })
-                        .reduce(
-                          (s: number, tx: any) => s + Math.abs(tx.amount),
-                          0,
-                        );
-
-                      // Payroll outflows — Intuit ACH debits this month
-                      // amount > 0 means money OUT in Plaid convention
-                      // Threshold: $20 separates Intuit fees (small) from payroll (large)
-                      const INTUIT_FEE_THRESHOLD = 20;
-                      const intuitTxs = plaidTransactions.filter((tx: any) => {
-                        if (typeof tx.amount !== "number" || tx.amount <= 0)
-                          return false;
-                        const name = (tx.name || "").trim();
-                        if (!name.startsWith("ORIG CO NAME:")) return false;
-                        const after = name
-                          .replace(/^ORIG CO NAME:\s*/i, "")
-                          .trim()
-                          .toLowerCase();
-                        if (!after.startsWith("intuit")) return false;
-                        return (tx.date || "").startsWith(monthKey);
-                      });
-                      const monthPayroll = intuitTxs
-                        .filter(
-                          (tx: any) =>
-                            Math.abs(tx.amount) >= INTUIT_FEE_THRESHOLD,
-                        )
-                        .reduce(
-                          (s: number, tx: any) => s + Math.abs(tx.amount),
-                          0,
-                        );
-                      const monthPayrollFees = intuitTxs
-                        .filter(
-                          (tx: any) =>
-                            Math.abs(tx.amount) < INTUIT_FEE_THRESHOLD,
-                        )
-                        .reduce(
-                          (s: number, tx: any) => s + Math.abs(tx.amount),
-                          0,
-                        );
-
-                      const grossRevenue = totalFees + monthCommission;
-                      const netRevenue =
-                        grossRevenue - monthPayroll - monthPayrollFees;
-
-                      return (
+                  {days.length > 0 && (
+                    <button
+                      onClick={fetchSquareData}
+                      disabled={squareLoading}
+                      className={`px-3 py-2 rounded-lg transition flex items-center gap-1.5 text-sm font-medium ${squareLoading ? "bg-purple-300 text-white cursor-not-allowed" : "bg-purple-600 text-white hover:bg-purple-700"}`}
+                    >
+                      {squareLoading ? (
                         <>
-                          {/* Row 1a — revenue inflows */}
-                          <div className="grid grid-cols-5 gap-3 mb-3">
-                            <div>
-                              <p className="text-xs text-gray-500 mb-0.5">
-                                Total collected
-                              </p>
-                              <p className="text-xl font-bold text-gray-900">
-                                {fmt(totalRevenue)}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-gray-500 mb-0.5">
-                                Premium
-                              </p>
-                              <p className="text-xl font-bold text-blue-700">
-                                {fmt(totalPremium)}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs text-gray-500 mb-0.5">
-                                Agency fees
-                              </p>
-                              <p
-                                className={`text-xl font-bold ${totalFees >= 0 ? "text-green-700" : "text-red-600"}`}
-                              >
-                                {fmt(totalFees)}
-                              </p>
-                            </div>
-                            <div className="flex items-center">
-                              <span className="text-xl text-gray-300 font-light mr-2">
-                                +
-                              </span>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Fetching…
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-4 h-4" />
+                          Square Reconcile
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  <label
+                    className={`px-3 py-2 rounded-lg transition flex items-center gap-1.5 cursor-pointer text-sm font-medium ${importing ? "bg-blue-400 text-white cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+                  >
+                    <Upload className="w-4 h-4" />
+                    {importing ? "Importing…" : "Import CSV"}
+                    <input
+                      type="file"
+                      accept=".csv,.CSV"
+                      className="hidden"
+                      disabled={importing}
+                      onClick={(e) => {
+                        (e.target as HTMLInputElement).value = "";
+                      }}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handleFile(f);
+                      }}
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Empty */}
+            {!days.length && !loading && (
+              <label className="block border-2 border-dashed border-gray-300 rounded-xl p-16 text-center bg-white cursor-pointer hover:border-blue-400 transition">
+                <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
+                <p className="font-medium text-gray-700 mb-1">
+                  Import Transaction Detail CSV for{" "}
+                  {getMonthLabel(viewYear, viewMonth)}
+                </p>
+                <p className="text-sm text-gray-500">
+                  Data saved to MongoDB — switch months anytime
+                </p>
+                <input
+                  type="file"
+                  accept=".csv,.CSV"
+                  className="hidden"
+                  onClick={(e) => {
+                    (e.target as HTMLInputElement).value = "";
+                  }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleFile(f);
+                  }}
+                />
+              </label>
+            )}
+
+            {loading && (
+              <div className="bg-white rounded-xl p-16 text-center shadow-sm">
+                <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-3" />
+                <p className="text-gray-500 text-sm">
+                  Loading {getMonthLabel(viewYear, viewMonth)}…
+                </p>
+              </div>
+            )}
+
+            {days.length > 0 && !loading && (
+              <>
+                {/* Summary cards */}
+                {(() => {
+                  const totalCash = days.reduce(
+                    (s, d) => s + (d.byMethod["Cash"] || 0),
+                    0,
+                  );
+                  const totalZelle = days.reduce((s, d) => {
+                    // Zelle can appear as E-Payment with ref "Zelle" or as its own method
+                    // const ePayment = d.byMethod["E-Payment"] || 0;
+                    const zelle = d.byMethod["Zelle"] || 0;
+                    // Check receipts for Zelle ref to separate from other E-Payments
+                    const zelleFromEPayment = d.receipts.reduce((rs, r) => {
+                      const isZelle =
+                        (r.referenceNo || "").toLowerCase() === "zelle";
+                      if (!isZelle) return rs;
+                      return (
+                        rs +
+                        r.rows
+                          .filter((row) => row.method === "E-Payment")
+                          .reduce((s, row) => s + row.total, 0)
+                      );
+                    }, 0);
+                    return s + zelle + zelleFromEPayment;
+                  }, 0);
+
+                  return (
+                    <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
+                      {/* Row 1 — totals (revenue) + Row 1b — payroll outflows */}
+                      {(() => {
+                        // Commission for this month — same rule as CarrierCommissions component
+                        const monthCommission = plaidTransactions
+                          .filter((tx: any) => {
+                            if (typeof tx.amount !== "number" || tx.amount >= 0)
+                              return false;
+                            const name = (tx.name || "").trim();
+                            if (!name.startsWith("ORIG CO NAME:")) return false;
+                            const after = name
+                              .replace(/^ORIG CO NAME:\s*/i, "")
+                              .trim()
+                              .toLowerCase();
+                            if (after.startsWith("square")) return false;
+                            // Exclude payroll/Intuit so commission stays clean
+                            if (after.startsWith("intuit")) return false;
+                            return (tx.date || "").startsWith(monthKey);
+                          })
+                          .reduce(
+                            (s: number, tx: any) => s + Math.abs(tx.amount),
+                            0,
+                          );
+
+                        // Payroll outflows — Intuit ACH debits this month
+                        // amount > 0 means money OUT in Plaid convention
+                        // Threshold: $20 separates Intuit fees (small) from payroll (large)
+                        const INTUIT_FEE_THRESHOLD = 20;
+                        const intuitTxs = plaidTransactions.filter(
+                          (tx: any) => {
+                            if (typeof tx.amount !== "number" || tx.amount <= 0)
+                              return false;
+                            const name = (tx.name || "").trim();
+                            if (!name.startsWith("ORIG CO NAME:")) return false;
+                            const after = name
+                              .replace(/^ORIG CO NAME:\s*/i, "")
+                              .trim()
+                              .toLowerCase();
+                            if (!after.startsWith("intuit")) return false;
+                            return (tx.date || "").startsWith(monthKey);
+                          },
+                        );
+                        const monthPayroll = intuitTxs
+                          .filter(
+                            (tx: any) =>
+                              Math.abs(tx.amount) >= INTUIT_FEE_THRESHOLD,
+                          )
+                          .reduce(
+                            (s: number, tx: any) => s + Math.abs(tx.amount),
+                            0,
+                          );
+                        const monthPayrollFees = intuitTxs
+                          .filter(
+                            (tx: any) =>
+                              Math.abs(tx.amount) < INTUIT_FEE_THRESHOLD,
+                          )
+                          .reduce(
+                            (s: number, tx: any) => s + Math.abs(tx.amount),
+                            0,
+                          );
+
+                        const grossRevenue = totalFees + monthCommission;
+                        const netRevenue =
+                          grossRevenue - monthPayroll - monthPayrollFees;
+
+                        return (
+                          <>
+                            {/* Row 1a — revenue inflows */}
+                            <div className="grid grid-cols-5 gap-3 mb-3">
                               <div>
                                 <p className="text-xs text-gray-500 mb-0.5">
-                                  Commission
+                                  Total collected
                                 </p>
-                                <p className="text-xl font-bold text-emerald-700">
-                                  {fmt(monthCommission)}
+                                <p className="text-xl font-bold text-gray-900">
+                                  {fmt(totalRevenue)}
                                 </p>
                               </div>
+                              <div>
+                                <p className="text-xs text-gray-500 mb-0.5">
+                                  Premium
+                                </p>
+                                <p className="text-xl font-bold text-blue-700">
+                                  {fmt(totalPremium)}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-xs text-gray-500 mb-0.5">
+                                  Agency fees
+                                </p>
+                                <p
+                                  className={`text-xl font-bold ${totalFees >= 0 ? "text-green-700" : "text-red-600"}`}
+                                >
+                                  {fmt(totalFees)}
+                                </p>
+                              </div>
+                              <div className="flex items-center">
+                                <span className="text-xl text-gray-300 font-light mr-2">
+                                  +
+                                </span>
+                                <div>
+                                  <p className="text-xs text-gray-500 mb-0.5">
+                                    Commission
+                                  </p>
+                                  <p className="text-xl font-bold text-emerald-700">
+                                    {fmt(monthCommission)}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center">
+                                <span className="text-xl text-gray-300 font-light mr-2">
+                                  =
+                                </span>
+                                <div>
+                                  <p className="text-xs text-gray-500 mb-0.5">
+                                    Gross revenue
+                                  </p>
+                                  <p className="text-xl font-bold text-gray-900">
+                                    {fmt(grossRevenue)}
+                                  </p>
+                                </div>
+                              </div>
                             </div>
-                            <div className="flex items-center">
-                              <span className="text-xl text-gray-300 font-light mr-2">
-                                =
-                              </span>
+
+                            {/* Row 1b — outflows + net */}
+                            <div className="grid grid-cols-5 gap-3 mb-4 pb-4 border-b border-gray-100">
                               <div>
                                 <p className="text-xs text-gray-500 mb-0.5">
                                   Gross revenue
                                 </p>
-                                <p className="text-xl font-bold text-gray-900">
+                                <p className="text-xl font-bold text-gray-400">
                                   {fmt(grossRevenue)}
                                 </p>
                               </div>
-                            </div>
-                          </div>
-
-                          {/* Row 1b — outflows + net */}
-                          <div className="grid grid-cols-5 gap-3 mb-4 pb-4 border-b border-gray-100">
-                            <div>
-                              <p className="text-xs text-gray-500 mb-0.5">
-                                Gross revenue
-                              </p>
-                              <p className="text-xl font-bold text-gray-400">
-                                {fmt(grossRevenue)}
-                              </p>
-                            </div>
-                            <div className="flex items-center">
-                              <span className="text-xl text-gray-300 font-light mr-2">
-                                −
-                              </span>
-                              <div>
-                                <p className="text-xs text-gray-500 mb-0.5">
-                                  Payroll
-                                </p>
-                                <p
-                                  className="text-xl font-bold text-red-600"
-                                  title={`${
-                                    intuitTxs.filter(
-                                      (t: any) =>
-                                        Math.abs(t.amount) >=
-                                        INTUIT_FEE_THRESHOLD,
-                                    ).length
-                                  } Intuit payroll runs`}
-                                >
-                                  {fmt(monthPayroll)}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="flex items-center">
-                              <span className="text-xl text-gray-300 font-light mr-2">
-                                −
-                              </span>
-                              <div>
-                                <p className="text-xs text-gray-500 mb-0.5">
-                                  Payroll fees
-                                </p>
-                                <p
-                                  className="text-xl font-bold text-red-500"
-                                  title={`${
-                                    intuitTxs.filter(
-                                      (t: any) =>
-                                        Math.abs(t.amount) >=
-                                        INTUIT_FEE_THRESHOLD,
-                                    ).length
-                                  } Intuit fees (< $${INTUIT_FEE_THRESHOLD})`}
-                                >
-                                  {fmt(monthPayrollFees)}
-                                </p>
-                              </div>
-                            </div>
-                            <div />
-                            <div className="flex items-center">
-                              <span className="text-xl text-gray-300 font-light mr-2">
-                                =
-                              </span>
-                              <div>
-                                <p className="text-xs text-gray-500 mb-0.5">
-                                  Net revenue
-                                </p>
-                                <p
-                                  className={`text-xl font-bold ${netRevenue >= 0 ? "text-gray-900" : "text-red-600"}`}
-                                >
-                                  {fmt(netRevenue)}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        </>
-                      );
-                    })()}
-
-                    {/* Row 2 — payment methods */}
-                    <div className="grid grid-cols-4 gap-4">
-                      {/* Credit card */}
-                      <div className="rounded-lg bg-blue-50 border border-blue-100 p-3">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
-                          <p className="text-xs text-blue-700 font-medium">
-                            Credit card
-                          </p>
-                        </div>
-                        <p className="text-base font-bold text-gray-900">
-                          {fmt(totalCC)}
-                        </p>
-                        {squareGrossTotal > 0 && (
-                          <div className="mt-1.5 pt-1.5 border-t border-blue-100">
-                            <p className="text-[10px] text-blue-600">
-                              Square gross
-                            </p>
-                            <p
-                              className={`text-sm font-semibold ${Math.abs(squareGrossTotal - totalCC) > 0.5 ? "text-red-600" : "text-green-700"}`}
-                            >
-                              {fmt(squareGrossTotal)}
-                              {Math.abs(squareGrossTotal - totalCC) > 0.5 && (
-                                <span className="text-[10px] ml-1 font-normal">
-                                  off by{" "}
-                                  {fmt(Math.abs(squareGrossTotal - totalCC))}
+                              <div className="flex items-center">
+                                <span className="text-xl text-gray-300 font-light mr-2">
+                                  −
                                 </span>
-                              )}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Cash */}
-                      {(() => {
-                        // ATM cash deposits from Plaid — negative = money IN
-                        const atmDeposits = plaidTransactions.filter(
-                          (tx: any) => {
-                            if (typeof tx.amount !== "number" || tx.amount >= 0)
-                              return false;
-                            const name = (tx.name || "").toUpperCase();
-                            return (
-                              name.includes("ATM") &&
-                              (name.includes("CASH DEPOSIT") ||
-                                name.includes("DEPOSIT")) &&
-                              (tx.date || "").startsWith(monthKey)
-                            );
-                          },
-                        );
-                        const totalAtmDeposited = atmDeposits.reduce(
-                          (s: number, tx: any) => s + Math.abs(tx.amount),
-                          0,
-                        );
-                        const cashDiff = totalCash - totalAtmDeposited;
-                        const hasAtmData = atmDeposits.length > 0;
-
-                        return (
-                          <div className="rounded-lg bg-green-50 border border-green-100 p-3">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-                              <p className="text-xs text-green-700 font-medium">
-                                Cash
-                              </p>
-                            </div>
-                            <p className="text-base font-bold text-gray-900">
-                              {fmt(totalCash)}
-                            </p>
-                            <p className="text-[10px] text-green-600 mt-1">
-                              In-office collected
-                            </p>
-                            {hasAtmData && (
-                              <div className="mt-1.5 pt-1.5 border-t border-green-200">
-                                <p className="text-[10px] text-green-600">
-                                  ATM deposited
-                                </p>
-                                <p className="text-sm font-semibold text-gray-900">
-                                  {fmt(totalAtmDeposited)}
-                                </p>
-                                {Math.abs(cashDiff) > 0.5 ? (
+                                <div>
+                                  <p className="text-xs text-gray-500 mb-0.5">
+                                    Payroll
+                                  </p>
                                   <p
-                                    className="text-[10px] font-medium text-red-600 mt-0.5"
-                                    title={`Collected ${fmt(totalCash)} but only deposited ${fmt(totalAtmDeposited)}`}
+                                    className="text-xl font-bold text-red-600"
+                                    title={`${
+                                      intuitTxs.filter(
+                                        (t: any) =>
+                                          Math.abs(t.amount) >=
+                                          INTUIT_FEE_THRESHOLD,
+                                      ).length
+                                    } Intuit payroll runs`}
                                   >
-                                    ⚠ {fmt(Math.abs(cashDiff))}{" "}
-                                    {cashDiff > 0 ? "undeposited" : "over"}
+                                    {fmt(monthPayroll)}
                                   </p>
-                                ) : (
-                                  <p className="text-[10px] text-green-600 mt-0.5">
-                                    ✓ fully deposited
-                                  </p>
-                                )}
+                                </div>
                               </div>
-                            )}
-                            {!hasAtmData && (
-                              <p className="text-[10px] text-green-400 mt-1">
-                                No ATM deposits found this month
-                              </p>
-                            )}
-                          </div>
+                              <div className="flex items-center">
+                                <span className="text-xl text-gray-300 font-light mr-2">
+                                  −
+                                </span>
+                                <div>
+                                  <p className="text-xs text-gray-500 mb-0.5">
+                                    Payroll fees
+                                  </p>
+                                  <p
+                                    className="text-xl font-bold text-red-500"
+                                    title={`${
+                                      intuitTxs.filter(
+                                        (t: any) =>
+                                          Math.abs(t.amount) >=
+                                          INTUIT_FEE_THRESHOLD,
+                                      ).length
+                                    } Intuit fees (< $${INTUIT_FEE_THRESHOLD})`}
+                                  >
+                                    {fmt(monthPayrollFees)}
+                                  </p>
+                                </div>
+                              </div>
+                              <div />
+                              <div className="flex items-center">
+                                <span className="text-xl text-gray-300 font-light mr-2">
+                                  =
+                                </span>
+                                <div>
+                                  <p className="text-xs text-gray-500 mb-0.5">
+                                    Net revenue
+                                  </p>
+                                  <p
+                                    className={`text-xl font-bold ${netRevenue >= 0 ? "text-gray-900" : "text-red-600"}`}
+                                  >
+                                    {fmt(netRevenue)}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          </>
                         );
                       })()}
 
-                      {/* Zelle */}
-                      <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-3">
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />
-                          <p className="text-xs text-indigo-700 font-medium">
-                            Zelle
+                      {/* Row 2 — payment methods */}
+                      <div className="grid grid-cols-4 gap-4">
+                        {/* Credit card */}
+                        <div className="rounded-lg bg-blue-50 border border-blue-100 p-3">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                            <p className="text-xs text-blue-700 font-medium">
+                              Credit card
+                            </p>
+                          </div>
+                          <p className="text-base font-bold text-gray-900">
+                            {fmt(totalCC)}
+                          </p>
+                          {squareGrossTotal > 0 && (
+                            <div className="mt-1.5 pt-1.5 border-t border-blue-100">
+                              <p className="text-[10px] text-blue-600">
+                                Square gross
+                              </p>
+                              <p
+                                className={`text-sm font-semibold ${Math.abs(squareGrossTotal - totalCC) > 0.5 ? "text-red-600" : "text-green-700"}`}
+                              >
+                                {fmt(squareGrossTotal)}
+                                {Math.abs(squareGrossTotal - totalCC) > 0.5 && (
+                                  <span className="text-[10px] ml-1 font-normal">
+                                    off by{" "}
+                                    {fmt(Math.abs(squareGrossTotal - totalCC))}
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Cash */}
+                        {(() => {
+                          // ATM cash deposits from Plaid — negative = money IN
+                          const atmDeposits = plaidTransactions.filter(
+                            (tx: any) => {
+                              if (
+                                typeof tx.amount !== "number" ||
+                                tx.amount >= 0
+                              )
+                                return false;
+                              const name = (tx.name || "").toUpperCase();
+                              return (
+                                name.includes("ATM") &&
+                                (name.includes("CASH DEPOSIT") ||
+                                  name.includes("DEPOSIT")) &&
+                                (tx.date || "").startsWith(monthKey)
+                              );
+                            },
+                          );
+                          const totalAtmDeposited = atmDeposits.reduce(
+                            (s: number, tx: any) => s + Math.abs(tx.amount),
+                            0,
+                          );
+                          const cashDiff = totalCash - totalAtmDeposited;
+                          const hasAtmData = atmDeposits.length > 0;
+
+                          return (
+                            <div className="rounded-lg bg-green-50 border border-green-100 p-3">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                                <p className="text-xs text-green-700 font-medium">
+                                  Cash
+                                </p>
+                              </div>
+                              <p className="text-base font-bold text-gray-900">
+                                {fmt(totalCash)}
+                              </p>
+                              <p className="text-[10px] text-green-600 mt-1">
+                                In-office collected
+                              </p>
+                              {hasAtmData && (
+                                <div className="mt-1.5 pt-1.5 border-t border-green-200">
+                                  <p className="text-[10px] text-green-600">
+                                    ATM deposited
+                                  </p>
+                                  <p className="text-sm font-semibold text-gray-900">
+                                    {fmt(totalAtmDeposited)}
+                                  </p>
+                                  {Math.abs(cashDiff) > 0.5 ? (
+                                    <p
+                                      className="text-[10px] font-medium text-red-600 mt-0.5"
+                                      title={`Collected ${fmt(totalCash)} but only deposited ${fmt(totalAtmDeposited)}`}
+                                    >
+                                      ⚠ {fmt(Math.abs(cashDiff))}{" "}
+                                      {cashDiff > 0 ? "undeposited" : "over"}
+                                    </p>
+                                  ) : (
+                                    <p className="text-[10px] text-green-600 mt-0.5">
+                                      ✓ fully deposited
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                              {!hasAtmData && (
+                                <p className="text-[10px] text-green-400 mt-1">
+                                  No ATM deposits found this month
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Zelle */}
+                        <div className="rounded-lg bg-indigo-50 border border-indigo-100 p-3">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="w-2 h-2 rounded-full bg-indigo-500 inline-block" />
+                            <p className="text-xs text-indigo-700 font-medium">
+                              Zelle
+                            </p>
+                          </div>
+                          <p className="text-base font-bold text-gray-900">
+                            {fmt(totalZelle)}
+                          </p>
+                          <p className="text-[10px] text-indigo-600 mt-1.5">
+                            E-Payment / Zelle ref
                           </p>
                         </div>
-                        <p className="text-base font-bold text-gray-900">
-                          {fmt(totalZelle)}
-                        </p>
-                        <p className="text-[10px] text-indigo-600 mt-1.5">
-                          E-Payment / Zelle ref
-                        </p>
-                      </div>
 
-                      {/* Other */}
-                      {(() => {
-                        const knownMethods = [
-                          "Credit Card",
-                          "Cash",
-                          "E-Payment",
-                          "Zelle",
-                        ];
-                        const other = days.reduce((s, d) => {
+                        {/* Other */}
+                        {(() => {
+                          const knownMethods = [
+                            "Credit Card",
+                            "Cash",
+                            "E-Payment",
+                            "Zelle",
+                          ];
+                          const other = days.reduce((s, d) => {
+                            return (
+                              s +
+                              Object.entries(d.byMethod)
+                                .filter(([m]) => !knownMethods.includes(m))
+                                .reduce((ms, [, v]) => ms + v, 0)
+                            );
+                          }, 0);
+                          // Non-zelle E-Payment
+                          const nonZelleEPayment = days.reduce((s, d) => {
+                            return (
+                              s +
+                              d.receipts.reduce((rs, r) => {
+                                const isZelle =
+                                  (r.referenceNo || "").toLowerCase() ===
+                                  "zelle";
+                                if (isZelle) return rs;
+                                return (
+                                  rs +
+                                  r.rows
+                                    .filter((row) => row.method === "E-Payment")
+                                    .reduce((ss, row) => ss + row.total, 0)
+                                );
+                              }, 0)
+                            );
+                          }, 0);
                           return (
-                            s +
-                            Object.entries(d.byMethod)
-                              .filter(([m]) => !knownMethods.includes(m))
-                              .reduce((ms, [, v]) => ms + v, 0)
-                          );
-                        }, 0);
-                        // Non-zelle E-Payment
-                        const nonZelleEPayment = days.reduce((s, d) => {
-                          return (
-                            s +
-                            d.receipts.reduce((rs, r) => {
-                              const isZelle =
-                                (r.referenceNo || "").toLowerCase() === "zelle";
-                              if (isZelle) return rs;
-                              return (
-                                rs +
-                                r.rows
-                                  .filter((row) => row.method === "E-Payment")
-                                  .reduce((ss, row) => ss + row.total, 0)
-                              );
-                            }, 0)
-                          );
-                        }, 0);
-                        return (
-                          <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <span className="w-2 h-2 rounded-full bg-gray-400 inline-block" />
-                              <p className="text-xs text-gray-600 font-medium">
-                                Other
+                            <div className="rounded-lg bg-gray-50 border border-gray-100 p-3">
+                              <div className="flex items-center gap-1.5 mb-1">
+                                <span className="w-2 h-2 rounded-full bg-gray-400 inline-block" />
+                                <p className="text-xs text-gray-600 font-medium">
+                                  Other
+                                </p>
+                              </div>
+                              <p className="text-base font-bold text-gray-900">
+                                {fmt(other + nonZelleEPayment)}
+                              </p>
+                              <p className="text-[10px] text-gray-500 mt-1.5">
+                                Check, Forward, Wire, etc.
                               </p>
                             </div>
-                            <p className="text-base font-bold text-gray-900">
-                              {fmt(other + nonZelleEPayment)}
-                            </p>
-                            <p className="text-[10px] text-gray-500 mt-1.5">
-                              Check, Forward, Wire, etc.
-                            </p>
-                          </div>
-                        );
-                      })()}
+                          );
+                        })()}
+                      </div>
                     </div>
-                  </div>
-                );
-              })()}
+                  );
+                })()}
 
-              <AgencyFeeChart
-                activeMonth={monthKey}
-                onMonthSelect={(key) => {
-                  const [y, m] = key.split("-").map(Number);
-                  setViewYear(y);
-                  setViewMonth(m - 1);
-                }}
-              />
-
-              {/* Global recon */}
-              {globalRecon && <GlobalReconPanel recon={globalRecon} />}
-
-              {/* Carrier Commissions (from Plaid) */}
-              {plaidTransactions.length > 0 && (
-                <CarrierCommissions
-                  plaidTransactions={plaidTransactions}
-                  monthKey={monthKey}
-                  onMonthSelect={(y, m) => {
+                <AgencyFeeChart
+                  activeMonth={monthKey}
+                  onMonthSelect={(key) => {
+                    const [y, m] = key.split("-").map(Number);
                     setViewYear(y);
-                    setViewMonth(m);
+                    setViewMonth(m - 1);
                   }}
                 />
-              )}
 
-              {/* Daily Settlement Ledger */}
-              {squarePayouts.length > 0 && (
-                <DailySettlementTable
+                {/* Global recon */}
+                {globalRecon && <GlobalReconPanel recon={globalRecon} />}
+
+                {/* Carrier Commissions (from Plaid) */}
+                {plaidTransactions.length > 0 && (
+                  <CarrierCommissions
+                    plaidTransactions={plaidTransactions}
+                    monthKey={monthKey}
+                    onMonthSelect={(y, m) => {
+                      setViewYear(y);
+                      setViewMonth(m);
+                    }}
+                  />
+                )}
+
+                {/* Daily Settlement Ledger */}
+                {squarePayouts.length > 0 && (
+                  <DailySettlementTable
+                    days={days}
+                    squareByDate={squareByDate}
+                    squarePayouts={squarePayouts}
+                    sentPayouts={squarePendingPayouts}
+                    plaidTransactions={plaidTransactions}
+                    monthKey={monthKey}
+                  />
+                )}
+
+                {/* Calendar */}
+                <MonthCalendar
                   days={days}
                   squareByDate={squareByDate}
-                  squarePayouts={squarePayouts}
-                  sentPayouts={squarePendingPayouts}
-                  plaidTransactions={plaidTransactions}
-                  monthKey={monthKey}
+                  selectedDate={selectedDate}
+                  onSelectDay={setSelectedDate}
                 />
-              )}
 
-              {/* Calendar */}
-              <MonthCalendar
-                days={days}
-                squareByDate={squareByDate}
-                selectedDate={selectedDate}
-                onSelectDay={setSelectedDate}
-              />
+                {/* Day filter indicator */}
+                {selectedDate !== "all" && (
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="text-sm text-gray-600">
+                      Showing {formatDateLabel(selectedDate)}
+                    </p>
+                    <button
+                      onClick={() => setSelectedDate("all")}
+                      className="text-sm text-blue-600 hover:text-blue-800"
+                    >
+                      Show all days
+                    </button>
+                  </div>
+                )}
 
-              {/* Day filter indicator */}
-              {selectedDate !== "all" && (
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm text-gray-600">
-                    Showing {formatDateLabel(selectedDate)}
-                  </p>
-                  <button
-                    onClick={() => setSelectedDate("all")}
-                    className="text-sm text-blue-600 hover:text-blue-800"
-                  >
-                    Show all days
-                  </button>
-                </div>
-              )}
-
-              {/* Day list */}
-              {shown.map((day) => (
-                <DayBlock
-                  key={day.dateKey}
-                  day={day}
-                  onSaveReceipt={handleSaveReceipt}
-                  squareByDate={squareByDate}
-                  squarePayouts={squarePayouts}
-                  allDays={days}
-                />
-              ))}
-            </>
-          )}
+                {/* Day list */}
+                {shown.map((day) => (
+                  <DayBlock
+                    key={day.dateKey}
+                    day={day}
+                    onSaveReceipt={handleSaveReceipt}
+                    squareByDate={squareByDate}
+                    squarePayouts={squarePayouts}
+                    allDays={days}
+                  />
+                ))}
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      </CodeGate>
     </AdminShell>
   );
 }
