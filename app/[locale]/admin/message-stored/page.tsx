@@ -479,6 +479,40 @@ export default function MessageStoredPage() {
   const isSendingRef = useRef(false);
   const chatMenuRef = useRef<HTMLDivElement>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // Off hides MissedCall/AnsweredCall entries so the thread is just messages
+  // and voicemails. Defaults OFF — turning it on needs the accounting code.
+  const [showCalls, setShowCalls] = useState(false);
+  const [showCallCodeModal, setShowCallCodeModal] = useState(false);
+  const [callCode, setCallCode] = useState("");
+  const [callCodeError, setCallCodeError] = useState("");
+  const [verifyingCallCode, setVerifyingCallCode] = useState(false);
+
+  const verifyCallCode = async () => {
+    if (!callCode.trim()) return;
+    setVerifyingCallCode(true);
+    setCallCodeError("");
+    try {
+      const res = await fetch("/api/messages/verify-call-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: callCode.trim() }),
+      });
+      const data = await res.json();
+      if (!data.valid) {
+        setCallCodeError("Incorrect code.");
+        setCallCode("");
+        return;
+      }
+      setShowCalls(true);
+      localStorage.setItem("show_calls", "true");
+      setShowCallCodeModal(false);
+      setCallCode("");
+    } catch {
+      setCallCodeError("Could not verify. Try again.");
+    } finally {
+      setVerifyingCallCode(false);
+    }
+  };
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const [showInlineSearch, setShowInlineSearch] = useState(false);
@@ -646,6 +680,11 @@ export default function MessageStoredPage() {
     if (typeof Notification !== "undefined") {
       notificationPermissionRef.current = Notification.permission === "granted";
     }
+  }, []);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("show_calls");
+    if (saved !== null) setShowCalls(saved === "true");
   }, []);
 
   // Load all drafts from localStorage on mount
@@ -2427,6 +2466,29 @@ export default function MessageStoredPage() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => {
+                  if (showCalls) {
+                    // Turning off is free; only turning on needs the code.
+                    setShowCalls(false);
+                    localStorage.setItem("show_calls", "false");
+                  } else {
+                    setCallCode("");
+                    setCallCodeError("");
+                    setShowCallCodeModal(true);
+                  }
+                }}
+                title={showCalls ? "Hide call history" : "Show call history"}
+                className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+                  showCalls ? "bg-green-500" : "bg-gray-300"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${
+                    showCalls ? "left-[22px]" : "left-0.5"
+                  }`}
+                />
+              </button>
+              <button
+                onClick={() => {
                   if (filterType === "scheduled") {
                     fetchAllScheduledConversations();
                   } else {
@@ -3524,6 +3586,16 @@ export default function MessageStoredPage() {
                     const isSelected = selectedMessageIds.has(msg.id || "");
                     const isMatchingMessage =
                       matchingMessageIndices.includes(index);
+
+                    // Skip at render rather than filtering the array — the
+                    // inline search stores positions into `conversation`, so
+                    // removing entries would misalign every highlight.
+                    if (
+                      !showCalls &&
+                      (msg.type === "MissedCall" || msg.type === "AnsweredCall")
+                    ) {
+                      return null;
+                    }
 
                     return (
                       <div key={`${msg.id}-${index}`} id={`message-${index}`}>
@@ -5136,6 +5208,77 @@ export default function MessageStoredPage() {
                     )}
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Call visibility code modal */}
+        {showCallCodeModal && (
+          <div className="fixed inset-0 backdrop-blur-sm bg-black/40 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 w-full max-w-sm">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center flex-shrink-0">
+                  <svg
+                    className="w-5 h-5 text-green-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">
+                    Show Call History
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Enter the access code to reveal calls and recordings
+                  </p>
+                </div>
+              </div>
+              <input
+                type="password"
+                inputMode="numeric"
+                value={callCode}
+                onChange={(e) => {
+                  setCallCode(e.target.value);
+                  setCallCodeError("");
+                }}
+                onKeyDown={(e) =>
+                  e.key === "Enter" && !verifyingCallCode && verifyCallCode()
+                }
+                placeholder="Enter code"
+                autoFocus
+                className="w-full px-3.5 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition mb-2"
+              />
+              {callCodeError && (
+                <p className="text-xs text-rose-600 mb-2">{callCodeError}</p>
+              )}
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => {
+                    setShowCallCodeModal(false);
+                    setCallCode("");
+                    setCallCodeError("");
+                  }}
+                  disabled={verifyingCallCode}
+                  className="flex-1 text-xs px-4 py-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={verifyCallCode}
+                  disabled={!callCode.trim() || verifyingCallCode}
+                  className="flex-1 text-xs px-4 py-2 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 transition disabled:opacity-50"
+                >
+                  {verifyingCallCode ? "Verifying…" : "Unlock"}
+                </button>
               </div>
             </div>
           </div>
