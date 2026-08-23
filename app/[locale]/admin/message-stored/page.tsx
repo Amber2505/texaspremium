@@ -5238,7 +5238,7 @@ export default function MessageStoredPage() {
                     Show Call History
                   </p>
                   <p className="text-xs text-gray-500">
-                    Enter the access code to reveal calls and recordings
+                    Enter the access code to reveal calls
                   </p>
                 </div>
               </div>
