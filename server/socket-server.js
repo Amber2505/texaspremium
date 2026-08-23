@@ -1397,7 +1397,8 @@ async function syncMissedCalls(platform) {
 
     const response = await platform.get('/restapi/v1.0/account/~/extension/~/call-log', {
       type: 'Voice',
-      direction: 'Inbound',
+      // No direction filter — outbound calls carry recordings too, and those
+      // are exactly the ones worth keeping for chargeback defense.
       dateFrom,
       perPage: 100,
       view: 'Detailed', // the `recording` object only comes back in Detailed
@@ -1409,10 +1410,18 @@ async function syncMissedCalls(platform) {
 
     for (const call of calls) {
       const callId = call.id.toString();
-      const callerPhone = normalizePhone(call.from?.phoneNumber || '');
-      if (!callerPhone) continue;
+      const isOutboundCall = call.direction === 'Outbound';
 
-      const conversationId = callerPhone;
+      // The customer is whoever isn't us — `from` on inbound, `to` on outbound.
+      const customerPhone = normalizePhone(
+        (isOutboundCall ? call.to?.phoneNumber : call.from?.phoneNumber) || '',
+      );
+      if (!customerPhone || customerPhone === normalizePhone(MY_PHONE_NUMBER)) {
+        continue;
+      }
+
+      const callerPhone = customerPhone;
+      const conversationId = customerPhone;
 
       const existingCall = await conversationsCollection.findOne(
         { 'messages.id': `call_${callId}` },
@@ -1452,9 +1461,11 @@ async function syncMissedCalls(platform) {
       // it away. As far as staff are concerned, anything nobody picked up is a
       // missed call. ("Call connected" has a space — plain "Connected" never
       // matched, so those answered calls were being dropped too.)
+      // An outbound call we placed is never a "missed call" from the office's
+      // point of view — no answer just means they didn't pick up.
       const isAnswered = ANSWERED_RESULTS.has(call.result);
-      const isMissed = MISSED_RESULTS.has(call.result);
-      const wentToVoicemail = call.result === 'Voicemail';
+      const isMissed = !isOutboundCall && MISSED_RESULTS.has(call.result);
+      const wentToVoicemail = !isOutboundCall && call.result === 'Voicemail';
 
       if (!isMissed && !isAnswered) {
         console.log(`   ⏭️ Skipping call with result "${call.result}"`);
@@ -1465,7 +1476,7 @@ async function syncMissedCalls(platform) {
 
       const messageObj = {
         id: `call_${callId}`,
-        direction: 'Inbound',
+        direction: isOutboundCall ? 'Outbound' : 'Inbound',
         type: isMissed ? 'MissedCall' : 'AnsweredCall',
         subject: '',
         creationTime: call.startTime,
@@ -1474,8 +1485,12 @@ async function syncMissedCalls(platform) {
         // gets zeroed out the next time that conversation is recounted.
         readStatus: isMissed ? 'Unread' : 'Read',
         messageStatus: 'Received',
-        from: { phoneNumber: callerPhone },
-        to: [{ phoneNumber: MY_PHONE_NUMBER }],
+        from: {
+          phoneNumber: isOutboundCall ? MY_PHONE_NUMBER : customerPhone,
+        },
+        to: [
+          { phoneNumber: isOutboundCall ? customerPhone : MY_PHONE_NUMBER },
+        ],
         attachments: recording ? [recording] : [],
         callDuration: call.duration || 0,
         callResult: call.result,        // raw RC result, useful when triaging

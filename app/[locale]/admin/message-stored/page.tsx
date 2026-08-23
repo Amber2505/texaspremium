@@ -3663,7 +3663,7 @@ export default function MessageStoredPage() {
                                         key={ai}
                                         controls
                                         src={a.azureUrl || a.uri}
-                                        className="w-full max-w-xs"
+                                        className="w-full min-w-[280px]"
                                       />
                                     ))}
                                 </div>
@@ -3708,7 +3708,7 @@ export default function MessageStoredPage() {
                                       <audio
                                         controls
                                         src={a.azureUrl || a.uri}
-                                        className="w-full max-w-xs"
+                                        className="w-full min-w-[280px]"
                                       />
                                     </div>
                                   ))}
