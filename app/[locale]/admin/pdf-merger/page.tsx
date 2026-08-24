@@ -270,7 +270,8 @@ export default function PdfMergerPage() {
   const templates = DOCUMENT_SETS[policyType] ?? [];
   const hasTemplates = templates.length > 0;
 
-  const isPolicyTbd = receiptInfo?.policyNumber?.trim().toUpperCase() === "TBD";
+  // Matches TBD / tbd / Tbd anywhere in the value, including "TBD-000"
+  const isPolicyTbd = /\btbd\b/i.test(receiptInfo?.policyNumber ?? "");
 
   const receiptFieldsReady =
     !officeReceipt ||
@@ -278,11 +279,18 @@ export default function PdfMergerPage() {
       ? !!paidAmount.trim()
       : !!(paidAmount.trim() && nextDueDate.trim() && monthlyAmount.trim()));
 
+  // A receipt whose policy number couldn't be read is as unsafe as an explicit
+  // TBD — extraction is position-based and fails silently on layout changes,
+  // scans with no text layer, or a PDF.js load error.
+  const isPolicyMissing =
+    !noReceipt && !!officeReceipt && !receiptInfo?.policyNumber;
+
   const canMerge =
     customerName.trim() &&
     companyApp &&
     !!paymentMethod &&
     !isPolicyTbd &&
+    !isPolicyMissing &&
     (noReceipt ||
       (officeReceipt && receiptFieldsReady && !receiptInfo?.notAReceipt)) &&
     (noReceipt || receiptType === "cash" || ccReceipts.length > 0);
@@ -305,6 +313,21 @@ export default function PdfMergerPage() {
     pdfjsLib.GlobalWorkerOptions.workerSrc =
       "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
     return pdfjsLib;
+  };
+
+  // Stitches a policy number back together after PDF.js fragmentation and
+  // strips any spacing around dashes ("TXY - 1031267" → "TXY-1031267").
+  const normalizePolicyNumber = (raw: string): string | null => {
+    const cleaned = raw
+      .replace(/\s*-\s*/g, "-")
+      .replace(/\s+/g, "")
+      .trim();
+    if (!cleaned) return null;
+    // TBD passes through unchanged so the merge block can catch it
+    if (/\btbd\b/i.test(cleaned)) return cleaned.toUpperCase();
+    // Real policy numbers: 5+ alphanumerics, dashes allowed
+    if (!/^[A-Z0-9][A-Z0-9-]{4,}$/i.test(cleaned)) return null;
+    return cleaned;
   };
 
   // ─── Extract all info from the Texas Premium receipt ────────────────────────
@@ -361,22 +384,43 @@ export default function PdfMergerPage() {
       }
 
       // ── Policy number ─────────────────────────────────────────────────────
-      // Policy numbers are directly below the "Policy No" column header.
-      // Accept any alphanumeric token with 6+ chars (covers both formats:
-      // "4362963-TX-PP-001" and "CCB01461797").
+      // PDF.js splits "TXY-1031267" into separate fragments ("TXY", "-",
+      // "1031267"), so testing each fragment against a length rule throws the
+      // real number away. Instead: grab every fragment in the Policy No
+      // column, keep the ones on the first data row, and stitch them
+      // left-to-right before validating.
       let policyNumber: string | null = null;
       const policyColHeader = items.find((it) => it.text === "Policy No");
       if (policyColHeader) {
-        const below = items
-          .filter(
-            (it) =>
-              it.y < policyColHeader.y - 2 &&
-              it.x >= policyColHeader.x - 10 &&
-              it.x <= policyColHeader.x + 100 &&
-              /^[A-Z0-9][A-Z0-9\-]{5,}$/i.test(it.text), // 6+ alphanumeric/dash chars
-          )
-          .sort((a, b) => b.y - a.y);
-        policyNumber = below[0]?.text ?? null;
+        // Right edge = wherever the next column header starts, minus a hair.
+        // A fixed +110 window was wide enough to swallow "INS" from the Type
+        // column and stitch it onto the policy number.
+        const nextHeaderX = Math.min(
+          ...items
+            .filter(
+              (it) =>
+                Math.abs(it.y - policyColHeader.y) < 3 &&
+                it.x > policyColHeader.x + 20,
+            )
+            .map((it) => it.x),
+          policyColHeader.x + 110, // fallback if no header found to the right
+        );
+
+        const colItems = items.filter(
+          (it) =>
+            it.y < policyColHeader.y - 2 &&
+            it.x >= policyColHeader.x - 15 &&
+            it.x < nextHeaderX - 5,
+        );
+        if (colItems.length > 0) {
+          const topY = Math.max(...colItems.map((it) => it.y));
+          const rowText = colItems
+            .filter((it) => Math.abs(it.y - topY) < 2.5) // same visual row
+            .sort((a, b) => a.x - b.x)
+            .map((it) => it.text)
+            .join("");
+          policyNumber = normalizePolicyNumber(rowText);
+        }
       }
 
       // ── Company name ──────────────────────────────────────────────────────
@@ -1803,19 +1847,21 @@ export default function PdfMergerPage() {
                   <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
                   {isPolicyTbd
                     ? "Policy number is TBD — cannot merge until carrier assigns a policy number"
-                    : !customerName.trim()
-                      ? "Enter customer name to get started"
-                      : !companyApp
-                        ? "Upload the company application to continue"
-                        : !paymentMethod
-                          ? "Select a payment method on file — Card, Bank (EFT), or None"
-                          : noReceipt
-                            ? "Ready to merge"
-                            : !officeReceipt
-                              ? "Upload the Office Copy of the receipt, or toggle No Receipt"
-                              : !receiptFieldsReady
-                                ? "Fill in paid amount, next due date, and monthly payment"
-                                : "Upload a CC receipt or switch to Cash"}
+                    : isPolicyMissing
+                      ? "Policy number could not be read from the receipt — check it's the Office Copy and not a scan"
+                      : !customerName.trim()
+                        ? "Enter customer name to get started"
+                        : !companyApp
+                          ? "Upload the company application to continue"
+                          : !paymentMethod
+                            ? "Select a payment method on file — Card, Bank (EFT), or None"
+                            : noReceipt
+                              ? "Ready to merge"
+                              : !officeReceipt
+                                ? "Upload the Office Copy of the receipt, or toggle No Receipt"
+                                : !receiptFieldsReady
+                                  ? "Fill in paid amount, next due date, and monthly payment"
+                                  : "Upload a CC receipt or switch to Cash"}
                 </div>
               )}
             </div>
@@ -1849,6 +1895,16 @@ export default function PdfMergerPage() {
                   ))}
                 </div>
               </SectionCard>
+
+              {isPolicyMissing && !isPolicyTbd && (
+                <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                  <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs font-semibold text-amber-700">
+                    Policy # couldn&apos;t be read from this receipt — merge
+                    blocked
+                  </p>
+                </div>
+              )}
 
               {/* TBD block in sidebar */}
               {isPolicyTbd && (
