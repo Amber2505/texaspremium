@@ -195,19 +195,26 @@ export default function AdminAutopayDashboard() {
     setShowCodePrompt(true);
   };
 
+  // On close, focus falls back to <body> and the browser re-evaluates the page
+  // for autofill. Explicitly blurring the search input (not activeElement,
+  // which is a button inside the unmounting modal) stops the dropdown.
+  const dismissAutofill = () => {
+    (document.activeElement as HTMLElement)?.blur();
+    searchInputRef.current?.blur();
+  };
+
   const closeModal = () => {
     setShowData(false);
     setDecryptedData(null);
     setSelectedCustomer(null);
-    // Explicitly keep focus away from the search input
-    (document.activeElement as HTMLElement)?.blur();
+    dismissAutofill();
   };
 
   const closeCodePrompt = () => {
     setShowCodePrompt(false);
     setPendingCustomer(null);
     setSecurityCode("");
-    (document.activeElement as HTMLElement)?.blur();
+    dismissAutofill();
   };
 
   const handleDecrypt = async (customer: AutopayCustomer) => {
@@ -390,11 +397,14 @@ export default function AdminAutopayDashboard() {
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
             <input
               ref={searchInputRef}
-              type="text"
-              name="customer-search-field"
-              placeholder="Search Name or Phone..."
+              type="search"
+              name="q"
+              placeholder="Search customer or phone…"
               value={searchQuery}
-              autoComplete="new-password"
+              autoComplete="off"
+              data-form-type="other"
+              data-lpignore="true"
+              data-1p-ignore
               autoCorrect="off"
               autoCapitalize="off"
               spellCheck={false}
