@@ -2859,13 +2859,28 @@ io.on('connection', (socket) => {
       session.customerEnded = true;
       session.endedAt = new Date().toISOString();
 
+      const endNotice = {
+        id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        userId,
+        userName: session.userName,
+        content: `${session.userName} has ended the chat session.`,
+        isAdmin: false,
+        system: true,
+        timestamp: new Date().toISOString(),
+      };
+      // Into history so it survives a refresh, same as any other message.
+      session.conversationHistory.push(endNotice);
+
       io.to('admins').emit('customer-ended-session', {
         userId,
         userName: session.userName,
-        message: `${session.userName} has ended the chat session.`
+        message: endNotice.content,
+        endNotice,
       });
 
-      io.to('admins').emit('session-ended', { userId });
+      // Deliberately NOT emitting 'session-ended' here — the admin dashboard
+      // treats that as "admin ended it" and clears the open transcript, which
+      // wiped the notice we just sent.
 
       const timer = agentWaitTimers.get(userId);
       if (timer) {

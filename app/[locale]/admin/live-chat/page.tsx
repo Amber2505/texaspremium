@@ -43,6 +43,7 @@ interface ChatMessage {
   fileUrl?: string;
   fileName?: string;
   read?: boolean;
+  system?: boolean;
   deleted?: boolean;
   deletedBy?: string;
   deletedAt?: string;
@@ -993,8 +994,22 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
 
     socketRef.current.on(
       "customer-ended-session",
-      (data: { message: string; userId: string; userName: string }) => {
-        const { message, userId } = data;
+      (data: {
+        message: string;
+        userId: string;
+        userName: string;
+        endNotice?: ChatMessage;
+      }) => {
+        const { message, userId, endNotice } = data;
+
+        const notice: ChatMessage = endNotice || {
+          id: `end-${userId}-${Date.now()}`,
+          content: message,
+          isAdmin: false,
+          system: true,
+          timestamp: new Date().toISOString(),
+        };
+
         setSessions((prev) =>
           prev.map((s) =>
             s.userId === userId
@@ -1003,22 +1018,27 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                   isActive: false,
                   customerEnded: true,
                   lastSeen: new Date().toISOString(),
+                  conversationHistory: s.conversationHistory.some(
+                    (m) => m.id === notice.id,
+                  )
+                    ? s.conversationHistory
+                    : [...s.conversationHistory, notice],
                 }
               : s,
           ),
         );
 
         if (selectedSessionRef.current?.userId === userId) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now().toString(),
-              content: message,
-              isAdmin: false,
-              timestamp: new Date().toISOString(),
-            },
-          ]);
+          // Keep the chat open, but flip it to read-only like an admin-ended one
+          setSelectedSession((prev) =>
+            prev ? { ...prev, isActive: false, customerEnded: true } : prev,
+          );
+          setMessages((prev) =>
+            prev.some((m) => m.id === notice.id) ? prev : [...prev, notice],
+          );
         }
+
+        playNotificationSound();
       },
     );
 
@@ -1832,10 +1852,21 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                   <div
                     key={`${msg.id}-${index}` || `msg-${index}`}
                     className={`flex ${
-                      msg.isAdmin ? "justify-end" : "justify-start"
+                      msg.system
+                        ? "justify-center"
+                        : msg.isAdmin
+                          ? "justify-end"
+                          : "justify-start"
                     }`}
                   >
-                    {msg.deleted ? (
+                    {msg.system ? (
+                      <div className="max-w-[90%] rounded-full px-4 py-1.5 bg-amber-100 border border-amber-200 text-amber-800 text-xs font-medium text-center">
+                        {msg.content}
+                        <span className="ml-2 opacity-70">
+                          {formatTime(msg.timestamp)}
+                        </span>
+                      </div>
+                    ) : msg.deleted ? (
                       <div
                         className={`max-w-[85%] sm:max-w-[70%] rounded-lg px-3 sm:px-4 py-2 sm:py-3 border-2 border-dashed ${
                           msg.isAdmin
