@@ -19,7 +19,6 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 
-const ADMIN_PASSWORD = "Insurance2024";
 const SESSION_KEY = "admin_session";
 
 interface AdminSession {
@@ -45,6 +44,7 @@ export default function AdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
 
   // Security code state
   const [securityCode, setSecurityCode] = useState("");
@@ -87,17 +87,39 @@ export default function AdminLoginPage() {
     setIsCheckingSession(false);
   };
 
-  // Step 1: Validate username + password, then show security code prompt
-  const handleLogin = () => {
+  // Step 1: Validate username + password, then show security code prompt.
+  // so it never ships in the client bundle.
+  const handleLogin = async () => {
     setError("");
     if (!username.trim()) {
       setError("Please enter your username");
       return;
     }
-    if (password !== ADMIN_PASSWORD) {
-      setError("Incorrect password");
+    if (!password) {
+      setError("Please enter your password");
       return;
     }
+
+    setIsVerifyingPassword(true);
+    try {
+      const res = await fetch("/api/verify-admin-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+      if (!data.valid) {
+        setError("Incorrect password");
+        setPassword("");
+        return;
+      }
+    } catch {
+      setError("Could not verify password. Please try again.");
+      return;
+    } finally {
+      setIsVerifyingPassword(false);
+    }
+
     // Credentials OK → ask for daily security code
     setView("security");
   };
@@ -335,9 +357,10 @@ export default function AdminLoginPage() {
 
             <button
               onClick={handleLogin}
-              className="w-full bg-gradient-to-r from-red-700 to-blue-800 text-white py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 transition mt-2"
+              disabled={isVerifyingPassword}
+              className="w-full bg-gradient-to-r from-red-700 to-blue-800 text-white py-2.5 rounded-lg text-sm font-semibold hover:opacity-90 transition mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Continue
+              {isVerifyingPassword ? "Verifying…" : "Continue"}
             </button>
           </div>
 

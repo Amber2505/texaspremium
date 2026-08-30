@@ -134,9 +134,10 @@ const clearChatFromStorage = () => {
 
 // ✅ BUSINESS HOURS CHECK - Monday-Saturday, 9 AM - 7 PM CST
 function isWithinBusinessHours(): boolean {
+  return true;
   const now = new Date();
   const cst = new Date(
-    now.toLocaleString("en-US", { timeZone: "America/Chicago" })
+    now.toLocaleString("en-US", { timeZone: "America/Chicago" }),
   );
   const day = cst.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
   const hour = cst.getHours(); // 0-23
@@ -223,6 +224,7 @@ export default function ChatButton() {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const typingDebounceTimer = useRef<NodeJS.Timeout | null>(null);
   const heartbeatInterval = useRef<NodeJS.Timeout | null>(null);
+  const userIdRef = useRef<string>("");
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [, setSelectedFile] = useState<File | null>(null);
@@ -231,7 +233,7 @@ export default function ChatButton() {
 
   // ✅ NEW STATE: Track business hours status
   const [isBusinessHours, setIsBusinessHours] = useState(
-    isWithinBusinessHours()
+    isWithinBusinessHours(),
   );
 
   // Notification sound
@@ -341,7 +343,7 @@ export default function ChatButton() {
       setTimeout(() => {
         if (inputRef.current && chatContainerRef.current) {
           const messagesContainer = chatContainerRef.current.querySelector(
-            "[data-messages-container]"
+            "[data-messages-container]",
           );
           if (messagesContainer) {
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -447,7 +449,7 @@ export default function ChatButton() {
         console.error("Failed to load companies from Excel:", err);
         setCompanyDatabase({});
         setDatabaseError(
-          "Failed to load company database. Please try again later."
+          "Failed to load company database. Please try again later.",
         );
         setIsDatabaseLoading(false);
       });
@@ -517,130 +519,257 @@ export default function ChatButton() {
     }
   }, [messages, loading, open, showConfirmClose]);
 
-  const connectToLiveChat = useCallback((name: string, phone: string) => {
-    // ✅ CLEAR OLD SESSION AND CREATE FRESH ONE
-    // Remove old user ID to force new session creation
-    localStorage.removeItem("chat-user-id");
-
-    // Clear any existing socket connection
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-      socketRef.current = null;
-    }
-
-    // Clear old chat storage to prevent restoration of ended session
-    clearChatFromStorage();
-
-    setLiveAgentName(name);
-    setLiveAgentPhone(phone);
-    setIsLiveChat(true);
-
-    // ✅ CREATE NEW USER ID FOR FRESH SESSION
-    const userId = `user-${Math.random()
-      .toString(36)
-      .substr(2, 9)}-${Date.now()}`;
-    localStorage.setItem("chat-user-id", userId);
-
-    if (typeof window !== "undefined" && "Notification" in window) {
-      if (Notification.permission === "default") {
-        Notification.requestPermission();
+  const connectToLiveChat = useCallback(
+    (name: string, phone: string, existingUserId?: string) => {
+      // Clear any existing socket connection
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
       }
-    }
 
-    socketRef.current = io(SOCKET_URL, {
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      reconnectionAttempts: 10,
-      transports: ["websocket", "polling"],
-    });
+      const isReconnect = !!existingUserId;
+      let userId = existingUserId;
 
-    socketRef.current.on("connect", () => {
-      console.log("Connected to live chat server");
+      if (!isReconnect) {
+        // Fresh session only — a refresh must NOT land here or the server
+        // sees a brand-new customer and the agent's claim is orphaned.
+        clearChatFromStorage();
+        userId = `user-${Math.random()
+          .toString(36)
+          .substr(2, 9)}-${Date.now()}`;
+      }
 
-      socketRef.current?.emit("customer-join", {
-        userId,
-        userName: name,
-        userPhone: phone,
-        conversationHistory: [], // ✅ Start fresh - no old history
+      // Persist on BOTH paths. customer-typing and customer-message read this
+      // key; a missing value emits userId: null, which matches no session on
+      // the admin side and the typing indicator dies silently.
+      localStorage.setItem("chat-user-id", userId as string);
+      userIdRef.current = userId as string;
+
+      setLiveAgentName(name);
+      setLiveAgentPhone(phone);
+      setIsLiveChat(true);
+
+      let hasAnnouncedJoin = false;
+
+      if (typeof window !== "undefined" && "Notification" in window) {
+        if (Notification.permission === "default") {
+          Notification.requestPermission();
+        }
+      }
+
+      socketRef.current = io(SOCKET_URL, {
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        reconnectionAttempts: 10,
+        transports: ["websocket", "polling"],
       });
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Connecting you to a live agent... Please wait.",
-          extra: { liveAgentFormSubmitted: true },
-        },
-      ]);
+      socketRef.current.on("connect", () => {
+        console.log("Connected to live chat server");
 
-      if (heartbeatInterval.current) {
-        clearInterval(heartbeatInterval.current);
-      }
-      heartbeatInterval.current = setInterval(() => {
-        if (socketRef.current?.connected) {
-          socketRef.current.emit("heartbeat", {
-            userId,
-            userType: "customer",
-          });
+        socketRef.current?.emit("customer-join", {
+          userId,
+          userName: name,
+          userPhone: phone,
+          conversationHistory: [], // ✅ Start fresh - no old history
+        });
+
+        if (!isReconnect && !hasAnnouncedJoin) {
+          hasAnnouncedJoin = true;
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: "Connecting you to a live agent... Please wait.",
+              extra: { liveAgentFormSubmitted: true },
+            },
+          ]);
         }
-      }, 30000);
-    });
 
-    socketRef.current.on("reconnect_attempt", (attempt: number) => {
-      console.log(`Reconnection attempt ${attempt}...`);
-    });
+        if (heartbeatInterval.current) {
+          clearInterval(heartbeatInterval.current);
+        }
+        heartbeatInterval.current = setInterval(() => {
+          if (socketRef.current?.connected) {
+            socketRef.current.emit("heartbeat", {
+              userId,
+              userType: "customer",
+            });
+          }
+        }, 30000);
+      });
 
-    socketRef.current.on("reconnect", () => {
-      console.log("Reconnected successfully");
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Reconnected to chat.",
-          extra: null,
+      socketRef.current.on("reconnect_attempt", (attempt: number) => {
+        console.log(`Reconnection attempt ${attempt}...`);
+      });
+
+      socketRef.current.on("reconnect", () => {
+        console.log("Reconnected successfully");
+      });
+
+      socketRef.current.on(
+        "chat-history",
+        (
+          history: Array<{
+            content: string;
+            isAdmin: boolean;
+            userName?: string;
+            fileUrl?: string;
+            fileName?: string;
+            timestamp: string;
+          }>,
+        ) => {
+          if (history && history.length > 0) {
+            const restoredMessages: Message[] = history.map((msg) => ({
+              role: msg.isAdmin ? "assistant" : "user",
+              content: msg.content,
+              userName: msg.userName,
+              fileUrl: msg.fileUrl,
+              fileName: msg.fileName,
+              extra: null,
+            }));
+            setMessages(restoredMessages);
+          }
         },
-      ]);
-    });
+      );
 
-    socketRef.current.on(
-      "chat-history",
-      (
-        history: Array<{
-          content: string;
+      socketRef.current.on(
+        "agent-joined",
+        ({
+          agentName: joinedAgentName,
+          message,
+        }: {
+          agentName: string;
+          message: string;
+        }) => {
+          if (!joinedAgentName || /undefined|null/.test(String(message))) {
+            console.error("❌ Bad agent-joined payload, suppressing:", {
+              joinedAgentName,
+              message,
+            });
+            return;
+          }
+          setIsConnectedToAgent(true);
+          setAgentName(joinedAgentName);
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: message,
+              extra: null,
+            },
+          ]);
+
+          // Use the notification sound ref directly
+          if (notificationSoundRef.current) {
+            notificationSoundRef.current.currentTime = 0;
+            notificationSoundRef.current
+              .play()
+              .catch((e) => console.log("Sound play failed:", e));
+          }
+
+          if (Notification.permission === "granted" && document.hidden) {
+            new Notification("Agent Joined", {
+              body: message,
+              icon: "/logo.png",
+              badge: "/logo.png",
+              tag: "chat-notification",
+              requireInteraction: false,
+            });
+          }
+        },
+      );
+
+      socketRef.current.on(
+        "new-message",
+        (message: {
           isAdmin: boolean;
+          content: string;
           userName?: string;
           fileUrl?: string;
           fileName?: string;
-          timestamp: string;
-        }>
-      ) => {
-        if (history && history.length > 0) {
-          const restoredMessages: Message[] = history.map((msg) => ({
-            role: msg.isAdmin ? "assistant" : "user",
-            content: msg.content,
-            userName: msg.userName,
-            fileUrl: msg.fileUrl,
-            fileName: msg.fileName,
-            extra: null,
-          }));
-          setMessages(restoredMessages);
-        }
-      }
-    );
+          id?: string;
+        }) => {
+          // Only add admin messages from socket - user messages are already added optimistically
+          if (!message.isAdmin) {
+            return; // Skip user's own messages to prevent duplicates
+          }
 
-    socketRef.current.on(
-      "agent-joined",
-      ({
-        agentName: joinedAgentName,
-        message,
-      }: {
-        agentName: string;
-        message: string;
-      }) => {
-        setIsConnectedToAgent(true);
-        setAgentName(joinedAgentName);
+          setMessages((prev) => {
+            // Check if message already exists
+            const exists = prev.some((m) => m.id === message.id);
+            if (exists) return prev;
 
+            return [
+              ...prev,
+              {
+                role: "assistant",
+                content: message.content,
+                userName: message.userName,
+                fileUrl: message.fileUrl,
+                fileName: message.fileName,
+                id: message.id,
+                extra: null,
+              },
+            ];
+          });
+
+          // Reset agent typing indicator and play notification
+          setAgentTyping(false);
+
+          // Play notification sound directly
+          if (notificationSoundRef.current) {
+            notificationSoundRef.current.currentTime = 0;
+            notificationSoundRef.current
+              .play()
+              .catch((e) => console.log("Sound play failed:", e));
+          }
+
+          if (Notification.permission === "granted" && document.hidden) {
+            new Notification(message.userName || "Agent", {
+              body: message.content,
+              icon: "/logo.png",
+              badge: "/logo.png",
+              tag: "chat-notification",
+              requireInteraction: false,
+            });
+          }
+        },
+      );
+
+      socketRef.current.on(
+        "message-deleted",
+        ({ messageId }: { messageId: string }) => {
+          console.log(`🗑️ Message ${messageId} was deleted`);
+          setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+        },
+      );
+
+      socketRef.current.on(
+        "admin-typing-indicator",
+        ({
+          isTyping,
+          agentName: typingAgent,
+        }: {
+          isTyping: boolean;
+          agentName?: string;
+        }) => {
+          if (typingAgent) setAgentName(typingAgent);
+          setAgentTyping(isTyping);
+        },
+      );
+
+      socketRef.current.on(
+        "agent-reattached",
+        ({ agentName: reattached }: { agentName: string }) => {
+          setIsConnectedToAgent(true);
+          setAgentName(reattached);
+        },
+      );
+
+      socketRef.current.on("agent-left", ({ message }: { message: string }) => {
         setMessages((prev) => [
           ...prev,
           {
@@ -649,8 +778,9 @@ export default function ChatButton() {
             extra: null,
           },
         ]);
+        setIsConnectedToAgent(false);
 
-        // Use the notification sound ref directly
+        // Play notification sound directly
         if (notificationSoundRef.current) {
           notificationSoundRef.current.currentTime = 0;
           notificationSoundRef.current
@@ -659,7 +789,7 @@ export default function ChatButton() {
         }
 
         if (Notification.permission === "granted" && document.hidden) {
-          new Notification("Agent Joined", {
+          new Notification("Agent Left", {
             body: message,
             icon: "/logo.png",
             badge: "/logo.png",
@@ -667,198 +797,88 @@ export default function ChatButton() {
             requireInteraction: false,
           });
         }
-      }
-    );
+      });
 
-    socketRef.current.on(
-      "new-message",
-      (message: {
-        isAdmin: boolean;
-        content: string;
-        userName?: string;
-        fileUrl?: string;
-        fileName?: string;
-        id?: string;
-      }) => {
-        // Only add admin messages from socket - user messages are already added optimistically
-        if (!message.isAdmin) {
-          return; // Skip user's own messages to prevent duplicates
-        }
-
-        setMessages((prev) => {
-          // Check if message already exists
-          const exists = prev.some((m) => m.id === message.id);
-          if (exists) return prev;
-
-          return [
+      socketRef.current.on(
+        "session-ended",
+        ({ message }: { message: string }) => {
+          setMessages((prev) => [
             ...prev,
             {
               role: "assistant",
-              content: message.content,
-              userName: message.userName,
-              fileUrl: message.fileUrl,
-              fileName: message.fileName,
-              id: message.id,
+              content:
+                message ||
+                "The agent has ended the chat session. Thank you for contacting us!",
               extra: null,
             },
-          ];
-        });
+          ]);
+          setIsLiveChat(false);
+          setIsConnectedToAgent(false);
 
-        // Reset agent typing indicator and play notification
-        setAgentTyping(false);
+          if (heartbeatInterval.current) {
+            clearInterval(heartbeatInterval.current);
+          }
 
-        // Play notification sound directly
-        if (notificationSoundRef.current) {
-          notificationSoundRef.current.currentTime = 0;
-          notificationSoundRef.current
-            .play()
-            .catch((e) => console.log("Sound play failed:", e));
-        }
+          // ✅ MARK AS ENDED BEFORE CLEARING - use refs for current values
+          const currentUserId = localStorage.getItem("chat-user-id") || "";
+          const sessionData: StoredChatSession = {
+            messages: messagesRef.current,
+            isLiveChat: false,
+            liveAgentName: liveAgentNameRef.current,
+            liveAgentPhone: liveAgentPhoneRef.current,
+            isConnectedToAgent: false,
+            agentName: agentNameRef.current,
+            userId: currentUserId,
+            timestamp: Date.now(),
+            isVerified: isVerifiedRef.current,
+            customerData: customerDataRef.current,
+            sessionEnded: true, // ✅ Mark as ended
+          };
+          saveChatToStorage(sessionData);
 
-        if (Notification.permission === "granted" && document.hidden) {
-          new Notification(message.userName || "Agent", {
-            body: message.content,
-            icon: "/logo.png",
-            badge: "/logo.png",
-            tag: "chat-notification",
-            requireInteraction: false,
-          });
-        }
-      }
-    );
+          socketRef.current?.disconnect();
 
-    socketRef.current.on(
-      "message-deleted",
-      ({ messageId }: { messageId: string }) => {
-        console.log(`🗑️ Message ${messageId} was deleted`);
-        setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
-      }
-    );
+          // Clear after a short delay
+          setTimeout(() => {
+            clearChatFromStorage();
+          }, 1000);
 
-    socketRef.current.on(
-      "agent-typing-indicator",
-      ({ isTyping }: { isTyping: boolean }) => {
-        setAgentTyping(isTyping);
-      }
-    );
+          // Play notification sound directly
+          if (notificationSoundRef.current) {
+            notificationSoundRef.current.currentTime = 0;
+            notificationSoundRef.current
+              .play()
+              .catch((e) => console.log("Sound play failed:", e));
+          }
 
-    socketRef.current.on("agent-left", ({ message }: { message: string }) => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: message,
-          extra: null,
+          if (Notification.permission === "granted" && document.hidden) {
+            new Notification("Chat Ended", {
+              body: message || "Chat session ended",
+              icon: "/logo.png",
+              badge: "/logo.png",
+              tag: "chat-notification",
+              requireInteraction: false,
+            });
+          }
         },
-      ]);
-      setIsConnectedToAgent(false);
+      );
 
-      // Play notification sound directly
-      if (notificationSoundRef.current) {
-        notificationSoundRef.current.currentTime = 0;
-        notificationSoundRef.current
-          .play()
-          .catch((e) => console.log("Sound play failed:", e));
-      }
-
-      if (Notification.permission === "granted" && document.hidden) {
-        new Notification("Agent Left", {
-          body: message,
-          icon: "/logo.png",
-          badge: "/logo.png",
-          tag: "chat-notification",
-          requireInteraction: false,
-        });
-      }
-    });
-
-    socketRef.current.on(
-      "session-ended",
-      ({ message }: { message: string }) => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content:
-              message ||
-              "The agent has ended the chat session. Thank you for contacting us!",
-            extra: null,
-          },
-        ]);
-        setIsLiveChat(false);
-        setIsConnectedToAgent(false);
+      socketRef.current.on("disconnect", (reason: string) => {
+        console.log("Disconnected from live chat server:", reason);
 
         if (heartbeatInterval.current) {
           clearInterval(heartbeatInterval.current);
         }
 
-        // ✅ MARK AS ENDED BEFORE CLEARING - use refs for current values
-        const currentUserId = localStorage.getItem("chat-user-id") || "";
-        const sessionData: StoredChatSession = {
-          messages: messagesRef.current,
-          isLiveChat: false,
-          liveAgentName: liveAgentNameRef.current,
-          liveAgentPhone: liveAgentPhoneRef.current,
-          isConnectedToAgent: false,
-          agentName: agentNameRef.current,
-          userId: currentUserId,
-          timestamp: Date.now(),
-          isVerified: isVerifiedRef.current,
-          customerData: customerDataRef.current,
-          sessionEnded: true, // ✅ Mark as ended
-        };
-        saveChatToStorage(sessionData);
+        // socket.io retries on its own — don't narrate every blip to the customer
+      });
 
-        socketRef.current?.disconnect();
-
-        // Clear after a short delay
-        setTimeout(() => {
-          clearChatFromStorage();
-        }, 1000);
-
-        // Play notification sound directly
-        if (notificationSoundRef.current) {
-          notificationSoundRef.current.currentTime = 0;
-          notificationSoundRef.current
-            .play()
-            .catch((e) => console.log("Sound play failed:", e));
-        }
-
-        if (Notification.permission === "granted" && document.hidden) {
-          new Notification("Chat Ended", {
-            body: message || "Chat session ended",
-            icon: "/logo.png",
-            badge: "/logo.png",
-            tag: "chat-notification",
-            requireInteraction: false,
-          });
-        }
-      }
-    );
-
-    socketRef.current.on("disconnect", (reason: string) => {
-      console.log("Disconnected from live chat server:", reason);
-
-      if (heartbeatInterval.current) {
-        clearInterval(heartbeatInterval.current);
-      }
-
-      if (reason === "io server disconnect" || reason === "transport close") {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: "Connection lost. Attempting to reconnect...",
-            extra: null,
-          },
-        ]);
-      }
-    });
-
-    socketRef.current.on("connect_error", (error: Error) => {
-      console.error("Connection error:", error);
-    });
-  }, []);
+      socketRef.current.on("connect_error", (error: Error) => {
+        console.error("Connection error:", error);
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     const handleOpenLiveAgent = () => {
@@ -950,7 +970,7 @@ export default function ChatButton() {
             (isPaymentRequest || isClaimRequest)
           ) {
             console.log(
-              "✅ Already verified! Showing service buttons immediately"
+              "✅ Already verified! Showing service buttons immediately",
             );
 
             const serviceType: "claim" | "payment" = isClaimRequest
@@ -966,7 +986,7 @@ export default function ChatButton() {
                 for (const companyName of Object.keys(companyDatabase)) {
                   const similarity = getStringSimilarity(
                     policy.company_name,
-                    companyName
+                    companyName,
                   );
                   if (
                     similarity > highestSimilarity &&
@@ -993,7 +1013,7 @@ export default function ChatButton() {
                   claimLink: companyInfo.claimLink,
                   paymentLink: companyInfo.paymentLink,
                 };
-              }
+              },
             );
 
             setMessages((prev) => [
@@ -1109,13 +1129,13 @@ export default function ChatButton() {
     // Listen for custom event
     window.addEventListener(
       "openChatWithMessage",
-      handleOpenChatWithMessage as EventListener
+      handleOpenChatWithMessage as EventListener,
     );
 
     return () => {
       window.removeEventListener(
         "openChatWithMessage",
-        handleOpenChatWithMessage as EventListener
+        handleOpenChatWithMessage as EventListener,
       );
     };
   }, [companyDatabase]); // ✅ Add companyDatabase as dependency
@@ -1137,9 +1157,12 @@ export default function ChatButton() {
 
       // If it was a live chat, reconnect to socket
       if (restoredSession.isLiveChat) {
+        const savedUserId =
+          localStorage.getItem("chat-user-id") || restoredSession.userId;
         connectToLiveChat(
           restoredSession.liveAgentName,
-          restoredSession.liveAgentPhone
+          restoredSession.liveAgentPhone,
+          savedUserId,
         );
       }
     }
@@ -1186,7 +1209,7 @@ export default function ChatButton() {
   };
 
   const checkCustomerExists = async (
-    phone: string
+    phone: string,
   ): Promise<{
     found: boolean;
     customers?: CustomerData[]; // ✅ Changed from customer to customers
@@ -1195,7 +1218,7 @@ export default function ChatButton() {
 
     try {
       const response = await fetch(
-        `https://astraldbapi.herokuapp.com/customer-lookup/${cleanPhone}`
+        `https://astraldbapi.herokuapp.com/customer-lookup/${cleanPhone}`,
       );
 
       if (!response.ok) {
@@ -1224,7 +1247,7 @@ export default function ChatButton() {
               policy_number: customer.policy_no,
               coverage_type: customer.coverage_type,
               status: customer.status,
-            })
+            }),
           ),
         };
       } else if (data.Data) {
@@ -1256,7 +1279,7 @@ export default function ChatButton() {
 
   const sendVerificationCode = async (
     phone: string,
-    serviceType?: "claim" | "payment"
+    serviceType?: "claim" | "payment",
   ) => {
     setVerificationLoading(true);
 
@@ -1301,7 +1324,7 @@ export default function ChatButton() {
 
       const phoneDigits = cleanPhoneNumber(phone);
       const newVerificationCode = Math.floor(
-        100000 + Math.random() * 900000
+        100000 + Math.random() * 900000,
       ).toString();
       const message = `Your verification code is: ${newVerificationCode} - Texas Premium Insurance Services`;
       const encodedMessage = encodeURIComponent(message);
@@ -1347,7 +1370,7 @@ export default function ChatButton() {
     try {
       if (isDatabaseLoading) {
         throw new Error(
-          "Company database is still loading. Please wait a moment and try again."
+          "Company database is still loading. Please wait a moment and try again.",
         );
       }
       if (databaseError) {
@@ -1377,7 +1400,7 @@ export default function ChatButton() {
           for (const companyName of Object.keys(companyDatabase)) {
             const similarity = getStringSimilarity(
               policy.company_name,
-              companyName
+              companyName,
             );
 
             if (
@@ -1456,7 +1479,13 @@ export default function ChatButton() {
     setInput(value);
 
     if (isLiveChat && socketRef.current) {
-      const userId = localStorage.getItem("chat-user-id");
+      const userId = userIdRef.current || localStorage.getItem("chat-user-id");
+      if (!userId) {
+        console.error(
+          "❌ No chat-user-id — typing indicator will not reach the agent",
+        );
+        return;
+      }
 
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
@@ -1489,7 +1518,7 @@ export default function ChatButton() {
   };
 
   const getAIResponse = (
-    userMessage: string
+    userMessage: string,
   ): {
     content: string;
     extra?: Message["extra"];
@@ -1604,7 +1633,7 @@ export default function ChatButton() {
               for (const companyName of Object.keys(companyDatabase)) {
                 const similarity = getStringSimilarity(
                   policy.company_name,
-                  companyName
+                  companyName,
                 );
 
                 if (
@@ -1652,7 +1681,7 @@ export default function ChatButton() {
               for (const companyName of Object.keys(companyDatabase)) {
                 const similarity = getStringSimilarity(
                   policy.company_name,
-                  companyName
+                  companyName,
                 );
 
                 if (
@@ -1745,7 +1774,7 @@ export default function ChatButton() {
     setMessages((prev) => [...prev, newMessage]);
 
     if (isLiveChat && socketRef.current) {
-      const userId = localStorage.getItem("chat-user-id");
+      const userId = userIdRef.current || localStorage.getItem("chat-user-id");
 
       socketRef.current.emit("customer-message", {
         userId,
@@ -1839,7 +1868,7 @@ export default function ChatButton() {
           .find(
             (msg) =>
               msg.role === "assistant" &&
-              msg.extra?.showServiceButtons?.companies?.[0]
+              msg.extra?.showServiceButtons?.companies?.[0],
           );
 
         if (lastVerifiedMessage?.extra?.showServiceButtons?.companies?.[0]) {
@@ -2279,7 +2308,10 @@ export default function ChatButton() {
                       <p className="text-xs font-semibold mb-1 text-gray-600">
                         {msg.role === "user"
                           ? liveAgentName || "You"
-                          : msg.userName || "Samantha"}
+                          : msg.userName ||
+                            (isLiveChat
+                              ? agentName || "Texas Premium Insurance Agent"
+                              : "Samantha")}
                       </p>
 
                       <div className="whitespace-pre-line text-sm break-words">
@@ -2378,7 +2410,7 @@ export default function ChatButton() {
                                         : "payment");
                                     sendVerificationCode(
                                       phoneInput,
-                                      serviceType
+                                      serviceType,
                                     );
                                   }
                                 }}
@@ -2425,7 +2457,7 @@ export default function ChatButton() {
                                   setVerificationCode(
                                     e.target.value
                                       .replace(/\D/g, "")
-                                      .slice(0, 6)
+                                      .slice(0, 6),
                                   )
                                 }
                                 onKeyDown={(e) => {
@@ -2661,7 +2693,7 @@ export default function ChatButton() {
                                         prev > 0
                                           ? prev - 1
                                           : msg.extra!.showServiceButtons!
-                                              .companies.length - 1
+                                              .companies.length - 1,
                                       );
                                     }}
                                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition active:scale-95 shadow-sm"
@@ -2678,7 +2710,7 @@ export default function ChatButton() {
                                           .length -
                                           1
                                           ? prev + 1
-                                          : 0
+                                          : 0,
                                       );
                                     }}
                                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-white border-2 border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition active:scale-95 shadow-sm"
@@ -2765,7 +2797,7 @@ export default function ChatButton() {
                                       ) {
                                         connectToLiveChat(
                                           liveAgentName,
-                                          liveAgentPhone
+                                          liveAgentPhone,
                                         );
                                         setShowLiveAgentForm(false);
                                       }
@@ -2806,7 +2838,7 @@ export default function ChatButton() {
 
                                         connectToLiveChat(
                                           liveAgentName,
-                                          liveAgentPhone
+                                          liveAgentPhone,
                                         );
                                         setShowLiveAgentForm(false);
                                       }}

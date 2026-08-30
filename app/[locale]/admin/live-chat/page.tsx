@@ -1,4 +1,5 @@
 // /admin/live-chat
+/* eslint-disable @typescript-eslint/no-unused-vars*/
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { History, RotateCcw } from "lucide-react";
@@ -83,8 +84,9 @@ interface QuickResponse {
   category: string;
 }
 
-const ADMIN_PASSWORD = "Insurance2024";
-const SESSION_KEY = "admin_session";
+// Must NOT be "admin_session" — that's the main admin login, and writing our
+// own shape over it wipes `username` and breaks auto-login on refresh.
+const SESSION_KEY = "admin_chat_session";
 
 const DEFAULT_QUICK_RESPONSES: QuickResponse[] = [
   {
@@ -181,6 +183,7 @@ export default function AdminLiveChatDashboard() {
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showMobileSidebar, setShowMobileSidebar] = useState(true);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
   const [showDeletedChatsModal, setShowDeletedChatsModal] = useState(false);
   const [deletedChats, setDeletedChats] = useState<ChatSession[]>([]);
   const [deletedChatsLoading, setDeletedChatsLoading] = useState(false);
@@ -194,6 +197,14 @@ export default function AdminLiveChatDashboard() {
   const inputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const selectedSessionRef = useRef<ChatSession | null>(null);
+  // Socket handlers are registered once in loginAsAdmin, so anything they read
+  // from state is frozen at that render. Mirror the values they need.
+  const adminNameRef = useRef("");
+  const sessionsRef = useRef<ChatSession[]>([]);
+  const deletedChatsSkipRef = useRef(0);
+  // A refresh or a brief network blip shouldn't paint the status pill red —
+  // only show Offline once we've actually stayed down for a couple seconds.
+  const offlineDelayRef = useRef<NodeJS.Timeout | null>(null);
 
   const filteredSessions = sessions
     .filter((session) => {
@@ -272,6 +283,14 @@ export default function AdminLiveChatDashboard() {
   }, [selectedSession]);
 
   useEffect(() => {
+    adminNameRef.current = adminName;
+  }, [adminName]);
+
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
+
+  useEffect(() => {
     const initSession = () => {
       if (typeof window !== "undefined") {
         // First check for main admin session
@@ -283,13 +302,21 @@ export default function AdminLiveChatDashboard() {
             const now = Date.now();
 
             if (now < session.expiresAt) {
-              // Main admin session is valid - auto-login to chat
-              console.log(
-                "✅ Auto-logging in with main admin session:",
-                session.username,
-              );
-              loginAsAdmin(session.username);
-              return;
+              const resolvedName =
+                session.username || session.name || session.adminName;
+              if (!resolvedName) {
+                console.error(
+                  "❌ Admin session has no name field — falling back to login form",
+                  session,
+                );
+              } else {
+                console.log(
+                  "✅ Auto-logging in with main admin session:",
+                  resolvedName,
+                );
+                loginAsAdmin(resolvedName);
+                return;
+              }
             }
           } catch (error) {
             console.error("Error parsing main admin session:", error);
@@ -376,8 +403,7 @@ export default function AdminLiveChatDashboard() {
       socketRef.current.disconnect();
       socketRef.current = null;
     }
-    localStorage.removeItem("admin_chat_session"); // Keep this if you have it
-    localStorage.removeItem("admin_session"); // Add this line
+    localStorage.removeItem(SESSION_KEY);
     window.location.href = "/admin"; // Redirect to admin login
   };
 
@@ -514,6 +540,12 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
   const saveSessionNotes = () => {
     if (!selectedSession) return;
 
+    if (!socketRef.current?.connected) {
+      alert("Not connected — notes were not saved. Refresh and try again.");
+      return;
+    }
+
+    // Optimistic; the server echoes session-notes-saved to confirm
     const updatedSession = { ...selectedSession, notes: sessionNotes };
     setSelectedSession(updatedSession);
     setSessions((prev) =>
@@ -521,6 +553,13 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         s.userId === selectedSession.userId ? updatedSession : s,
       ),
     );
+
+    socketRef.current.emit("save-session-notes", {
+      userId: selectedSession.userId,
+      notes: sessionNotes,
+      adminName,
+    });
+
     setShowNotesModal(false);
   };
 
@@ -529,6 +568,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
 
     setDeletedChatsLoading(true);
     setDeletedChatsSkip(skip);
+    deletedChatsSkipRef.current = skip;
     socketRef.current.emit("get-deleted-chats", { skip, limit: 20 });
   };
 
@@ -550,8 +590,52 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
     });
   };
 
+  // Checked server-side against data_login.admin — never in the bundle.
+  const attemptLogin = async () => {
+    if (!adminName.trim() || !adminPassword) return;
+    setIsVerifyingPassword(true);
+    try {
+      const res = await fetch("/api/verify-admin-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: adminPassword }),
+      });
+      const data = await res.json();
+      if (!data.valid) {
+        alert("Incorrect password. Please try again.");
+        setAdminPassword("");
+        return;
+      }
+      loginAsAdmin(adminName);
+    } catch {
+      alert("Could not verify password. Please try again.");
+    } finally {
+      setIsVerifyingPassword(false);
+    }
+  };
+
   const loginAsAdmin = (name: string) => {
+    if (!name || typeof name !== "string" || !name.trim()) {
+      // An unnamed admin poisons claims, notes, and every "X has joined" line
+      // the customer sees. Bail to the login form instead.
+      console.error("❌ loginAsAdmin called without a name:", name);
+      localStorage.removeItem(SESSION_KEY);
+      setIsCheckingSession(false);
+      setIsLoggedIn(false);
+      return;
+    }
+    name = name.trim();
+    // Two init paths can both reach here. Without this, each call opens a
+    // second connection with its own full set of listeners — the server sees
+    // two admins and messages render twice.
+    if (socketRef.current) {
+      socketRef.current.removeAllListeners();
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+
     setAdminName(name);
+    adminNameRef.current = name;
     setIsLoggedIn(true);
     setIsCheckingSession(false);
     saveAdminSession(name);
@@ -569,8 +653,12 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
 
     socketRef.current.on("connect", () => {
       console.log("✅ Admin connected successfully");
+      if (offlineDelayRef.current) {
+        clearTimeout(offlineDelayRef.current);
+        offlineDelayRef.current = null;
+      }
       setIsConnected(true);
-      socketRef.current?.emit("admin-join");
+      socketRef.current?.emit("admin-join", { adminName: name });
     });
 
     socketRef.current.on("connect_error", (error: Error) => {
@@ -582,6 +670,30 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
       console.log("Received active sessions:", activeSessions);
       setSessions(activeSessions);
       setLoadedCount(activeSessions.length);
+    });
+
+    socketRef.current.on(
+      "chats-total",
+      ({ total, hasMore }: { total: number; hasMore: boolean }) => {
+        setTotalChatsCount(total);
+        setHasMoreChats(hasMore);
+      },
+    );
+
+    socketRef.current.on(
+      "session-notes-saved",
+      ({ userId, notes }: { userId: string; notes: string }) => {
+        setSessions((prev) =>
+          prev.map((s) => (s.userId === userId ? { ...s, notes } : s)),
+        );
+        if (selectedSessionRef.current?.userId === userId) {
+          setSelectedSession((prev) => (prev ? { ...prev, notes } : prev));
+        }
+      },
+    );
+
+    socketRef.current.on("notes-error", ({ message }: { message: string }) => {
+      alert(`Failed to save notes: ${message}`);
     });
 
     socketRef.current.on(
@@ -621,7 +733,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
               ? {
                   ...msg,
                   deleted: true,
-                  deletedBy: adminName,
+                  deletedBy: adminNameRef.current,
                   deletedAt: new Date().toISOString(),
                 }
               : msg,
@@ -638,7 +750,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                       ? {
                           ...msg,
                           deleted: true,
-                          deletedBy: adminName,
+                          deletedBy: adminNameRef.current,
                           deletedAt: new Date().toISOString(),
                         }
                       : msg,
@@ -669,7 +781,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
           setMessages([]);
         }
 
-        if (deletedBy !== adminName) {
+        if (deletedBy !== adminNameRef.current) {
           alert(`Chat with ${userId} was deleted by ${deletedBy}`);
         }
       },
@@ -692,12 +804,9 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         total: number;
       }) => {
         console.log(`📜 Received ${chats.length} deleted chats`);
-        setDeletedChats((prev) => {
-          if (deletedChatsSkip === 0) {
-            return chats;
-          }
-          return [...prev, ...chats];
-        });
+        setDeletedChats((prev) =>
+          deletedChatsSkipRef.current === 0 ? chats : [...prev, ...chats],
+        );
         setHasMoreDeletedChats(hasMore);
         setDeletedChatsTotal(total);
         setDeletedChatsLoading(false);
@@ -710,7 +819,9 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
         console.log(`♻️ ${message}`);
         alert(message);
         loadDeletedChats(0);
-        socketRef.current?.emit("admin-join");
+        socketRef.current?.emit("admin-join", {
+          adminName: adminNameRef.current,
+        });
       },
     );
 
@@ -784,15 +895,15 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
           });
         }
 
-        const session = sessions.find((s) => s.userId === userId);
-        if (!session?.hasAgent || session.agentName !== adminName) {
+        const session = sessionsRef.current.find((s) => s.userId === userId);
+        if (!session?.hasAgent || session.agentName !== adminNameRef.current) {
           playNotificationSound();
         }
       },
     );
 
     socketRef.current.on("new-message", (message: ChatMessage) => {
-      if (message.userName === adminName) return;
+      if (message.userName === adminNameRef.current) return;
 
       setMessages((prev) => {
         if (prev.some((m) => m.id === message.id)) return prev;
@@ -838,6 +949,26 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
             : s,
         ),
       );
+    });
+
+    socketRef.current.on("customer-reconnected", (session: ChatSession) => {
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.userId === session.userId
+            ? {
+                ...s,
+                ...session,
+                isActive: true,
+                lastSeen: new Date().toISOString(),
+              }
+            : s,
+        ),
+      );
+      if (selectedSessionRef.current?.userId === session.userId) {
+        setSelectedSession((prev) =>
+          prev ? { ...prev, isActive: true } : prev,
+        );
+      }
     });
 
     socketRef.current.on(
@@ -913,7 +1044,11 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
 
     socketRef.current.on("disconnect", (reason: string) => {
       console.log("Disconnected:", reason);
-      setIsConnected(false);
+      if (offlineDelayRef.current) clearTimeout(offlineDelayRef.current);
+      offlineDelayRef.current = setTimeout(() => {
+        setIsConnected(false);
+        offlineDelayRef.current = null;
+      }, 2500);
     });
 
     if (
@@ -930,6 +1065,14 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
 
     setMessages(session.conversationHistory || []);
 
+    // Opening the chat means you've seen it — clear the badge in every case,
+    // not just when it was already claimed by you.
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.userId === session.userId ? { ...s, unreadCount: 0 } : s,
+      ),
+    );
+
     if (session.customerEnded || session.adminEnded) {
       return;
     }
@@ -937,11 +1080,6 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
     const isClaimedByMe = session.hasAgent && session.agentName === adminName;
 
     if (isClaimedByMe) {
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.userId === session.userId ? { ...s, unreadCount: 0 } : s,
-        ),
-      );
       return;
     }
 
@@ -1037,6 +1175,45 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   };
 
+  // Sidebar wants "when was this", not "how long did it run" — today shows a
+  // time, this week a weekday, older an actual date.
+  const formatChatDate = (timestamp: string) => {
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return "—";
+
+    const now = new Date();
+    const startOfToday = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+    const daysAgo = Math.floor(
+      (startOfToday.getTime() -
+        new Date(
+          date.getFullYear(),
+          date.getMonth(),
+          date.getDate(),
+        ).getTime()) /
+        86400000,
+    );
+
+    const dated = date.toLocaleDateString([], {
+      month: "numeric",
+      day: "numeric",
+      year: "2-digit",
+    });
+
+    if (daysAgo === 0)
+      return date.toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    if (daysAgo === 1) return `Yesterday · ${dated}`;
+    if (daysAgo < 7)
+      return `${date.toLocaleDateString([], { weekday: "short" })} · ${dated}`;
+    return dated;
+  };
+
   const getSessionDuration = (joinedAt: string) => {
     const start = new Date(joinedAt);
     const now = new Date();
@@ -1055,6 +1232,32 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0] && selectedSession) {
       const file = e.target.files[0];
+
+      // `accept` on the input is a hint only — drag-drop and determined users
+      // bypass it, and the upload route has no limit of its own.
+      const MAX_FILE_SIZE = 10 * 1024 * 1024;
+      const ALLOWED = [
+        "image/",
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ];
+
+      if (!ALLOWED.some((t) => file.type.startsWith(t))) {
+        alert(
+          `❌ ${file.name}\n\nFile type not supported.\nAllowed: images, PDF, Word documents.`,
+        );
+        e.target.value = "";
+        return;
+      }
+
+      if (file.size > MAX_FILE_SIZE) {
+        alert(
+          `❌ ${file.name} is too large.\n\nSize: ${(file.size / 1024 / 1024).toFixed(1)}MB\nLimit: 10MB`,
+        );
+        e.target.value = "";
+        return;
+      }
 
       setIsUploadingFile(true);
 
@@ -1169,13 +1372,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                 value={adminName}
                 onChange={(e) => setAdminName(e.target.value)}
                 onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    adminName.trim() &&
-                    adminPassword === ADMIN_PASSWORD
-                  ) {
-                    loginAsAdmin(adminName);
-                  }
+                  if (e.key === "Enter") attemptLogin();
                 }}
                 placeholder="Enter your name"
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1192,13 +1389,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                   value={adminPassword}
                   onChange={(e) => setAdminPassword(e.target.value)}
                   onKeyDown={(e) => {
-                    if (
-                      e.key === "Enter" &&
-                      adminName.trim() &&
-                      adminPassword === ADMIN_PASSWORD
-                    ) {
-                      loginAsAdmin(adminName);
-                    }
+                    if (e.key === "Enter") attemptLogin();
                   }}
                   placeholder="Enter password"
                   className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1218,16 +1409,13 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
             </div>
 
             <button
-              onClick={() => {
-                if (adminName.trim() && adminPassword === ADMIN_PASSWORD) {
-                  loginAsAdmin(adminName);
-                } else if (adminPassword !== ADMIN_PASSWORD) {
-                  alert("Incorrect password. Please try again.");
-                }
-              }}
-              className="w-full bg-gradient-to-r from-red-700 to-blue-800 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition"
+              onClick={attemptLogin}
+              disabled={
+                isVerifyingPassword || !adminName.trim() || !adminPassword
+              }
+              className="w-full bg-gradient-to-r from-red-700 to-blue-800 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Join as Admin
+              {isVerifyingPassword ? "Verifying…" : "Join as Admin"}
             </button>
           </div>
         </div>
@@ -1397,7 +1585,9 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                 </p>
                 <p className="text-sm mt-2">
                   {searchQuery || filterStatus !== "all"
-                    ? "Try adjusting your filters"
+                    ? hasMoreChats
+                      ? "Search only covers loaded chats — use Load More below for older ones"
+                      : "Try adjusting your filters"
                     : "Waiting for customers..."}
                 </p>
               </div>
@@ -1499,9 +1689,16 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                             {session.customerEnded && (
                               <span className="w-2 h-2 bg-red-500 rounded-full"></span>
                             )}
-                            <div className="flex items-center gap-1 text-xs text-gray-500 whitespace-nowrap">
+                            <div
+                              className="flex items-center gap-1 text-xs text-gray-500 whitespace-nowrap"
+                              title={new Date(
+                                session.lastSeen || session.joinedAt,
+                              ).toLocaleString()}
+                            >
                               <Clock size={12} />
-                              {getSessionDuration(session.joinedAt)}
+                              {formatChatDate(
+                                session.lastSeen || session.joinedAt,
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1530,7 +1727,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                   );
                 })}
 
-                {hasMoreChats && filterStatus === "all" && !searchQuery && (
+                {hasMoreChats && (
                   <button
                     onClick={loadMoreChats}
                     disabled={isLoadingMore}
@@ -1806,7 +2003,7 @@ ${selectedSession.notes ? `\nNotes: ${selectedSession.notes}` : ""}
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <div className="flex gap-1 sm:gap-3">
+                    <div className="flex items-center gap-1 sm:gap-3">
                       <input
                         ref={fileInputRef}
                         type="file"

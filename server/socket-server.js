@@ -2159,6 +2159,10 @@ startServer();
 const activeSessions = new Map();
 const adminSockets = new Set();
 const agentWaitTimers = new Map();
+// An agent refreshing or navigating gets a new socket.id. Hold their claim
+// open briefly instead of unclaiming the chat the moment the socket drops.
+const adminReconnectTimers = new Map();
+const ADMIN_RECONNECT_GRACE_MS = 90 * 1000;
 
 // Send SMS notification when no agent connects
 async function sendNoAgentNotification(session) {
@@ -2196,6 +2200,7 @@ async function saveChatHistory(session) {
           customerEnded: session.customerEnded || false,
           adminEnded: session.adminEnded || false,
           endedAt: session.endedAt || null,
+          notes: session.notes || null,
           updatedAt: new Date().toISOString()
         }
       },
@@ -2338,10 +2343,27 @@ io.on('connection', (socket) => {
     console.log(`Socket ${socket.id} joined sms-admins room`);
   });
 
-  socket.on('admin-join', async () => {
+  socket.on('admin-join', async ({ adminName } = {}) => {
     adminSockets.add(socket.id);
     socket.join('admins');
-    console.log('Admin joined:', socket.id);
+    socket.data.adminName = adminName || null;
+    console.log('Admin joined:', socket.id, adminName || '(unnamed)');
+
+    if (adminName) {
+      const pending = adminReconnectTimers.get(adminName);
+      if (pending) {
+        clearTimeout(pending);
+        adminReconnectTimers.delete(adminName);
+        console.log(`♻️ ${adminName} reconnected in time — claims preserved`);
+      }
+      // Re-attach this admin to every chat they still hold
+      for (const [userId, session] of activeSessions.entries()) {
+        if (session.hasAgent && session.agentName === adminName) {
+          session.agentSocketId = socket.id;
+          socket.join(`customer-${userId}`);
+        }
+      }
+    }
 
     const activeSessionsArray = Array.from(activeSessions.values());
 
@@ -2363,7 +2385,20 @@ io.on('connection', (socket) => {
 
     const allSessions = [...activeSessionsArray, ...historicalChats];
 
+    let totalChats = allSessions.length;
+    if (liveChatHistoryCollection) {
+      try {
+        totalChats = await liveChatHistoryCollection.countDocuments();
+      } catch {
+        /* fall back to what we loaded */
+      }
+    }
+
     socket.emit('active-sessions', allSessions);
+    socket.emit('chats-total', {
+      total: totalChats,
+      hasMore: recentChats.length >= 20,
+    });
     socket.emit('admin-connected', { success: true });
   });
 
@@ -2656,8 +2691,15 @@ io.on('connection', (socket) => {
   });
 
   socket.on('admin-claim-customer', async ({ userId, adminName }) => {
+    if (!adminName) {
+      console.error(`❌ admin-claim-customer for ${userId} with no adminName — ignoring`);
+      socket.emit('claim-error', { message: 'Missing admin name. Please log in again.' });
+      return;
+    }
     const session = activeSessions.get(userId);
     if (session && !session.hasAgent) {
+      // Same agent coming back after a refresh — reattach quietly.
+      const isReclaim = session.lastAgentName === adminName;
       const timer = agentWaitTimers.get(userId);
       if (timer) {
         clearTimeout(timer);
@@ -2671,10 +2713,20 @@ io.on('connection', (socket) => {
 
       socket.join(`customer-${userId}`);
 
-      io.to(`customer-${userId}`).emit('agent-joined', {
-        agentName: adminName,
-        message: `${adminName} has joined the chat`
-      });
+      session.lastAgentName = adminName;
+
+      if (!isReclaim) {
+        io.to(`customer-${userId}`).emit('agent-joined', {
+          agentName: adminName,
+          message: `${adminName} has joined the chat`
+        });
+      } else {
+        // Update the customer's header without a new system bubble
+        io.to(`customer-${userId}`).emit('agent-reattached', {
+          agentName: adminName,
+        });
+        console.log(`♻️ ${adminName} reattached to ${userId} (no join notice)`);
+      }
 
       io.to('admins').emit('session-updated', session);
       await saveChatHistory(session);
@@ -2730,11 +2782,49 @@ io.on('connection', (socket) => {
     }
   });
 
+    socket.on('save-session-notes', async ({ userId, notes, adminName }) => {
+    try {
+      if (!liveChatHistoryCollection) {
+        socket.emit('notes-error', { message: 'Database not available' });
+        return;
+      }
+
+      const session = activeSessions.get(userId);
+      if (session) {
+        // In memory + upsert the whole session (saveChatHistory now writes notes)
+        session.notes = notes;
+        await saveChatHistory(session);
+      } else {
+        // Historical chat — no live session to update
+        await liveChatHistoryCollection.updateOne(
+          { userId },
+          {
+            $set: {
+              notes,
+              notesUpdatedBy: adminName,
+              notesUpdatedAt: new Date().toISOString(),
+            },
+          },
+        );
+      }
+
+      io.to('admins').emit('session-notes-saved', { userId, notes });
+      console.log(`📝 Notes saved for ${userId} by ${adminName}`);
+    } catch (error) {
+      console.error('Error saving session notes:', error);
+      socket.emit('notes-error', { message: error.message });
+    }
+  });
+
   socket.on('admin-typing', ({ userId, isTyping, agentName }) => {
     io.to(`customer-${userId}`).emit('admin-typing-indicator', { isTyping, agentName });
   });
 
   socket.on('customer-typing', ({ userId, isTyping }) => {
+    if (!userId) {
+      console.error('❌ customer-typing with no userId — indicator dropped');
+      return;
+    }
     io.to('admins').emit('customer-typing-indicator', { userId, isTyping });
   });
 
@@ -2795,15 +2885,38 @@ io.on('connection', (socket) => {
 
     if (adminSockets.has(socket.id)) {
       adminSockets.delete(socket.id);
+      const adminName = socket.data?.adminName || null;
+      const orphaned = [];
+
       for (const [userId, session] of activeSessions.entries()) {
         if (session.agentSocketId === socket.id) {
-          session.hasAgent = false;
-          delete session.agentName;
-          delete session.agentSocketId;
+          session.agentSocketId = null; // claim held, socket gone
+          orphaned.push(userId);
+        }
+      }
 
-          io.to('admins').emit('session-updated', session);
-          io.to(`customer-${userId}`).emit('agent-left', { message: 'Agent has disconnected' });
-          await saveChatHistory(session);
+      if (orphaned.length > 0) {
+        const timer = setTimeout(async () => {
+          if (adminName) adminReconnectTimers.delete(adminName);
+          for (const userId of orphaned) {
+            const session = activeSessions.get(userId);
+            if (!session || session.agentSocketId) continue; // they came back
+            session.hasAgent = false;
+            delete session.agentName;
+            delete session.agentSocketId;
+
+            io.to('admins').emit('session-updated', session);
+            io.to(`customer-${userId}`).emit('agent-left', {
+              message: 'Agent has disconnected',
+            });
+            await saveChatHistory(session);
+          }
+        }, ADMIN_RECONNECT_GRACE_MS);
+
+        if (adminName) {
+          const existing = adminReconnectTimers.get(adminName);
+          if (existing) clearTimeout(existing);
+          adminReconnectTimers.set(adminName, timer);
         }
       }
     }
