@@ -797,6 +797,15 @@ async function startRingCentralWebSocket() {
             io.to(`conversation:${conversationId}`).emit('newRingCentralMessage', instantPayload);
             if (body.direction === 'Inbound') {
               io.to('sms-admins').emit('newRingCentralMessage', instantPayload);
+              // This is the path virtually every inbound SMS actually takes —
+              // the poll skips it later as a duplicate and never reaches its
+              // own emit. eventId dedupes if both somehow fire.
+              pushAdminNotification({
+                section: 'messages',
+                title: `SMS from ${fromNorm}`,
+                body: (subject || '').slice(0, 60),
+                eventId: `sms-${messageId}`,
+              });
             }
           }
         }
@@ -1669,6 +1678,12 @@ async function syncVoicemails(platform) {
         subject: transcript || '📼 Voicemail',
         direction: 'Inbound',
         type: 'Voicemail',
+      });
+      pushAdminNotification({
+        section: 'messages',
+        title: `Voicemail from ${callerPhone}`,
+        body: transcript.slice(0, 60) || 'New voicemail',
+        eventId: `vm-${vmId}`,
       });
 
       synced++;
