@@ -556,6 +556,10 @@ export default function MessageStoredPage() {
   const audioUnlockedRef = useRef(false);
   const socketRef = useRef<Socket | null>(null);
   const notificationPermissionRef = useRef(false);
+  // The socket effect runs on [mounted] only, so anything it closes over is
+  // frozen at mount. Mirror what its handlers need.
+  const selectedConversationIdRef = useRef<string | null>(null);
+  const refreshListRef = useRef<() => void>(() => {});
 
   // Unlock audio on first user interaction (Chrome requires this)
   useEffect(() => {
@@ -673,6 +677,33 @@ export default function MessageStoredPage() {
   useEffect(() => {
     conversationRef.current = conversation;
   }, [conversation]);
+
+  useEffect(() => {
+    selectedConversationIdRef.current = selectedConversationId;
+  }, [selectedConversationId]);
+
+  // Same fetch the 10s poll does — exposed so the socket can trigger it
+  // immediately instead of waiting for the next tick.
+  useEffect(() => {
+    refreshListRef.current = () => {
+      if (searchInput.trim() || filterType === "scheduled") return;
+      fetch(
+        `/api/messages?skip=0&limit=25${
+          filterType === "unread" ? "&unreadOnly=true" : ""
+        }`,
+      )
+        .then((r) =>
+          r.ok ? r.json() : Promise.reject(new Error(r.statusText)),
+        )
+        .then((data) => {
+          setConversations(data.conversations || []);
+          setTotalCount(data.total || 0);
+        })
+        .catch(() => {
+          /* the 10s poll will pick it up */
+        });
+    };
+  }, [searchInput, filterType]);
 
   // Sync notification permission on mount so an already-granted permission
   // doesn't stay false until the first click
@@ -1054,7 +1085,7 @@ export default function MessageStoredPage() {
           }
         }
 
-        // Bump the sidebar unread badge even if it's not the open conversation
+        // Optimistic badge bump for a row we already have…
         setConversations((prev) =>
           prev.map((c) =>
             (c.conversationId || c.phoneNumber) === convId
@@ -1062,13 +1093,19 @@ export default function MessageStoredPage() {
               : c,
           ),
         );
+
+        // …but a map can't add a NEW conversation, update the preview text, or
+        // reorder. Pull the real list. Slight delay covers the write landing;
+        // conversationSaved below handles it properly when it arrives.
+        setTimeout(() => refreshListRef.current(), 400);
       }
 
       // If it's the conversation currently open, fetch and merge it in
-      if (selectedConversationId && convId === selectedConversationId) {
+      const openConvId = selectedConversationIdRef.current;
+      if (openConvId && convId === openConvId) {
         fetch(
           `/api/messages/conversation?conversationId=${encodeURIComponent(
-            selectedConversationId,
+            openConvId,
           )}&skip=0&limit=10`,
         )
           .then((r) => r.json())
@@ -1078,6 +1115,10 @@ export default function MessageStoredPage() {
             scrollToBottomRef.current();
           });
       }
+    });
+
+    socket.on("conversationSaved", () => {
+      refreshListRef.current();
     });
 
     socket.on("readStatusChanged", (data: any) => {

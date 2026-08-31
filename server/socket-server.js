@@ -817,10 +817,23 @@ async function startRingCentralWebSocket() {
       // when we actually need the API (media attachments).
       try {
         const saved = await saveMessageFromNotification(evt?.body || {});
-        if (!saved) requestSync(5000);
+        if (saved) {
+          // The instant broadcast fires BEFORE this write lands, so a client
+          // that refetches on it races the save. This second event means
+          // "it's in Mongo now — safe to refetch the list."
+          const { conversationId: savedConvId } = getConversationInfo(evt?.body || {});
+          if (savedConvId) {
+            io.to('sms-admins').emit('conversationSaved', { conversationId: savedConvId });
+            io.to(`conversation:${savedConvId}`).emit('conversationSaved', { conversationId: savedConvId });
+          }
+        } else {
+          // Media attachments need the API — shorten the debounce so the row
+          // isn't a minute behind the sound.
+          requestSync(1500);
+        }
       } catch (saveErr) {
         console.error('⚡ Direct save failed, falling back to sync:', saveErr.message);
-        requestSync(5000);
+        requestSync(1500);
       }
     });
 
