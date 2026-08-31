@@ -1,5 +1,3 @@
-// update-progress uses RAILWAY_URL, the chat client uses SOCKET_URL — same
-// server, two env names. Accept whichever is set.
 const SOCKET_URL =
   process.env.NEXT_PUBLIC_RAILWAY_URL ||
   process.env.NEXT_PUBLIC_SOCKET_URL ||
@@ -11,15 +9,31 @@ export async function notifyAdmin(payload: {
   body?: string;
   eventId?: string;
 }) {
-  if (!SOCKET_URL) return;
+  if (!SOCKET_URL) {
+    console.error(
+      "❌ notifyAdmin: no NEXT_PUBLIC_RAILWAY_URL or NEXT_PUBLIC_SOCKET_URL set — notification dropped",
+      payload.section,
+    );
+    return;
+  }
+
+  const url = `${SOCKET_URL.replace(/\/$/, "")}/notify/admin`;
+
   try {
-    await fetch(`${SOCKET_URL}/notify/admin`, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
+    if (!res.ok) {
+      console.error(
+        `❌ notifyAdmin: ${url} returned ${res.status}`,
+        await res.text().catch(() => ""),
+      );
+      return;
+    }
+    console.log(`✅ notifyAdmin sent: ${payload.section} / ${payload.eventId}`);
   } catch (e) {
-    // Never let a notification failure break the actual transaction
-    console.error("notifyAdmin failed:", e);
+    console.error(`❌ notifyAdmin fetch failed to ${url}:`, e);
   }
 }
