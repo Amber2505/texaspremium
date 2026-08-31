@@ -16,8 +16,12 @@ import {
   BarChart2,
   BookOpen,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
+import {
+  useAdminNotifications,
+  SECTION_BY_PATH,
+} from "@/lib/adminNotifications";
+import { AnimatePresence, motion } from "framer-motion";
 
 const SESSION_KEY = "admin_session";
 
@@ -45,6 +49,7 @@ export default function AdminLoginPage() {
   const [error, setError] = useState("");
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
+  const { counts } = useAdminNotifications();
 
   // Security code state
   const [securityCode, setSecurityCode] = useState("");
@@ -498,9 +503,19 @@ export default function AdminLoginPage() {
               className="group bg-white border border-gray-100 rounded-2xl p-5 text-left hover:border-gray-200 hover:shadow-md transition-all duration-200 flex items-start gap-4"
             >
               <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${card.iconBg}`}
+                className={`relative w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${card.iconBg}`}
               >
                 {card.icon}
+                {(() => {
+                  const section = SECTION_BY_PATH[card.path];
+                  const n = section ? counts[section] || 0 : 0;
+                  if (!n) return null;
+                  return (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-white">
+                      {n > 9 ? "9+" : n}
+                    </span>
+                  );
+                })()}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-gray-900 text-sm mb-0.5">
@@ -527,9 +542,19 @@ export default function AdminLoginPage() {
               className="group bg-white border border-gray-100 rounded-2xl p-5 text-left hover:border-gray-200 hover:shadow-md transition-all duration-200 flex items-start gap-4"
             >
               <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${card.iconBg}`}
+                className={`relative w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${card.iconBg}`}
               >
                 {card.icon}
+                {(() => {
+                  const section = SECTION_BY_PATH[card.path];
+                  const n = section ? counts[section] || 0 : 0;
+                  if (!n) return null;
+                  return (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-white">
+                      {n > 9 ? "9+" : n}
+                    </span>
+                  );
+                })()}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-gray-900 text-sm mb-0.5">

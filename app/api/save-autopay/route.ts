@@ -4,6 +4,7 @@ import connectToDatabase from "@/lib/mongodb";
 import { ObjectId } from "mongodb";
 import { encrypt, validateCardNumber, validateRoutingNumber } from '@/lib/encryption';
 import { sendAutopayNotification } from '@/lib/email';
+import { notifyAdmin } from '@/lib/notifyAdmin';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export async function POST(request: Request) {
@@ -135,6 +136,14 @@ export async function POST(request: Request) {
       // Log but don't fail — autopay is already saved in MongoDB
       console.error('❌ Autopay email failed:', emailError.message);
     }
+
+    // Keyed on the inserted id so a retry can't double-count the dot.
+    await notifyAdmin({
+      section: 'autopay',
+      title: 'New autopay setup',
+      body: `${recordToSave.customerName} added a ${method === 'card' ? 'card' : 'bank account'}`,
+      eventId: `autopay-${result.insertedId.toString()}`,
+    });
 
     return NextResponse.json({ 
       success: true, 

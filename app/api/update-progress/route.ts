@@ -3,6 +3,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextResponse } from "next/server";
 import { MongoClient, ObjectId } from "mongodb";
+import { notifyAdmin } from "@/lib/notifyAdmin";
 
 const uri = process.env.MONGODB_URI!;
 
@@ -111,6 +112,19 @@ export async function POST(request: Request) {
       });
     } catch (e) {
       console.log("Could not notify Railway of progress update");
+    }
+
+    // Only the payment stage earns a sidebar dot — consent and autopay are
+    // mid-flow steps, and autopay already notifies from save-autopay.
+    if (step === "payment") {
+      await notifyAdmin({
+        section: "payment-links",
+        title: "Payment completed",
+        body: link.customerPhone
+          ? `${link.customerPhone}${link.amount ? ` — $${(link.amount / 100).toFixed(2)}` : ""}`
+          : `Link ${linkId}`,
+        eventId: `payment-${linkId}`,
+      });
     }
 
     const updatedLink = await collection.findOne(query);

@@ -1243,6 +1243,12 @@ async function syncRingCentralMessages() {
       io.to(`conversation:${conversationId}`).emit('newRingCentralMessage', syncBroadcastPayload);
       if (fullMessage.direction === 'Inbound') {
         io.to('sms-admins').emit('newRingCentralMessage', syncBroadcastPayload);
+        pushAdminNotification({
+          section: 'messages',
+          title: `SMS from ${primaryPhone}`,
+          body: (fullMessage.subject || '').slice(0, 60),
+          eventId: `sms-${messageId}`,
+        });
       }
     }
 
@@ -2316,6 +2322,37 @@ app.get('/scheduled-status', async (req, res) => {
   }
 });
 
+// ================================================
+// ADMIN NOTIFICATION FAN-OUT
+// One room, one event shape. `section` maps to an admin route so the
+// sidebar can put the dot on the right item.
+// ================================================
+function pushAdminNotification({ section, title, body, eventId }) {
+  if (!section) return null;
+  const payload = {
+    section,
+    title: title || 'New activity',
+    body: body || '',
+    eventId:
+      eventId ||
+      `${section}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: new Date().toISOString(),
+  };
+  io.to('admin-notifications').emit('admin-notification', payload);
+  return payload;
+}
+
+app.post('/notify/admin', (req, res) => {
+  try {
+    const { section, title, body, eventId } = req.body || {};
+    if (!section) return res.status(400).json({ error: 'section required' });
+    pushAdminNotification({ section, title, body, eventId });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id, 'at', new Date().toISOString());
 
@@ -2341,6 +2378,11 @@ io.on('connection', (socket) => {
   socket.on('join-sms-admin-room', () => {
     socket.join('sms-admins');
     console.log(`Socket ${socket.id} joined sms-admins room`);
+  });
+
+  // Global notification feed — independent of which admin page is open
+  socket.on('join-admin-notifications', () => {
+    socket.join('admin-notifications');
   });
 
   socket.on('admin-join', async ({ adminName } = {}) => {
@@ -2675,6 +2717,12 @@ io.on('connection', (socket) => {
 
       activeSessions.set(userId, sessionData);
       io.to('admins').emit('customer-joined', sessionData);
+      pushAdminNotification({
+        section: 'live-chat',
+        title: 'New live chat',
+        body: `${userName || 'A customer'} started a chat`,
+        eventId: `chat-join-${userId}`,
+      });
 
       const timer = setTimeout(() => {
         const session = activeSessions.get(userId);
@@ -2753,6 +2801,12 @@ io.on('connection', (socket) => {
 
       io.to(`customer-${userId}`).emit('new-message', message);
       io.to('admins').emit('customer-message-notification', { userId, userName, message });
+      pushAdminNotification({
+        section: 'live-chat',
+        title: `Message from ${userName || 'customer'}`,
+        body: (content || '').slice(0, 60),
+        eventId: `chat-msg-${message.id}`,
+      });
 
       await saveChatHistory(session);
     }

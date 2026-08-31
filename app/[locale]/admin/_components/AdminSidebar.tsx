@@ -4,6 +4,10 @@
 
 import { useRouter } from "next/navigation";
 import {
+  useAdminNotifications,
+  SECTION_BY_PATH,
+} from "@/lib/adminNotifications";
+import {
   Users,
   MessageSquare,
   Calendar,
@@ -138,6 +142,7 @@ interface AdminSidebarProps {
 
 export default function AdminSidebar({ activePath }: AdminSidebarProps) {
   const router = useRouter();
+  const { counts } = useAdminNotifications(SECTION_BY_PATH[activePath]);
 
   const handleLogout = () => {
     localStorage.removeItem("admin_session");
@@ -202,7 +207,17 @@ export default function AdminSidebar({ activePath }: AdminSidebarProps) {
               >
                 {item.icon}
               </div>
-              <span className="text-xs leading-tight">{item.label}</span>
+              <span className="text-xs leading-tight flex-1">{item.label}</span>
+              {(() => {
+                const section = SECTION_BY_PATH[item.path];
+                const n = section ? counts[section] || 0 : 0;
+                if (!n) return null;
+                return (
+                  <span className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                    {n > 9 ? "9+" : n}
+                  </span>
+                );
+              })()}
             </button>
           );
         })}
