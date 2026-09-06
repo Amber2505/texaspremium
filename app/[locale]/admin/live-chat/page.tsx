@@ -405,6 +405,7 @@ export default function AdminLiveChatDashboard() {
       socketRef.current = null;
     }
     localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem("show_calls");
     window.location.href = "/admin"; // Redirect to admin login
   };
 

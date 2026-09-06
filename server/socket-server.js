@@ -1128,7 +1128,13 @@ async function syncRingCentralMessages() {
 
           // Extract text from text/plain attachments — INBOUND ONLY
           // Only use attachment text if subject is empty (RC sends both, don't double up)
-          if (att.contentType.startsWith('text/') && att.uri) {
+          // A vCard is text/x-vcard but is NOT the message body — let it fall
+          // through to the attachment handling below.
+          const isVCardPart =
+            /vcard/i.test(att.contentType) ||
+            /\.vcf$|\.vcard$/i.test(att.filename || '');
+
+          if (att.contentType.startsWith('text/') && !isVCardPart && att.uri) {
             if (msg.direction === 'Inbound' && !extractedText.trim()) {
               try {
                 const textResponse = await fetch(att.uri, {
@@ -1147,15 +1153,24 @@ async function syncRingCentralMessages() {
             continue;
           }
 
+          // vCards are text/*, so they fell through the text branch above and
+          // then failed this media check — the attachment was dropped entirely
+          // and the message rendered as an empty bubble.
+          const isVCard =
+            /vcard/i.test(att.contentType) ||
+            /\.vcf$|\.vcard$/i.test(att.filename || '');
+
           const isMedia = att.contentType.startsWith('image/') ||
             att.contentType.startsWith('audio/') ||
             att.contentType.startsWith('video/') ||
             att.contentType === 'application/pdf';
 
-          if (!isMedia || !att.uri) continue;
+          if ((!isMedia && !isVCard) || !att.uri) continue;
 
           try {
-            const extension = att.contentType.split('/')[1] || 'bin';
+            const extension = isVCard
+              ? 'vcf'
+              : att.contentType.split('/')[1] || 'bin';
             const filename = `${messageId}_${att.id}.${extension}`;
 
             const azureUrl = await downloadAndUploadAttachment(

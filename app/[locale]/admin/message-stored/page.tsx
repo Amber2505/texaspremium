@@ -133,7 +133,15 @@ function mergeMessages(
   const byId = new Map<string, RingCentralMessage>();
   for (const m of existing) {
     if (!m.id) continue;
-    if (dropOptimistic && m.id.startsWith("optimistic-")) continue;
+    if (dropOptimistic && m.id.startsWith("optimistic-")) {
+      // This optimistic message is going away — now it's safe to free its
+      // blob URLs. Doing it any earlier breaks the preview mid-render.
+      for (const a of m.attachments || []) {
+        const url = (a as MessageAttachment).azureUrl;
+        if (url?.startsWith("blob:")) URL.revokeObjectURL(url);
+      }
+      continue;
+    }
     byId.set(m.id, m);
   }
   for (const m of incoming) {
@@ -199,6 +207,203 @@ function InlineTextAttachment({
     >
       {text}
     </p>
+  );
+}
+
+interface VCardContact {
+  name: string;
+  phones: { label: string; number: string }[];
+  emails: string[];
+}
+
+// Handles vCard 2.1 (TEL;HOME:) and 3.0/4.0 (TEL;TYPE=CELL:), and files
+// containing several BEGIN:VCARD blocks — contact-app exports often repeat
+// the same person, once with the number and once without.
+function parseVCards(raw: string): VCardContact[] {
+  const blocks = raw
+    .split(/BEGIN:VCARD/i)
+    .slice(1)
+    .map((b) => b.split(/END:VCARD/i)[0]);
+
+  const contacts: VCardContact[] = [];
+
+  for (const block of blocks) {
+    // Unfold: a leading space/tab means the line continues the previous one
+    const lines = block
+      .replace(/\r\n[ \t]/g, "")
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+
+    let name = "";
+    let fallbackName = "";
+    const phones: { label: string; number: string }[] = [];
+    const emails: string[] = [];
+
+    for (const line of lines) {
+      const sep = line.indexOf(":");
+      if (sep === -1) continue;
+      const rawKey = line.slice(0, sep);
+      const value = line.slice(sep + 1).trim();
+      if (!value) continue;
+
+      const parts = rawKey.split(";");
+      const key = parts[0].toUpperCase();
+      const params = parts.slice(1).map((p) => p.toUpperCase());
+
+      if (key === "FN") {
+        name = value;
+      } else if (key === "N" && !fallbackName) {
+        // N is Last;First;Middle;Prefix;Suffix — reorder to First Last
+        const [last, first, middle] = value.split(";");
+        fallbackName = [first, middle, last].filter(Boolean).join(" ").trim();
+      } else if (key === "TEL") {
+        const label =
+          params
+            .find(
+              (p) => !p.startsWith("TYPE=") && p !== "PREF" && p !== "VOICE",
+            )
+            ?.toLowerCase() ||
+          params
+            .find((p) => p.startsWith("TYPE="))
+            ?.replace("TYPE=", "")
+            .toLowerCase() ||
+          "phone";
+        phones.push({ label, number: value });
+      } else if (key === "EMAIL") {
+        emails.push(value);
+      }
+    }
+
+    const finalName = name || fallbackName;
+    if (finalName || phones.length) {
+      contacts.push({ name: finalName, phones, emails });
+    }
+  }
+
+  // Merge duplicates by name — keep the block that actually has details
+  const byName = new Map<string, VCardContact>();
+  for (const c of contacts) {
+    const key = c.name.toLowerCase();
+    const existing = byName.get(key);
+    if (!existing) {
+      byName.set(key, c);
+      continue;
+    }
+    for (const p of c.phones) {
+      if (
+        !existing.phones.some(
+          (e) => e.number.replace(/\D/g, "") === p.number.replace(/\D/g, ""),
+        )
+      ) {
+        existing.phones.push(p);
+      }
+    }
+    for (const e of c.emails) {
+      if (!existing.emails.includes(e)) existing.emails.push(e);
+    }
+  }
+
+  return Array.from(byName.values());
+}
+
+function VCardAttachment({
+  url,
+  filename,
+  isOutbound,
+}: {
+  url: string;
+  filename?: string;
+  isOutbound: boolean;
+}) {
+  const [contacts, setContacts] = useState<VCardContact[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    fetch(url)
+      .then((res) => res.text())
+      .then((raw) => {
+        if (!active) return;
+        setContacts(parseVCards(raw));
+        setLoading(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setContacts([]);
+        setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [url]);
+
+  const primary = contacts[0];
+  const label = primary?.name || filename || "Contact card";
+
+  return (
+    <div
+      className={`max-w-sm rounded-xl border p-3 shadow-sm ${
+        isOutbound
+          ? "bg-blue-700 border-blue-600 text-white"
+          : "bg-white border-gray-200 text-gray-900"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold">{label}</p>
+          {loading ? (
+            <p className="mt-1 text-xs opacity-70">Loading contact…</p>
+          ) : primary ? (
+            <div className="mt-2 space-y-1 text-xs">
+              {primary.phones.map((phone, idx) => (
+                <div
+                  key={`${phone.label}-${phone.number}-${idx}`}
+                  className="flex items-center gap-2"
+                >
+                  <span className="uppercase tracking-wide opacity-70">
+                    {phone.label}
+                  </span>
+                  <a
+                    href={`tel:${phone.number.replace(/\s+/g, "")}`}
+                    className="truncate underline-offset-2 hover:underline"
+                  >
+                    {phone.number}
+                  </a>
+                </div>
+              ))}
+              {primary.emails.map((email, idx) => (
+                <div key={`${email}-${idx}`} className="truncate">
+                  <a
+                    href={`mailto:${email}`}
+                    className="underline-offset-2 hover:underline"
+                  >
+                    {email}
+                  </a>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-1 text-xs opacity-70">vCard attachment</p>
+          )}
+        </div>
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`inline-flex items-center rounded px-2 py-1 text-[10px] font-medium ${
+            isOutbound
+              ? "bg-blue-600 hover:bg-blue-500"
+              : "bg-gray-100 hover:bg-gray-200"
+          }`}
+          title={filename || "Open vCard"}
+        >
+          Open
+        </a>
+      </div>
+    </div>
   );
 }
 
@@ -503,8 +708,21 @@ export default function MessageStoredPage() {
         setCallCode("");
         return;
       }
+      const now = new Date();
+      const endOfDay = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        23,
+        59,
+        59,
+        999,
+      ).getTime();
       setShowCalls(true);
-      localStorage.setItem("show_calls", "true");
+      localStorage.setItem(
+        "show_calls",
+        JSON.stringify({ enabled: true, expiresAt: endOfDay }),
+      );
       setShowCallCodeModal(false);
       setCallCode("");
     } catch {
@@ -713,10 +931,47 @@ export default function MessageStoredPage() {
     }
   }, []);
 
+  // Call visibility expires with the admin session (11:59 PM), so an unlock
+  // never carries into the next day.
   useEffect(() => {
-    const saved = localStorage.getItem("show_calls");
-    if (saved !== null) setShowCalls(saved === "true");
+    const raw = localStorage.getItem("show_calls");
+    if (!raw) return;
+
+    try {
+      const { enabled, expiresAt } = JSON.parse(raw);
+      if (enabled && Date.now() < expiresAt) {
+        setShowCalls(true);
+      } else {
+        localStorage.removeItem("show_calls");
+      }
+    } catch {
+      // Legacy plain "true"/"false" value from before the expiry existed
+      localStorage.removeItem("show_calls");
+    }
   }, []);
+
+  // Turn it off the moment the day rolls over, even on a page left open
+  useEffect(() => {
+    if (!showCalls) return;
+    const check = setInterval(() => {
+      const raw = localStorage.getItem("show_calls");
+      if (!raw) {
+        setShowCalls(false);
+        return;
+      }
+      try {
+        const { expiresAt } = JSON.parse(raw);
+        if (Date.now() >= expiresAt) {
+          localStorage.removeItem("show_calls");
+          setShowCalls(false);
+        }
+      } catch {
+        localStorage.removeItem("show_calls");
+        setShowCalls(false);
+      }
+    }, 60000);
+    return () => clearInterval(check);
+  }, [showCalls]);
 
   // Load all drafts from localStorage on mount
   useEffect(() => {
@@ -1767,18 +2022,33 @@ export default function MessageStoredPage() {
     setSelectedFiles([]);
     setSending(true);
 
+    // Declared out here so the catch block can revoke the blob URLs.
+    let tempAttachments: Array<{
+      id: string;
+      type: string;
+      filename: string;
+      contentType: string;
+      azureUrl: string;
+      uri: string;
+    }> = [];
+
     try {
       const hasFiles = filesToSend.length > 0;
       const now = new Date().toISOString();
 
-      const tempAttachments = filesToSend.map((file) => ({
-        id: `local-${Date.now()}-${Math.random()}`,
-        type: "MMS",
-        filename: file.name,
-        contentType: file.type,
-        azureUrl: URL.createObjectURL(file),
-        uri: URL.createObjectURL(file),
-      }));
+      tempAttachments = filesToSend.map((file) => {
+        // ONE object URL per file — calling createObjectURL twice makes two
+        // separate blobs, and revoking one leaves the other leaked.
+        const blobUrl = URL.createObjectURL(file);
+        return {
+          id: `local-${Date.now()}-${Math.random()}`,
+          type: "MMS",
+          filename: file.name,
+          contentType: file.type,
+          azureUrl: blobUrl,
+          uri: blobUrl,
+        };
+      });
 
       const optimisticMsg: RingCentralMessage = {
         id: `optimistic-${Date.now()}`,
@@ -1843,16 +2113,19 @@ export default function MessageStoredPage() {
 
       if (!res.ok) throw new Error("Send failed");
 
-      tempAttachments.forEach((a) => {
-        if (a.azureUrl?.startsWith("blob:")) URL.revokeObjectURL(a.azureUrl);
-        if (a.uri?.startsWith("blob:")) URL.revokeObjectURL(a.uri);
-      });
+      // Do NOT revoke here — the optimistic message is still rendering from
+      // this blob until the poll swaps in the server copy. Revoking now
+      // breaks the <img> and it falls back to showing just the filename.
+      // Cleanup happens in mergeMessages when the real message replaces it.
 
       setTimeout(() => messageInputRef.current?.focus(), 100);
     } catch {
       alert("Failed to send");
       setMessageInput(text);
       setSelectedFiles(filesToSend);
+      tempAttachments.forEach((a) => {
+        if (a.azureUrl?.startsWith("blob:")) URL.revokeObjectURL(a.azureUrl);
+      });
       setConversation((prev) =>
         prev.filter((m) => !m.id?.startsWith("optimistic-")),
       );
@@ -2510,7 +2783,7 @@ export default function MessageStoredPage() {
                   if (showCalls) {
                     // Turning off is free; only turning on needs the code.
                     setShowCalls(false);
-                    localStorage.setItem("show_calls", "false");
+                    localStorage.removeItem("show_calls");
                   } else {
                     setCallCode("");
                     setCallCodeError("");
@@ -4146,6 +4419,22 @@ export default function MessageStoredPage() {
                                       }
 
                                       if (
+                                        /vcard/i.test(att.contentType || "") ||
+                                        /\.vcf$|\.vcard$/i.test(
+                                          att.filename || "",
+                                        )
+                                      ) {
+                                        return (
+                                          <VCardAttachment
+                                            key={i}
+                                            url={url}
+                                            filename={att.filename}
+                                            isOutbound={isOutbound}
+                                          />
+                                        );
+                                      }
+
+                                      if (
                                         att.contentType === "application/pdf"
                                       ) {
                                         return (
@@ -4211,7 +4500,69 @@ export default function MessageStoredPage() {
                                         );
                                       }
 
-                                      return null;
+                                      // Anything we don't render specially —
+                                      // vCards, zips, docs — still gets a chip
+                                      // instead of an empty bubble.
+                                      return (
+                                        <div
+                                          key={i}
+                                          className={`flex items-center justify-between gap-2 p-2 rounded ${
+                                            isOutbound || isSelected
+                                              ? "bg-blue-700 hover:bg-blue-800"
+                                              : "bg-gray-100 hover:bg-gray-200"
+                                          }`}
+                                        >
+                                          <a
+                                            href={url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-2 flex-1 min-w-0"
+                                          >
+                                            <svg
+                                              className="w-5 h-5 flex-shrink-0"
+                                              fill="currentColor"
+                                              viewBox="0 0 20 20"
+                                            >
+                                              <path
+                                                fillRule="evenodd"
+                                                d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z"
+                                                clipRule="evenodd"
+                                              />
+                                            </svg>
+                                            <span className="text-sm truncate">
+                                              {att.filename || "Attachment"}
+                                            </span>
+                                          </a>
+                                          <button
+                                            onClick={() =>
+                                              downloadFile(
+                                                url,
+                                                att.filename || "file",
+                                              )
+                                            }
+                                            className={`p-1 rounded hover:bg-opacity-80 flex-shrink-0 ${
+                                              isOutbound || isSelected
+                                                ? "hover:bg-blue-600"
+                                                : "hover:bg-gray-300"
+                                            }`}
+                                            title="Download"
+                                          >
+                                            <svg
+                                              className="w-4 h-4"
+                                              fill="none"
+                                              stroke="currentColor"
+                                              viewBox="0 0 24 24"
+                                            >
+                                              <path
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                strokeWidth={2}
+                                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                              />
+                                            </svg>
+                                          </button>
+                                        </div>
+                                      );
                                     },
                                   )}
                                 </div>
@@ -5478,7 +5829,9 @@ export default function MessageStoredPage() {
                 </div>
               )}
 
-              <div className="absolute bottom-4 sm:bottom-20 left-1/2 -translate-x-1/2 text-white bg-black/50 px-4 py-2 rounded-full text-xs sm:text-sm max-w-[80%] sm:max-w-md truncate">
+              {/* Top-left, not centered — a centered pill lands on top of the
+                  image itself on wide/short pictures. */}
+              <div className="absolute top-2 sm:top-4 left-2 sm:left-4 text-white/90 bg-black/50 px-3 py-1.5 rounded-full text-xs max-w-[50%] sm:max-w-sm truncate pointer-events-none">
                 {lightboxImage.filename}
               </div>
             </div>

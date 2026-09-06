@@ -169,6 +169,7 @@ export default function AdminLoginPage() {
 
   const handleLogout = () => {
     localStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem("show_calls");
     setUsername("");
     setPassword("");
     setSessionUsername("");

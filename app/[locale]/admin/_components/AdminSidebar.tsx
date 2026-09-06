@@ -146,6 +146,7 @@ export default function AdminSidebar({ activePath }: AdminSidebarProps) {
 
   const handleLogout = () => {
     localStorage.removeItem("admin_session");
+    localStorage.removeItem("show_calls");
     window.location.href = "/admin";
   };
 
