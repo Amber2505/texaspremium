@@ -516,6 +516,9 @@ async function processPaymentReminders() {
     const unpaidLinks = await paymentLinksCollection.find({
       linkType: 'payment',
       disabled: { $ne: true },
+      // Default ON — links created before this field existed have no
+      // remindersEnabled and must keep getting reminders.
+      remindersEnabled: { $ne: false },
       generatedLink: { $exists: true, $nin: [null, '', 'placeholder'] },
       $or: [
         { 'completedStages.payment': { $exists: false } },

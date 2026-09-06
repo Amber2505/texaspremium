@@ -54,6 +54,7 @@ interface LinkHistory {
     autopaySetup?: boolean;
   };
   sentReminders?: string[];
+  remindersEnabled?: boolean;
   reEnabledAt?: string;
   timestamps?: {
     payment?: string;
@@ -76,6 +77,7 @@ export default function CreatePaymentLink() {
   const [language, setLanguage] = useState<"en" | "es">("en");
   const [translating, setTranslating] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [remindersEnabled, setRemindersEnabled] = useState(true);
 
   const handleLanguageChange = async (lang: "en" | "es") => {
     setLanguage(lang);
@@ -299,6 +301,7 @@ export default function CreatePaymentLink() {
     language: "en" | "es";
     generatedLink: string;
     squareLink?: string;
+    remindersEnabled?: boolean;
   }) => {
     try {
       const response = await fetch("/api/save-payment-link", {
@@ -313,6 +316,7 @@ export default function CreatePaymentLink() {
           language: linkData.language,
           generatedLink: linkData.generatedLink,
           squareLink: linkData.squareLink || null,
+          remindersEnabled: linkData.remindersEnabled !== false,
         }),
       });
       const data = await response.json();
@@ -368,6 +372,7 @@ export default function CreatePaymentLink() {
         language,
         generatedLink: "placeholder",
         squareLink: "pending",
+        remindersEnabled,
       });
 
       if (!linkId) {
@@ -479,6 +484,7 @@ export default function CreatePaymentLink() {
     setCustomerPhone("");
     setPaymentMethod("card");
     setLanguage("en");
+    setRemindersEnabled(true);
     setGeneratedLink("");
     setError("");
     setCopied(false);
@@ -529,6 +535,30 @@ export default function CreatePaymentLink() {
       if (response.ok) fetchHistory(currentPage);
     } catch (error) {
       console.error("Error toggling link status:", error);
+    }
+  };
+
+  const toggleReminders = async (linkId: string, current: boolean) => {
+    // Optimistic — the row re-renders instantly, WS refresh confirms
+    setUnpaidLinks((prev) =>
+      prev.map((l) =>
+        l._id === linkId ? { ...l, remindersEnabled: !current } : l,
+      ),
+    );
+    try {
+      const res = await fetch("/api/update-payment-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ linkId, remindersEnabled: !current }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setUnpaidLinks((prev) =>
+        prev.map((l) =>
+          l._id === linkId ? { ...l, remindersEnabled: current } : l,
+        ),
+      );
+      alert("Couldn't update reminder setting.");
     }
   };
 
@@ -935,6 +965,34 @@ export default function CreatePaymentLink() {
                         ))}
                       </div>
                     </div>
+
+                    {linkType === "payment" && (
+                      <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50">
+                        <button
+                          type="button"
+                          onClick={() => setRemindersEnabled((v) => !v)}
+                          className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+                            remindersEnabled ? "bg-green-500" : "bg-gray-300"
+                          }`}
+                        >
+                          <span
+                            className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${
+                              remindersEnabled ? "left-[22px]" : "left-0.5"
+                            }`}
+                          />
+                        </button>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-800">
+                            Send payment reminders
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {remindersEnabled
+                              ? "Automatic SMS reminders until paid or 7 PM"
+                              : "No reminders — link only"}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     <button
                       type="submit"
@@ -1832,9 +1890,23 @@ export default function CreatePaymentLink() {
 
                         {/* Reminder status */}
                         <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-                          <span className="text-[10px] font-semibold opacity-70">
-                            Reminders:
-                          </span>
+                          <button
+                            onClick={() =>
+                              toggleReminders(
+                                link._id,
+                                link.remindersEnabled !== false,
+                              )
+                            }
+                            className="text-[10px] font-semibold opacity-70 hover:opacity-100 underline underline-offset-2"
+                            title={
+                              link.remindersEnabled !== false
+                                ? "Turn reminders off for this link"
+                                : "Turn reminders back on"
+                            }
+                          >
+                            Reminders
+                            {link.remindersEnabled === false ? " (off)" : ""}:
+                          </button>
                           {[
                             { key: "reminder1", label: "1st" },
                             { key: "reminder2", label: "2nd" },
@@ -1883,9 +1955,6 @@ export default function CreatePaymentLink() {
                           })}
                         </div>
 
-                        <p className="text-xs font-mono font-semibold mb-2 opacity-80">
-                          {formatPhoneDisplay(link.customerPhone)}
-                        </p>
                         <button
                           onClick={async () => {
                             await navigator.clipboard.writeText(

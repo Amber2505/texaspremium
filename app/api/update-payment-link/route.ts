@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
       squareLinkId,
       squareTransactionId,
       description,
+      remindersEnabled,
     } = body;
     let existingSquareLinkId: string | null = null;
 
@@ -109,12 +110,15 @@ export async function POST(request: NextRequest) {
     const db = client.db("db");
     const collection = db.collection("payment_link_generated");
 
-    const updateFields: Record<string, string> = {};
+    // boolean too — remindersEnabled isn't a string
+    const updateFields: Record<string, string | boolean> = {};
     if (generatedLink) updateFields.generatedLink = generatedLink;
     if (squareLink) updateFields.squareLink = squareLink;
     if (squareLinkId) updateFields.squareLinkId = squareLinkId;
     if (squareTransactionId) updateFields.squareTransactionId = squareTransactionId;
     if (description !== undefined) updateFields.description = description;
+    if (remindersEnabled !== undefined)
+      updateFields.remindersEnabled = !!remindersEnabled;
 
     if (Object.keys(updateFields).length === 0) {
       return NextResponse.json(

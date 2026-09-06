@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
       language,
       generatedLink,
       squareLink,
+      remindersEnabled,
     } = body;
 
     client = await MongoClient.connect(uri);
@@ -40,6 +41,9 @@ export async function POST(request: NextRequest) {
       generatedLink,
       squareLink: squareLink || null,
       disabled: false,
+      // Default ON — only an explicit false turns reminders off, matching the
+      // $ne: false query in the reminder processor.
+      remindersEnabled: remindersEnabled !== false,
       createdAt: new Date(),
       createdAtTimestamp: Date.now(),
       currentStage: null,
