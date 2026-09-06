@@ -1122,6 +1122,20 @@ async function syncRingCentralMessages() {
       const processedAttachments = [];
       let extractedText = fullMessage.subject || '';
 
+      if (msg.direction === 'Inbound') {
+        console.log(
+          `🔍 ${messageId} attachments:`,
+          JSON.stringify(
+            (fullMessage.attachments || []).map(a => ({
+              id: a.id,
+              contentType: a.contentType,
+              hasUri: !!a.uri,
+              filename: a.filename,
+            })),
+          ),
+        );
+      }
+
       if (fullMessage.attachments && fullMessage.attachments.length > 0) {
         for (const att of fullMessage.attachments) {
           if (!att.contentType) continue;
@@ -1222,10 +1236,32 @@ async function syncRingCentralMessages() {
       });
 
       if (alreadyExists) {
-        console.log(`   ⚠️ Message ${messageId} already exists in ${conversationId} - duplicate prevented!`);
-        duplicatesPrevented++;
+        // We only get here after the first check decided this message needed
+        // fixing (no azureUrls but RC has attachments). Skipping now throws
+        // away the upload we just did — patch the stored message instead.
+        if (processedAttachments.length > 0) {
+          await conversationsCollection.updateOne(
+            { conversationId, 'messages.id': messageId },
+            {
+              $set: {
+                'messages.$.attachments': processedAttachments,
+                'messages.$.type': 'MMS',
+                ...(extractedText ? { 'messages.$.subject': extractedText } : {}),
+              },
+            },
+          );
+          console.log(
+            `🔧 Backfilled ${processedAttachments.length} attachment(s) onto existing message ${messageId}`,
+          );
+          io.to(`conversation:${conversationId}`).emit('conversationSaved', { conversationId });
+          io.to('sms-admins').emit('conversationSaved', { conversationId });
+          attachmentsDownloaded += processedAttachments.length;
+        } else {
+          console.log(`   ⚠️ Message ${messageId} already exists in ${conversationId} - duplicate prevented!`);
+          duplicatesPrevented++;
+        }
         skipped++;
-        continue; // Skip to next message - DO NOT INSERT
+        continue;
       }
 
       // Safe to insert - message doesn't exist in this conversation
