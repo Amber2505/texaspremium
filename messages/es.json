@@ -1563,7 +1563,13 @@
     "view": "Ver",
     "download": "Descargar",
     "close": "Cerrar"
-  }
+  },
+      "review": {
+      "title": "¿Cómo lo hicimos?",
+      "body": "Si le facilitamos un poco su seguro, una breve reseña ayuda a que otros tejanos nos encuentren. Solo toma un minuto — y significa mucho para nuestro pequeño equipo.",
+      "button": "Dejar una reseña en Google",
+      "note": "Se abre Google en una pestaña nueva"
+    }
 },
 "RootLayout": {
   "nav": {

@@ -479,6 +479,71 @@ export default function ViewDocuments() {
             </div>
           )}
 
+          {/* Review ask — only after they've actually found something */}
+          {!loading && attachments.length > 0 && (
+            <motion.div
+              className="mt-10 pt-8 border-t border-gray-100"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4, duration: 0.4 }}
+            >
+              <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#102b56] to-[#1c3f73] px-6 py-7 sm:px-8 text-center">
+                <div className="flex justify-center gap-1 mb-3">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <motion.svg
+                      key={i}
+                      className="w-6 h-6 text-amber-400"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                      initial={{ opacity: 0, scale: 0.5 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.5 + i * 0.08, duration: 0.25 }}
+                    >
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.958a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.367 2.446a1 1 0 00-.364 1.118l1.287 3.957c.3.922-.755 1.688-1.539 1.118l-3.366-2.446a1 1 0 00-1.176 0l-3.367 2.446c-.783.57-1.838-.196-1.538-1.118l1.286-3.957a1 1 0 00-.363-1.118L2.063 9.385c-.783-.57-.38-1.81.588-1.81h4.161a1 1 0 00.951-.69l1.286-3.958z" />
+                    </motion.svg>
+                  ))}
+                </div>
+
+                <h3 className="text-xl font-bold text-white mb-2">
+                  {t("review.title")}
+                </h3>
+                <p className="text-sm text-blue-100 mb-5 max-w-md mx-auto leading-relaxed">
+                  {t("review.body")}
+                </p>
+                <a
+                  href="https://search.google.com/local/writereview?placeid=ChIJi7scnuAnTIYRyG17IxEmlGQ"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2.5 bg-white text-[#102b56] font-bold py-3 px-7 rounded-full hover:bg-amber-50 transition-colors shadow-lg"
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.65l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0012 23z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09a6.6 6.6 0 010-4.18V7.07H2.18a11 11 0 000 9.86l3.66-2.84z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1a11 11 0 00-9.82 6.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                    />
+                  </svg>
+                  {t("review.button")}
+                </a>
+
+                <p className="text-xs text-blue-200/70 mt-4">
+                  {t("review.note")}
+                </p>
+              </div>
+            </motion.div>
+          )}
+
           {/* Back to Homepage Button */}
           <div className="text-center mt-8">
             <motion.a

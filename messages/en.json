@@ -1563,6 +1563,12 @@
       "view": "View",
       "download": "Download",
       "close": "Close"
+    },
+    "review": {
+      "title": "How did we do?",
+      "body": "If we made your insurance a little easier, a quick review helps other Texans find us. It only takes a minute — and it means a lot to our small team.",
+      "button": "Leave a Google Review",
+      "note": "Opens Google in a new tab"
     }
   },
   "RootLayout": {
