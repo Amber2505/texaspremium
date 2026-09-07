@@ -1,3 +1,4 @@
+//app/[locale]/(root)/payment-thankyou/page.tsx
 import { Suspense } from "react";
 import ThankYouContent from "./ThankYouContent";
 

@@ -1721,7 +1721,24 @@
     "title": "Payment Successful!",
     "subtitle": "Thank you for choosing Texas Premium Insurance Services.",
     "message": "Your transaction has been processed. A confirmation receipt has been sent to your email address. Our agents will begin reviewing your coverage shortly.",
-    "returnButton": "RETURN TO HOME"
+    "returnButton": "Return to Home",
+    "next": {
+      "heading": "What happens next",
+      "step1": {
+        "title": "Payment received",
+        "body": "You'll get a confirmation receipt by email shortly."
+      },
+      "step2": {
+        "title": "We're processing it now",
+        "body": "Give us about 15–20 minutes. If anything needs your signature, we'll send it by email and text."
+      },
+      "step3": {
+        "title": "Your documents",
+        "body": "Once everything's finalized, your documents and ID cards are emailed to you — and always available in your document portal."
+      },
+      "documentsButton": "View My Documents",
+      "help": "Questions? Call us at (469) 729-5185 — we're happy to help."
+    }
   },
   "autoquote": {
     "progressBar": {
