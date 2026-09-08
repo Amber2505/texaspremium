@@ -1548,13 +1548,11 @@
     "metaDescription": "Retrieve My Policy Documents",
     "heroTitle": "Retrieve My Documents",
     "heroSubtitle": "Access your policy documents and ID cards",
-    "inputPlaceholder": "Enter Policyholder email",
-    "searchButton": "Search",
     "searching": "Searching...",
-    "searchingStatus": "Searching for your documents...",
-    "noDocuments": "No documents found for this email",
-    "noDocumentsDetail": "Make sure you're using the email address associated with your policy",
-    "initialState": "Enter your email address to search for documents",
+    "searchingStatus": "Retrieving your documents...",
+    "noDocuments": "No documents found for this policy",
+    "noDocumentsDetail": "If you recently purchased or renewed, your documents may still be processing. Call us at 469-729-5185 and we'll help.",
+    "initialState": "Verify your phone number to access your documents",
     "loadMore": "Another Policy or Prior Policy Document",
     "loading": "Loading...",
     "endOfResults": "— End of documents —",
@@ -1569,7 +1567,28 @@
       "body": "If we made your insurance a little easier, a quick review helps other Texans find us. It only takes a minute — and it means a lot to our small team.",
       "button": "Leave a Google Review",
       "note": "Opens Google in a new tab"
+    },
+    "sections": {
+  "personal": "Personal Policy Documents",
+  "commercial": "Commercial Policy Documents"
+  },
+  "auth": {
+    "identifyHelp": "Enter the phone number on your policy. We'll text you a verification code.",
+    "phonePlaceholder": "Phone number",
+    "lastNamePlaceholder": "Last name (optional)",
+    "sendCode": "Send Code",
+    "sending": "Sending...",
+    "codeSentTo": "We sent a 6-digit code to",
+    "verify": "Verify",
+    "verifying": "Verifying...",
+    "startOver": "Start over",
+    "needHelp": "Number changed or not working? Call us at 469-729-5185.",
+    "errors": {
+      "required": "Please enter a valid 10-digit phone number.",
+      "badCode": "That code isn't valid. Please try again.",
+      "generic": "Something went wrong. Please try again or call 469-729-5185."
     }
+  }
   },
   "RootLayout": {
   "nav": {

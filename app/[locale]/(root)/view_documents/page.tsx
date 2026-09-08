@@ -1,3 +1,4 @@
+//app/[locale]/(root)/view_documents/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -14,6 +15,7 @@ interface Attachment {
   date: string;
   message_id?: string;
   subject?: string;
+  doc_type?: string;
 }
 
 interface GroupedAttachments {
@@ -31,7 +33,15 @@ interface ApiResponse {
 export default function ViewDocuments() {
   const t = useTranslations("Documents");
 
-  const [searchEmail, setSearchEmail] = useState("");
+  const [stage, setStage] = useState<"identify" | "code" | "results">(
+    "identify",
+  );
+  const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
+  const [requestId, setRequestId] = useState("");
+  const [sentTo, setSentTo] = useState("");
+  const [token, setToken] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -53,7 +63,7 @@ export default function ViewDocuments() {
   };
 
   const fetchAttachments = async (
-    email: string,
+    authToken: string,
     skip: number = 0,
     append: boolean = false,
   ) => {
@@ -68,12 +78,15 @@ export default function ViewDocuments() {
 
     try {
       const response = await fetch(
-        `https://astraldbapi.herokuapp.com/attachments?search_email=${encodeURIComponent(
-          email,
-        )}&limit=${limit}&skip=${skip}`,
+        `https://astraldbapi.herokuapp.com/attachments?limit=${limit}&skip=${skip}`,
+        { headers: { Authorization: `Bearer ${authToken}` } },
       );
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (response.status === 401) {
+          setStage("identify");
+          setToken("");
+        }
         throw new Error(errorData.detail || "Failed to fetch attachments");
       }
       const data: ApiResponse = await response.json();
@@ -94,22 +107,70 @@ export default function ViewDocuments() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleRequestCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchEmail && searchEmail.includes("@")) {
+    if (phone.replace(/\D/g, "").length !== 10) {
+      setError(t("auth.errors.required"));
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(
+        "https://astraldbapi.herokuapp.com/docs/request-code",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone: phone.replace(/\D/g, ""),
+            last_name: lastName.trim(),
+          }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || t("auth.errors.generic"));
+      setRequestId(data.request_id);
+      setSentTo(data.sent_to);
+      setCode("");
+      setStage("code");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("auth.errors.generic"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(
+        "https://astraldbapi.herokuapp.com/docs/verify-code",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ request_id: requestId, code: code.trim() }),
+        },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || t("auth.errors.badCode"));
+      setToken(data.token);
+      setStage("results");
       setCurrentSkip(0);
-      setHasSearched(false);
       setLoadCount(0);
-      fetchAttachments(searchEmail, 0, false);
       setHasSearched(true);
-    } else {
-      setError("Please enter a valid email address");
+      await fetchAttachments(data.token, 0, false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("auth.errors.badCode"));
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleLoadMore = () => {
     setLoadCount((prev) => prev + 1);
-    fetchAttachments(searchEmail, currentSkip, true);
+    fetchAttachments(token, currentSkip, true);
   };
 
   const createBlobUrl = (attachment: Attachment) => {
@@ -221,7 +282,27 @@ export default function ViewDocuments() {
       }));
   };
 
-  const groupedAttachments = groupByDate(attachments);
+  const commercial = attachments.filter((a) => a.doc_type === "coi");
+  const personal = attachments.filter((a) => a.doc_type !== "coi");
+
+  // Section header rides on the first date group of each section, so the
+  // existing date-group render loop stays as-is.
+  const sectionedGroups = [
+    ...groupByDate(personal).map((g, i) => ({
+      ...g,
+      key: `personal-${g.date}`,
+      section: i === 0 ? t("sections.personal") : null,
+      accent: "bg-[#102b56]",
+      count: personal.length,
+    })),
+    ...groupByDate(commercial).map((g, i) => ({
+      ...g,
+      key: `commercial-${g.date}`,
+      section: i === 0 ? t("sections.commercial") : null,
+      accent: "bg-[#a30f3e]",
+      count: commercial.length,
+    })),
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50 py-6 flex flex-col justify-center sm:py-12">
@@ -240,24 +321,82 @@ export default function ViewDocuments() {
             {t("heroSubtitle")}
           </p>
 
-          <form onSubmit={handleSubmit} className="mb-8">
-            <div className="flex items-center border-b-2 border-[#a30f3e] py-2">
+          {stage === "identify" && (
+            <form onSubmit={handleRequestCode} className="mb-8 space-y-4">
+              <p className="text-sm text-gray-600 text-center">
+                {t("auth.identifyHelp")}
+              </p>
               <input
-                className="appearance-none bg-transparent border-none w-full text-gray-800 mr-3 py-2 px-3 leading-tight focus:outline-none focus:ring-0"
-                type="email"
-                placeholder={t("inputPlaceholder")}
-                value={searchEmail}
-                onChange={(e) => setSearchEmail(e.target.value)}
+                className="border border-gray-300 rounded-lg w-full text-gray-800 py-2.5 px-3 focus:outline-none focus:border-[#a30f3e]"
+                type="tel"
+                inputMode="numeric"
+                placeholder={t("auth.phonePlaceholder")}
+                value={phone}
+                onChange={(e) => {
+                  const d = e.target.value.replace(/\D/g, "").slice(0, 10);
+                  setPhone(
+                    d.length > 6
+                      ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+                      : d.length > 3
+                        ? `(${d.slice(0, 3)}) ${d.slice(3)}`
+                        : d,
+                  );
+                }}
+              />
+              <input
+                className="border border-gray-300 rounded-lg w-full text-gray-800 py-2.5 px-3 focus:outline-none focus:border-[#a30f3e]"
+                type="text"
+                placeholder={t("auth.lastNamePlaceholder")}
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
               />
               <button
-                className="flex-shrink-0 bg-[#a30f3e] hover:bg-[#102b56] text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-[#a30f3e] hover:bg-[#102b56] text-white font-semibold py-3 rounded-lg transition-colors disabled:opacity-50"
                 type="submit"
                 disabled={loading}
               >
-                {loading ? t("searching") : t("searchButton")}
+                {loading ? t("auth.sending") : t("auth.sendCode")}
               </button>
-            </div>
-          </form>
+              <p className="text-xs text-gray-500 text-center">
+                {t("auth.needHelp")}
+              </p>
+            </form>
+          )}
+
+          {stage === "code" && (
+            <form onSubmit={handleVerifyCode} className="mb-8 space-y-4">
+              <p className="text-sm text-gray-600 text-center">
+                {t("auth.codeSentTo")} <strong>{sentTo}</strong>
+              </p>
+              <input
+                className="border border-gray-300 rounded-lg w-full text-gray-800 py-3 px-3 text-center text-2xl tracking-[0.4em] focus:outline-none focus:border-[#a30f3e]"
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="------"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+              />
+              <button
+                className="w-full bg-[#a30f3e] hover:bg-[#102b56] text-white font-semibold py-3 rounded-lg transition-colors disabled:opacity-50"
+                type="submit"
+                disabled={loading || code.length !== 6}
+              >
+                {loading ? t("auth.verifying") : t("auth.verify")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setStage("identify");
+                  setCode("");
+                  setError("");
+                }}
+                className="w-full text-sm text-gray-500 hover:text-[#102b56]"
+              >
+                {t("auth.startOver")}
+              </button>
+            </form>
+          )}
 
           {error && (
             <div
@@ -275,15 +414,32 @@ export default function ViewDocuments() {
             </div>
           )}
 
-          {!loading && groupedAttachments.length > 0 && (
+          {!loading && sectionedGroups.length > 0 && (
             <div className="space-y-6">
-              {groupedAttachments.map((group, groupIndex) => (
+              {sectionedGroups.map((group, groupIndex) => (
                 <motion.div
-                  key={group.date}
+                  key={group.key}
+                  className={group.section && groupIndex > 0 ? "pt-6" : ""}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: groupIndex * 0.1, duration: 0.3 }}
                 >
+                  {/* Section Header — first date group of each section only */}
+                  {group.section && (
+                    <div className="flex items-center gap-3 mb-4">
+                      <div
+                        className={`w-1.5 h-6 rounded-full ${group.accent}`}
+                      />
+                      <h2 className="text-base font-bold uppercase tracking-wider text-[#102b56]">
+                        {group.section}
+                      </h2>
+                      <span className="text-xs font-semibold text-gray-600 bg-gray-100 px-2.5 py-1 rounded-full">
+                        {group.count}
+                      </span>
+                      <div className="flex-1 h-px bg-gray-200" />
+                    </div>
+                  )}
+
                   {/* Date Header */}
                   <div className="flex items-center gap-3 mb-3">
                     <div className="flex items-center gap-2 bg-[#102b56] text-white px-4 py-2 rounded-lg">
@@ -420,7 +576,7 @@ export default function ViewDocuments() {
             </div>
           )}
 
-          {!loading && !searchEmail && (
+          {!loading && stage === "identify" && (
             <div className="text-center py-8">
               <svg
                 className="w-16 h-16 text-gray-300 mx-auto mb-4"

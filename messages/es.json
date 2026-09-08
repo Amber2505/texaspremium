@@ -1548,13 +1548,11 @@
   "metaDescription": "Recuperar mis documentos de póliza",
   "heroTitle": "Recuperar mis documentos",
   "heroSubtitle": "Acceder a sus documentos de póliza y tarjetas de identificación",
-  "inputPlaceholder": "Introduzca el correo electrónico del titular de la póliza",
-  "searchButton": "Buscar",
   "searching": "Buscando...",
-  "searchingStatus": "Buscando sus documentos...",
-  "noDocuments": "No se han encontrado documentos para este correo electrónico",
-  "noDocumentsDetail": "Asegúrese de que está utilizando la dirección de correo electrónico asociada a su póliza",
-  "initialState": "Introduzca su dirección de correo electrónico para buscar documentos",
+  "searchingStatus": "Obteniendo sus documentos...",
+  "noDocuments": "No se encontraron documentos para esta póliza",
+  "noDocumentsDetail": "Si compró o renovó recientemente, sus documentos aún pueden estar procesándose. Llámenos al 469-729-5185 y le ayudaremos.",
+  "initialState": "Verifique su número de teléfono para acceder a sus documentos",
   "loadMore": "Otra póliza o documento de póliza anterior",
   "loading": "Cargando...",
   "endOfResults": "— Fin de los documentos —",
@@ -1569,7 +1567,28 @@
       "body": "Si le facilitamos un poco su seguro, una breve reseña ayuda a que otros tejanos nos encuentren. Solo toma un minuto — y significa mucho para nuestro pequeño equipo.",
       "button": "Dejar una reseña en Google",
       "note": "Se abre Google en una pestaña nueva"
-    }
+    }, 
+    "sections": {
+  "personal": "Documentos de Póliza Personal",
+  "commercial": "Documentos de Póliza Comercial"
+  },
+  "auth": {
+  "identifyHelp": "Ingrese el número de teléfono registrado en su póliza. Le enviaremos un código de verificación por mensaje de texto.",
+  "phonePlaceholder": "Número de teléfono",
+  "lastNamePlaceholder": "Apellido (opcional)",
+  "sendCode": "Enviar código",
+  "sending": "Enviando...",
+  "codeSentTo": "Enviamos un código de 6 dígitos al",
+  "verify": "Verificar",
+  "verifying": "Verificando...",
+  "startOver": "Empezar de nuevo",
+  "needHelp": "¿Cambió su número o no funciona? Llámenos al 469-729-5185.",
+  "errors": {
+    "required": "Por favor ingrese un número de teléfono válido de 10 dígitos.",
+    "badCode": "Ese código no es válido. Inténtelo de nuevo.",
+    "generic": "Algo salió mal. Inténtelo de nuevo o llame al 469-729-5185."
+  }
+}
 },
 "RootLayout": {
   "nav": {
