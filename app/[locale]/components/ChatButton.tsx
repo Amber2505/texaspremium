@@ -1326,7 +1326,8 @@ export default function ChatButton() {
       const newVerificationCode = Math.floor(
         100000 + Math.random() * 900000,
       ).toString();
-      const message = `Your verification code is: ${newVerificationCode} - Texas Premium Insurance Services`;
+      const context = serviceType === "claim" ? "claim" : "payment";
+      const message = `Your Texas Premium Insurance Services ${context} code is ${newVerificationCode}. It expires in 5 minutes. We will never ask you for this code.`;
       const encodedMessage = encodeURIComponent(message);
       const toNumber = `${phoneDigits}`;
       const smsUrl = `https://astraldbapi.herokuapp.com/texas_premium_message_send/?message=${encodedMessage}&To=${toNumber}`;

@@ -331,7 +331,7 @@ export default function MotorcycleQuote() {
       };
       sessionStorage.setItem(
         "motorcycleQuoteFormState",
-        JSON.stringify(stateToSave)
+        JSON.stringify(stateToSave),
       );
     }
   }, [
@@ -344,7 +344,7 @@ export default function MotorcycleQuote() {
   ]);
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
   ) => {
     const { name, value } = e.target;
 
@@ -356,12 +356,12 @@ export default function MotorcycleQuote() {
       if (limitedDigits.length > 6) {
         formattedPhoneNumber = `(${limitedDigits.substring(
           0,
-          3
+          3,
         )}) ${limitedDigits.substring(3, 6)}-${limitedDigits.substring(6, 10)}`;
       } else if (limitedDigits.length > 3) {
         formattedPhoneNumber = `(${limitedDigits.substring(
           0,
-          3
+          3,
         )}) ${limitedDigits.substring(3, 6)}`;
       } else if (limitedDigits.length > 0) {
         formattedPhoneNumber = limitedDigits;
@@ -370,7 +370,7 @@ export default function MotorcycleQuote() {
       setPhoneError(
         limitedDigits.length !== 10 && limitedDigits.length > 0
           ? t("step1.errors.phone10Digits")
-          : ""
+          : "",
       );
       setFormData((prevFormData) => ({
         ...prevFormData,
@@ -432,7 +432,7 @@ export default function MotorcycleQuote() {
   };
 
   const handleAddressSelect = (
-    autocomplete: google.maps.places.Autocomplete
+    autocomplete: google.maps.places.Autocomplete,
   ) => {
     const place = autocomplete.getPlace();
     if (place) {
@@ -440,7 +440,7 @@ export default function MotorcycleQuote() {
       const isTexasAddress = place.address_components?.some(
         (component) =>
           component.types.includes("administrative_area_level_1") &&
-          component.short_name === "TX"
+          component.short_name === "TX",
       );
 
       if (!isTexasAddress) {
@@ -481,9 +481,9 @@ export default function MotorcycleQuote() {
     setPhoneError("");
 
     const verificationCode = Math.floor(
-      100000 + Math.random() * 900000
+      100000 + Math.random() * 900000,
     ).toString();
-    const message = `Your verification code is: ${verificationCode} - Texas Premium Insurance Services`;
+    const message = `Your Texas Premium Insurance Services motorcycle quote code is ${verificationCode}. We will never ask you for this code.`;
     const encodedMessage = encodeURIComponent(message);
     const toNumber = `${phoneDigits}`;
     const smsUrl = `https://astraldbapi.herokuapp.com/texas_premium_message_send/?message=${encodedMessage}&To=${toNumber}`;
@@ -597,7 +597,7 @@ export default function MotorcycleQuote() {
         motorcycle.vinNumber.length !== 17 ||
         !motorcycle.make ||
         !motorcycle.model ||
-        !motorcycle.year
+        !motorcycle.year,
     );
 
     if (invalidMotorcycles.length > 0) {
@@ -640,9 +640,9 @@ export default function MotorcycleQuote() {
 
           if (fullName && cleanPhone.length === 10 && privateId && publicId) {
             const campaignURL = `https://astraldbapi.herokuapp.com/gsheetupdate/?name=${encodeURIComponent(
-              fullName
+              fullName,
             )}&phone=${cleanPhone}&private_id=${encodeURIComponent(
-              privateId
+              privateId,
             )}&public_id=${encodeURIComponent(publicId)}`;
 
             try {
@@ -651,7 +651,7 @@ export default function MotorcycleQuote() {
               });
               if (!campaignResponse.ok) {
                 throw new Error(
-                  `Campaign sheet update failed: ${campaignResponse.status}`
+                  `Campaign sheet update failed: ${campaignResponse.status}`,
                 );
               }
               const campaignData = await campaignResponse.json();
@@ -674,7 +674,7 @@ export default function MotorcycleQuote() {
         const result = await response.json();
         console.log(
           `Message sent successfully for submission: ${submissionId}`,
-          result
+          result,
         );
 
         const today = getTodayInCT();
@@ -716,7 +716,7 @@ export default function MotorcycleQuote() {
         setIsSubmitting(false);
       }
     },
-    [formData, getTodayInCT, isSubmitting, t, locale]
+    [formData, getTodayInCT, isSubmitting, t, locale],
   );
 
   const initializeRiders = (count: number): Rider[] => {
@@ -785,14 +785,14 @@ export default function MotorcycleQuote() {
     }
     if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) {
       setVinError(
-        "Invalid VIN format. Use only letters (A-Z, excluding I, O, Q) and numbers."
+        "Invalid VIN format. Use only letters (A-Z, excluding I, O, Q) and numbers.",
       );
       return;
     }
 
     const isDuplicate = formData.Motorcycles.some(
       (Motorcycle, index) =>
-        index !== MotorcycleIndex && Motorcycle.vinNumber === vin
+        index !== MotorcycleIndex && Motorcycle.vinNumber === vin,
     );
     if (isDuplicate) {
       setVinError(t("step2.motorcycle.errors.duplicateVin"));
@@ -809,7 +809,7 @@ export default function MotorcycleQuote() {
           method: "GET",
           headers: { "Content-Type": "application/json" },
           mode: "cors",
-        }
+        },
       );
 
       if (!response.ok) {
@@ -817,7 +817,7 @@ export default function MotorcycleQuote() {
         throw new Error(
           `API error: ${response.status} - ${
             errorText || "Invalid VIN or server error"
-          }`
+          }`,
         );
       }
 
@@ -844,7 +844,7 @@ export default function MotorcycleQuote() {
         setVinError(
           err.message.includes("Failed to fetch")
             ? "Unable to connect to the VIN lookup service. Please try again later."
-            : `Invalid VIN: ${err.message}`
+            : `Invalid VIN: ${err.message}`,
         );
       } else {
         setVinError("An unexpected error occurred.");
@@ -875,7 +875,7 @@ export default function MotorcycleQuote() {
 
   const handleCoverageChange = (
     MotorcycleIndex: number,
-    coverageOption: string
+    coverageOption: string,
   ) => {
     const updatedMotorcycles = [...formData.Motorcycles];
     const Motorcycle = updatedMotorcycles[MotorcycleIndex];
@@ -892,22 +892,22 @@ export default function MotorcycleQuote() {
     if (coverageOption === "Personal Injury Protection") {
       if (newCoverage.includes("Personal Injury Protection")) {
         newCoverage = newCoverage.filter(
-          (option) => option !== "Personal Injury Protection"
+          (option) => option !== "Personal Injury Protection",
         );
       } else {
         newCoverage = newCoverage.filter(
-          (option) => option !== "Medical Payments"
+          (option) => option !== "Medical Payments",
         );
         newCoverage.push("Personal Injury Protection");
       }
     } else if (coverageOption === "Medical Payments") {
       if (newCoverage.includes("Medical Payments")) {
         newCoverage = newCoverage.filter(
-          (option) => option !== "Medical Payments"
+          (option) => option !== "Medical Payments",
         );
       } else {
         newCoverage = newCoverage.filter(
-          (option) => option !== "Personal Injury Protection"
+          (option) => option !== "Personal Injury Protection",
         );
         newCoverage.push("Medical Payments");
       }
@@ -935,7 +935,7 @@ export default function MotorcycleQuote() {
     if (digits.length === 10) {
       return `(${digits.substring(0, 3)}) ${digits.substring(
         3,
-        6
+        6,
       )}-${digits.substring(6, 10)}`;
     }
     return phone;
@@ -1156,12 +1156,12 @@ ${coverageDetails}`;
                 <Autocomplete
                   onLoad={(autocomplete) => {
                     autocomplete.addListener("place_changed", () =>
-                      handleAddressSelect(autocomplete)
+                      handleAddressSelect(autocomplete),
                     );
                     autocomplete.setComponentRestrictions({ country: "us" });
                     const texasBounds = new google.maps.LatLngBounds(
                       new google.maps.LatLng(25.8371, -106.6456),
-                      new google.maps.LatLng(36.5007, -93.5083)
+                      new google.maps.LatLng(36.5007, -93.5083),
                     );
                     autocomplete.setOptions({
                       bounds: texasBounds,
@@ -1233,8 +1233,8 @@ ${coverageDetails}`;
                       isPhoneVerified
                         ? "bg-green-500 text-white hover:bg-green-600"
                         : isSending
-                        ? "bg-gray-400 text-white cursor-not-allowed"
-                        : "bg-blue-500 text-white hover:bg-blue-600"
+                          ? "bg-gray-400 text-white cursor-not-allowed"
+                          : "bg-blue-500 text-white hover:bg-blue-600"
                     }`}
                     onClick={handleSendCode}
                     disabled={isSending || isPhoneVerified}
@@ -1242,8 +1242,8 @@ ${coverageDetails}`;
                     {isSending
                       ? t("step1.verification.sending")
                       : isPhoneVerified
-                      ? t("step1.verification.verified")
-                      : t("step1.verification.sendCode")}
+                        ? t("step1.verification.verified")
+                        : t("step1.verification.sendCode")}
                   </button>
                 </div>
                 {phoneError && (
@@ -1669,7 +1669,7 @@ ${coverageDetails}`;
                           onChange={(e) => {
                             const onlyNumbers = e.target.value.replace(
                               /\D/g,
-                              ""
+                              "",
                             );
                             const updatedRiders = [...formData.Riders];
                             updatedRiders[index] = {
@@ -1846,7 +1846,7 @@ ${coverageDetails}`;
                             }}
                             className="border p-2 w-full rounded text-xs sm:text-sm"
                             placeholder={t(
-                              "step2.rider.placeholders.internationalId"
+                              "step2.rider.placeholders.internationalId",
                             )}
                             required
                           />
@@ -1954,7 +1954,7 @@ ${coverageDetails}`;
                         readOnly
                         className="border p-2 w-full rounded bg-gray-100 text-xs sm:text-sm"
                         placeholder={t(
-                          "step2.motorcycle.placeholders.autoFilled"
+                          "step2.motorcycle.placeholders.autoFilled",
                         )}
                         disabled
                       />
@@ -1969,7 +1969,7 @@ ${coverageDetails}`;
                         readOnly
                         className="border p-2 w-full rounded bg-gray-100 text-xs sm:text-sm"
                         placeholder={t(
-                          "step2.motorcycle.placeholders.autoFilled"
+                          "step2.motorcycle.placeholders.autoFilled",
                         )}
                         disabled
                       />
@@ -1984,7 +1984,7 @@ ${coverageDetails}`;
                         readOnly
                         className="border p-2 w-full rounded bg-gray-100 text-xs sm:text-sm"
                         placeholder={t(
-                          "step2.motorcycle.placeholders.autoFilled"
+                          "step2.motorcycle.placeholders.autoFilled",
                         )}
                         disabled
                       />
@@ -1999,49 +1999,49 @@ ${coverageDetails}`;
                           {
                             name: "Liability",
                             description: t(
-                              "step2.motorcycle.coverageDescriptions.liability"
+                              "step2.motorcycle.coverageDescriptions.liability",
                             ),
                           },
                           {
                             name: "Comprehensive/Collision (Basic Full coverage)",
                             description: t(
-                              "step2.motorcycle.coverageDescriptions.comprehensive"
+                              "step2.motorcycle.coverageDescriptions.comprehensive",
                             ),
                           },
                           {
                             name: "Personal Injury Protection",
                             description: t(
-                              "step2.motorcycle.coverageDescriptions.pip"
+                              "step2.motorcycle.coverageDescriptions.pip",
                             ),
                           },
                           {
                             name: "Medical Payments",
                             description: t(
-                              "step2.motorcycle.coverageDescriptions.medpay"
+                              "step2.motorcycle.coverageDescriptions.medpay",
                             ),
                           },
                           {
                             name: "Uninsured Motorist",
                             description: t(
-                              "step2.motorcycle.coverageDescriptions.uninsured"
+                              "step2.motorcycle.coverageDescriptions.uninsured",
                             ),
                           },
                           {
                             name: "Towing",
                             description: t(
-                              "step2.motorcycle.coverageDescriptions.towing"
+                              "step2.motorcycle.coverageDescriptions.towing",
                             ),
                           },
                           {
                             name: "Rental",
                             description: t(
-                              "step2.motorcycle.coverageDescriptions.rental"
+                              "step2.motorcycle.coverageDescriptions.rental",
                             ),
                           },
                           {
                             name: "Roadside Assistance",
                             description: t(
-                              "step2.motorcycle.coverageDescriptions.roadside"
+                              "step2.motorcycle.coverageDescriptions.roadside",
                             ),
                           },
                         ].map((option) => (
@@ -2343,7 +2343,7 @@ ${coverageDetails}`;
                                   t("step4.noData.notProvided")}
                               </p>
                               {["out-of-state-DL", "out-of-state-ID"].includes(
-                                Rider.idType
+                                Rider.idType,
                               ) && (
                                 <p>
                                   <span className="font-medium text-gray-700">

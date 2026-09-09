@@ -485,7 +485,7 @@ export default function AutoQuote() {
     const verificationCode = Math.floor(
       100000 + Math.random() * 900000,
     ).toString();
-    const message = `Your verification code is: ${verificationCode} - Texas Premium Insurance Services`;
+    const message = `Your Texas Premium Insurance Services auto quote code is ${verificationCode}. We will never ask you for this code.`;
     const encodedMessage = encodeURIComponent(message);
     const toNumber = `${phoneDigits}`;
     const smsUrl = `https://astraldbapi.herokuapp.com/texas_premium_message_send/?message=${encodedMessage}&To=${toNumber}`;
