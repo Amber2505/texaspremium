@@ -1,7 +1,7 @@
 //app/[locale]/(root)/view_documents/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Head from "next/head";
 import { motion } from "framer-motion";
 import { useTranslations } from "next-intl";
@@ -36,8 +36,11 @@ export default function ViewDocuments() {
   const [stage, setStage] = useState<"identify" | "code" | "results">(
     "identify",
   );
-  const [lastName, setLastName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [searchType, setSearchType] = useState("phone");
+  const [searchValue, setSearchValue] = useState("");
+  const [restoring, setRestoring] = useState(true);
+  const [expiresAt, setExpiresAt] = useState<number | null>(null);
+  const [minutesLeft, setMinutesLeft] = useState<number | null>(null);
   const [code, setCode] = useState("");
   const [requestId, setRequestId] = useState("");
   const [sentTo, setSentTo] = useState("");
@@ -54,6 +57,70 @@ export default function ViewDocuments() {
     null,
   );
   const [previewUrl, setPreviewUrl] = useState<string>("");
+
+  // Survive a page refresh — the token still expires server-side after
+  // 30 minutes, so this only saves re-verifying within that window.
+  useEffect(() => {
+    const saved = sessionStorage.getItem("docsToken");
+    const savedExp = Number(sessionStorage.getItem("docsTokenExp") || 0);
+
+    if (saved && savedExp > Date.now()) {
+      setToken(saved);
+      setExpiresAt(savedExp);
+      setStage("results");
+      setHasSearched(true);
+      fetchAttachments(saved, 0, false).finally(() => setRestoring(false));
+    } else {
+      // Expired while the tab was closed — don't bother trying.
+      sessionStorage.removeItem("docsToken");
+      sessionStorage.removeItem("docsTokenExp");
+      setRestoring(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Expire on our own clock instead of waiting for a request to fail.
+  useEffect(() => {
+    if (!expiresAt) return;
+
+    const tick = () => {
+      const msLeft = expiresAt - Date.now();
+      if (msLeft <= 0) {
+        sessionStorage.removeItem("docsToken");
+        sessionStorage.removeItem("docsTokenExp");
+        setToken("");
+        setExpiresAt(null);
+        setMinutesLeft(null);
+        setAttachments([]);
+        setStage("identify");
+        setHasSearched(false);
+        setError(t("auth.errors.sessionExpired"));
+        return;
+      }
+      setMinutesLeft(Math.ceil(msLeft / 60000));
+    };
+
+    tick();
+    const id = setInterval(tick, 30000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expiresAt]);
+
+  const handleSignOut = () => {
+    sessionStorage.removeItem("docsToken");
+    sessionStorage.removeItem("docsTokenExp");
+    setToken("");
+    setExpiresAt(null);
+    setMinutesLeft(null);
+    setAttachments([]);
+    setStage("identify");
+    setSearchValue("");
+    setCode("");
+    setHasSearched(false);
+    setCurrentSkip(0);
+    setLoadCount(0);
+    setError("");
+  };
 
   const getCurrentLimit = () => {
     if (loadCount === 0) return 1;
@@ -84,8 +151,13 @@ export default function ViewDocuments() {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         if (response.status === 401) {
+          sessionStorage.removeItem("docsToken");
+          sessionStorage.removeItem("docsTokenExp");
           setStage("identify");
           setToken("");
+          setExpiresAt(null);
+          setMinutesLeft(null);
+          setHasSearched(false);
         }
         throw new Error(errorData.detail || "Failed to fetch attachments");
       }
@@ -109,8 +181,15 @@ export default function ViewDocuments() {
 
   const handleRequestCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (phone.replace(/\D/g, "").length !== 10) {
+    if (!searchValue.trim()) {
       setError(t("auth.errors.required"));
+      return;
+    }
+    if (
+      searchType === "phone" &&
+      searchValue.replace(/\D/g, "").length !== 10
+    ) {
+      setError(t("auth.errors.phoneInvalid"));
       return;
     }
     setLoading(true);
@@ -122,8 +201,11 @@ export default function ViewDocuments() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            phone: phone.replace(/\D/g, ""),
-            last_name: lastName.trim(),
+            search_type: searchType,
+            search_value:
+              searchType === "phone"
+                ? searchValue.replace(/\D/g, "")
+                : searchValue.trim(),
           }),
         },
       );
@@ -156,6 +238,12 @@ export default function ViewDocuments() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || t("auth.errors.badCode"));
       setToken(data.token);
+      sessionStorage.setItem("docsToken", data.token);
+      const exp = data.expires_at
+        ? new Date(data.expires_at).getTime()
+        : Date.now() + 60 * 60 * 1000;
+      sessionStorage.setItem("docsTokenExp", String(exp));
+      setExpiresAt(exp);
       setStage("results");
       setCurrentSkip(0);
       setLoadCount(0);
@@ -321,35 +409,57 @@ export default function ViewDocuments() {
             {t("heroSubtitle")}
           </p>
 
-          {stage === "identify" && (
+          {!restoring && stage === "identify" && (
             <form onSubmit={handleRequestCode} className="mb-8 space-y-4">
               <p className="text-sm text-gray-600 text-center">
                 {t("auth.identifyHelp")}
               </p>
-              <input
-                className="border border-gray-300 rounded-lg w-full text-gray-800 py-2.5 px-3 focus:outline-none focus:border-[#a30f3e]"
-                type="tel"
-                inputMode="numeric"
-                placeholder={t("auth.phonePlaceholder")}
-                value={phone}
-                onChange={(e) => {
-                  const d = e.target.value.replace(/\D/g, "").slice(0, 10);
-                  setPhone(
-                    d.length > 6
-                      ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
-                      : d.length > 3
-                        ? `(${d.slice(0, 3)}) ${d.slice(3)}`
-                        : d,
-                  );
-                }}
-              />
-              <input
-                className="border border-gray-300 rounded-lg w-full text-gray-800 py-2.5 px-3 focus:outline-none focus:border-[#a30f3e]"
-                type="text"
-                placeholder={t("auth.lastNamePlaceholder")}
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-              />
+              <div className="flex flex-col sm:flex-row gap-2">
+                <select
+                  className="border border-gray-300 rounded-lg text-gray-800 py-2.5 px-3 bg-white focus:outline-none focus:border-[#a30f3e] sm:w-48 shrink-0"
+                  value={searchType}
+                  onChange={(e) => {
+                    setSearchType(e.target.value);
+                    setSearchValue("");
+                    setError("");
+                  }}
+                >
+                  <option value="phone">{t("auth.types.phone")}</option>
+                  <option value="policy">{t("auth.types.policy")}</option>
+                  <option value="plate">{t("auth.types.plate")}</option>
+                  <option value="vin">{t("auth.types.vin")}</option>
+                </select>
+                <input
+                  className="border border-gray-300 rounded-lg w-full text-gray-800 py-2.5 px-3 focus:outline-none focus:border-[#a30f3e]"
+                  type={searchType === "phone" ? "tel" : "text"}
+                  inputMode={searchType === "phone" ? "numeric" : "text"}
+                  maxLength={searchType === "vin" ? 17 : undefined}
+                  placeholder={t(`auth.placeholders.${searchType}`)}
+                  value={searchValue}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (searchType === "phone") {
+                      const d = v.replace(/\D/g, "").slice(0, 10);
+                      setSearchValue(
+                        d.length > 6
+                          ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+                          : d.length > 3
+                            ? `(${d.slice(0, 3)}) ${d.slice(3)}`
+                            : d,
+                      );
+                    } else if (searchType === "vin" || searchType === "plate") {
+                      setSearchValue(v.toUpperCase());
+                    } else {
+                      setSearchValue(v);
+                    }
+                  }}
+                />
+              </div>
+              {(searchType === "plate" || searchType === "vin") && (
+                <p className="text-xs text-gray-500 text-center">
+                  {t("auth.vehicleNote")}
+                </p>
+              )}
               <button
                 className="w-full bg-[#a30f3e] hover:bg-[#102b56] text-white font-semibold py-3 rounded-lg transition-colors disabled:opacity-50"
                 type="submit"
@@ -363,7 +473,7 @@ export default function ViewDocuments() {
             </form>
           )}
 
-          {stage === "code" && (
+          {!restoring && stage === "code" && (
             <form onSubmit={handleVerifyCode} className="mb-8 space-y-4">
               <p className="text-sm text-gray-600 text-center">
                 {t("auth.codeSentTo")} <strong>{sentTo}</strong>
@@ -411,6 +521,22 @@ export default function ViewDocuments() {
             <div className="flex flex-col items-center justify-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#a30f3e] mb-4"></div>
               <p className="text-gray-600">{t("searchingStatus")}</p>
+            </div>
+          )}
+
+          {stage === "results" && !restoring && (
+            <div className="flex justify-between items-center mb-4 gap-3">
+              <p className="text-xs text-gray-500">
+                {minutesLeft !== null && minutesLeft <= 5
+                  ? t("auth.expiringSoon", { minutes: minutesLeft })
+                  : t("auth.sharedDevice")}
+              </p>
+              <button
+                onClick={handleSignOut}
+                className="text-sm text-gray-500 hover:text-[#a30f3e] underline shrink-0"
+              >
+                {t("auth.signOut")}
+              </button>
             </div>
           )}
 
@@ -576,7 +702,7 @@ export default function ViewDocuments() {
             </div>
           )}
 
-          {!loading && stage === "identify" && (
+          {!loading && !restoring && stage === "identify" && (
             <div className="text-center py-8">
               <svg
                 className="w-16 h-16 text-gray-300 mx-auto mb-4"

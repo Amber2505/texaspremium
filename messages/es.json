@@ -1573,9 +1573,24 @@
   "commercial": "Documentos de Póliza Comercial"
   },
   "auth": {
-  "identifyHelp": "Ingrese el número de teléfono registrado en su póliza. Le enviaremos un código de verificación por mensaje de texto.",
-  "phonePlaceholder": "Número de teléfono",
-  "lastNamePlaceholder": "Apellido (opcional)",
+  "identifyHelp": "Busque su póliza y le enviaremos un código de verificación al teléfono registrado.",
+  "types": {
+    "phone": "Número de teléfono",
+    "policy": "Número de póliza",
+    "plate": "Placa del vehículo",
+    "vin": "Número VIN"
+  },
+  "placeholders": {
+    "phone": "(469) 555-0134",
+    "policy": "ej. PTX2711221",
+    "plate": "Número de placa de Texas",
+    "vin": "VIN de 17 caracteres"
+  },
+  "vehicleNote": "Buscar su vehículo puede tardar hasta un minuto.",
+  "restoring": "Cargando sus documentos...",
+  "expiringSoon": "Su sesión termina en {minutes} min — descargue lo que necesite.",
+  "signOut": "Cerrar sesión",
+  "sharedDevice": "¿Está en un dispositivo compartido? Cierre sesión al terminar.",
   "sendCode": "Enviar código",
   "sending": "Enviando...",
   "codeSentTo": "Enviamos un código de 6 dígitos al",
@@ -1584,7 +1599,9 @@
   "startOver": "Empezar de nuevo",
   "needHelp": "¿Cambió su número o no funciona? Llámenos al 469-729-5185.",
   "errors": {
-    "required": "Por favor ingrese un número de teléfono válido de 10 dígitos.",
+    "required": "Por favor ingrese algún dato para buscar.",
+    "phoneInvalid": "Por favor ingrese un número de teléfono válido de 10 dígitos.",
+    "sessionExpired": "Su sesión ha terminado. Verifique de nuevo para ver sus documentos.",
     "badCode": "Ese código no es válido. Inténtelo de nuevo.",
     "generic": "Algo salió mal. Inténtelo de nuevo o llame al 469-729-5185."
   }

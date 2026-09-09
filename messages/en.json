@@ -1573,9 +1573,24 @@
   "commercial": "Commercial Policy Documents"
   },
   "auth": {
-    "identifyHelp": "Enter the phone number on your policy. We'll text you a verification code.",
-    "phonePlaceholder": "Phone number",
-    "lastNamePlaceholder": "Last name (optional)",
+    "identifyHelp": "Look up your policy, then we'll text a verification code to the phone number on file.",
+      "types": {
+    "phone": "Phone number",
+    "policy": "Policy number",
+    "plate": "License plate",
+    "vin": "VIN"
+  },
+  "placeholders": {
+    "phone": "(469) 555-0134",
+    "policy": "e.g. PTX2711221",
+    "plate": "Texas plate number",
+    "vin": "17-character VIN"
+  },
+  "vehicleNote": "Looking up your vehicle can take up to a minute.",
+  "restoring": "Loading your documents...",
+  "expiringSoon": "Your session ends in {minutes} min — download anything you need.",
+  "signOut": "Sign out",
+  "sharedDevice": "On a shared device? Sign out when you're done.",
     "sendCode": "Send Code",
     "sending": "Sending...",
     "codeSentTo": "We sent a 6-digit code to",
@@ -1584,7 +1599,9 @@
     "startOver": "Start over",
     "needHelp": "Number changed or not working? Call us at 469-729-5185.",
     "errors": {
-      "required": "Please enter a valid 10-digit phone number.",
+    "required": "Please enter something to search with.",
+    "phoneInvalid": "Please enter a valid 10-digit phone number.",
+    "sessionExpired": "Your session has ended. Please verify again to view your documents.",
       "badCode": "That code isn't valid. Please try again.",
       "generic": "Something went wrong. Please try again or call 469-729-5185."
     }
