@@ -731,6 +731,14 @@ export default function MessageStoredPage() {
       setVerifyingCallCode(false);
     }
   };
+  const [claims, setClaims] = useState<
+    Record<string, { agentName: string; claimedAt: string }>
+  >({});
+  const [agentName, setAgentName] = useState("");
+  const [showNamePrompt, setShowNamePrompt] = useState(false);
+  const [nameInput, setNameInput] = useState("");
+  const [claiming, setClaiming] = useState(false);
+
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const [showInlineSearch, setShowInlineSearch] = useState(false);
@@ -972,6 +980,139 @@ export default function MessageStoredPage() {
     }, 60000);
     return () => clearInterval(check);
   }, [showCalls]);
+
+  // Agent name is per-machine and expires at midnight, so a shared
+  // workstation doesn't carry yesterday's agent into today.
+  useEffect(() => {
+    const raw = localStorage.getItem("agent_name");
+    if (!raw) return;
+    try {
+      const { name, expiresAt } = JSON.parse(raw);
+      if (name && Date.now() < expiresAt) {
+        setAgentName(name);
+      } else {
+        localStorage.removeItem("agent_name");
+      }
+    } catch {
+      // Legacy plain-string value from before the expiry existed
+      localStorage.removeItem("agent_name");
+    }
+  }, []);
+
+  const saveAgentName = (name: string) => {
+    const now = new Date();
+    const endOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      23,
+      59,
+      59,
+      999,
+    ).getTime();
+    localStorage.setItem(
+      "agent_name",
+      JSON.stringify({ name, expiresAt: endOfDay }),
+    );
+    setAgentName(name);
+  };
+
+  const fetchClaims = useCallback(async () => {
+    try {
+      const res = await fetch("/api/messages/claims");
+      const data = await res.json();
+      const map: Record<string, { agentName: string; claimedAt: string }> = {};
+      for (const c of data.claims || []) {
+        map[c.conversationId] = {
+          agentName: c.agentName,
+          claimedAt: c.claimedAt,
+        };
+      }
+      setClaims(map);
+    } catch {
+      /* next poll picks it up */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    fetchClaims();
+    const id = setInterval(fetchClaims, 15000);
+    return () => clearInterval(id);
+  }, [mounted, fetchClaims]);
+
+  const claimThread = async (convId: string) => {
+    if (!agentName) {
+      setNameInput("");
+      setShowNamePrompt(true);
+      return;
+    }
+    setClaiming(true);
+    try {
+      const res = await fetch("/api/messages/claims", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: convId, agentName }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Could not claim this chat.");
+      }
+      await fetchClaims();
+    } finally {
+      setClaiming(false);
+    }
+  };
+
+  const [showMyQueue, setShowMyQueue] = useState(true);
+  const [confirmMarkAll, setConfirmMarkAll] = useState(false);
+
+  // Claims for this agent, newest first. Falls back to the conversationId
+  // itself for display — it's the comma-joined phone list, so it renders
+  // fine even when that thread isn't in the loaded page of conversations.
+  const myThreads = Object.entries(claims)
+    .filter(([, c]) => c.agentName === agentName && agentName)
+    .sort(
+      (a, b) =>
+        new Date(b[1].claimedAt).getTime() - new Date(a[1].claimedAt).getTime(),
+    )
+    .map(([convId, c]) => {
+      const conv = conversations.find(
+        (x) => (x.conversationId || x.phoneNumber) === convId,
+      );
+      return {
+        convId,
+        claimedAt: c.claimedAt,
+        conv,
+        displayName: conv
+          ? getConversationName(conv)
+          : convId
+              .split(",")
+              .map((p) => formatPhoneNumber(p))
+              .join(", "),
+        preview: conv?.lastMessage?.subject || "",
+        unread: (conv?.unreadCount ?? 0) > 0,
+      };
+    });
+
+  const switchAgent = () => {
+    setNameInput(agentName);
+    setShowNamePrompt(true);
+  };
+
+  const releaseThread = async (convId: string) => {
+    setClaiming(true);
+    try {
+      await fetch("/api/messages/claims", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: convId }),
+      });
+      await fetchClaims();
+    } finally {
+      setClaiming(false);
+    }
+  };
 
   // Load all drafts from localStorage on mount
   useEffect(() => {
@@ -1541,6 +1682,7 @@ export default function MessageStoredPage() {
   // Debounced search
   const handleSearchChange = (value: string) => {
     setSearchInput(value);
+    setConfirmMarkAll(false);
 
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current);
@@ -1805,8 +1947,6 @@ export default function MessageStoredPage() {
   };
 
   const markAllAsRead = async () => {
-    if (!confirm("Mark all conversations as read?")) return;
-
     const unreadConvs = conversations.filter(
       (c) =>
         (c.unreadCount ?? 0) > 0 ||
@@ -2859,7 +2999,7 @@ export default function MessageStoredPage() {
               selectedPhone ? "hidden md:flex" : "flex"
             }`}
           >
-            <div className="p-4 border-b border-gray-200 space-y-3">
+            <div className="p-4 border-b border-gray-200 space-y-2.5">
               <div className="relative">
                 <input
                   type="text"
@@ -2947,6 +3087,69 @@ export default function MessageStoredPage() {
                   <option value="scheduled">Scheduled</option>
                 </select>
               </div>
+              {/* Shift status */}
+              {agentName && (
+                <div className="rounded-xl border border-gray-200 bg-gradient-to-b from-white to-gray-50 overflow-hidden">
+                  <div className="flex items-center gap-2.5 px-3 py-2.5">
+                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center flex-shrink-0 text-white text-xs font-bold">
+                      {agentName.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide leading-none">
+                        Signed in
+                      </p>
+                      <p className="text-sm font-semibold text-gray-900 truncate leading-tight mt-0.5">
+                        {agentName}
+                      </p>
+                    </div>
+                    <button
+                      onClick={switchAgent}
+                      className="text-xs text-gray-400 hover:text-blue-600 font-medium transition-colors flex-shrink-0"
+                      title="Switch agent"
+                    >
+                      Switch
+                    </button>
+                  </div>
+
+                  {Object.keys(claims).length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap px-3 py-2 border-t border-gray-100 bg-emerald-50/60">
+                      {Object.entries(
+                        Object.values(claims).reduce(
+                          (acc, c) => {
+                            acc[c.agentName] = (acc[c.agentName] || 0) + 1;
+                            return acc;
+                          },
+                          {} as Record<string, number>,
+                        ),
+                      )
+                        .sort((a, b) => b[1] - a[1])
+                        .map(([name, count]) => (
+                          <span
+                            key={name}
+                            title={`${name} is handling ${count} chat${count > 1 ? "s" : ""}`}
+                            className={`inline-flex items-center gap-1.5 pl-2 pr-1 py-0.5 rounded-full text-xs border ${
+                              name === agentName
+                                ? "bg-emerald-600 border-emerald-600 text-white"
+                                : "bg-white border-emerald-200 text-emerald-800"
+                            }`}
+                          >
+                            <span className="font-medium">{name}</span>
+                            <span
+                              className={`min-w-[18px] text-center font-bold rounded-full px-1 ${
+                                name === agentName
+                                  ? "bg-emerald-700/60"
+                                  : "bg-emerald-100 text-emerald-700"
+                              }`}
+                            >
+                              {count}
+                            </span>
+                          </span>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Mark All Read button - shows when there are unread conversations */}
               {conversations.some(
                 (c) =>
@@ -2954,25 +3157,50 @@ export default function MessageStoredPage() {
                   (c.lastMessage?.direction === "Inbound" &&
                     c.lastMessage?.readStatus === "Unread"),
               ) && (
-                <button
-                  onClick={markAllAsRead}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-sm font-medium rounded-lg transition-colors"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  Mark All as Read
-                </button>
+                <div className="flex items-center justify-end gap-2 min-h-[26px]">
+                  {confirmMarkAll ? (
+                    <>
+                      <span className="text-xs text-gray-500 mr-auto">
+                        Mark every conversation read?
+                      </span>
+                      <button
+                        onClick={() => setConfirmMarkAll(false)}
+                        className="text-xs px-2.5 py-1 rounded-lg text-gray-500 hover:bg-gray-100 font-medium transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          setConfirmMarkAll(false);
+                          markAllAsRead();
+                        }}
+                        className="text-xs px-2.5 py-1 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors"
+                      >
+                        Yes, mark all
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmMarkAll(true)}
+                      className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-blue-600 font-medium transition-colors"
+                    >
+                      <svg
+                        className="w-3.5 h-3.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      Mark all as read
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -3228,6 +3456,12 @@ export default function MessageStoredPage() {
                               )}
                             </div>
                           </div>
+                          {claims[convKey] && (
+                            <p className="text-xs text-emerald-700 font-semibold mb-0.5 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                              {claims[convKey].agentName} is handling this
+                            </p>
+                          )}
                           {drafts[convKey] ? (
                             <p className="text-sm text-amber-600 truncate flex items-center gap-1">
                               <span className="font-semibold">Draft:</span>
@@ -3449,6 +3683,138 @@ export default function MessageStoredPage() {
             </div>
           </div>
 
+          {/* My queue — collapsible */}
+          {agentName && myThreads.length > 0 && (
+            <div
+              className={`hidden lg:flex flex-col bg-white border-r border-gray-200 transition-all ${
+                showMyQueue ? "w-72" : "w-10"
+              }`}
+            >
+              <button
+                onClick={() => setShowMyQueue((v) => !v)}
+                className="flex items-center gap-2 px-3 py-3 border-b border-gray-200 hover:bg-gray-50 transition-colors"
+                title={showMyQueue ? "Collapse" : "My queue"}
+              >
+                <svg
+                  className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${
+                    showMyQueue ? "" : "rotate-180"
+                  }`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+                {showMyQueue ? (
+                  <>
+                    <span className="text-sm font-semibold text-gray-900">
+                      My queue
+                    </span>
+                    <span className="ml-auto text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                      {myThreads.length}
+                    </span>
+                  </>
+                ) : null}
+              </button>
+
+              {!showMyQueue && (
+                <div className="flex justify-center pt-2">
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full w-6 h-6 flex items-center justify-center">
+                    {myThreads.length}
+                  </span>
+                </div>
+              )}
+
+              {showMyQueue && (
+                <div className="flex-1 overflow-y-auto">
+                  {myThreads.map((t) => {
+                    const isOpen = selectedConversationId === t.convId;
+                    return (
+                      <div
+                        key={t.convId}
+                        className={`px-3 py-2.5 border-b border-gray-100 transition-colors ${
+                          isOpen
+                            ? "bg-emerald-50 border-l-4 border-l-emerald-600"
+                            : "hover:bg-gray-50"
+                        }`}
+                      >
+                        <div
+                          onClick={() => {
+                            const existing = conversations.find(
+                              (c) =>
+                                (c.conversationId || c.phoneNumber) ===
+                                t.convId,
+                            );
+                            if (existing) {
+                              viewConversation(existing);
+                            } else {
+                              const phones = t.convId.split(",");
+                              setSelectedPhone(phones[0]);
+                              setSelectedConversationId(t.convId);
+                              setSelectedParticipants(phones);
+                              setConversation([]);
+                              setMessageInput("");
+                            }
+                          }}
+                          className="cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`text-sm truncate ${
+                                t.unread
+                                  ? "font-bold text-gray-900"
+                                  : "font-medium text-gray-800"
+                              }`}
+                              title={t.displayName}
+                            >
+                              {t.displayName}
+                            </span>
+                            {t.unread && (
+                              <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
+                            )}
+                          </div>
+                          {t.preview && (
+                            <p className="text-xs text-gray-500 truncate mt-0.5">
+                              {t.preview}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            releaseThread(t.convId);
+                          }}
+                          disabled={claiming}
+                          className="mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold text-gray-400 hover:text-emerald-700 transition-colors disabled:opacity-50"
+                        >
+                          <svg
+                            className="w-3 h-3"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M5 13l4 4L19 7"
+                            />
+                          </svg>
+                          Mark done
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Chat Area */}
           <div
             className={`flex-1 flex flex-col bg-gray-50 ${
@@ -3564,6 +3930,43 @@ export default function MessageStoredPage() {
                           )}
                       </div>
                     </div>
+
+                    {/* Claim / release */}
+                    {!selectMode && selectedConversationId && (
+                      <div className="flex items-center gap-2">
+                        {claims[selectedConversationId] ? (
+                          claims[selectedConversationId].agentName ===
+                          agentName ? (
+                            <button
+                              onClick={() =>
+                                releaseThread(selectedConversationId)
+                              }
+                              disabled={claiming}
+                              className="px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
+                              title="You're handling this — click to release"
+                            >
+                              ✓ You&apos;re handling this
+                            </button>
+                          ) : (
+                            <span
+                              className="px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300"
+                              title={`Claimed ${new Date(claims[selectedConversationId].claimedAt).toLocaleTimeString()}`}
+                            >
+                              {claims[selectedConversationId].agentName} is
+                              handling this
+                            </span>
+                          )
+                        ) : (
+                          <button
+                            onClick={() => claimThread(selectedConversationId)}
+                            disabled={claiming}
+                            className="px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition-colors disabled:opacity-50"
+                          >
+                            Claim chat
+                          </button>
+                        )}
+                      </div>
+                    )}
 
                     {/* Language toggle */}
                     {!selectMode && (
@@ -5670,6 +6073,77 @@ export default function MessageStoredPage() {
                   className="flex-1 text-xs px-4 py-2 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 transition disabled:opacity-50"
                 >
                   {verifyingCallCode ? "Verifying…" : "Unlock"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Agent name prompt */}
+        {showNamePrompt && (
+          <div className="fixed inset-0 backdrop-blur-sm bg-black/40 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
+              <h3 className="text-lg font-bold text-gray-900 mb-1">
+                {agentName ? "Switch agent" : "What's your name?"}
+              </h3>
+              <p className="text-sm text-gray-500 mb-4">
+                {agentName
+                  ? "Taking over this station? Enter your name — claims already made stay with whoever made them."
+                  : "Shown to other agents so nobody doubles up on the same chat."}
+              </p>
+              <input
+                type="text"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && nameInput.trim()) {
+                    const n = nameInput.trim();
+                    saveAgentName(n);
+                    setShowNamePrompt(false);
+                    if (selectedConversationId) {
+                      fetch("/api/messages/claims", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          conversationId: selectedConversationId,
+                          agentName: n,
+                        }),
+                      }).then(fetchClaims);
+                    }
+                  }
+                }}
+                placeholder="e.g. Zayn"
+                autoFocus
+                className="w-full px-3.5 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 mb-4"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowNamePrompt(false)}
+                  className="flex-1 text-sm px-4 py-2.5 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const n = nameInput.trim();
+                    if (!n) return;
+                    saveAgentName(n);
+                    setShowNamePrompt(false);
+                    if (selectedConversationId) {
+                      fetch("/api/messages/claims", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          conversationId: selectedConversationId,
+                          agentName: n,
+                        }),
+                      }).then(fetchClaims);
+                    }
+                  }}
+                  disabled={!nameInput.trim()}
+                  className="flex-1 text-sm px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  Save &amp; Claim
                 </button>
               </div>
             </div>
