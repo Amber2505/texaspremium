@@ -1436,9 +1436,31 @@ const MISSED_RESULTS = new Set([
 // Pulls a call recording to Azure so the browser can play it without an RC
 // token. Returns null when the call wasn't recorded or RC hasn't finished
 // processing the audio yet — both are normal, not errors.
+// RC puts `recording` on the top-level record for calls the extension
+// placed, but for inbound calls it hangs off whichever leg actually
+// answered. Checking only the top level silently drops every inbound
+// recording.
+function findRecordingObject(call) {
+  if (call.recording?.contentUri) return call.recording;
+  for (const leg of call.legs || []) {
+    if (leg.recording?.contentUri) return leg.recording;
+  }
+  return null;
+}
+
 async function fetchCallRecording(call, callId, authToken) {
-  const contentUri = call.recording?.contentUri;
-  if (!contentUri || !authToken) return null;
+  const recording = findRecordingObject(call);
+  const contentUri = recording?.contentUri;
+
+  if (!contentUri) {
+    console.log(
+      `[rec] call ${callId} (${call.direction}/${call.result}) — no contentUri. ` +
+      `top=${!!call.recording} legs=${(call.legs || []).length} ` +
+      `legRecs=${(call.legs || []).filter(l => l.recording).length}`,
+    );
+    return null;
+  }
+  if (!authToken) return null;
 
     const azureUrl = await downloadAndUploadAttachment(
     contentUri,
@@ -1456,8 +1478,9 @@ async function fetchCallRecording(call, callId, authToken) {
     return null;
   }
 
+  console.log(`[rec] call ${callId} recording copied to Azure`);
   return {
-    id: call.recording.id?.toString(),
+    id: recording.id?.toString(),
     uri: contentUri,
     type: 'CallRecording',
     contentType: 'audio/mpeg',
@@ -1483,7 +1506,9 @@ async function syncMissedCalls(platform) {
       // are exactly the ones worth keeping for chargeback defense.
       dateFrom,
       perPage: 100,
-      view: 'Detailed', // the `recording` object only comes back in Detailed
+      view: 'Detailed',        // the `recording` object only comes back in Detailed
+      withRecording: true,     // ask RC to include recording metadata
+      showBlocked: false,
     });
 
     const data = await response.json();
@@ -1517,7 +1542,7 @@ async function syncMissedCalls(platform) {
         const hasRecording = stored?.attachments?.some(
           a => a.type === 'CallRecording',
         );
-        if (!hasRecording && call.recording?.contentUri) {
+        if (!hasRecording && findRecordingObject(call)) {
           const rec = await fetchCallRecording(call, callId, authToken);
             if (rec) {
             await conversationsCollection.updateOne(
