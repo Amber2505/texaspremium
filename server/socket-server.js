@@ -1427,9 +1427,12 @@ async function syncRingCentralMessages() {
 // MISSED CALLS SYNC
 // ================================================
 const ANSWERED_RESULTS = new Set(['Accepted', 'Call connected', 'Received']);
+// Compared case-insensitively below — RC is inconsistent about
+// "Voicemail" vs "VoiceMail" across account configurations.
 const MISSED_RESULTS = new Set([
-  'Missed', 'Voicemail', 'No Answer', 'Hang Up',
-  'Rejected', 'Busy', 'Abandoned', 'Declined', 'Blocked',
+  'missed', 'voicemail', 'no answer', 'hang up',
+  'rejected', 'busy', 'abandoned', 'declined', 'blocked',
+  'stopped', 'call failed', 'unknown',
 ]);
 
 
@@ -1515,6 +1518,11 @@ async function syncMissedCalls(platform) {
     const calls = data.records || [];
     let synced = 0;
 
+    console.log(
+      `[calls] fetched ${calls.length} from call-log:`,
+      calls.slice(0, 10).map(c => `${c.direction}/${c.result}`).join(', '),
+    );
+
     for (const call of calls) {
       const callId = call.id.toString();
       const isOutboundCall = call.direction === 'Outbound';
@@ -1570,9 +1578,10 @@ async function syncMissedCalls(platform) {
       // matched, so those answered calls were being dropped too.)
       // An outbound call we placed is never a "missed call" from the office's
       // point of view — no answer just means they didn't pick up.
+      const resultLower = (call.result || '').toLowerCase();
       const isAnswered = ANSWERED_RESULTS.has(call.result);
-      const isMissed = !isOutboundCall && MISSED_RESULTS.has(call.result);
-      const wentToVoicemail = !isOutboundCall && call.result === 'Voicemail';
+      const isMissed = !isOutboundCall && MISSED_RESULTS.has(resultLower);
+      const wentToVoicemail = !isOutboundCall && resultLower === 'voicemail';
 
       if (!isMissed && !isAnswered) {
         console.log(`   ⏭️ Skipping call with result "${call.result}"`);
