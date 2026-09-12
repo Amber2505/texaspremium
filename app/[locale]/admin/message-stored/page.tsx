@@ -1268,6 +1268,13 @@ export default function MessageStoredPage() {
           )}${sinceParam}`,
         );
         const data = await res.json();
+
+        // The agent may have switched threads while this was in flight —
+        // merging now would paste the old conversation into the new one.
+        if (selectedConversationIdRef.current !== selectedConversationId) {
+          return;
+        }
+
         const newMessages: RingCentralMessage[] = data.messages || [];
         if (newMessages.length === 0) return;
 
@@ -1506,6 +1513,7 @@ export default function MessageStoredPage() {
         )
           .then((r) => r.json())
           .then((d) => {
+            if (selectedConversationIdRef.current !== openConvId) return;
             const newMessages = d.messages || [];
             setConversation((prev) => mergeMessages(prev, newMessages));
             scrollToBottomRef.current();
@@ -1751,6 +1759,9 @@ export default function MessageStoredPage() {
 
       const res = await fetch(url);
       const data = await res.json();
+
+      // Another conversation was opened while this was loading — discard.
+      if (selectedConversationIdRef.current !== conversationId) return;
 
       // If conversation not found (no messages and total is 0), remove it from list
       if (data.total === 0 && (!data.messages || data.messages.length === 0)) {
