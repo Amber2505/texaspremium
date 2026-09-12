@@ -1509,9 +1509,7 @@ async function syncMissedCalls(platform) {
       // are exactly the ones worth keeping for chargeback defense.
       dateFrom,
       perPage: 100,
-      view: 'Detailed',        // the `recording` object only comes back in Detailed
-      withRecording: true,     // ask RC to include recording metadata
-      showBlocked: false,
+      view: 'Detailed', // the `recording` object only comes back in Detailed
     });
 
     const data = await response.json();
@@ -1654,6 +1652,15 @@ async function syncMissedCalls(platform) {
     return { synced };
   } catch (error) {
     console.error('❌ Missed call sync error:', error.message);
+    // RC SDK errors carry the real reason on the response, not the message
+    try {
+      if (error.response) {
+        const body = await error.response.text();
+        console.error('   RC said:', body.slice(0, 500));
+      }
+    } catch {
+      /* nothing more to report */
+    }
     return { synced: 0 };
   }
 }
