@@ -1,9 +1,8 @@
 // app/api/unpaid-links/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { MongoClient } from "mongodb";
+import connectToDatabase from "@/lib/mongodb";
 
 export async function GET(req: NextRequest) {
-  let client: MongoClient | null = null;
   try {
     const { searchParams } = new URL(req.url);
     const range = searchParams.get("range") || "1w";
@@ -15,7 +14,9 @@ export async function GET(req: NextRequest) {
     const since = Date.now() - (ranges[range] ?? ranges["1w"]);
     const TEN_DAYS = 10 * 24 * 60 * 60 * 1000;
 
-    client = await MongoClient.connect(process.env.MONGODB_URI!);
+    // Pooled client — MongoClient.connect per request meant a full TLS +
+    // auth handshake before every query, which was most of the wait.
+    const client = await connectToDatabase;
     const col = client.db("db").collection("payment_link_generated");
 
     // Step 1 — get all unpaid payment links in the time window
@@ -35,36 +36,49 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, links: [] });
     }
 
-    // Step 2 — get all PAID links so we can deduplicate
-    const paidLinks = await col.find({
-      "completedStages.payment": true,
-      linkType: "payment",
-    }).toArray();
+    // Step 2 — paid links, bounded to the only window that can possibly
+    // match (±10 days of the unpaid range) and projected to the two fields
+    // the comparison actually uses. This was fetching every paid link ever.
+    const paidLinks = await col
+      .find(
+        {
+          "completedStages.payment": true,
+          linkType: "payment",
+          createdAtTimestamp: {
+            $gte: since - TEN_DAYS,
+            $lte: Date.now() + TEN_DAYS,
+          },
+        },
+        { projection: { customerPhone: 1, createdAtTimestamp: 1 } },
+      )
+      .toArray();
 
-    // Step 3 — filter out unpaid links where same phone has a paid link within ±10 days
-    const filtered = unpaid.filter(unpaidLink => {
+    // Index paid timestamps by normalized phone — the old nested .some()
+    // was O(unpaid × paid) on every request.
+    const paidByPhone = new Map<string, number[]>();
+    for (const paid of paidLinks) {
+      const p = (paid.customerPhone || "").replace(/\D/g, "");
+      if (!p) continue;
+      const list = paidByPhone.get(p);
+      if (list) list.push(paid.createdAtTimestamp || 0);
+      else paidByPhone.set(p, [paid.createdAtTimestamp || 0]);
+    }
+
+    // Step 3 — drop unpaid links where the same phone paid within ±10 days
+    const filtered = unpaid.filter((unpaidLink) => {
       const phone = (unpaidLink.customerPhone || "").replace(/\D/g, "");
       if (!phone) return true; // can't deduplicate without phone
 
-      const hasPaidDuplicate = paidLinks.some(paid => {
-        const paidPhone = (paid.customerPhone || "").replace(/\D/g, "");
-        if (paidPhone !== phone) return false;
+      const paidTimes = paidByPhone.get(phone);
+      if (!paidTimes) return true;
 
-        // Check if paid link timestamp is within ±10 days of the unpaid link
-        const timeDiff = Math.abs(
-          (paid.createdAtTimestamp || 0) - (unpaidLink.createdAtTimestamp || 0)
-        );
-        return timeDiff <= TEN_DAYS;
-      });
-
-      return !hasPaidDuplicate;
+      const created = unpaidLink.createdAtTimestamp || 0;
+      return !paidTimes.some((t) => Math.abs(t - created) <= TEN_DAYS);
     });
 
     return NextResponse.json({ success: true, links: filtered });
   } catch (err) {
     console.error("Unpaid links error:", err);
     return NextResponse.json({ error: "Failed" }, { status: 500 });
-  } finally {
-    if (client) await client.close();
   }
 }

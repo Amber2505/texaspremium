@@ -168,6 +168,9 @@ export default function CreatePaymentLink() {
 
   const wsRef = useRef<WebSocket | null>(null);
   const generatedLinkRef = useRef<HTMLDivElement>(null);
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  // Monotonic token — only the newest search may write to state.
+  const searchSeqRef = useRef(0);
 
   // Keep the WS closure from capturing a stale filter
   const unpaidFilterRef = useRef(unpaidFilter);
@@ -242,8 +245,17 @@ export default function CreatePaymentLink() {
     return () => ws.close();
   }, [isCheckingAuth]);
 
+  useEffect(() => {
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, []);
+
   // ── Fetch paginated page ────────────────────────────────────────────────────
   const fetchHistory = async (page = 1, status = statusFilter) => {
+    // Any in-flight search is now stale — its response must not land on top
+    // of this page.
+    searchSeqRef.current++;
     setHistoryLoading(true);
     try {
       const res = await fetch(
@@ -266,18 +278,19 @@ export default function CreatePaymentLink() {
   };
 
   // ── Search all records server-side ─────────────────────────────────────────
-  const handleSearch = async (q: string, status = statusFilter) => {
-    setSearchQuery(q);
-    if (!q.trim()) {
-      fetchHistory(1, status);
-      return;
-    }
+  // Debounced: one request per pause, not one per keystroke. Sequence-guarded:
+  // responses arriving out of order used to overwrite newer results, which is
+  // why searching sometimes showed results for a prefix you'd already typed
+  // past.
+  const runSearch = async (q: string, status: "all" | "paid" | "unpaid") => {
+    const seq = ++searchSeqRef.current;
     setSearchLoading(true);
     try {
       const res = await fetch(
         `/api/payment-link-history?search=${encodeURIComponent(q.trim())}&status=${status}`,
       );
       const data = await res.json();
+      if (seq !== searchSeqRef.current) return; // a newer search won
       if (data.success) {
         setHistoryLinks(data.links);
         setTotalLinks(data.total);
@@ -288,8 +301,25 @@ export default function CreatePaymentLink() {
     } catch (err) {
       console.error("Search error:", err);
     } finally {
-      setSearchLoading(false);
+      if (seq === searchSeqRef.current) setSearchLoading(false);
     }
+  };
+
+  const handleSearch = (q: string, status = statusFilter) => {
+    setSearchQuery(q);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+
+    if (!q.trim()) {
+      // Invalidate any in-flight search so its response can't repopulate
+      // the list after we've reset to page 1.
+      searchSeqRef.current++;
+      setSearchLoading(false);
+      fetchHistory(1, status);
+      return;
+    }
+
+    setSearchLoading(true);
+    searchDebounceRef.current = setTimeout(() => runSearch(q, status), 300);
   };
 
   const saveToHistory = async (linkData: {
@@ -1889,46 +1919,87 @@ export default function CreatePaymentLink() {
                         )}
 
                         {/* Reminder status */}
-                        <div className="flex items-center gap-1.5 mb-2 flex-wrap">
-                          <button
-                            onClick={() =>
-                              toggleReminders(
-                                link._id,
-                                link.remindersEnabled !== false,
-                              )
-                            }
-                            className="text-[10px] font-semibold opacity-70 hover:opacity-100 underline underline-offset-2"
-                            title={
-                              link.remindersEnabled !== false
-                                ? "Turn reminders off for this link"
-                                : "Turn reminders back on"
-                            }
-                          >
-                            Reminders
-                            {link.remindersEnabled === false ? " (off)" : ""}:
-                          </button>
-                          {[
-                            { key: "reminder1", label: "1st" },
-                            { key: "reminder2", label: "2nd" },
-                            { key: "preExpire", label: "3rd" },
-                            { key: "lastCall", label: "4th" },
-                          ].map(({ key, label }) => {
-                            const sent = link.sentReminders?.includes(key);
-                            return (
-                              <span
-                                key={key}
-                                className={`text-[10px] px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5 ${
-                                  sent
-                                    ? "bg-green-200 text-green-800"
-                                    : "bg-white/50 opacity-50"
-                                }`}
-                              >
-                                {sent && <Check className="w-2.5 h-2.5" />}
-                                {label}
-                              </span>
-                            );
-                          })}
-                        </div>
+                        {(() => {
+                          const on = link.remindersEnabled !== false;
+                          // A disabled link can't send anything, so the
+                          // reminder switch is meaningless — grey it out and
+                          // make it non-interactive rather than showing a
+                          // live green toggle that won't do anything.
+                          const linkDisabled = !!link.disabled;
+                          const effectiveOn = on && !linkDisabled;
+                          return (
+                            <div className="mb-2">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <button
+                                  onClick={() =>
+                                    !linkDisabled &&
+                                    toggleReminders(link._id, on)
+                                  }
+                                  disabled={linkDisabled}
+                                  role="switch"
+                                  aria-checked={effectiveOn}
+                                  title={
+                                    linkDisabled
+                                      ? "Link is disabled — no reminders will send"
+                                      : on
+                                        ? "Turn reminders off for this link"
+                                        : "Turn reminders back on"
+                                  }
+                                  className={`relative w-8 h-[18px] rounded-full transition-colors flex-shrink-0 ${
+                                    linkDisabled
+                                      ? "bg-gray-300 cursor-not-allowed opacity-50"
+                                      : on
+                                        ? "bg-green-500"
+                                        : "bg-gray-300"
+                                  }`}
+                                >
+                                  <span
+                                    className={`absolute top-0.5 w-3.5 h-3.5 bg-white rounded-full shadow transition-all ${
+                                      effectiveOn ? "left-[16px]" : "left-0.5"
+                                    }`}
+                                  />
+                                </button>
+                                <span
+                                  className={`text-[10px] font-semibold ${
+                                    linkDisabled ? "opacity-40" : "opacity-70"
+                                  }`}
+                                >
+                                  {linkDisabled
+                                    ? "Reminders unavailable"
+                                    : `Reminders ${on ? "on" : "off"}`}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {[
+                                  { key: "reminder1", label: "1st" },
+                                  { key: "reminder2", label: "2nd" },
+                                  { key: "preExpire", label: "3rd" },
+                                  { key: "lastCall", label: "4th" },
+                                ].map(({ key, label }) => {
+                                  const sent =
+                                    link.sentReminders?.includes(key);
+                                  return (
+                                    <span
+                                      key={key}
+                                      className={`text-[10px] px-1.5 py-0.5 rounded font-bold flex items-center gap-0.5 ${
+                                        sent
+                                          ? "bg-green-200 text-green-800"
+                                          : effectiveOn
+                                            ? "bg-white/50 opacity-50"
+                                            : "bg-white/40 opacity-30 line-through"
+                                      }`}
+                                    >
+                                      {sent && (
+                                        <Check className="w-2.5 h-2.5" />
+                                      )}
+                                      {label}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         {/* Mini progress */}
                         <div className="flex items-center gap-1 mb-3">

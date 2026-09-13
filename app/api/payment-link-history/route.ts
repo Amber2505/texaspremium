@@ -1,20 +1,20 @@
 // app/api/payment-link-history/route.ts
 import { NextResponse } from "next/server";
-import { MongoClient } from "mongodb";
+import connectToDatabase from "@/lib/mongodb";
 
-const uri = process.env.MONGODB_URI!;
+
 const PAGE_SIZE = 25;
 
 export async function GET(request: Request) {
-  let client: MongoClient | null = null;
-
   try {
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
     const search = searchParams.get("search")?.trim() || "";
     const status = searchParams.get("status") || "all"; // all | paid | unpaid
 
-    client = await MongoClient.connect(uri);
+    // Pooled client — MongoClient.connect per request meant a full TLS +
+    // auth handshake before every query, on every keystroke in search mode.
+    const client = await connectToDatabase;
     const db = client.db("db");
     const collection = db.collection("payment_link_generated");
 
@@ -33,30 +33,39 @@ export async function GET(request: Request) {
       status === "paid" ? paidQuery : status === "unpaid" ? unpaidQuery : {};
 
     if (search) {
-      // ── Search mode: scan all matching records, no pagination ─────────────
-      const all = await collection
-        .find(baseQuery)
+      // ── Search mode ──────────────────────────────────────────────────────
+      // This used to .toArray() the whole collection and filter in Node, on
+      // every keystroke. Push it into Mongo instead.
+      const esc = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const digits = search.replace(/\D/g, "");
+
+      const or: Record<string, unknown>[] = [
+        { customerEmail: { $regex: esc, $options: "i" } },
+        { description: { $regex: esc, $options: "i" } },
+      ];
+
+      // customerPhone is stored unformatted, so digits match it directly
+      if (digits) {
+        or.push({ customerPhone: { $regex: digits } });
+      }
+
+      // Amount is stored in cents; "45.50" and "45" should both hit
+      const asNumber = parseFloat(search);
+      if (!isNaN(asNumber)) {
+        or.push({ amount: Math.round(asNumber * 100) });
+      }
+
+      const searchQueryDoc =
+        Object.keys(baseQuery).length > 0
+          ? { $and: [baseQuery, { $or: or }] }
+          : { $or: or };
+
+      const SEARCH_LIMIT = 200;
+      const filtered = await collection
+        .find(searchQueryDoc)
         .sort({ createdAtTimestamp: -1 })
+        .limit(SEARCH_LIMIT)
         .toArray();
-
-      const q = search.toLowerCase();
-      const digits = q.replace(/\D/g, "");
-
-      const filtered = all.filter((link) => {
-        const phone = (link.customerPhone || "").replace(/\D/g, "");
-        const email = (link.customerEmail || "").toLowerCase();
-        const desc = (link.description || "").toLowerCase();
-        const amount = link.amount
-          ? (link.amount / 100).toFixed(2)
-          : "";
-
-        return (
-          (digits && phone.includes(digits)) ||
-          email.includes(q) ||
-          desc.includes(q) ||
-          amount.includes(q)
-        );
-      });
 
       return NextResponse.json({
         success: true,
@@ -65,6 +74,7 @@ export async function GET(request: Request) {
         page: 1,
         totalPages: 1,
         isSearch: true,
+        truncated: filtered.length === SEARCH_LIMIT,
       });
     }
 
@@ -94,7 +104,5 @@ export async function GET(request: Request) {
       { error: "Failed to fetch link history" },
       { status: 500 }
     );
-  } finally {
-    if (client) await client.close();
   }
 }
