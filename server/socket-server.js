@@ -1406,7 +1406,7 @@ async function syncRingCentralMessages() {
     console.error(`❌ Sync error:`, error.message);
     isSyncing = false;
 
-    if (error.message?.includes('rate') || error.message?.includes('429') || error.message?.includes('Request rate exceeded')) {
+    if (/429|rate limit|rate exceeded|too many requests/i.test(error.message || '')) {
       consecutiveErrors++;
       const backoffSeconds = Math.min(60 * Math.pow(2, consecutiveErrors - 1), 300);
       rateLimitedUntil = Date.now() + (backoffSeconds * 1000);
@@ -2102,10 +2102,17 @@ async function processScheduledMessages() {
 
         console.log(`✅ Scheduled job ${jobId} sent (RC ID: ${result.id})`);
 
+        // Pace the loop — a batch of reminders all due at the same minute
+        // will trip RC's rate limit if fired back to back.
+        await new Promise((r) => setTimeout(r, 2000));
+
       } catch (sendError) {
         console.error(`❌ Scheduled job ${jobId} failed:`, sendError.message);
 
-        if (sendError.message?.includes('429') || sendError.message?.includes('rate')) {
+        // RC returns "Request rate exceeded" — capital R. A lowercase
+        // .includes('rate') missed it, so every rate-limited job was being
+        // marked permanently failed instead of retried.
+        if (/429|rate limit|rate exceeded|too many requests/i.test(sendError.message || '')) {
           rateLimitedUntil = Date.now() + 60000;
           console.log('🚫 Rate limited during scheduled send - stopping processor');
           await scheduleCollection.updateOne(
@@ -2115,16 +2122,23 @@ async function processScheduledMessages() {
           break;
         }
 
+        // Retry twice before giving up — a transient RC hiccup shouldn't
+        // silently skip a month's reminder.
+        const attempts = (job.attempts || 0) + 1;
         await scheduleCollection.updateOne(
           { _id: job._id },
           {
             $set: {
-              status: 'failed',
-              failedAt: new Date(),
-              error: sendError.message || 'Unknown error',
+              status: attempts >= 3 ? 'failed' : 'pending',
+              attempts,
+              lastError: sendError.message || 'Unknown error',
+              ...(attempts >= 3 ? { failedAt: new Date() } : {}),
               processingStartedAt: null,
             },
           }
+        );
+        console.error(
+          `   Job ${jobId} attempt ${attempts}/3 — ${attempts >= 3 ? 'giving up' : 'will retry'}`,
         );
       }
     }

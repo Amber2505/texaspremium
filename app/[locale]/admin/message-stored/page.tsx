@@ -762,6 +762,9 @@ export default function MessageStoredPage() {
   const [isRecurring, setIsRecurring] = useState(false);
   const [recurringExpirationDate, setRecurringExpirationDate] = useState("");
 
+  // setMonth() overflows: Jan 31 + 1 month lands on Mar 3, and every later
+  // date inherits that drift. Rebuild each date from the original day-of-month
+  // instead, clamping to the last day when the target month is shorter.
   const getMonthlyDates = (
     startDatetime: string,
     expirationDate: string,
@@ -770,12 +773,24 @@ export default function MessageStoredPage() {
     const start = new Date(startDatetime);
     const expiry = new Date(expirationDate);
     expiry.setHours(23, 59, 59, 999); // include expiration day
-    let current = new Date(start);
-    while (current <= expiry) {
-      dates.push(current.toISOString());
-      current = new Date(current);
-      current.setMonth(current.getMonth() + 1);
+
+    const anchorDay = start.getDate();
+    const hours = start.getHours();
+    const minutes = start.getMinutes();
+
+    for (let i = 0; i < 120; i++) {
+      const year = start.getFullYear();
+      const month = start.getMonth() + i;
+
+      // Day 0 of the following month = last day of this one
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      const day = Math.min(anchorDay, daysInMonth);
+
+      const next = new Date(year, month, day, hours, minutes, 0, 0);
+      if (next > expiry) break;
+      dates.push(next.toISOString());
     }
+
     return dates;
   };
 
@@ -1362,6 +1377,12 @@ export default function MessageStoredPage() {
         )}${pageParam}&limit=10`,
       );
       const data = await res.json();
+
+      // The agent switched threads while this page was in flight — merging
+      // now pastes conversation A's history into conversation B, and
+      // corrupts B's messagesSkip/hasMoreMessages on the way out.
+      if (selectedConversationIdRef.current !== selectedConversationId) return;
+
       const olderMessages = data.messages || [];
 
       if (olderMessages.length > 0) {
@@ -1407,9 +1428,14 @@ export default function MessageStoredPage() {
     if (!container || !selectedConversationId) return;
 
     const handleScroll = () => {
-      if (isLoadingMoreMessages || !hasMoreMessages) return;
-      // Trigger when scrolled near the top (within 100px)
-      if (container.scrollTop < 100) {
+      if (isLoadingMoreMessages || !hasMoreMessages || isLoadingConversation)
+        return;
+      // Don't treat "hasn't scrolled yet" as "scrolled to the top" — a thread
+      // that just opened is at scrollTop 0 until scrollToBottom lands.
+      if (
+        container.scrollTop < 100 &&
+        container.scrollHeight > container.clientHeight
+      ) {
         loadMoreMessages();
       }
     };
@@ -1436,10 +1462,12 @@ export default function MessageStoredPage() {
 
     socket.on("connect", () => {
       socket.emit("join-sms-admin-room");
-      if (selectedConversationId) {
-        socket.emit("join-conversation", {
-          conversationId: selectedConversationId,
-        });
+      // This effect runs on [mounted] only, so selectedConversationId is
+      // frozen at null here — after a reconnect the open thread's room was
+      // never rejoined. Read it from the ref instead.
+      const convId = selectedConversationIdRef.current;
+      if (convId) {
+        socket.emit("join-conversation", { conversationId: convId });
       }
     });
 
