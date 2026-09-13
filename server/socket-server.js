@@ -1979,6 +1979,11 @@ async function processScheduledMessages() {
         {
           status: 'pending',
           scheduledAt: { $lte: cutoff },
+          // Respect the backoff set by a previous failure.
+          $or: [
+            { nextAttemptAt: { $exists: false } },
+            { nextAttemptAt: { $lte: new Date() } },
+          ],
         },
         {
           $set: {
@@ -2004,10 +2009,33 @@ async function processScheduledMessages() {
         await new Promise(resolve => setTimeout(resolve, msUntilDue));
       }
 
+      // A malformed job must not escape to the outer catch — that exits the
+      // whole while loop, abandons every job behind it, and leaves this one
+      // in 'processing' with no attempts/lastError. The stuck-reset then
+      // re-queues it, it sorts oldest-first, and it poisons every cycle.
+      const phones = Array.isArray(job.phoneNumbers) ? job.phoneNumbers : [];
+      if (phones.length === 0 || typeof job.message !== 'string' || !job.message.trim()) {
+        console.error(
+          `❌ Job ${jobId} malformed (phones=${phones.length}, message=${typeof job.message}) — failing it and moving on`,
+        );
+        await scheduleCollection.updateOne(
+          { _id: job._id },
+          {
+            $set: {
+              status: 'failed',
+              failedAt: new Date(),
+              lastError: 'Malformed job: missing phoneNumbers or message',
+              processingStartedAt: null,
+            },
+          },
+        );
+        continue;
+      }
+
       console.log(`📤 Sending scheduled message ${jobId}`);
-      console.log(`   To: [${job.phoneNumbers.join(', ')}]`);
-      console.log(`   Scheduled: ${scheduledAt.toISOString()}`);
-      const alreadyHasFooter = 
+      console.log(`   To: [${phones.join(', ')}]`);
+      console.log(`   Scheduled: ${isNaN(scheduledAt.getTime()) ? 'INVALID DATE' : scheduledAt.toISOString()}`);
+      const alreadyHasFooter =
         job.message.includes('Note: This is a scheduled reminder') ||
         job.message.includes('Nota: Este es un recordatorio programado');
       const messageText = alreadyHasFooter ? job.message : job.message + `\n\nNote: This is a scheduled reminder. If this has already been taken care of, please disregard — or reply to update your status.`;
@@ -2122,29 +2150,55 @@ async function processScheduledMessages() {
           break;
         }
 
-        // Retry twice before giving up — a transient RC hiccup shouldn't
-        // silently skip a month's reminder.
+        // 3 attempts inside 2 minutes means any RC blip longer than that
+        // permanently kills a reminder. Back off instead.
         const attempts = (job.attempts || 0) + 1;
+        const MAX_ATTEMPTS = 8;
+        const giveUp = attempts >= MAX_ATTEMPTS;
+        const backoffMs = Math.min(60 * 1000 * Math.pow(2, attempts - 1), 30 * 60 * 1000);
+
         await scheduleCollection.updateOne(
           { _id: job._id },
           {
             $set: {
-              status: attempts >= 3 ? 'failed' : 'pending',
+              status: giveUp ? 'failed' : 'pending',
               attempts,
               lastError: sendError.message || 'Unknown error',
-              ...(attempts >= 3 ? { failedAt: new Date() } : {}),
+              nextAttemptAt: new Date(Date.now() + backoffMs),
+              ...(giveUp ? { failedAt: new Date() } : {}),
               processingStartedAt: null,
             },
           }
         );
         console.error(
-          `   Job ${jobId} attempt ${attempts}/3 — ${attempts >= 3 ? 'giving up' : 'will retry'}`,
+          `   Job ${jobId} attempt ${attempts}/${MAX_ATTEMPTS} — ${giveUp ? 'giving up' : `retry in ${Math.round(backoffMs / 1000)}s`}`,
         );
+
+        // A dead reminder is invisible otherwise.
+        if (giveUp) {
+          pushAdminNotification({
+            section: 'messages',
+            title: 'Scheduled message failed',
+            body: `To ${phones.join(', ')} — ${sendError.message || 'unknown error'}`,
+            eventId: `sched-fail-${jobId}`,
+          });
+        }
       }
     }
 
   } catch (error) {
     console.error('❌ Scheduled processor error:', error.message);
+    console.error('   Stack:', error.stack);
+    // Anything reaching here left a job claimed as 'processing'. Release it
+    // now rather than waiting out the 5-minute stuck window.
+    try {
+      await scheduleCollection.updateMany(
+        { status: 'processing' },
+        { $set: { status: 'pending', processingStartedAt: null } },
+      );
+    } catch {
+      /* stuck-reset next cycle will catch it */
+    }
   } finally {
     isProcessingScheduled = false;
   }

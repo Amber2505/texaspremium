@@ -1,15 +1,20 @@
+// app/api/messages/schedule/route.ts
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/lib/mongodb";
 
-export async function GET() {
+export async function GET(_request: NextRequest) {
   try {
     const client = await connectToDatabase;
     const db = client.db("db");
     const collection = db.collection("schedule_message_storage");
 
+    // Unbounded find({}) grows with every job ever sent. Pending is what the
+    // UI renders; failed is what it needs to stop hiding.
     const scheduled = await collection
-      .find({})
+      .find({ status: { $in: ["pending", "processing", "failed"] } })
       .sort({ scheduledAt: 1 })
+      .limit(500)
       .toArray();
 
     return NextResponse.json({ success: true, scheduled });
@@ -22,7 +27,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { conversationId, phoneNumbers, message, scheduledAt } = body;
+    const { conversationId, phoneNumbers, message, scheduledAt, recurring, expirationDate } = body;
 
     if (!conversationId || !phoneNumbers?.length || !message || !scheduledAt) {
       return NextResponse.json(
@@ -59,6 +64,10 @@ export async function POST(request: NextRequest) {
       error: null,
       messageId: null,
       processingStartedAt: null,
+      // Without these there's no way to tell a 12-month series from a
+      // one-off, so a partial batch is invisible.
+      recurring: recurring === true,
+      expirationDate: expirationDate || null,
     };
 
     const result = await collection.insertOne(doc);
@@ -72,7 +81,11 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: unknown) {
     const err = error as { message?: string };
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("📅 Schedule POST failed:", err.message || error);
+    return NextResponse.json(
+      { success: false, error: err.message || "Unknown server error" },
+      { status: 500 },
+    );
   }
 }
 
@@ -90,9 +103,10 @@ export async function DELETE(request: NextRequest) {
 
     const { ObjectId } = await import("mongodb");
 
+    // A failed job is still cancellable — it never went out.
     const result = await collection.deleteOne({
       _id: new ObjectId(id),
-      status: "pending",
+      status: { $in: ["pending", "failed"] },
     });
 
     if (result.deletedCount === 0) {
@@ -136,9 +150,13 @@ export async function PUT(request: NextRequest) {
     updateFields.message = message.trim();
     }
 
+    // Re-arm a failed job: new time, clear the failure state.
     const result = await collection.updateOne(
-    { _id: new ObjectId(id), status: "pending" },
-    { $set: updateFields }
+      { _id: new ObjectId(id), status: { $in: ["pending", "failed"] } },
+      {
+        $set: { ...updateFields, status: "pending" },
+        $unset: { failedAt: "", lastError: "", attempts: "" },
+      },
     );
 
     if (result.matchedCount === 0) {

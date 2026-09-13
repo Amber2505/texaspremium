@@ -48,6 +48,7 @@ interface ScheduledMessage {
   scheduledAt: string;
   status: string;
   createdAt: string;
+  lastError?: string;
 }
 
 interface ScheduledConvSummary {
@@ -771,8 +772,10 @@ export default function MessageStoredPage() {
   ): string[] => {
     const dates: string[] = [];
     const start = new Date(startDatetime);
-    const expiry = new Date(expirationDate);
-    expiry.setHours(23, 59, 59, 999); // include expiration day
+    // "2027-03-15" parses as UTC midnight — evening of the 14th in CST — and
+    // setHours then clamps to the wrong day, silently dropping the last month.
+    const [expYear, expMonth, expDay] = expirationDate.split("-").map(Number);
+    const expiry = new Date(expYear, expMonth - 1, expDay, 23, 59, 59, 999);
 
     const anchorDay = start.getDate();
     const hours = start.getHours();
@@ -1446,6 +1449,7 @@ export default function MessageStoredPage() {
     selectedConversationId,
     isLoadingMoreMessages,
     hasMoreMessages,
+    isLoadingConversation,
     loadMoreMessages,
   ]);
 
@@ -2331,26 +2335,47 @@ export default function MessageStoredPage() {
           scheduledDateTime,
           recurringExpirationDate,
         );
-        // Fire all schedule requests in parallel
-        const results = await Promise.all(
-          dates.map((date) =>
-            fetch("/api/messages/schedule", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                conversationId: selectedConversationId,
-                phoneNumbers: selectedParticipants,
-                message: finalMessage,
-                scheduledAt: date,
-                recurring: true,
-                expirationDate: recurringExpirationDate,
-              }),
-            }).then((r) => r.json()),
-          ),
-        );
-        const failed = results.filter((r) => !r.success && r.error);
-        if (failed.length > 0)
-          throw new Error(`${failed.length} failed to schedule`);
+        // Firing every month at once exhausts the serverless Mongo pool, and
+        // those failures return {} — no success, no error — which the old
+        // check counted as a pass. Batch, and require explicit success.
+        const results: Array<{ ok: boolean; date: string }> = [];
+        const BATCH = 4;
+        for (let i = 0; i < dates.length; i += BATCH) {
+          const slice = dates.slice(i, i + BATCH);
+          const settled = await Promise.all(
+            slice.map(async (date) => {
+              try {
+                const r = await fetch("/api/messages/schedule", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    conversationId: selectedConversationId,
+                    phoneNumbers: selectedParticipants,
+                    message: finalMessage,
+                    scheduledAt: date,
+                    recurring: true,
+                    expirationDate: recurringExpirationDate,
+                  }),
+                });
+                if (!r.ok) return { ok: false, date };
+                const d = await r.json();
+                return { ok: d.success === true, date };
+              } catch {
+                return { ok: false, date };
+              }
+            }),
+          );
+          results.push(...settled);
+        }
+
+        const failed = results.filter((r) => !r.ok);
+        if (failed.length > 0) {
+          throw new Error(
+            `Only ${results.length - failed.length} of ${dates.length} scheduled. Missing: ${failed
+              .map((f) => new Date(f.date).toLocaleDateString())
+              .join(", ")}`,
+          );
+        }
       } else {
         const response = await fetch("/api/messages/schedule", {
           method: "POST",
@@ -2396,8 +2421,12 @@ export default function MessageStoredPage() {
       const res = await fetch("/api/messages/schedule");
       const data = await res.json();
       if (data.success) {
+        // Include failed — a job that gave up currently vanishes from the
+        // banner entirely, which is why a missed reminder leaves no trace.
         const forThisConv = (data.scheduled as ScheduledMessage[]).filter(
-          (s) => s.conversationId === convId && s.status === "pending",
+          (s) =>
+            s.conversationId === convId &&
+            (s.status === "pending" || s.status === "failed"),
         );
         setScheduledMessages(forThisConv);
       }
@@ -5242,6 +5271,12 @@ export default function MessageStoredPage() {
                                 <p className="text-sm text-gray-800 break-words leading-relaxed whitespace-pre-wrap">
                                   {sm.message}
                                 </p>
+                                {sm.status === "failed" && (
+                                  <p className="text-xs text-red-600 font-bold mt-1">
+                                    ⚠️ Failed to send —{" "}
+                                    {(sm as any).lastError || "unknown error"}
+                                  </p>
+                                )}
                                 <p className="text-xs text-purple-600 font-medium mt-1">
                                   📅{" "}
                                   {new Date(sm.scheduledAt).toLocaleString([], {
