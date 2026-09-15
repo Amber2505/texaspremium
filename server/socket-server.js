@@ -232,6 +232,7 @@ let deletedChatsCollection;
 let mongoClient = null;
 let messagesDb;
 let conversationsCollection;
+let faxesCollection;
 
 async function connectMongoDB() {
   try {
@@ -261,6 +262,12 @@ async function connectMongoDB() {
     scheduleCollection = messagesDb.collection('schedule_message_storage');
     await scheduleCollection.createIndex({ status: 1, scheduledAt: 1 }).catch(() => { });
     console.log('✅ Schedule collection connected');
+
+    faxesCollection = messagesDb.collection('texas_premium_faxes');
+    await faxesCollection.createIndex({ id: 1 }, { unique: true }).catch(() => { });
+    await faxesCollection.createIndex({ creationTime: -1 }).catch(() => { });
+    await faxesCollection.createIndex({ direction: 1, readStatus: 1 }).catch(() => { });
+    console.log('✅ Fax collection connected');
 
     // Create index for faster message lookups
     await conversationsCollection.createIndex({ 'messages.id': 1 }).catch(() => { });
@@ -1806,6 +1813,175 @@ async function syncVoicemails(platform) {
   }
 }
 
+// ================================================
+// FAX SYNC
+// Faxes live in the same message-store as SMS but on a different DID, with
+// the document as a PDF/TIFF attachment. Outbound faxes also need status
+// tracking — RC moves them Queued → Sent → Delivered over several minutes,
+// so existing records get updated, not skipped.
+// ================================================
+const MY_FAX_NUMBER = process.env.RINGCENTRAL_FAX_NUMBER || '+14697541187';
+
+async function syncFaxes(platform) {
+  if (!faxesCollection) return { synced: 0 };
+  if (rateLimitedUntil && Date.now() < rateLimitedUntil) {
+    console.log('⏳ Fax sync skipped — rate limited');
+    return { synced: 0 };
+  }
+
+  try {
+    if (!platform) platform = await getCachedRCPlatform();
+    const authData = await platform.auth().data();
+    const authToken = authData?.access_token;
+    if (!authToken) return { synced: 0 };
+
+    // 48h — wider than SMS because outbound delivery confirmations can lag.
+    const dateFrom = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+
+    const response = await platform.get('/restapi/v1.0/account/~/extension/~/message-store', {
+      messageType: 'Fax',
+      dateFrom,
+      perPage: 100,
+    });
+
+    const data = await response.json();
+    const records = data.records || [];
+    let synced = 0;
+    let statusUpdated = 0;
+
+    for (const fx of records) {
+      const faxId = `fax_${fx.id}`;
+      const isInbound = fx.direction === 'Inbound';
+      const status = fx.messageStatus || (isInbound ? 'Received' : 'Queued');
+
+      const existing = await faxesCollection.findOne({ id: faxId });
+
+      // Already stored — just keep the status fresh. An outbound fax we sent
+      // through /api/fax/send lands here as Queued and only becomes
+      // Delivered minutes later.
+      if (existing) {
+        if (existing.status !== status) {
+          await faxesCollection.updateOne(
+            { id: faxId },
+            {
+              $set: {
+                status,
+                lastModifiedTime: fx.lastModifiedTime || fx.creationTime,
+                pageCount: fx.faxPageCount || existing.pageCount || 0,
+                ...(fx.messageStatus === 'SendingFailed' ||
+                fx.messageStatus === 'DeliveryFailed'
+                  ? { errorMessage: fx.to?.[0]?.messageStatus || 'Delivery failed' }
+                  : {}),
+              },
+            },
+          );
+          statusUpdated++;
+          console.log(`📠 Fax ${faxId}: ${existing.status} → ${status}`);
+
+          io.to('fax-admins').emit('faxUpdated', { faxId, status });
+        }
+        continue;
+      }
+
+      // New fax — pull the document to Azure so the browser can render it
+      // without an RC bearer token.
+      const attachments = [];
+      for (const att of (fx.attachments || [])) {
+        if (!att.uri) continue;
+        // RC includes a text/plain part on some faxes; only the document matters.
+        const isDoc =
+          att.contentType === 'application/pdf' ||
+          att.contentType?.startsWith('image/');
+        if (!isDoc) continue;
+
+        const ext = att.contentType === 'application/pdf' ? 'pdf' : 'tiff';
+        const azureUrl = await downloadAndUploadAttachment(
+          att.uri,
+          `${faxId}_${att.id}.${ext}`,
+          att.contentType,
+          authToken,
+        );
+        if (azureUrl) {
+          attachments.push({
+            id: att.id?.toString(),
+            uri: att.uri,
+            filename: `fax_${fx.id}.${ext}`,
+            contentType: att.contentType,
+            azureUrl,
+            pageCount: fx.faxPageCount || 0,
+          });
+        }
+      }
+
+      const fromNumber = normalizePhone(fx.from?.phoneNumber || '');
+      const toNumbers = (fx.to || [])
+        .map(t => normalizePhone(t.phoneNumber || ''))
+        .filter(Boolean);
+
+      await faxesCollection.updateOne(
+        { id: faxId },
+        {
+          $set: {
+            id: faxId,
+            rcMessageId: fx.id.toString(),
+            direction: fx.direction,
+            status,
+            from: fromNumber,
+            to: toNumbers,
+            creationTime: fx.creationTime,
+            lastModifiedTime: fx.lastModifiedTime || fx.creationTime,
+            pageCount: fx.faxPageCount || 0,
+            readStatus: isInbound ? (fx.readStatus || 'Unread') : 'Read',
+            coverPageText: fx.coverPageText || null,
+            attachments,
+            errorMessage: null,
+          },
+          $setOnInsert: { createdAt: new Date() },
+        },
+        { upsert: true },
+      );
+
+      synced++;
+      console.log(
+        `📠 ${fx.direction} fax ${faxId} — ${fx.faxPageCount || 0}pg from ${fromNumber}`,
+      );
+
+      io.to('fax-admins').emit('newFax', { faxId, direction: fx.direction });
+
+      if (isInbound) {
+        pushAdminNotification({
+          section: 'fax',
+          title: `Fax from ${fromNumber}`,
+          body: `${fx.faxPageCount || 0} page${fx.faxPageCount === 1 ? '' : 's'}`,
+          eventId: `fax-${faxId}`,
+        });
+      }
+    }
+
+    if (synced > 0 || statusUpdated > 0) {
+      console.log(`✅ Fax sync: ${synced} new, ${statusUpdated} status updates`);
+    }
+    return { synced, statusUpdated };
+  } catch (error) {
+    console.error('❌ Fax sync error:', error.message);
+    // Share the global backoff — otherwise this keeps hammering RC during a
+    // block and inbound faxes silently never arrive.
+    if (/429|rate limit|rate exceeded|too many requests/i.test(error.message || '')) {
+      rateLimitedUntil = Date.now() + 90 * 1000;
+      console.log('🚫 Fax sync rate limited — backing off 90s');
+    }
+    try {
+      if (error.response) {
+        const body = await error.response.text();
+        console.error('   RC said:', body.slice(0, 500));
+      }
+    } catch {
+      /* nothing more to report */
+    }
+    return { synced: 0 };
+  }
+}
+
 // Separate function for read status sync with better error handling
 async function syncReadStatus(platform) {
   let readSynced = 0;
@@ -2320,6 +2496,24 @@ async function startServer() {
       }
     }, 60 * 1000);
 
+    // Faxes poll on their own cadence. 2 minutes keeps outbound status
+    // (Queued → Delivered) reasonably live without another audio-sized
+    // download on every cycle.
+    let faxSyncRunning = false;
+    setInterval(async () => {
+      if (faxSyncRunning) return;
+      if (rateLimitedUntil && Date.now() < rateLimitedUntil) return;
+      faxSyncRunning = true;
+      try {
+        await syncFaxes();
+      } catch (e) {
+        console.error('❌ Fax timer error:', e.message);
+      } finally {
+        faxSyncRunning = false;
+      }
+    }, 2 * 60 * 1000);
+    setTimeout(() => syncFaxes().catch(() => {}), 20000);
+
     let vmSyncRunning = false;
     setInterval(async () => {
       if (vmSyncRunning) return;
@@ -2533,6 +2727,17 @@ function pushAdminNotification({ section, title, body, eventId }) {
   return payload;
 }
 
+// Called by /api/fax/send so an open fax page updates without waiting 2 min
+app.post('/notify/fax', (req, res) => {
+  try {
+    const { faxId } = req.body || {};
+    io.to('fax-admins').emit('newFax', { faxId, direction: 'Outbound' });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/notify/admin', (req, res) => {
   try {
     const { section, title, body, eventId } = req.body || {};
@@ -2574,6 +2779,10 @@ io.on('connection', (socket) => {
   // Global notification feed — independent of which admin page is open
   socket.on('join-admin-notifications', () => {
     socket.join('admin-notifications');
+  });
+
+  socket.on('join-fax-admin-room', () => {
+    socket.join('fax-admins');
   });
 
   socket.on('admin-join', async ({ adminName } = {}) => {
