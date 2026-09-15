@@ -18,6 +18,7 @@ import {
   LogOut,
   BarChart2,
   BookOpen,
+  Printer,
 } from "lucide-react";
 
 interface NavItem {
@@ -51,6 +52,16 @@ const NAV_ITEMS: NavItem[] = [
     iconColor: "text-violet-700",
     activeBg: "bg-violet-50",
     activeText: "text-violet-700",
+    section: "daily",
+  },
+  {
+    label: "Fax",
+    path: "/admin/fax",
+    icon: <Printer className="w-3.5 h-3.5" />,
+    iconBg: "bg-cyan-100",
+    iconColor: "text-cyan-700",
+    activeBg: "bg-cyan-50",
+    activeText: "text-cyan-700",
     section: "daily",
   },
   {

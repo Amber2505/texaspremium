@@ -15,6 +15,7 @@ import {
   ChevronRight,
   BarChart2,
   BookOpen,
+  Printer,
 } from "lucide-react";
 import Image from "next/image";
 import {
@@ -203,6 +204,14 @@ export default function AdminLoginPage() {
       icon: <MessageSquare className="w-5 h-5" />,
       accent: "#6d28d9",
       iconBg: "bg-violet-100 text-violet-700",
+    },
+    {
+      label: "Fax",
+      description: "Send & receive faxes via RingCentral",
+      path: "/admin/fax",
+      icon: <Printer className="w-5 h-5" />,
+      accent: "#0e7490",
+      iconBg: "bg-cyan-100 text-cyan-700",
     },
     {
       label: "Reminders",

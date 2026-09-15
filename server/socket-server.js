@@ -1835,8 +1835,11 @@ async function syncFaxes(platform) {
     const authToken = authData?.access_token;
     if (!authToken) return { synced: 0 };
 
-    // 48h — wider than SMS because outbound delivery confirmations can lag.
-    const dateFrom = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    // 48h by default. After an outage longer than that, faxes fall outside
+    // the window and are never seen — set FAX_SYNC_HOURS temporarily to
+    // backfill, then remove it.
+    const lookbackHours = parseInt(process.env.FAX_SYNC_HOURS || '48', 10);
+    const dateFrom = new Date(Date.now() - lookbackHours * 60 * 60 * 1000).toISOString();
 
     const response = await platform.get('/restapi/v1.0/account/~/extension/~/message-store', {
       messageType: 'Fax',
@@ -1860,6 +1863,52 @@ async function syncFaxes(platform) {
       // through /api/fax/send lands here as Queued and only becomes
       // Delivered minutes later.
       if (existing) {
+        // A fax whose document never made it to Azure is stuck with an empty
+        // attachments array and would otherwise be skipped forever. Retry it.
+        const needsDocument =
+          (existing.attachments || []).length === 0 &&
+          (fx.attachments || []).some(
+            a => a.uri && (a.contentType === 'application/pdf' || a.contentType?.startsWith('image/')),
+          );
+
+        if (needsDocument) {
+          console.log(`🔧 Retrying document copy for ${faxId}`);
+          const retried = [];
+          for (const att of (fx.attachments || [])) {
+            if (!att.uri) continue;
+            const isDoc =
+              att.contentType === 'application/pdf' ||
+              att.contentType?.startsWith('image/');
+            if (!isDoc) continue;
+            const ext = att.contentType === 'application/pdf' ? 'pdf' : 'tiff';
+            const azureUrl = await downloadAndUploadAttachment(
+              att.uri, `${faxId}_${att.id}.${ext}`, att.contentType, authToken,
+            );
+            if (azureUrl) {
+              retried.push({
+                id: att.id?.toString(),
+                uri: att.uri,
+                filename: `fax_${fx.id}.${ext}`,
+                contentType: att.contentType,
+                azureUrl,
+                pageCount: fx.faxPageCount || 0,
+              });
+            }
+          }
+          if (retried.length > 0) {
+            await faxesCollection.updateOne(
+              { id: faxId },
+              { $set: { attachments: retried } },
+            );
+            console.log(`✅ Recovered document for ${faxId}`);
+            io.to('fax-admins').emit('faxUpdated', { faxId, status });
+          } else {
+            console.error(
+              `🚨 DOCUMENT COPY FAILED for ${faxId} — RC still has it, we do not.`,
+            );
+          }
+        }
+
         if (existing.status !== status) {
           await faxesCollection.updateOne(
             { id: faxId },
@@ -2690,6 +2739,26 @@ app.post('/trigger-scheduled', async (req, res) => {
   console.log('📅 Manual scheduled messages trigger');
   processScheduledMessages();
   res.json({ success: true });
+});
+
+app.get('/fax-status', async (req, res) => {
+  try {
+    if (!faxesCollection) return res.status(500).json({ error: 'DB not connected' });
+    const [total, inbound, unread, newest] = await Promise.all([
+      faxesCollection.countDocuments(),
+      faxesCollection.countDocuments({ direction: 'Inbound' }),
+      faxesCollection.countDocuments({ direction: 'Inbound', readStatus: 'Unread' }),
+      faxesCollection.find().sort({ creationTime: -1 }).limit(1).toArray(),
+    ]);
+    const missingDocs = await faxesCollection.countDocuments({ attachments: { $size: 0 } });
+    res.json({
+      total, inbound, unread, missingDocs,
+      newest: newest[0]?.creationTime || null,
+      lastSync: lastFaxSyncTime || null,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.get('/scheduled-status', async (req, res) => {
