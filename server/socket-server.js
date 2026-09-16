@@ -1980,12 +1980,17 @@ async function syncFaxes(platform) {
             creationTime: fx.creationTime,
             lastModifiedTime: fx.lastModifiedTime || fx.creationTime,
             pageCount: fx.faxPageCount || 0,
-            readStatus: isInbound ? (fx.readStatus || 'Unread') : 'Read',
             coverPageText: fx.coverPageText || null,
             attachments,
             errorMessage: null,
           },
-          $setOnInsert: { createdAt: new Date() },
+          $setOnInsert: {
+            createdAt: new Date(),
+            // Read state is ours, not RC's — an agent reading a fax here
+            // doesn't mark it read in RingCentral, so re-syncing must never
+            // reset it. Only set on first insert.
+            readStatus: isInbound ? 'Unread' : 'Read',
+          },
         },
         { upsert: true },
       );
