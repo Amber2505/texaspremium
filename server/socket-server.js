@@ -672,16 +672,54 @@ async function processPaymentReminders() {
 // ================================================
 
 let securityCodeCollection;
+let loginDataCollection;
 let lastCodeDate = null;
 
 async function connectSecurityCodeDB() {
   try {
     securityCodeCollection = mongoClient.db('db').collection('texas_autopay_security');
+    loginDataCollection = mongoClient.db('db').collection('data_login');
     console.log('✅ Security code database connected');
     return true;
   } catch (error) {
     console.error('❌ Security code DB connection error:', error.message);
     return false;
+  }
+}
+
+// Pulls every phone_N off the admin_code_daily doc. Stored as phone_1,
+// phone_2, … rather than an array, so walk the keys and sort numerically —
+// phone_10 must not land between phone_1 and phone_2.
+async function getSecurityCodeRecipients() {
+  const FALLBACK = ['9727486404'];
+  if (!loginDataCollection) return FALLBACK;
+
+  try {
+    const doc = await loginDataCollection.findOne({
+      admin_code_daily: 'send_text',
+    });
+    if (!doc) {
+      console.warn('⚠️ No admin_code_daily doc found — using fallback number');
+      return FALLBACK;
+    }
+
+    const numbers = Object.keys(doc)
+      .filter(k => /^phone_\d+$/.test(k))
+      .sort((a, b) => parseInt(a.slice(6), 10) - parseInt(b.slice(6), 10))
+      .map(k => String(doc[k] || '').replace(/\D/g, ''))
+      .filter(n => n.length === 10 || (n.length === 11 && n.startsWith('1')))
+      .map(n => (n.length === 11 ? n.slice(1) : n));
+
+    const unique = Array.from(new Set(numbers));
+
+    if (unique.length === 0) {
+      console.warn('⚠️ admin_code_daily has no valid phone_N values — using fallback');
+      return FALLBACK;
+    }
+    return unique;
+  } catch (err) {
+    console.error('❌ Failed to load code recipients:', err.message);
+    return FALLBACK;
   }
 }
 
@@ -711,10 +749,38 @@ async function generateDailySecurityCode() {
 
     // console.log(`🔐 New daily security code generated for ${todayDate}`);
 
-    // Send SMS to admin
+    // Send SMS to every admin listed in data_login.admin_code_daily
+    const recipients = await getSecurityCodeRecipients();
     const message = encodeURIComponent(`Your admin security code for today is: ${code}`);
-    await fetch(`https://astraldbapi.herokuapp.com/message_send/?message=${message}&To=9727486404`);
-    console.log('📱 Security code sent via SMS');
+
+    let sent = 0;
+    const failed = [];
+
+    for (const phone of recipients) {
+      try {
+        const res = await fetch(
+          `https://astraldbapi.herokuapp.com/message_send/?message=${message}&To=${phone}`,
+        );
+        if (res.ok) {
+          sent++;
+        } else {
+          failed.push(`${phone} (HTTP ${res.status})`);
+        }
+      } catch (e) {
+        // One bad number must not stop the rest — an admin who doesn't get
+        // the code can't log in at all.
+        failed.push(`${phone} (${e.message})`);
+      }
+      // Pace it so 15 numbers don't hit the SMS gateway all at once.
+      if (recipients.length > 1) {
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+
+    console.log(`📱 Security code sent to ${sent}/${recipients.length} admin(s)`);
+    if (failed.length > 0) {
+      console.error(`   ❌ Failed: ${failed.join(', ')}`);
+    }
 
     return code;
   } catch (error) {
@@ -2012,6 +2078,7 @@ async function syncFaxes(platform) {
       }
     }
 
+    lastFaxSyncTime = new Date().toISOString();
     if (synced > 0 || statusUpdated > 0) {
       console.log(`✅ Fax sync: ${synced} new, ${statusUpdated} status updates`);
     }
