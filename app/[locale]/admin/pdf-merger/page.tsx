@@ -36,6 +36,7 @@ const DOCUMENT_SETS: Record<string, TemplateEntry[]> = {
     { key: "Non Business use", label: "Statement of Non-Business Use" },
     { key: "PIP Rejection form", label: "Texas PIP Coverage" },
     { key: "Uninsured Rejection form", label: "Texas UM/UIM Coverage" },
+    { key: "VEHICLE PHOTO INSPECTION", label: "Vehicle Photo Inspection" },
     { key: "Verification letter", label: "Verification of Policy Information" },
   ],
   // Commercial Auto: identical to Auto but WITHOUT Non-Business Use form
@@ -45,6 +46,7 @@ const DOCUMENT_SETS: Record<string, TemplateEntry[]> = {
     { key: "Discount form", label: "Discount & Document Compliance" },
     { key: "PIP Rejection form", label: "Texas PIP Coverage" },
     { key: "Uninsured Rejection form", label: "Texas UM/UIM Coverage" },
+    { key: "VEHICLE PHOTO INSPECTION", label: "Vehicle Photo Inspection" },
     { key: "Verification letter", label: "Verification of Policy Information" },
   ],
 };
@@ -603,6 +605,7 @@ export default function PdfMergerPage() {
         "Non Business use": [{ x: 435, y: 318 }],
         "PIP Rejection form": [{ x: 130, y: 265 }],
         "Uninsured Rejection form": [{ x: 132, y: 102 }],
+        "VEHICLE PHOTO INSPECTION": [{ x: 480, y: 102 }],
         "Verification letter": [{ x: 395, y: 137 }],
         "Recurring CC form": [{ x: 415, y: 128 }],
         "EFT form general": [{ x: 438, y: 102 }],
