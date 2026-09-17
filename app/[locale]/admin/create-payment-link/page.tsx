@@ -28,6 +28,7 @@ import AdminShell from "../_components/AdminShell";
 
 type LinkType = "payment" | "autopay-only";
 type TabType = "create" | "history";
+type PaymentMethod = "card" | "bank" | "direct-bill";
 
 // Square's quick_pay.name hard limit
 const DESCRIPTION_MAX = 255;
@@ -71,15 +72,16 @@ export default function CreatePaymentLink() {
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<
-    "card" | "bank" | "direct-bill"
-  >("card");
-  const [language, setLanguage] = useState<"en" | "es">("en");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(
+    null,
+  );
+  const [language, setLanguage] = useState<"en" | "es" | null>(null);
   const [translating, setTranslating] = useState(false);
   const [loading, setLoading] = useState(false);
   const [remindersEnabled, setRemindersEnabled] = useState(true);
 
   const handleLanguageChange = async (lang: "en" | "es") => {
+    if (lang === language) return;
     setLanguage(lang);
     if (!description.trim()) return;
     setTranslating(true);
@@ -364,6 +366,12 @@ export default function CreatePaymentLink() {
     setGeneratedLink("");
 
     try {
+      if (!language || !paymentMethod) {
+        setError("Please select a language and a payment setup method.");
+        setLoading(false);
+        return;
+      }
+
       if (linkType === "autopay-only") {
         if (!customerPhone || paymentMethod === "direct-bill") {
           setError(
@@ -512,8 +520,8 @@ export default function CreatePaymentLink() {
     setAmount("");
     setDescription("");
     setCustomerPhone("");
-    setPaymentMethod("card");
-    setLanguage("en");
+    setPaymentMethod(null);
+    setLanguage(null);
     setRemindersEnabled(true);
     setGeneratedLink("");
     setError("");
@@ -805,7 +813,14 @@ export default function CreatePaymentLink() {
                       <button
                         key={v}
                         type="button"
-                        onClick={() => setLinkType(v)}
+                        onClick={() => {
+                          setLinkType(v);
+                          if (
+                            v === "autopay-only" &&
+                            paymentMethod === "direct-bill"
+                          )
+                            setPaymentMethod(null);
+                        }}
                         className={`flex items-center justify-center gap-2 p-4 rounded-lg border-2 transition ${
                           linkType === v
                             ? `border-${color}-600 bg-${color}-50 text-${color}-700`
@@ -1029,6 +1044,8 @@ export default function CreatePaymentLink() {
                       disabled={
                         loading ||
                         !customerPhone ||
+                        !language ||
+                        !paymentMethod ||
                         (linkType === "payment" && descIsOver)
                       }
                       className="w-full px-6 py-3 bg-gradient-to-r from-red-700 to-blue-800 text-white rounded-lg font-medium hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
