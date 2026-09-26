@@ -533,6 +533,60 @@ function smsInfo(text: string): {
   return { encoding: "UCS-2", chars: units, segments, remaining: cap - units };
 }
 
+const NEEDS_REPLY_AFTER_MS = 30 * 60 * 1000;
+
+// Closers that don't need an answer — keeps "gracias" from pinning a thread.
+// Deliberately excludes "yes"/"si": those often answer our own question
+// ("want me to renew?") and DO need action.
+const ACK_ONLY =
+  /^(ok(ay)?|k|thanks?|thank you|thx|ty|gracias|muchas gracias|ok gracias|perfect|perfecto|great|got it|sounds good|will do|cool|👍|🙏|❤️|✅|👌)[\s.!]*$/i;
+
+const AUTO_REPLY_MARKER =
+  /automated after-hours message|mensaje automático fuera de horario/i;
+
+// iPhone tapbacks arrive as plain SMS: Liked "…", Loved "…"
+const TAPBACK =
+  /^(Liked|Loved|Laughed at|Emphasized|Disliked|Questioned|Le gustó|Le encantó)\s+[“"]/i;
+
+type ReplyVerdict = { needsReply: boolean; reason: string };
+
+// Free checks only — decides which threads are even worth asking the AI about
+function isReplyCandidate(conv: ConversationSummary, now: number): boolean {
+  const m = conv.lastMessage;
+  if (!m || !m.id) return false;
+  // Our after-hours auto-reply doesn't count as a human answer
+  const isAutoReply =
+    m.direction === "Outbound" && AUTO_REPLY_MARKER.test(m.subject || "");
+  if (m.direction !== "Inbound" && !isAutoReply) return false;
+  if (m.type === "AnsweredCall") return false; // they talked on the phone
+  const text = (m.subject || "").trim();
+  if (!isAutoReply && text && !m.attachments?.length) {
+    if (ACK_ONLY.test(text) || TAPBACK.test(text)) return false;
+  }
+  return now - new Date(conv.lastMessageTime).getTime() >= NEEDS_REPLY_AFTER_MS;
+}
+
+const verdictKey = (conv: ConversationSummary) =>
+  `${conv.conversationId || conv.phoneNumber}:${conv.lastMessage?.id}`;
+
+// No verdict yet = pinned (fail open) so nothing hides if the AI is down
+function needsReply(
+  conv: ConversationSummary,
+  now: number,
+  verdicts: Record<string, ReplyVerdict>,
+): boolean {
+  if (!isReplyCandidate(conv, now)) return false;
+  return verdicts[verdictKey(conv)]?.needsReply !== false;
+}
+
+function formatWaiting(ms: number): string {
+  const mins = Math.floor(ms / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ${mins % 60}m`;
+  return `${Math.floor(hrs / 24)}d`;
+}
+
 function EmojiPicker({
   onPick,
   onClose,
@@ -741,6 +795,51 @@ export default function MessageStoredPage() {
   const [claiming, setClaiming] = useState(false);
 
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const [replyVerdicts, setReplyVerdicts] = useState<
+    Record<string, ReplyVerdict>
+  >({});
+  // Keys already asked about this session — the 10s poll must never re-ask
+  const requestedVerdictsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const pending = conversations
+      .filter((c) => isReplyCandidate(c, now))
+      .filter((c) => !requestedVerdictsRef.current.has(verdictKey(c)))
+      .map((c) => ({
+        conversationId: c.conversationId || c.phoneNumber,
+        lastMessageId: c.lastMessage.id as string,
+      }));
+    if (pending.length === 0) return;
+
+    const t = setTimeout(async () => {
+      pending.forEach((p) =>
+        requestedVerdictsRef.current.add(
+          `${p.conversationId}:${p.lastMessageId}`,
+        ),
+      );
+      for (let i = 0; i < pending.length; i += 25) {
+        try {
+          const res = await fetch("/api/messages/reply-status", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items: pending.slice(i, i + 25) }),
+          });
+          const data = await res.json();
+          if (data.verdicts) {
+            setReplyVerdicts((prev) => ({ ...prev, ...data.verdicts }));
+          }
+        } catch {
+          /* fail open — stays pinned */
+        }
+      }
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [conversations, now]);
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(id);
+  }, []);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const [showInlineSearch, setShowInlineSearch] = useState(false);
   const [inlineSearchInput, setInlineSearchInput] = useState("");
@@ -1112,6 +1211,24 @@ export default function MessageStoredPage() {
         unread: (conv?.unreadCount ?? 0) > 0,
       };
     });
+
+  // Oldest-waiting first: the customer who's been ignored longest is the
+  // one most likely to have given up. Only reorder the plain "All" view —
+  // search results and Unread keep their own ordering.
+  const waitingConvs = conversations
+    .filter((c) => needsReply(c, now, replyVerdicts))
+    .sort(
+      (a, b) =>
+        new Date(a.lastMessageTime).getTime() -
+        new Date(b.lastMessageTime).getTime(),
+    );
+  const orderedConversations =
+    filterType === "all" && !searchInput.trim() && waitingConvs.length
+      ? [
+          ...waitingConvs,
+          ...conversations.filter((c) => !waitingConvs.includes(c)),
+        ]
+      : conversations;
 
   const switchAgent = () => {
     setNameInput(agentName);
@@ -3067,7 +3184,7 @@ export default function MessageStoredPage() {
               selectedPhone ? "hidden md:flex" : "flex"
             }`}
           >
-            <div className="p-4 border-b border-gray-200 space-y-2.5">
+            <div className="px-3 py-2.5 border-b border-gray-200 space-y-2">
               <div className="relative">
                 <input
                   type="text"
@@ -3154,6 +3271,20 @@ export default function MessageStoredPage() {
                   <option value="unread">Unread Only</option>
                   <option value="scheduled">Scheduled</option>
                 </select>
+                {waitingConvs.length > 0 && filterType === "all" && (
+                  <button
+                    onClick={() =>
+                      conversationsListRef.current?.scrollTo({
+                        top: 0,
+                        behavior: "smooth",
+                      })
+                    }
+                    className="flex-shrink-0 px-2.5 py-2 rounded-lg bg-red-50 border border-red-200 text-red-600 text-xs font-bold hover:bg-red-100 transition-colors"
+                    title={`${waitingConvs.length} conversation${waitingConvs.length > 1 ? "s" : ""} waiting for a reply`}
+                  >
+                    ⏱ {waitingConvs.length}
+                  </button>
+                )}
               </div>
               {/* Shift status */}
               {agentName && (
@@ -3426,9 +3557,11 @@ export default function MessageStoredPage() {
                   </p>
                 </div>
               ) : (
-                conversations.map((conv, index) => {
+                orderedConversations.map((conv, index) => {
                   const convKey = conv.conversationId || conv.phoneNumber;
                   const isSelected = selectedConversationId === convKey;
+                  const waiting = needsReply(conv, now, replyVerdicts);
+                  const waitingReason = replyVerdicts[verdictKey(conv)]?.reason;
                   const lastMsg = conv.lastMessage;
                   const isUnread =
                     (conv.unreadCount ?? 0) > 0 ||
@@ -3439,10 +3572,12 @@ export default function MessageStoredPage() {
                   return (
                     <div
                       key={`${convKey}-${index}`}
-                      className={`p-4 border-b border-gray-100 transition-colors relative ${
+                      className={`px-3 py-2.5 border-b border-gray-100 transition-colors relative ${
                         isSelected
                           ? "bg-blue-50 border-l-4 border-l-blue-600"
-                          : "hover:bg-gray-50 active:bg-gray-100"
+                          : waiting
+                            ? "bg-red-50/60 border-l-4 border-l-red-400 hover:bg-red-50"
+                            : "hover:bg-gray-50 active:bg-gray-100"
                       }`}
                     >
                       <div className="flex items-start gap-3">
@@ -3456,7 +3591,7 @@ export default function MessageStoredPage() {
                               isContentSearch ? searchInput : undefined,
                             );
                           }}
-                          className="flex-shrink-0 w-12 h-12 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center cursor-pointer relative"
+                          className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center cursor-pointer relative"
                         >
                           {/* Group indicator */}
                           {conv.isGroup && (
@@ -3524,6 +3659,25 @@ export default function MessageStoredPage() {
                               )}
                             </div>
                           </div>
+                          {waiting && (
+                            <p className="text-xs text-red-600 mb-0.5 flex items-center gap-1 min-w-0">
+                              <span className="font-semibold whitespace-nowrap flex-shrink-0">
+                                ⏱{" "}
+                                {formatWaiting(
+                                  now -
+                                    new Date(conv.lastMessageTime).getTime(),
+                                )}
+                              </span>
+                              {waitingReason && (
+                                <span
+                                  className="truncate text-red-500"
+                                  title={waitingReason}
+                                >
+                                  · {waitingReason}
+                                </span>
+                              )}
+                            </p>
+                          )}
                           {claims[convKey] && (
                             <p className="text-xs text-emerald-700 font-semibold mb-0.5 flex items-center gap-1">
                               <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />

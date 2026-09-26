@@ -2554,6 +2554,33 @@ async function startServer() {
     }, 30000);
     console.log('⏰ Plaid bank sync scheduled for 2:00 AM CST daily');
 
+    // ================================================
+    // AFTER-HOURS CLAIM AUTO-REPLY
+    // The Next.js route owns all the logic, including business hours
+    // (pulled from Google Maps). During office hours it returns immediately.
+    // ================================================
+    setInterval(async () => {
+      try {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.texaspremiumins.com';
+        const res = await fetch(`${appUrl}/api/messages/claim-autoreply`, {
+          headers: process.env.CRON_SECRET
+            ? { Authorization: `Bearer ${process.env.CRON_SECRET}` }
+            : {},
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          console.error(`❌ Claim auto-reply: HTTP ${res.status}`, data.error || '');
+        } else if (data.checked > 0) {
+          console.log(
+            `🚨 Claim auto-reply: checked ${data.checked}, sent ${data.sent}${data.dryRun ? ' (DRY RUN)' : ''}`,
+          );
+        }
+      } catch (err) {
+        console.error('❌ Claim auto-reply trigger failed:', err.message);
+      }
+    }, 3 * 60 * 1000);
+    console.log('⏰ After-hours claim auto-reply check every 3 minutes');
+
     // Generate code on startup if none exists for today
     if (securityCodeCollection) {
       const now = new Date();

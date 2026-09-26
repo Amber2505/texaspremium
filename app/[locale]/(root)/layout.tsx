@@ -128,9 +128,26 @@ const RootLayout = ({ children }: { children: React.ReactNode }) => {
   const openChatWithMessage = (message: string) => {
     sessionStorage.setItem("openChatWithMessage", message);
     window.dispatchEvent(
-      new CustomEvent("openChatWithMessage", { detail: message })
+      new CustomEvent("openChatWithMessage", { detail: message }),
     );
   };
+
+  // SMS deep link (after-hours claim auto-reply): /en?chat=claim opens
+  // Samantha in the same claim flow as the "File a Claim" menu item.
+  // The param is stripped so a refresh or shared URL doesn't reopen it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("chat") !== "claim") return;
+    params.delete("chat");
+    const qs = params.toString();
+    window.history.replaceState(
+      null,
+      "",
+      `${window.location.pathname}${qs ? `?${qs}` : ""}`,
+    );
+    openChatWithMessage("open a claim");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div>

@@ -14,6 +14,12 @@ import {
 import { useRouter } from "next/navigation";
 import io from "socket.io-client";
 import EmojiPicker from "emoji-picker-react";
+import {
+  DEFAULT_SCHEDULE,
+  isWithinBusinessHours,
+  businessHoursLabel,
+  type Schedule,
+} from "@/lib/business-hours";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || "";
 
@@ -132,20 +138,6 @@ const clearChatFromStorage = () => {
   }
 };
 
-// ✅ BUSINESS HOURS CHECK - Monday-Saturday, 9 AM - 7 PM CST
-function isWithinBusinessHours(): boolean {
-  return true;
-  const now = new Date();
-  const cst = new Date(
-    now.toLocaleString("en-US", { timeZone: "America/Chicago" }),
-  );
-  const day = cst.getDay(); // 0=Sunday, 1=Monday, ..., 6=Saturday
-  const hour = cst.getHours(); // 0-23
-
-  // Monday-Saturday (1-6), 9 AM - 7 PM (hour < 19 because 7 PM is 19:00)
-  return day >= 1 && day <= 6 && hour >= 9 && hour < 19;
-}
-
 function getStringSimilarity(str1: string, str2: string): number {
   const normalizeCompanyName = (s: string) => {
     return s
@@ -231,9 +223,11 @@ export default function ChatButton() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
 
-  // ✅ NEW STATE: Track business hours status
-  const [isBusinessHours, setIsBusinessHours] = useState(
-    isWithinBusinessHours(),
+  // Office hours come from Google Maps via /api/business-hours.
+  // DEFAULT_SCHEDULE only covers the moment before that loads.
+  const [schedule, setSchedule] = useState<Schedule>(DEFAULT_SCHEDULE);
+  const [isBusinessHours, setIsBusinessHours] = useState(() =>
+    isWithinBusinessHours(DEFAULT_SCHEDULE),
   );
 
   // Notification sound
@@ -282,20 +276,25 @@ export default function ChatButton() {
     isLiveChatRef.current = isLiveChat;
   }, [isLiveChat]);
 
-  // ✅ NEW EFFECT: Check business hours every minute
+  // Load the live schedule once
   useEffect(() => {
-    const checkBusinessHours = () => {
-      setIsBusinessHours(isWithinBusinessHours());
-    };
-
-    // Check immediately when component mounts
-    checkBusinessHours();
-
-    // Check every minute (60000ms)
-    const interval = setInterval(checkBusinessHours, 60000);
-
-    return () => clearInterval(interval);
+    fetch("/api/business-hours")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.schedule) setSchedule(data.schedule);
+      })
+      .catch(() => {
+        /* keep the default */
+      });
   }, []);
+
+  // Re-check every minute so the widget flips right at opening/closing
+  useEffect(() => {
+    const check = () => setIsBusinessHours(isWithinBusinessHours(schedule));
+    check();
+    const interval = setInterval(check, 60000);
+    return () => clearInterval(interval);
+  }, [schedule]);
 
   const router = useRouter();
 
@@ -2739,7 +2738,7 @@ export default function ChatButton() {
                                   <p className="text-xs text-orange-700 mb-3">
                                     Our support hours:{" "}
                                     <strong>
-                                      Monday-Saturday, 9 AM - 7 PM CST
+                                      {businessHoursLabel(schedule)}
                                     </strong>
                                   </p>
                                   <a
@@ -2824,8 +2823,7 @@ export default function ChatButton() {
                                             ...prev,
                                             {
                                               role: "assistant",
-                                              content:
-                                                "Live agents are currently unavailable. Our support hours are Monday-Saturday, 9 AM - 7 PM CST. Please text us at 469-729-5185 and we'll respond during business hours.",
+                                              content: `Live agents are currently unavailable. Our support hours are ${businessHoursLabel(schedule)}. Please text us at 469-729-5185 and we'll respond during business hours.`,
                                               extra: null,
                                             },
                                           ]);
