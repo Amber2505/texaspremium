@@ -129,21 +129,54 @@ export async function GET(req: Request) {
 
     const candidates: any[] = [];
 
+    // ?debug=1 reports why each recent thread was or wasn't picked up
+    const debug = new URL(req.url).searchParams.get("debug") === "1";
+    const skipped: Array<{ id: string; reason: string; last?: string }> = [];
+    const skip = (doc: any, reason: string, last?: any) => {
+      if (debug) {
+        skipped.push({
+          id: doc.conversationId || doc.phoneNumber,
+          reason,
+          last: last
+            ? `${last.direction} ${last.creationTime} "${String(last.subject || "").slice(0, 40)}"`
+            : undefined,
+        });
+      }
+    };
+
     for (const doc of docs as any[]) {
       const msgs: any[] = doc.messages || [];
       const last = msgs[msgs.length - 1];
-      if (!last?.id || last.direction !== "Inbound") continue;
-      if (doc.isGroup || (doc.participants?.length ?? 1) > 1) continue;
-      if (doc.claimAutoReply?.lastMessageId === last.id) continue; // already decided
+      if (!last?.id || last.direction !== "Inbound") {
+        skip(doc, "last message is not inbound", last);
+        continue;
+      }
+      if (doc.isGroup || (doc.participants?.length ?? 1) > 1) {
+        skip(doc, "group chat", last);
+        continue;
+      }
+      if (doc.claimAutoReply?.lastMessageId === last.id) {
+        skip(doc, "already decided", last);
+        continue;
+      }
 
       const sentAt = doc.claimAutoReply?.sentAt
         ? new Date(doc.claimAutoReply.sentAt).getTime()
         : 0;
-      if (now.getTime() - sentAt < COOLDOWN_MS) continue;
+      if (now.getTime() - sentAt < COOLDOWN_MS) {
+        skip(doc, "24h cooldown", last);
+        continue;
+      }
 
       const created = new Date(last.creationTime);
-      if (isNaN(created.getTime()) || created < since) continue;
-      if (isWithinBusinessHours(schedule, created)) continue; // arrived while open
+      if (isNaN(created.getTime()) || created < since) {
+        skip(doc, "older than 2h or bad date", last);
+        continue;
+      }
+      if (isWithinBusinessHours(schedule, created)) {
+        skip(doc, "arrived during business hours", last);
+        continue;
+      }
 
       // Never auto-reply twice in the same visible thread
       if (
@@ -153,6 +186,7 @@ export async function GET(req: Request) {
             AUTO_REPLY_MARKER.test(m.subject || ""),
         )
       ) {
+        skip(doc, "auto-reply already in thread", last);
         continue;
       }
 
@@ -161,14 +195,28 @@ export async function GET(req: Request) {
         .filter((m) => m.direction === "Inbound")
         .map((m) => m.replyText || m.subject || "")
         .join(" ");
-      if (!CLAIM_HINT.test(customerText)) continue;
+      if (!CLAIM_HINT.test(customerText)) {
+        skip(doc, "no claim keyword", last);
+        continue;
+      }
 
       candidates.push({ doc, last });
       if (candidates.length >= MAX_PER_RUN) break;
     }
 
-    if (candidates.length === 0 || !process.env.OPENAI_API_KEY) {
-      return NextResponse.json({ checked: 0 });
+    if (!process.env.OPENAI_API_KEY) {
+      console.error("claim-autoreply: OPENAI_API_KEY is not set");
+      return NextResponse.json({
+        checked: 0,
+        error: "OPENAI_API_KEY missing",
+        ...(debug ? { windowDocs: docs.length, skipped } : {}),
+      });
+    }
+    if (candidates.length === 0) {
+      return NextResponse.json({
+        checked: 0,
+        ...(debug ? { windowDocs: docs.length, skipped } : {}),
+      });
     }
 
     // One OpenAI call for the whole batch
@@ -281,6 +329,7 @@ export async function GET(req: Request) {
       checked: candidates.length,
       sent: sentCount,
       dryRun: DRY_RUN,
+      ...(debug ? { windowDocs: docs.length, skipped, results } : {}),
     });
   } catch (error) {
     console.error("claim-autoreply error:", error);
