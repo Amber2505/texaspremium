@@ -932,6 +932,11 @@ export default function ChatButton() {
       if (message) {
         console.log(`🎯 Opening chat with message: ${message}`);
 
+        // Clear the flag NOW, not inside the 300ms timeout below. The company
+        // database finishing its load re-runs this effect, and if that lands
+        // inside the delay the flag is still set and "open a claim" fires twice.
+        sessionStorage.removeItem("openChatWithMessage");
+
         // Open chat
         setOpen(true);
 

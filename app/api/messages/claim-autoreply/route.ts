@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 const MODEL = process.env.OPENAI_REPLY_MODEL || "gpt-4o-mini";
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://www.texaspremiumins.com";
-const CRIS_URL = "https://cris.dot.state.tx.us/public/Purchase/";
+// const CRIS_URL = "https://cris.dot.state.tx.us/public/Purchase/";
 const DRY_RUN = process.env.CLAIM_AUTOREPLY_DRY_RUN === "true";
 const LOOKBACK_MS = 2 * 60 * 60 * 1000; // ignore anything older than 2h
 const COOLDOWN_MS = 24 * 60 * 60 * 1000; // max one auto-reply per number per day
@@ -33,37 +33,31 @@ const AUTO_REPLY_MARKER =
 type Lang = "en" | "es";
 type ClaimType = "auto_accident" | "other";
 
-// Separate texts: RingCentral caps a single SMS at ~1,000 characters and
-// the accident steps run over. The marker note is always on the LAST text
-// so the admin page keeps the thread pinned.
+// One text per reply (RingCentral caps a single SMS at ~1,000 characters).
+// The note at the end matches AUTO_REPLY_MARKER, which keeps the thread
+// pinned on the admin page.
 function buildMessages(lang: Lang, claimType: ClaimType): string[] {
   const claimLink = `${SITE_URL}/${lang}?chat=claim`;
   const docsLink = `${SITE_URL}/${lang}/view_documents`;
 
   if (lang === "es") {
-    const closing = `Abra su reclamo en línea o llame a la línea de reclamos de su compañía de seguros. Ambos están aquí, solo verifique su número de teléfono:\n${claimLink}\n\nUn ajustador de reclamos se comunicará con usted en 24 a 96 horas, según el tipo de reclamo (auto, casa o comercial).\n\nNota: Este es un mensaje automático fuera de horario. Un agente revisará su conversación en cuanto abramos.`;
-
     if (claimType === "auto_accident") {
       return [
-        `¡Lamentamos lo del accidente! Estos son los pasos para abrir un reclamo:\n\n1. Manténgase a salvo. Llame al 911 si alguien está herido.\n\n2. Intercambie información con el otro conductor: nombre, teléfono, compañía de seguros, número de póliza y placas. Luego espere a la policía.\n\n3. Pida el número de caso de la policía. El reporte no se entrega en el lugar. Para accidentes en Texas, puede buscarlo después en Texas CRIS:\n${CRIS_URL}\n\n4. ¿Necesita grúa? Llame al número en su tarjeta de seguro o Dec page (vea sus documentos aquí: ${docsLink}). O use cualquier servicio de grúa y guarde el recibo para reembolso si tiene esa cobertura.\n\nNota: Este es un mensaje automático fuera de horario. Un agente revisará su conversación en cuanto abramos.`,
-        `5. ${closing}`,
+        `¡Lamentamos lo del accidente! Pasos rápidos:\n\n1. Manténgase a salvo. Llame al 911 si alguien está herido.\n2. Intercambie información con el otro conductor: nombre, teléfono, aseguradora, número de póliza y placas. Espere a la policía.\n3. Pida el número de caso. Puede buscar el reporte después en cris.dot.state.tx.us\n4. ¿Necesita grúa? Llame al número en su tarjeta de seguro (vea sus documentos: ${docsLink}) o use cualquier grúa y guarde el recibo.\n5. Abra su reclamo aquí (solo verifique su teléfono):\n${claimLink}\n\nUn ajustador lo contactará en 24 a 96 horas.\n\nNota: Mensaje automático fuera de horario. Un agente le dará seguimiento cuando abramos.`,
       ];
     }
     return [
-      `Hola, gracias por escribirnos y lamentamos lo sucedido. Nuestra oficina está cerrada en este momento.\n\nSi alguien está herido o en peligro, llame al 911 primero.\n\n${closing}`,
+      `Lamentamos lo sucedido. Nuestra oficina está cerrada en este momento.\n\nSi alguien está herido o en peligro, llame al 911 primero.\n\nAbra su reclamo aquí (solo verifique su teléfono):\n${claimLink}\n\nUn ajustador lo contactará en 24 a 96 horas.\n\nNota: Mensaje automático fuera de horario. Un agente le dará seguimiento cuando abramos.`,
     ];
   }
-
-  const closing = `Open your claim online or call your insurance company's claims line. Both are here, just verify your phone number:\n${claimLink}\n\nA claims adjuster will reach out within 24-96 hours, depending on the type of claim (auto, home, or commercial).\n\nNote: This is an automated after-hours message. An agent will review your conversation as soon as we reopen.`;
 
   if (claimType === "auto_accident") {
     return [
-      `Sorry about the accident! Here are quick steps to open a claim:\n\n1. Stay safe. Call 911 if anyone is hurt.\n\n2. Exchange info with the other driver: name, phone, insurance company, policy #, and license plate. Then wait for the police.\n\n3. Get the police case number. Reports aren't given at the scene. For Texas accidents, you can look up the report later on Texas CRIS:\n${CRIS_URL}\n\n4. Need a tow? Call the number on your ID card or Dec page (view your documents here: ${docsLink}). Or use any towing service and save your receipt for reimbursement if you have that coverage.\n\nNote: This is an automated after-hours message. An agent will review your conversation as soon as we reopen.`,
-      `5. ${closing}`,
+      `Sorry about the accident! Quick steps:\n\n1. Stay safe. Call 911 if anyone is hurt.\n2. Exchange info with the other driver: name, phone, insurance company, policy # and license plate. Wait for the police.\n3. Get the police case number. You can look up the report later at cris.dot.state.tx.us\n4. Need a tow? Call the number on your ID card (see your documents: ${docsLink}) or use any tow service and keep the receipt.\n5. Open your claim here (just verify your phone number):\n${claimLink}\n\nA claims adjuster will reach out within 24-96 hours.\n\nNote: Automated after-hours message. An agent will follow up when we reopen.`,
     ];
   }
   return [
-    `Hi, thanks for reaching out, and sorry you're dealing with this. Our office is closed right now.\n\nIf anyone is hurt or in danger, please call 911 first.\n\n${closing}`,
+    `Sorry you're dealing with this. Our office is closed right now.\n\nIf anyone is hurt or in danger, please call 911 first.\n\nOpen your claim here (just verify your phone number):\n${claimLink}\n\nA claims adjuster will reach out within 24-96 hours.\n\nNote: Automated after-hours message. An agent will follow up when we reopen.`,
   ];
 }
 
