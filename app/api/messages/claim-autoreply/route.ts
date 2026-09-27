@@ -61,12 +61,27 @@ function buildMessages(lang: Lang, claimType: ClaimType): string[] {
   ];
 }
 
-const SYSTEM = `You review after-hours SMS sent to an insurance agency. For each thread, decide whether the customer is trying to OPEN A NEW CLAIM right now: reporting a recent accident, theft, or damage, or asking how to file a claim.
-openClaim=false for: status of an existing claim, coverage questions, quotes, payments, mentioning a past accident while shopping for insurance, or anything unclear.
-Only use confidence "high" when it is clearly a new claim.
+const SYSTEM = `You review after-hours SMS sent to an insurance agency. Each thread shows its most recent messages, oldest first. Focus on the CUSTOMER's latest messages (the ones after the agent's last reply, if any).
+
+Decide whether the customer is reporting a NEW loss or trying to open a claim right now.
+
+openClaim=true with confidence "high" when the customer:
+- says they just had an accident, crash, or collision, or were hit ("had an accident, can you call me", "someone hit my car", "choqué", "me chocaron")
+- reports their car or property was stolen, broken into, vandalized, or damaged (hail, flood, fire, a tree fell)
+- asks how to file, open, or report a claim
+This is still true if they ALSO ask for a call back, ask for help, or address an agent by name.
+
+openClaim=false when the customer:
+- asks about the status of an existing claim or adjuster
+- asks about coverage, quotes, payments, or documents without reporting a new loss
+- mentions a past accident while shopping for insurance ("I had an accident 2 years ago, how much is a quote")
+- or when only the agent mentioned an accident
+
+Use confidence "medium" or "low" only when it is genuinely unclear.
 claimType: "auto_accident" if they report a vehicle accident or collision; otherwise "other" (theft, vandalism, hail, home damage, commercial, or unclear).
-Also report the language of the customer's latest message.
-Respond ONLY with JSON: {"results":[{"id":"t0","openClaim":false,"confidence":"low","claimType":"other","lang":"en"}]}`;
+lang: the language of the customer's latest message.
+reason: a few words explaining the decision.
+Respond ONLY with JSON: {"results":[{"id":"t0","openClaim":true,"confidence":"high","claimType":"auto_accident","lang":"en","reason":"reports accident, asks for a call"}]}`;
 
 async function sendSms(origin: string, to: string, message: string) {
   const fd = new FormData();
@@ -238,7 +253,7 @@ export async function GET(req: Request) {
       body: JSON.stringify({
         model: MODEL,
         temperature: 0,
-        max_tokens: 50 * candidates.length + 50,
+        max_tokens: 70 * candidates.length + 50,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: SYSTEM },
@@ -307,6 +322,7 @@ export async function GET(req: Request) {
                 openClaim: r.openClaim === true,
                 confidence: r.confidence || "low",
                 claimType,
+                reason: String(r.reason || "").slice(0, 80),
                 sent: didSend,
                 // Only a real send starts the 24h cooldown
                 sentAt: didSend ? now : c.doc.claimAutoReply?.sentAt || null,

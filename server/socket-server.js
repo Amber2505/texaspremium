@@ -882,6 +882,7 @@ async function startRingCentralWebSocket() {
                 body: (subject || '').slice(0, 60),
                 eventId: `sms-${messageId}`,
               });
+              requestClaimCheck();
             }
           }
         }
@@ -1398,6 +1399,7 @@ async function syncRingCentralMessages() {
           body: (fullMessage.subject || '').slice(0, 60),
           eventId: `sms-${messageId}`,
         });
+        requestClaimCheck();
       }
     }
 
@@ -2554,32 +2556,10 @@ async function startServer() {
     }, 30000);
     console.log('⏰ Plaid bank sync scheduled for 2:00 AM CST daily');
 
-    // ================================================
-    // AFTER-HOURS CLAIM AUTO-REPLY
-    // The Next.js route owns all the logic, including business hours
-    // (pulled from Google Maps). During office hours it returns immediately.
-    // ================================================
-    setInterval(async () => {
-      try {
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.texaspremiumins.com';
-        const res = await fetch(`${appUrl}/api/messages/claim-autoreply`, {
-          headers: process.env.CRON_SECRET
-            ? { Authorization: `Bearer ${process.env.CRON_SECRET}` }
-            : {},
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          console.error(`❌ Claim auto-reply: HTTP ${res.status}`, data.error || '');
-        } else if (data.checked > 0) {
-          console.log(
-            `🚨 Claim auto-reply: checked ${data.checked}, sent ${data.sent}${data.dryRun ? ' (DRY RUN)' : ''}`,
-          );
-        }
-      } catch (err) {
-        console.error('❌ Claim auto-reply trigger failed:', err.message);
-      }
-    }, 3 * 60 * 1000);
-    console.log('⏰ After-hours claim auto-reply check every 3 minutes');
+    // After-hours claim auto-reply: instant trigger on inbound SMS (see
+    // requestClaimCheck), plus this sweep as a safety net.
+    setInterval(runClaimAutoReplyCheck, 3 * 60 * 1000);
+    console.log('⏰ After-hours claim auto-reply: ~20s after inbound SMS + 3-min backup sweep');
 
     // Generate code on startup if none exists for today
     if (securityCodeCollection) {
@@ -2874,6 +2854,58 @@ app.get('/scheduled-status', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// ================================================
+// AFTER-HOURS CLAIM AUTO-REPLY TRIGGER
+// The Next.js route owns all the logic (hours, AI, sending). This just
+// decides WHEN to call it: ~20s after an inbound SMS, plus a 3-min sweep.
+// The lock guarantees two runs never overlap, so nothing is sent twice.
+// ================================================
+let claimCheckRunning = false;
+let claimCheckQueued = false;
+let claimCheckTimer = null;
+
+async function runClaimAutoReplyCheck() {
+  if (claimCheckRunning) {
+    claimCheckQueued = true; // run once more when the current one finishes
+    return;
+  }
+  claimCheckRunning = true;
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.texaspremiumins.com';
+    const res = await fetch(`${appUrl}/api/messages/claim-autoreply`, {
+      headers: process.env.CRON_SECRET
+        ? { Authorization: `Bearer ${process.env.CRON_SECRET}` }
+        : {},
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error(`❌ Claim auto-reply: HTTP ${res.status}`, data.error || '');
+    } else if (data.checked > 0) {
+      console.log(
+        `🚨 Claim auto-reply: checked ${data.checked}, sent ${data.sent}${data.dryRun ? ' (DRY RUN)' : ''}`,
+      );
+    }
+  } catch (err) {
+    console.error('❌ Claim auto-reply trigger failed:', err.message);
+  } finally {
+    claimCheckRunning = false;
+    if (claimCheckQueued) {
+      claimCheckQueued = false;
+      setTimeout(runClaimAutoReplyCheck, 2000);
+    }
+  }
+}
+
+// Called on every inbound SMS. Each new text restarts the wait, so
+// "Hey" / "had an accident" / "call me" is judged as one conversation.
+function requestClaimCheck(delayMs = 20000) {
+  if (claimCheckTimer) clearTimeout(claimCheckTimer);
+  claimCheckTimer = setTimeout(() => {
+    claimCheckTimer = null;
+    runClaimAutoReplyCheck();
+  }, delayMs);
+}
 
 // ================================================
 // ADMIN NOTIFICATION FAN-OUT
