@@ -43,7 +43,7 @@ function buildMessages(lang: Lang, claimType: ClaimType): string[] {
   if (lang === "es") {
     if (claimType === "auto_accident") {
       return [
-        `¡Lamentamos lo del accidente! Pasos rápidos:\n\n1. Manténgase a salvo. Llame al 911 si alguien está herido.\n2. Intercambie información con el otro conductor: nombre, teléfono, aseguradora, número de póliza y placas. Espere a la policía.\n3. Pida el número de caso. Puede buscar el reporte después en cris.dot.state.tx.us\n4. ¿Necesita grúa? Llame al número en su tarjeta de seguro (vea sus documentos: ${docsLink}) o use cualquier grúa y guarde el recibo.\n5. Abra su reclamo aquí (solo verifique su teléfono):\n${claimLink}\n\nUn ajustador lo contactará en 24 a 96 horas.\n\nNota: Mensaje automático fuera de horario. Un agente le dará seguimiento cuando abramos.`,
+        `¡Lamentamos lo del accidente! Pasos rápidos:\n\n1. Manténgase a salvo. Llame al 911 si alguien está herido.\n2. Intercambie información con el otro conductor: nombre, teléfono, aseguradora, número de póliza y placas. Espere a la policía.\n3. Pida el número de caso. Puede buscar el reporte después en cris.dot.state.tx.us\n4. ¿Necesita grúa? Llame al número en su tarjeta de seguro, o use cualquier grúa y guarde el recibo. El reembolso depende de su cobertura. Su tarjeta y documentos:\n${docsLink}\n5. Abra su reclamo aquí (solo verifique su teléfono):\n${claimLink}\n\nUn ajustador lo contactará en 24 a 96 horas.\n\nNota: Mensaje automático fuera de horario. Un agente le dará seguimiento cuando abramos.`,
       ];
     }
     return [
@@ -53,7 +53,7 @@ function buildMessages(lang: Lang, claimType: ClaimType): string[] {
 
   if (claimType === "auto_accident") {
     return [
-      `Sorry about the accident! Quick steps:\n\n1. Stay safe. Call 911 if anyone is hurt.\n2. Exchange info with the other driver: name, phone, insurance company, policy # and license plate. Wait for the police.\n3. Get the police case number. You can look up the report later at cris.dot.state.tx.us\n4. Need a tow? Call the number on your ID card (see your documents: ${docsLink}) or use any tow service and keep the receipt.\n5. Open your claim here (just verify your phone number):\n${claimLink}\n\nA claims adjuster will reach out within 24-96 hours.\n\nNote: Automated after-hours message. An agent will follow up when we reopen.`,
+      `Sorry about the accident! Quick steps:\n\n1. Stay safe. Call 911 if anyone is hurt.\n2. Exchange info with the other driver: name, phone, insurance company, policy # and license plate. Wait for the police.\n3. Get the police case number. You can look up the report later at cris.dot.state.tx.us\n4. Need a tow? Call the number on your ID card, or use any tow service and keep the receipt. Whether towing is reimbursed depends on your coverage. Your ID card and documents:\n${docsLink}\n5. Open your claim here (just verify your phone number):\n${claimLink}\n\nA claims adjuster will reach out within 24-96 hours.\n\nNote: Automated after-hours message. An agent will follow up when we reopen.`,
     ];
   }
   return [
