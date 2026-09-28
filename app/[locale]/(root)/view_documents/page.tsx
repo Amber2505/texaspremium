@@ -16,6 +16,7 @@ interface Attachment {
   message_id?: string;
   subject?: string;
   doc_type?: string;
+  doc_hash?: string;
 }
 
 interface GroupedAttachments {
@@ -52,7 +53,7 @@ export default function ViewDocuments() {
   const [hasMore, setHasMore] = useState(false);
   const [currentSkip, setCurrentSkip] = useState(0);
   const [hasSearched, setHasSearched] = useState(false);
-  const [loadCount, setLoadCount] = useState(0);
+  const [, setLoadCount] = useState(0);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(
     null,
   );
@@ -122,12 +123,8 @@ export default function ViewDocuments() {
     setError("");
   };
 
-  const getCurrentLimit = () => {
-    if (loadCount === 0) return 1;
-    if (loadCount === 1) return 2;
-    if (loadCount === 2) return 3;
-    return 5;
-  };
+  // One page = one sending date. "Load more" brings the previous date.
+  const getCurrentLimit = () => 1;
 
   const fetchAttachments = async (
     authToken: string,
@@ -164,7 +161,16 @@ export default function ViewDocuments() {
       const data: ApiResponse = await response.json();
 
       if (append) {
-        setAttachments((prev) => [...prev, ...data.attachments]);
+        // The same document already shown under a newer date -> don't repeat it
+        setAttachments((prev) => {
+          const shown = new Set(prev.map((a) => a.doc_hash).filter(Boolean));
+          return [
+            ...prev,
+            ...data.attachments.filter(
+              (a) => !a.doc_hash || !shown.has(a.doc_hash),
+            ),
+          ];
+        });
       } else {
         setAttachments(data.attachments);
       }
