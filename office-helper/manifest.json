@@ -1,0 +1,9 @@
+{
+  "manifest_version": 3,
+  "name": "Texas Premium Office Helper",
+  "version": "1.0.0",
+  "description": "Saves carrier ID cards to the customer document portal.",
+  "permissions": ["webRequest"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" }
+}
