@@ -4719,6 +4719,9 @@ export default function MessageStoredPage() {
                                       {isOutbound
                                         ? "Call placed"
                                         : "Call received"}
+                                      {(msg as any).handledBy
+                                        ? ` · Ext ${(msg as any).handledBy}${(msg as any).handledByName ? ` (${(msg as any).handledByName})` : ""}`
+                                        : ""}
                                       {(msg as any).callDuration
                                         ? ` · ${Math.floor(((msg as any).callDuration as number) / 60)}:${String(((msg as any).callDuration as number) % 60).padStart(2, "0")}`
                                         : ""}

@@ -19,6 +19,7 @@ import {
   CheckCircle,
   Clock,
   PlusCircle,
+  GraduationCap,
 } from "lucide-react";
 
 const CATEGORIES = [
@@ -48,6 +49,15 @@ const CATEGORY_STYLES: Record<
   },
   Autopay: { bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500" },
   General: { bg: "bg-gray-100", text: "text-gray-600", dot: "bg-gray-400" },
+};
+
+// Pinned onboarding video — served from /public, always shown above the guide list
+const FEATURED_VIDEO = {
+  src: "/Texas_Car_Insurance_101_New_Agent_Training.mp4",
+  title: "Texas Car Insurance 101",
+  description:
+    "Start here. The 8 coverages on a Texas auto policy — what each one does, what's required, and what to tell customers.",
+  duration: "~6 min",
 };
 
 interface Guide {
@@ -822,6 +832,39 @@ export default function AdminGuidesPage() {
               </div>
             </div>
           )}
+
+          {/* ── Pinned: new agent training ── */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="grid grid-cols-1 lg:grid-cols-5">
+              <div className="lg:col-span-3 bg-black">
+                <video
+                  src={`${FEATURED_VIDEO.src}#t=0.5`}
+                  controls
+                  preload="metadata"
+                  playsInline
+                  className="w-full h-full aspect-video"
+                />
+              </div>
+              <div className="lg:col-span-2 p-6 flex flex-col justify-center">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-rose-50 text-[#A0103D] uppercase tracking-wide">
+                    <GraduationCap className="w-3.5 h-3.5" />
+                    New Agents — Start Here
+                  </span>
+                  <span className="flex items-center gap-1 text-[10px] font-semibold text-gray-400">
+                    <Clock className="w-3 h-3" />
+                    {FEATURED_VIDEO.duration}
+                  </span>
+                </div>
+                <h2 className="text-lg font-semibold text-gray-800 mb-2">
+                  {FEATURED_VIDEO.title}
+                </h2>
+                <p className="text-sm text-gray-500 leading-relaxed">
+                  {FEATURED_VIDEO.description}
+                </p>
+              </div>
+            </div>
+          </div>
 
           {/* ── Search + filters ── */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">

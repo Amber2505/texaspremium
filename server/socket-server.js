@@ -1567,6 +1567,69 @@ async function fetchCallRecording(call, callId, authToken) {
   };
 }
 
+// Ring-all: the account log can return one record per extension the call
+// touched. Keep one per phone call — answered beats missed, recorded beats not.
+function callRank(call) {
+  let r = 0;
+  if (ANSWERED_RESULTS.has(call.result)) r += 2;
+  if (findRecordingObject(call)) r += 1;
+  return r;
+}
+
+function pickOnePerSession(calls) {
+  const groups = new Map();
+  for (const c of calls) {
+    const key = c.telephonySessionId || c.sessionId || c.id;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+  }
+  const out = [];
+  for (const group of groups.values()) {
+    let best = group.reduce((a, b) => (callRank(b) > callRank(a) ? b : a));
+    // Recording sometimes lives on a sibling record — carry it over
+    if (!findRecordingObject(best)) {
+      const withRec = group.find(c => findRecordingObject(c));
+      if (withRec) best = { ...best, recording: findRecordingObject(withRec) };
+    }
+    out.push(best);
+  }
+  return out;
+}
+
+// Which extension actually took / placed the call
+function getHandledBy(call) {
+  if (call.direction === 'Outbound') {
+    const leg = (call.legs || []).find(l => l.from?.extensionNumber);
+    return {
+      ext: call.from?.extensionNumber || leg?.from?.extensionNumber || null,
+      name: call.from?.name || leg?.from?.name || null,
+    };
+  }
+  const legs = call.legs || [];
+  const answered =
+    legs.find(l => l.to?.extensionNumber && ANSWERED_RESULTS.has(l.result) && l.legType === 'Accept') ||
+    legs.find(l => l.to?.extensionNumber && ANSWERED_RESULTS.has(l.result));
+  return {
+    ext: answered?.to?.extensionNumber || null,
+    name: answered?.to?.name || null,
+  };
+}
+
+async function recountUnread(conversationId) {
+  if (!conversationId) return;
+  const conv = await conversationsCollection.findOne(
+    { conversationId },
+    { projection: { messages: 1 } },
+  );
+  if (!conv) return;
+  const unreadCount = (conv.messages || []).filter(
+    m => m.direction === 'Inbound' && m.readStatus === 'Unread',
+  ).length;
+  await conversationsCollection.updateOne({ _id: conv._id }, { $set: { unreadCount } });
+  io.to(`conversation:${conversationId}`).emit('readStatusChanged', { conversationId, unreadCount });
+  io.to('sms-admins').emit('readStatusChanged', { conversationId, unreadCount });
+}
+
 async function syncMissedCalls(platform) {
   if (!conversationsCollection) return;
 
@@ -1578,17 +1641,18 @@ async function syncMissedCalls(platform) {
     const authToken = callAuth?.access_token;
     const dateFrom = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    const response = await platform.get('/restapi/v1.0/account/~/extension/~/call-log', {
+    // Account-level: every extension (101–104), not just the JWT user's.
+    const response = await platform.get('/restapi/v1.0/account/~/call-log', {
       type: 'Voice',
       // No direction filter — outbound calls carry recordings too, and those
       // are exactly the ones worth keeping for chargeback defense.
       dateFrom,
-      perPage: 100,
+      perPage: 250,
       view: 'Detailed', // the `recording` object only comes back in Detailed
     });
 
     const data = await response.json();
-    const calls = data.records || [];
+    const calls = pickOnePerSession(data.records || []);
     let synced = 0;
 
     console.log(
@@ -1611,40 +1675,77 @@ async function syncMissedCalls(platform) {
       const callerPhone = customerPhone;
       const conversationId = customerPhone;
 
-      const existingCall = await conversationsCollection.findOne(
+      const sessionId = call.telephonySessionId || null;
+      let existingCall = await conversationsCollection.findOne(
         { 'messages.id': `call_${callId}` },
-        { projection: { 'messages.$': 1 } },
+        { projection: { conversationId: 1, 'messages.$': 1 } },
       );
+      // Same call stored under another extension's record id
+      if (!existingCall && sessionId) {
+        existingCall = await conversationsCollection.findOne(
+          { 'messages.telephonySessionId': sessionId },
+          { projection: { conversationId: 1, 'messages.$': 1 } },
+        );
+      }
 
       if (existingCall) {
+        const stored = existingCall.messages?.[0];
+        const storedId = stored?.id || `call_${callId}`;
+        const $set = {};
+        const $unset = {};
+
+        // The old 101-only sync saw ring-all calls another extension picked
+        // up as "Missed". Correct them now that we can see the answering leg.
+        const nowAnswered = !isOutboundCall && ANSWERED_RESULTS.has(call.result);
+        if (stored?.type === 'MissedCall' && nowAnswered) {
+          $set['messages.$.type'] = 'AnsweredCall';
+          $set['messages.$.readStatus'] = 'Read';
+          $set['messages.$.callResult'] = call.result;
+          $set['messages.$.callDuration'] = call.duration || 0;
+          $set['messages.$.hasVoicemail'] = false;
+        }
+
+        if (!stored?.handledBy && (nowAnswered || isOutboundCall)) {
+          const h = getHandledBy(call);
+          if (h.ext) $set['messages.$.handledBy'] = h.ext;
+          if (h.name) $set['messages.$.handledByName'] = h.name;
+        }
+
+        if (!stored?.telephonySessionId && sessionId) {
+          $set['messages.$.telephonySessionId'] = sessionId;
+        }
+
         // The recording usually isn't ready on the first pass — attach it on
         // a later cycle instead of leaving the call without audio forever.
-        const stored = existingCall.messages?.[0];
-        const hasRecording = stored?.attachments?.some(
-          a => a.type === 'CallRecording',
-        );
+        const hasRecording = stored?.attachments?.some(a => a.type === 'CallRecording');
         if (!hasRecording && findRecordingObject(call)) {
           const rec = await fetchCallRecording(call, callId, authToken);
-            if (rec) {
-            await conversationsCollection.updateOne(
-              { 'messages.id': `call_${callId}` },
-              {
-                $set: { 'messages.$.attachments': [rec] },
-                $unset: { 'messages.$.recordingCopyFailed': '' },
-              },
-            );
+          if (rec) {
+            $set['messages.$.attachments'] = [rec];
+            $unset['messages.$.recordingCopyFailed'] = '';
             console.log(`🎙️ Backfilled recording for call ${callId}`);
           } else {
-            await conversationsCollection.updateOne(
-              { 'messages.id': `call_${callId}` },
-              { $set: { 'messages.$.recordingCopyFailed': true } },
-            );
+            $set['messages.$.recordingCopyFailed'] = true;
+          }
+        }
+
+        if (Object.keys($set).length || Object.keys($unset).length) {
+          await conversationsCollection.updateOne(
+            { 'messages.id': storedId },
+            {
+              ...(Object.keys($set).length ? { $set } : {}),
+              ...(Object.keys($unset).length ? { $unset } : {}),
+            },
+          );
+          if ($set['messages.$.type'] === 'AnsweredCall') {
+            console.log(`🔁 ${storedId} was answered by another extension — Missed → Answered`);
+            await recountUnread(existingCall.conversationId);
           }
         }
         continue;
       }
 
-            // RC does NOT report an after-hours call as "Missed" — a call that rings
+      // RC does NOT report an after-hours call as "Missed" — a call that rings
       // out to the greeting comes back as "Voicemail", and the old filter threw
       // it away. As far as staff are concerned, anything nobody picked up is a
       // missed call. ("Call connected" has a space — plain "Connected" never
@@ -1662,6 +1763,7 @@ async function syncMissedCalls(platform) {
       }
 
       const recording = await fetchCallRecording(call, callId, authToken);
+      const handled = isAnswered || isOutboundCall ? getHandledBy(call) : { ext: null, name: null };
 
       const messageObj = {
         id: `call_${callId}`,
@@ -1684,6 +1786,9 @@ async function syncMissedCalls(platform) {
         callDuration: call.duration || 0,
         callResult: call.result,        // raw RC result, useful when triaging
         hasVoicemail: wentToVoicemail,  // the voicemail itself syncs separately
+        telephonySessionId: call.telephonySessionId || null,
+        handledBy: handled.ext,
+        handledByName: handled.name,
       };
 
       await conversationsCollection.updateOne(
@@ -1719,7 +1824,7 @@ async function syncMissedCalls(platform) {
 
       synced++;
       console.log(
-        `${isAnswered ? '📞' : '📵'} ${call.result} from ${callerPhone} at ${call.startTime}`,
+        `${isAnswered ? '📞' : '📵'} ${call.result} ${isOutboundCall ? 'to' : 'from'} ${callerPhone} at ${call.startTime} (ext ${handled.ext || '?'})`,
       );
     }
 
@@ -1727,6 +1832,11 @@ async function syncMissedCalls(platform) {
     return { synced };
   } catch (error) {
     console.error('❌ Missed call sync error:', error.message);
+    if (/403|permission|InsufficientPermissions/i.test(error.message || '')) {
+      console.error(
+        '   ⚠️ Account call log needs: JWT user (ext 101) with a role that includes Company Call Log + Call Recordings, and the app scopes ReadCallLog + ReadCallRecording.',
+      );
+    }
     // RC SDK errors carry the real reason on the response, not the message
     try {
       if (error.response) {
