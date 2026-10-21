@@ -1526,6 +1526,53 @@ function findRecordingObject(call) {
   return null;
 }
 
+// Transfers produce one recording per segment (101's part, 104's part), on
+// different legs or sibling records of the same session. Collect them all.
+function findAllRecordings(call) {
+  const seen = new Map();
+  const add = r => {
+    if (r?.contentUri) seen.set(String(r.id || r.contentUri), r);
+  };
+  for (const c of call._siblings || [call]) {
+    add(c.recording);
+    for (const leg of c.legs || []) add(leg.recording);
+  }
+  return Array.from(seen.values());
+}
+
+async function fetchCallRecordings(call, callId, authToken, skipIds = new Set()) {
+  const recordings = [];
+  let failed = false;
+  if (!authToken) return { recordings, failed: true };
+
+  for (const r of findAllRecordings(call)) {
+    const rid = String(r.id || '');
+    if (rid && skipIds.has(rid)) continue;
+
+    const azureUrl = await downloadAndUploadAttachment(
+      r.contentUri,
+      `call_${callId}_${rid || recordings.length}.mp3`,
+      'audio/mpeg',
+      authToken,
+    );
+    if (!azureUrl) {
+      failed = true;
+      console.error(`🚨 RECORDING COPY FAILED for call ${callId} (rec ${rid}) — RC still has it at ${r.contentUri}`);
+      continue;
+    }
+    recordings.push({
+      id: rid || undefined,
+      uri: r.contentUri,
+      type: 'CallRecording',
+      contentType: 'audio/mpeg',
+      azureUrl,
+      filename: `call-recording-${callId}-${rid || recordings.length + 1}.mp3`,
+    });
+  }
+  if (recordings.length) console.log(`[rec] call ${callId}: ${recordings.length} recording(s) copied to Azure`);
+  return { recordings, failed };
+}
+
 async function fetchCallRecording(call, callId, authToken) {
   const recording = findRecordingObject(call);
   const contentUri = recording?.contentUri;
@@ -1585,33 +1632,36 @@ function pickOnePerSession(calls) {
   }
   const out = [];
   for (const group of groups.values()) {
-    let best = group.reduce((a, b) => (callRank(b) > callRank(a) ? b : a));
-    // Recording sometimes lives on a sibling record — carry it over
-    if (!findRecordingObject(best)) {
-      const withRec = group.find(c => findRecordingObject(c));
-      if (withRec) best = { ...best, recording: findRecordingObject(withRec) };
-    }
-    out.push(best);
+    const best = group.reduce((a, b) => (callRank(b) > callRank(a) ? b : a));
+    // Keep the whole group so every recording / transfer leg is visible
+    out.push({ ...best, _siblings: group });
   }
   return out;
 }
 
-// Which extension actually took / placed the call
+// Every extension that handled the call, in order: "101 → 104" for a transfer
 function getHandledBy(call) {
+  const records = call._siblings || [call];
+  const legs = records.flatMap(c => c.legs || []);
+  const exts = [];
+  const names = [];
+  const push = (ext, name) => {
+    if (ext && !exts.includes(ext)) exts.push(ext);
+    if (name && !names.includes(name)) names.push(name);
+  };
+
   if (call.direction === 'Outbound') {
-    const leg = (call.legs || []).find(l => l.from?.extensionNumber);
-    return {
-      ext: call.from?.extensionNumber || leg?.from?.extensionNumber || null,
-      name: call.from?.name || leg?.from?.name || null,
-    };
+    const fromLeg = legs.find(l => l.from?.extensionNumber);
+    push(call.from?.extensionNumber || fromLeg?.from?.extensionNumber, call.from?.name || fromLeg?.from?.name);
   }
-  const legs = call.legs || [];
-  const answered =
-    legs.find(l => l.to?.extensionNumber && ANSWERED_RESULTS.has(l.result) && l.legType === 'Accept') ||
-    legs.find(l => l.to?.extensionNumber && ANSWERED_RESULTS.has(l.result));
+  for (const l of legs) {
+    if (l.to?.extensionNumber && ANSWERED_RESULTS.has(l.result)) {
+      push(l.to.extensionNumber, l.to.name);
+    }
+  }
   return {
-    ext: answered?.to?.extensionNumber || null,
-    name: answered?.to?.name || null,
+    ext: exts.join(' → ') || null,
+    name: names.join(' → ') || null,
   };
 }
 
@@ -1705,10 +1755,10 @@ async function syncMissedCalls(platform) {
           $set['messages.$.hasVoicemail'] = false;
         }
 
-        if (!stored?.handledBy && (nowAnswered || isOutboundCall)) {
+        if (nowAnswered || isOutboundCall) {
           const h = getHandledBy(call);
-          if (h.ext) $set['messages.$.handledBy'] = h.ext;
-          if (h.name) $set['messages.$.handledByName'] = h.name;
+          if (h.ext && h.ext !== stored?.handledBy) $set['messages.$.handledBy'] = h.ext;
+          if (h.name && h.name !== stored?.handledByName) $set['messages.$.handledByName'] = h.name;
         }
 
         if (!stored?.telephonySessionId && sessionId) {
@@ -1717,16 +1767,25 @@ async function syncMissedCalls(platform) {
 
         // The recording usually isn't ready on the first pass — attach it on
         // a later cycle instead of leaving the call without audio forever.
-        const hasRecording = stored?.attachments?.some(a => a.type === 'CallRecording');
-        if (!hasRecording && findRecordingObject(call)) {
-          const rec = await fetchCallRecording(call, callId, authToken);
-          if (rec) {
-            $set['messages.$.attachments'] = [rec];
-            $unset['messages.$.recordingCopyFailed'] = '';
-            console.log(`🎙️ Backfilled recording for call ${callId}`);
-          } else {
-            $set['messages.$.recordingCopyFailed'] = true;
+        // A transfer's second recording often appears a cycle or two later —
+        // add any recording we don't have yet instead of stopping at one.
+        const storedRecIds = new Set(
+          (stored?.attachments || [])
+            .filter(a => a.type === 'CallRecording')
+            .map(a => String(a.id || ''))
+            .filter(Boolean),
+        );
+        const missing = findAllRecordings(call).filter(
+          r => !storedRecIds.has(String(r.id || '')),
+        );
+        if (missing.length) {
+          const { recordings, failed } = await fetchCallRecordings(call, callId, authToken, storedRecIds);
+          if (recordings.length) {
+            $set['messages.$.attachments'] = [...(stored?.attachments || []), ...recordings];
+            console.log(`🎙️ Backfilled ${recordings.length} recording(s) for call ${callId}`);
           }
+          if (failed) $set['messages.$.recordingCopyFailed'] = true;
+          else $unset['messages.$.recordingCopyFailed'] = '';
         }
 
         if (Object.keys($set).length || Object.keys($unset).length) {
@@ -1762,7 +1821,7 @@ async function syncMissedCalls(platform) {
         continue;
       }
 
-      const recording = await fetchCallRecording(call, callId, authToken);
+      const { recordings } = await fetchCallRecordings(call, callId, authToken);
       const handled = isAnswered || isOutboundCall ? getHandledBy(call) : { ext: null, name: null };
 
       const messageObj = {
@@ -1782,7 +1841,7 @@ async function syncMissedCalls(platform) {
         to: [
           { phoneNumber: isOutboundCall ? customerPhone : MY_PHONE_NUMBER },
         ],
-        attachments: recording ? [recording] : [],
+        attachments: recordings,
         callDuration: call.duration || 0,
         callResult: call.result,        // raw RC result, useful when triaging
         hasVoicemail: wentToVoicemail,  // the voicemail itself syncs separately

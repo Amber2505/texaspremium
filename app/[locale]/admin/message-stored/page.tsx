@@ -4735,18 +4735,27 @@ export default function MessageStoredPage() {
                                   ?.filter((a: MessageAttachment) =>
                                     a.contentType?.startsWith("audio/"),
                                   )
-                                  .map((a: MessageAttachment, ai: number) => (
-                                    <div key={ai} className="pb-1">
-                                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">
-                                        Call recording
-                                      </p>
-                                      <audio
-                                        controls
-                                        src={a.azureUrl || a.uri}
-                                        className="w-full min-w-[280px]"
-                                      />
-                                    </div>
-                                  ))}
+                                  .map(
+                                    (
+                                      a: MessageAttachment,
+                                      ai: number,
+                                      arr: MessageAttachment[],
+                                    ) => (
+                                      <div key={ai} className="pb-1">
+                                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">
+                                          Call recording
+                                          {arr.length > 1
+                                            ? ` ${ai + 1} of ${arr.length}`
+                                            : ""}
+                                        </p>
+                                        <audio
+                                          controls
+                                          src={a.azureUrl || a.uri}
+                                          className="w-full min-w-[280px]"
+                                        />
+                                      </div>
+                                    ),
+                                  )}
                               {msg.subject && (
                                 <p
                                   className={`break-words whitespace-pre-wrap text-sm sm:text-base ${msg.attachments?.length ? "mb-2" : ""}`}
