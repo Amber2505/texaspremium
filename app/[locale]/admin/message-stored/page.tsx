@@ -3,7 +3,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+} from "react";
 import { RingCentralMessage } from "@/lib/models/message";
 import { io, Socket } from "socket.io-client";
 import Image from "next/image";
@@ -665,6 +671,11 @@ export default function MessageStoredPage() {
   // Mirror of `conversation` so callbacks can read the latest messages
   // without re-creating themselves on every incoming message.
   const conversationRef = useRef<RingCentralMessage[]>([]);
+  // Where the user was before older messages were prepended — restored after commit
+  const scrollRestoreRef = useRef<{ height: number; top: number } | null>(null);
+  // Becomes true once the initial scroll-to-bottom (or the user) has scrolled,
+  // so "scrollTop is 0" isn't mistaken for "user scrolled to the top"
+  const userScrolledRef = useRef(false);
   const [mounted, setMounted] = useState(false);
   const [messageInput, setMessageInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -1512,21 +1523,21 @@ export default function MessageStoredPage() {
         );
 
         if (newUniqueMessages.length > 0) {
+          // Restored in a layout effect once React has actually committed the
+          // new rows — a rAF here could fire first and measure the old height.
+          scrollRestoreRef.current = container
+            ? { height: container.scrollHeight, top: container.scrollTop }
+            : null;
           setConversation((prev) => mergeMessages(prev, newUniqueMessages));
-          // Restore scroll position after render
-          requestAnimationFrame(() => {
-            if (container) {
-              const newScrollHeight = container.scrollHeight;
-              container.scrollTop = newScrollHeight - previousScrollHeight;
-            }
-          });
         }
         // Advance by what we actually kept, not the raw batch size —
         // counting duplicates here is what walks skip= past a window of
         // older messages and leaves a hole in the thread. Overlap on the
         // next page is harmless; a gap isn't.
         setMessagesSkip((prev) => prev + newUniqueMessages.length);
-        setHasMoreMessages(data.hasMore || false);
+        // A page of nothing but duplicates means we've hit the start — without
+        // this the auto-fill check below would refetch the same page forever.
+        setHasMoreMessages(newUniqueMessages.length > 0 && !!data.hasMore);
       } else {
         setHasMoreMessages(false);
       }
@@ -1548,6 +1559,7 @@ export default function MessageStoredPage() {
     if (!container || !selectedConversationId) return;
 
     const handleScroll = () => {
+      userScrolledRef.current = true;
       if (isLoadingMoreMessages || !hasMoreMessages || isLoadingConversation)
         return;
       // Don't treat "hasn't scrolled yet" as "scrolled to the top" — a thread
@@ -1567,6 +1579,55 @@ export default function MessageStoredPage() {
     isLoadingMoreMessages,
     hasMoreMessages,
     isLoadingConversation,
+    loadMoreMessages,
+  ]);
+
+  // Keep the user's place after older messages are prepended — runs after
+  // the DOM has the new rows, before paint, so there's no jump.
+  useLayoutEffect(() => {
+    const saved = scrollRestoreRef.current;
+    const container = messagesContainerRef.current;
+    if (!saved || !container) return;
+    scrollRestoreRef.current = null;
+    container.scrollTop = container.scrollHeight - saved.height + saved.top;
+  }, [conversation]);
+
+  useEffect(() => {
+    userScrolledRef.current = false;
+  }, [selectedConversationId]);
+
+  // A scroll event can't fire when the user is already pinned at the top, or
+  // when the thread is too short to scroll (common with hidden call rows).
+  // After every load, check again and keep going until there's room to scroll.
+  useEffect(() => {
+    if (
+      !selectedConversationId ||
+      isLoadingConversation ||
+      isLoadingMoreMessages ||
+      !hasMoreMessages
+    )
+      return;
+    let cancelled = false;
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        const c = messagesContainerRef.current;
+        if (!c) return;
+        const notFilled = c.scrollHeight <= c.clientHeight + 20;
+        const pinnedAtTop = userScrolledRef.current && c.scrollTop < 100;
+        if (notFilled || pinnedAtTop) loadMoreMessages();
+      }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    conversation.length,
+    showCalls,
+    selectedConversationId,
+    isLoadingConversation,
+    isLoadingMoreMessages,
+    hasMoreMessages,
     loadMoreMessages,
   ]);
 

@@ -20,10 +20,15 @@ const LOOKBACK_MS = 2 * 60 * 60 * 1000; // ignore anything older than 2h
 const COOLDOWN_MS = 24 * 60 * 60 * 1000; // max one auto-reply per number per day
 const MAX_PER_RUN = 20;
 
-// Leading \b only: JS \b doesn't understand accented letters, so a trailing
-// one would miss "choqué". Over-matching is fine; the AI makes the call.
-const CLAIM_HINT =
-  /\b(claim|accident|crash|wreck|collision|rear[- ]?end|hit me|hit my|total(l)?ed|stolen|theft|broke into|vandal|hail|flood|fire|towed|tow truck|reclamo|accidente|choque|choc[oóa]|choqu|me peg|rob[oóa]|granizo|incendio|inundaci|gr[uú]a)/i;
+// English gets a trailing \b so "fired", "Firestone", "hit me up" don't match.
+// Spanish keeps leading-only \b: JS \b doesn't understand accented letters,
+// so a trailing one would miss "choqué". The AI still makes the final call.
+const CLAIM_HINT_EN =
+  /\b(claims?|accident|crash(ed)?|wreck(ed)?|collision|rear[- ]?ended|hit my|hit me(?!\s+up)|someone hit|total(l)?ed|stolen|theft|broke into|break[- ]in|vandali[sz]ed|hail|flood(ed)?|fire|towed|tow truck)\b/i;
+const CLAIM_HINT_ES =
+  /\b(reclamo|accidente|choque|choc[oóa]|choqu|me peg|rob[oóa]|granizo|incendio|inundaci|gr[uú]a)/i;
+const hasClaimHint = (t: string) =>
+  CLAIM_HINT_EN.test(t) || CLAIM_HINT_ES.test(t);
 
 // Must match the admin page and reply-status route (keeps the thread pinned).
 // NOT exported: route files may only export HTTP handlers and route config.
@@ -61,27 +66,30 @@ function buildMessages(lang: Lang, claimType: ClaimType): string[] {
   ];
 }
 
-const SYSTEM = `You review after-hours SMS sent to an insurance agency. Each thread shows its most recent messages, oldest first. Focus on the CUSTOMER's latest messages (the ones after the agent's last reply, if any).
+const SYSTEM = `You review after-hours SMS sent to an insurance agency. Each thread has an optional EARLIER section (context only) and a NEW section: the customer's messages since the agency last replied.
 
-Decide whether the customer is reporting a NEW loss or trying to open a claim right now.
+Decide ONLY from the NEW messages whether the customer is reporting a loss that just happened or is trying to open a claim right now. EARLIER messages may help you understand a short NEW message ("it just happened", "yes please"), but an accident mentioned only in EARLIER messages is NOT a reason to answer true.
 
-openClaim=true with confidence "high" when the customer:
-- says they just had an accident, crash, or collision, or were hit ("had an accident, can you call me", "someone hit my car", "choqué", "me chocaron")
-- reports their car or property was stolen, broken into, vandalized, or damaged (hail, flood, fire, a tree fell)
-- asks how to file, open, or report a claim
-This is still true if they ALSO ask for a call back, ask for help, or address an agent by name.
+openClaim=true with confidence "high" only when the NEW messages:
+- say they just had an accident, crash, or collision, or were hit ("I just got rear ended", "someone hit my car", "choqué", "me chocaron")
+- report their car or property was stolen, broken into, vandalized, or damaged by hail, flood, fire, or a fallen tree
+- ask how to file, open, or report a claim
+This is still true if they also ask for a call back or address an agent by name.
 
-openClaim=false when the customer:
-- asks about the status of an existing claim or adjuster
-- asks about coverage, quotes, payments, or documents without reporting a new loss
-- mentions a past accident while shopping for insurance ("I had an accident 2 years ago, how much is a quote")
-- or when only the agent mentioned an accident
+openClaim=false for everything else, including:
+- payments, payment links, due dates, autopay, cancellations, reinstatement
+- quotes, renewals, adding or removing a car or driver, ID cards, proof of insurance, documents
+- coverage questions with no loss described ("am I covered for hail?", "do I have rental?")
+- past accidents mentioned for context ("I had an accident 2 years ago", "my rate went up after my accident", "accident forgiveness")
+- status of an existing claim, adjuster, repair shop, or rental on a claim already filed
+- greetings, "call me", thanks, or anything vague with no loss described
+- "hit" used as slang ("hit me up")
 
-Use confidence "medium" or "low" only when it is genuinely unclear.
+Use "high" only when the NEW messages plainly describe a new loss or a request to file. If you have to guess, use "medium" or "low".
 claimType: "auto_accident" if they report a vehicle accident or collision; otherwise "other" (theft, vandalism, hail, home damage, commercial, or unclear).
 lang: the language of the customer's latest message.
 reason: a few words explaining the decision.
-Respond ONLY with JSON: {"results":[{"id":"t0","openClaim":true,"confidence":"high","claimType":"auto_accident","lang":"en","reason":"reports accident, asks for a call"}]}`;
+Respond ONLY with JSON: {"results":[{"id":"t0","openClaim":true,"confidence":"high","claimType":"auto_accident","lang":"en","reason":"reports new accident, asks for a call"}]}`;
 
 async function sendSms(origin: string, to: string, message: string) {
   const fd = new FormData();
@@ -129,7 +137,7 @@ export async function GET(req: Request) {
             isGroup: 1,
             language: 1,
             claimAutoReply: 1,
-            messages: { $slice: -6 },
+            messages: { $slice: -10 },
           },
         },
       )
@@ -154,12 +162,22 @@ export async function GET(req: Request) {
     };
 
     for (const doc of docs as any[]) {
-      const msgs: any[] = doc.messages || [];
+      // Call-log rows aren't something the customer *said*. With every
+      // extension's calls synced, a missed call landing after last week's
+      // "I had an accident" text would otherwise re-trigger the claim reply.
+      const msgs: any[] = (doc.messages || []).filter(
+        (m: any) => m.type !== "MissedCall" && m.type !== "AnsweredCall",
+      );
       const last = msgs[msgs.length - 1];
       if (!last?.id || last.direction !== "Inbound") {
         skip(doc, "last message is not inbound", last);
         continue;
       }
+      // Only what the customer sent since we last replied is up for judging
+      const lastOutIdx = msgs
+        .map((m: any) => m.direction)
+        .lastIndexOf("Outbound");
+      const newMsgs = msgs.slice(lastOutIdx + 1);
       if (doc.isGroup || (doc.participants?.length ?? 1) > 1) {
         skip(doc, "group chat", last);
         continue;
@@ -200,16 +218,15 @@ export async function GET(req: Request) {
       }
 
       // Free keyword filter over the customer's recent messages
-      const customerText = msgs
-        .filter((m) => m.direction === "Inbound")
-        .map((m) => m.replyText || m.subject || "")
+      const customerText = newMsgs
+        .map((m: any) => m.replyText || m.subject || "")
         .join(" ");
-      if (!CLAIM_HINT.test(customerText)) {
-        skip(doc, "no claim keyword", last);
+      if (!hasClaimHint(customerText)) {
+        skip(doc, "no claim keyword in new messages", last);
         continue;
       }
 
-      candidates.push({ doc, last });
+      candidates.push({ doc, last, msgs, newMsgs });
       if (candidates.length >= MAX_PER_RUN) break;
     }
 
@@ -229,18 +246,27 @@ export async function GET(req: Request) {
     }
 
     // One OpenAI call for the whole batch
+    const fmt = (m: any) => {
+      const who = m.direction === "Outbound" ? "Agent" : "Customer";
+      const text = (m.replyText || m.subject || "")
+        .split(/\n\nNot[ae]:/)[0]
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 300);
+      return `${who}: ${text || "(no text)"}`;
+    };
     const threads = candidates
-      .map(({ doc }, i) => {
-        const lines = (doc.messages || []).map((m: any) => {
-          const who = m.direction === "Outbound" ? "Agent" : "Customer";
-          const text = (m.replyText || m.subject || "")
-            .split(/\n\nNot[ae]:/)[0]
-            .replace(/\s+/g, " ")
-            .trim()
-            .slice(0, 300);
-          return `${who}: ${text || "(no text)"}`;
-        });
-        return `### t${i}\n${lines.join("\n")}`;
+      .map(({ msgs, newMsgs }, i) => {
+        const earlier = msgs.slice(0, msgs.length - newMsgs.length);
+        return [
+          `### t${i}`,
+          earlier.length
+            ? `EARLIER (context only):\n${earlier.map(fmt).join("\n")}`
+            : "",
+          `NEW (classify these):\n${newMsgs.map(fmt).join("\n")}`,
+        ]
+          .filter(Boolean)
+          .join("\n");
       })
       .join("\n\n");
 
