@@ -23,6 +23,7 @@ import {
   Search,
   Eye,
   X,
+  AlertTriangle,
 } from "lucide-react";
 import AdminShell from "../_components/AdminShell";
 
@@ -32,6 +33,9 @@ type PaymentMethod = "card" | "bank" | "direct-bill";
 
 // Square's quick_pay.name hard limit
 const DESCRIPTION_MAX = 255;
+
+// Must match PROCESSING_TRACK_SINCE in /api/payments-to-process and Railway
+const PROCESSING_TRACK_SINCE = "2026-10-27T00:00:00.000Z";
 
 interface LinkHistory {
   _id: string;
@@ -55,6 +59,9 @@ interface LinkHistory {
     autopaySetup?: boolean;
   };
   sentReminders?: string[];
+  processedAt?: string;
+  processedBy?: string;
+  processedConfirmation?: string;
   remindersEnabled?: boolean;
   reEnabledAt?: string;
   timestamps?: {
@@ -140,6 +147,89 @@ export default function CreatePaymentLink() {
       console.error("Unpaid fetch error:", err);
     } finally {
       setUnpaidLoading(false);
+    }
+  };
+
+  // ── Paid but not yet processed with the carrier ────────────────────────────
+  const [toProcess, setToProcess] = useState<LinkHistory[]>([]);
+  const [processTarget, setProcessTarget] = useState<LinkHistory | null>(null);
+  const [processAgent, setProcessAgent] = useState("");
+  const [processConf, setProcessConf] = useState("");
+  const [processSaving, setProcessSaving] = useState(false);
+  const [processError, setProcessError] = useState("");
+  const toProcessCountRef = useRef(0);
+
+  const fetchToProcess = async () => {
+    try {
+      const res = await fetch("/api/payments-to-process", {
+        cache: "no-store",
+      });
+      const data = await res.json();
+      if (!data.success) return;
+      const links: LinkHistory[] = data.links;
+      // A new payment landed since the last check: make noise
+      if (links.length > toProcessCountRef.current) {
+        new Audio("/message_sound.mp3").play().catch(() => {});
+      }
+      toProcessCountRef.current = links.length;
+      setToProcess(links);
+    } catch (err) {
+      console.error("To-process fetch error:", err);
+    }
+  };
+
+  const openProcess = (link: LinkHistory) => {
+    // Reuse the agent name the Messages page already stores for today
+    let name = "";
+    try {
+      const raw = localStorage.getItem("agent_name");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.name && Date.now() < parsed.expiresAt) name = parsed.name;
+      }
+    } catch {}
+    setProcessAgent(name);
+    setProcessConf("");
+    setProcessError("");
+    setProcessTarget(link);
+  };
+
+  const confirmProcessed = async () => {
+    if (!processTarget) return;
+    if (!processAgent.trim() || !processConf.trim()) {
+      setProcessError("Your name and the authorization # are both required.");
+      return;
+    }
+    if (!/^[A-Za-z0-9-]{4,20}$/.test(processConf.trim())) {
+      setProcessError(
+        "Enter the authorization # exactly as shown on the receipt.",
+      );
+      return;
+    }
+    setProcessSaving(true);
+    setProcessError("");
+    try {
+      const res = await fetch("/api/payments-to-process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          linkId: processTarget._id,
+          agentName: processAgent.trim(),
+          confirmation: processConf.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Couldn't save. Try again.");
+      setToProcess((prev) => prev.filter((l) => l._id !== processTarget._id));
+      toProcessCountRef.current = Math.max(0, toProcessCountRef.current - 1);
+      setProcessTarget(null);
+      if (activeTab === "history" && !isSearchMode) fetchHistory(currentPage);
+      if (res.status === 409) fetchToProcess();
+    } catch (e: any) {
+      setProcessError(e.message);
+      fetchToProcess(); // someone else may have just processed it
+    } finally {
+      setProcessSaving(false);
     }
   };
 
@@ -231,6 +321,25 @@ export default function CreatePaymentLink() {
     if (!isCheckingAuth) fetchUnpaid(unpaidFilter);
   }, [isCheckingAuth, unpaidFilter]);
 
+  // Poll every 30s; the WebSocket below isn't a reliable trigger on its own
+  useEffect(() => {
+    if (isCheckingAuth) return;
+    fetchToProcess();
+    const id = setInterval(fetchToProcess, 30000);
+    return () => clearInterval(id);
+  }, [isCheckingAuth]);
+
+  // Count in the tab title, so it nags even from another tab
+  useEffect(() => {
+    const original = document.title;
+    if (toProcess.length > 0) {
+      document.title = `(${toProcess.length}) 💳 Process payment`;
+    }
+    return () => {
+      document.title = original;
+    };
+  }, [toProcess.length]);
+
   useEffect(() => {
     if (isCheckingAuth) return;
     const ws = new WebSocket(process.env.NEXT_PUBLIC_RAILWAY_WS_URL!);
@@ -241,6 +350,7 @@ export default function CreatePaymentLink() {
       if (data.type === "paymentLinkUpdated") {
         if (!isSearchMode) fetchHistory(currentPage);
         fetchUnpaid(unpaidFilterRef.current);
+        fetchToProcess();
       }
     };
     wsRef.current = ws;
@@ -1214,7 +1324,7 @@ export default function CreatePaymentLink() {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => handleSearch(e.target.value)}
-                    placeholder="Search all records by phone, email, description, or amount..."
+                    placeholder="Search by phone, email, description, amount, auth #, or agent..."
                     className="w-full pl-9 pr-9 py-2.5 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   />
                   {searchLoading && (
@@ -1690,6 +1800,41 @@ export default function CreatePaymentLink() {
                             </div>
                           )}
 
+                          {/* Processed with carrier? */}
+                          {link.linkType === "payment" &&
+                            link.completedStages?.payment &&
+                            (link.processedAt ? (
+                              <div className="mt-3 px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 bg-green-50 text-green-700 border border-green-200">
+                                <Check className="w-3.5 h-3.5 flex-shrink-0" />
+                                Processed by {link.processedBy}
+                                {link.processedConfirmation
+                                  ? ` · Auth #${link.processedConfirmation}`
+                                  : ""}{" "}
+                                ·{" "}
+                                {new Date(link.processedAt).toLocaleString(
+                                  "en-US",
+                                  {
+                                    month: "short",
+                                    day: "numeric",
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                  },
+                                )}
+                              </div>
+                            ) : (link.timestamps?.payment || "") >=
+                              PROCESSING_TRACK_SINCE ? (
+                              <div className="mt-3 px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 bg-red-50 text-red-700 border border-red-200">
+                                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                                Paid — not processed with carrier yet
+                                <button
+                                  onClick={() => openProcess(link)}
+                                  className="ml-auto underline hover:text-red-900"
+                                >
+                                  Mark processed
+                                </button>
+                              </div>
+                            ) : null)}
+
                           {/* Link display */}
                           <div
                             className={`mt-3 pt-3 border-t ${link.disabled ? "border-red-200" : "border-gray-200"}`}
@@ -1811,7 +1956,76 @@ export default function CreatePaymentLink() {
             )}
           </div>
           {/* ── RIGHT PANEL: Unpaid / Follow-Up ── */}
-          <div className="w-80 flex-shrink-0 sticky top-6">
+          <div className="w-80 flex-shrink-0 sticky top-6 space-y-4">
+            {toProcess.length > 0 && (
+              <div className="bg-white rounded-xl shadow-sm border-2 border-red-500 p-5">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600" />
+                  </span>
+                  <h2 className="text-base font-bold text-red-700">
+                    Paid — Process Now
+                  </h2>
+                  <span className="ml-auto px-2 py-0.5 bg-red-600 text-white text-xs font-bold rounded-full">
+                    {toProcess.length}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mb-3">
+                  Customer paid. Post it with the carrier, then mark it
+                  processed.
+                </p>
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                  {toProcess.map((link) => {
+                    const paidAt = link.timestamps?.payment
+                      ? new Date(link.timestamps.payment).getTime()
+                      : link.createdAtTimestamp;
+                    const mins = Math.max(
+                      0,
+                      Math.floor((Date.now() - paidAt) / 60000),
+                    );
+                    const waited =
+                      mins < 60
+                        ? `${mins}m`
+                        : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+                    const late = mins >= 30;
+                    return (
+                      <div
+                        key={link._id}
+                        className={`rounded-lg border p-3 ${late ? "bg-red-50 border-red-300" : "bg-amber-50 border-amber-300"}`}
+                      >
+                        <div className="flex justify-between gap-2">
+                          <p className="text-xs font-semibold text-gray-900 truncate">
+                            {formatPhoneDisplay(link.customerPhone)}
+                          </p>
+                          <span
+                            className={`text-[10px] font-bold flex-shrink-0 ${late ? "text-red-600" : "text-amber-700"}`}
+                          >
+                            paid {waited} ago
+                          </span>
+                        </div>
+                        {link.description && (
+                          <p className="text-[11px] text-gray-600 truncate mt-0.5">
+                            {link.description}
+                          </p>
+                        )}
+                        {link.amount && (
+                          <p className="text-xs font-bold text-gray-900 mt-1">
+                            ${(link.amount / 100).toFixed(2)}
+                          </p>
+                        )}
+                        <button
+                          onClick={() => openProcess(link)}
+                          className="mt-2 w-full py-1.5 text-[11px] font-semibold bg-green-600 text-white rounded-md hover:bg-green-700 transition flex items-center justify-center gap-1"
+                        >
+                          <Check className="w-3 h-3" /> Mark Processed
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="bg-white rounded-xl shadow-sm p-5">
               <div className="flex items-center justify-between mb-4">
                 <div>
@@ -2072,6 +2286,75 @@ export default function CreatePaymentLink() {
           </div>
         </div>
       </div>
+
+      {processTarget && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-bold text-gray-900">
+              Mark payment processed
+            </h3>
+            <p className="text-sm text-gray-500 mt-1 mb-4">
+              {formatPhoneDisplay(processTarget.customerPhone)}
+              {processTarget.amount
+                ? ` · $${(processTarget.amount / 100).toFixed(2)}`
+                : ""}
+              {processTarget.description
+                ? ` · ${processTarget.description}`
+                : ""}
+            </p>
+
+            <label className="block text-xs font-semibold text-gray-600 mb-1">
+              Your name
+            </label>
+            <input
+              value={processAgent}
+              onChange={(e) => setProcessAgent(e.target.value)}
+              placeholder="e.g. Zayn"
+              className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg mb-3 focus:ring-2 focus:ring-green-500 outline-none"
+            />
+
+            <label className="block text-xs font-semibold text-gray-600 mb-1">
+              Authorization # (from the card receipt)
+            </label>
+            <input
+              value={processConf}
+              onChange={(e) => setProcessConf(e.target.value)}
+              onKeyDown={(e) =>
+                e.key === "Enter" && !processSaving && confirmProcessed()
+              }
+              placeholder="e.g. 04821A"
+              autoFocus
+              className="w-full px-3 py-2.5 text-sm border border-gray-300 rounded-lg mb-2 focus:ring-2 focus:ring-green-500 outline-none"
+            />
+
+            {processError && (
+              <p className="text-xs text-red-600 mb-2">{processError}</p>
+            )}
+
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => setProcessTarget(null)}
+                disabled={processSaving}
+                className="flex-1 py-2.5 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmProcessed}
+                disabled={processSaving}
+                className="flex-1 py-2.5 text-sm rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {processSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
+                Processed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminShell>
   );
 }

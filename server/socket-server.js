@@ -667,6 +667,88 @@ async function processPaymentReminders() {
 }
 
 // ================================================
+// PAID-BUT-NOT-PROCESSED ESCALATION
+// A payment that came in but was never posted to the carrier is the costly
+// miss. Nag in the admin after 15 min, text the manager after 45 — once each.
+// The clock starts at office open for payments that arrived overnight.
+// ================================================
+const PROCESS_TRACK_SINCE = process.env.PROCESSING_TRACK_SINCE || '2026-10-27T00:00:00.000Z';
+const PROCESS_ALERT_AFTER_MIN = parseInt(process.env.PROCESS_ALERT_AFTER_MIN || '15', 10);
+const PROCESS_ESCALATE_AFTER_MIN = parseInt(process.env.PROCESS_ESCALATE_AFTER_MIN || '45', 10);
+const PROCESS_ESCALATE_PHONE = process.env.PROCESS_ESCALATE_PHONE || '9727486404';
+
+async function checkUnprocessedPayments() {
+  if (!paymentLinksCollection) return;
+  try {
+    const now = new Date();
+    const nowDec = getCSTTimeDecimal(now);
+    const weekday = now.toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'short' });
+    if (weekday === 'Sun' || nowDec < 9 || nowDec >= 19) return; // office hours only
+
+    const links = await paymentLinksCollection.find({
+      'completedStages.payment': true,
+      processedAt: { $exists: false },
+      $or: [
+        { 'timestamps.payment': { $gte: PROCESS_TRACK_SINCE } },
+        { 'timestamps.payment': { $gte: new Date(PROCESS_TRACK_SINCE) } },
+      ],
+    }).toArray();
+
+    for (const link of links) {
+      const paidAt = new Date(link.timestamps?.payment).getTime();
+      if (isNaN(paidAt)) continue;
+
+      const alerts = link.processingAlerts || {};
+      // Paid overnight? Count from the first check during office hours.
+      let firstSeen = alerts.firstSeenOpenAt ? new Date(alerts.firstSeenOpenAt).getTime() : null;
+      if (!firstSeen) {
+        firstSeen = now.getTime();
+        await paymentLinksCollection.updateOne(
+          { _id: link._id },
+          { $set: { 'processingAlerts.firstSeenOpenAt': now.toISOString() } },
+        );
+      }
+      const mins = (now.getTime() - Math.max(paidAt, firstSeen)) / 60000;
+
+      const amt = link.amount ? `$${(link.amount / 100).toFixed(2)}` : '';
+      const summary = [link.customerPhone, amt, link.description].filter(Boolean).join(' · ');
+
+      if (mins >= PROCESS_ALERT_AFTER_MIN && !alerts.reminded) {
+        pushAdminNotification({
+          section: 'create-payment-link',
+          title: '💳 Paid — not processed yet',
+          body: `${summary} · waiting ${Math.round(mins)} min`.slice(0, 120),
+          eventId: `unprocessed-${link._id}`,
+        });
+        await paymentLinksCollection.updateOne(
+          { _id: link._id },
+          { $set: { 'processingAlerts.reminded': now.toISOString() } },
+        );
+        console.log(`💳 Unprocessed payment reminder: ${summary}`);
+      }
+
+      if (mins >= PROCESS_ESCALATE_AFTER_MIN && !alerts.escalated) {
+        const text = encodeURIComponent(
+          `⚠️ Payment NOT processed after ${Math.round(mins)} min: ${summary}. Open Admin > Payment Links.`,
+        );
+        try {
+          await fetch(`https://astraldbapi.herokuapp.com/message_send/?message=${text}&To=${PROCESS_ESCALATE_PHONE}`);
+          await paymentLinksCollection.updateOne(
+            { _id: link._id },
+            { $set: { 'processingAlerts.escalated': now.toISOString() } },
+          );
+          console.log(`🚨 Escalated unprocessed payment to manager: ${summary}`);
+        } catch (e) {
+          console.error('❌ Escalation SMS failed:', e.message);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('❌ Unprocessed payment check error:', err.message);
+  }
+}
+
+// ================================================
 // DAILY AUTOPAY SECURITY CODE SYSTEM
 // Generates new 4-digit code daily at 7 AM CST
 // ================================================
@@ -2687,6 +2769,10 @@ async function startServer() {
     // Payment reminders — check every 2 minutes
     setInterval(processPaymentReminders, 2 * 60 * 1000);
     setTimeout(processPaymentReminders, 10000); // run once on startup too
+
+    // Paid-but-not-processed nag + escalation, every 5 min in office hours
+    setInterval(checkUnprocessedPayments, 5 * 60 * 1000);
+    setTimeout(checkUnprocessedPayments, 15000);
     console.log('⏰ Payment reminder system started');
     // Scheduled messages — run every 60 seconds
     setInterval(processScheduledMessages, 60 * 1000);

@@ -42,6 +42,8 @@ export async function GET(request: Request) {
       const or: Record<string, unknown>[] = [
         { customerEmail: { $regex: esc, $options: "i" } },
         { description: { $regex: esc, $options: "i" } },
+        { processedConfirmation: { $regex: esc, $options: "i" } },
+        { processedBy: { $regex: esc, $options: "i" } },
       ];
 
       // customerPhone is stored unformatted, so digits match it directly
