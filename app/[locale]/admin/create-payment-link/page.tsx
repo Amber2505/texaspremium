@@ -26,6 +26,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import AdminShell from "../_components/AdminShell";
+import { franc } from "franc";
 
 type LinkType = "payment" | "autopay-only";
 type TabType = "create" | "history";
@@ -89,8 +90,29 @@ export default function CreatePaymentLink() {
 
   const handleLanguageChange = async (lang: "en" | "es") => {
     if (lang === language) return;
+    const previous = language;
     setLanguage(lang);
-    if (!description.trim()) return;
+
+    const text = description.trim();
+    if (!text) return;
+
+    // Descriptions are typed in English, so a first pick of English has
+    // nothing to translate.
+    if (previous === null && lang === "en") return;
+
+    // Already in the target language: skip the call so the model can't
+    // reword the description or mangle the customer's name. franc is
+    // unreliable on very short text, so only trust it past ~15 chars.
+    if (text.length >= 15) {
+      const detected = franc(text, { only: ["eng", "spa"] });
+      if (
+        (lang === "en" && detected === "eng") ||
+        (lang === "es" && detected === "spa")
+      ) {
+        return;
+      }
+    }
+
     setTranslating(true);
     try {
       const res = await fetch("/api/translate", {
