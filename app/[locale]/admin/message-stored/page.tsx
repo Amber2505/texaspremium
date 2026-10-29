@@ -715,6 +715,8 @@ export default function MessageStoredPage() {
   const [totalCount, setTotalCount] = useState(0);
   const conversationsListRef = useRef<HTMLDivElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Only the newest list request may write to state
+  const fetchSeqRef = useRef(0);
 
   // Message pagination state
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
@@ -1850,6 +1852,7 @@ export default function MessageStoredPage() {
   ) => {
     if (skip === 0 && !append) setLoading(true);
     else setIsLoadingMore(true);
+    const seq = ++fetchSeqRef.current;
 
     try {
       const params = new URLSearchParams({
@@ -1866,6 +1869,7 @@ export default function MessageStoredPage() {
 
       const res = await fetch(`/api/messages?${params}`);
       const data = await res.json();
+      if (seq !== fetchSeqRef.current) return; // a newer search already answered
 
       const newConversations = data.conversations || [];
       const total = data.total || newConversations.length;
@@ -2076,10 +2080,15 @@ export default function MessageStoredPage() {
             .replace(/\s+/g, " ")
             .trim();
         const needle = normalize(searchText);
-        const firstIdx = (data.messages || []).findIndex(
-          (msg: RingCentralMessage) =>
-            normalize(msg.subject || "").includes(needle),
-        );
+        // Newest match first: that's the one the agent is almost always after
+        const searchMsgs: RingCentralMessage[] = data.messages || [];
+        let firstIdx = -1;
+        for (let i = searchMsgs.length - 1; i >= 0; i--) {
+          if (normalize(searchMsgs[i].subject || "").includes(needle)) {
+            firstIdx = i;
+            break;
+          }
+        }
         setTimeout(() => {
           const matchElement = document.getElementById(`message-${firstIdx}`);
           const container = messagesContainerRef.current;
@@ -4449,7 +4458,7 @@ export default function MessageStoredPage() {
                         // Scroll to first match instantly
                         if (indices.length > 0) {
                           const el = document.getElementById(
-                            `message-${indices[0]}`,
+                            `message-${indices[indices.length - 1]}`,
                           );
                           const container = messagesContainerRef.current;
                           if (el && container) {
