@@ -675,7 +675,7 @@ async function processPaymentReminders() {
 const PROCESS_TRACK_SINCE = process.env.PROCESSING_TRACK_SINCE || '2026-10-27T00:00:00.000Z';
 const PROCESS_ALERT_AFTER_MIN = parseInt(process.env.PROCESS_ALERT_AFTER_MIN || '15', 10);
 const PROCESS_ESCALATE_AFTER_MIN = parseInt(process.env.PROCESS_ESCALATE_AFTER_MIN || '45', 10);
-const PROCESS_ESCALATE_PHONE = process.env.PROCESS_ESCALATE_PHONE || '9727486404';
+const PROCESS_ESCALATE_PHONE = process.env.PROCESS_ESCALATE_PHONE || '4697295185';
 
 async function checkUnprocessedPayments() {
   if (!paymentLinksCollection) return;
@@ -729,7 +729,7 @@ async function checkUnprocessedPayments() {
 
       if (mins >= PROCESS_ESCALATE_AFTER_MIN && !alerts.escalated) {
         const text = encodeURIComponent(
-          `⚠️ Payment NOT processed after ${Math.round(mins)} min: ${summary}. Open Admin > Payment Links.`,
+          `⚠️ Reminder: Payment NOT processed yet, after ${Math.round(mins)} min: ${summary}. Open Admin > Payment Links.⚠️`,
         );
         try {
           await fetch(`https://astraldbapi.herokuapp.com/message_send/?message=${text}&To=${PROCESS_ESCALATE_PHONE}`);
