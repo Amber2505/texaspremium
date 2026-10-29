@@ -4762,6 +4762,7 @@ export default function MessageStoredPage() {
                                       <audio
                                         key={ai}
                                         controls
+                                        preload="metadata"
                                         src={a.azureUrl || a.uri}
                                         className="w-full min-w-[280px]"
                                       />
