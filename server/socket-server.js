@@ -3154,6 +3154,33 @@ app.post('/verify-security-code', async (req, res) => {
   }
 });
 
+
+// Test hook: emails today's existing code to the email_N recipients.
+// Does NOT generate a new code and does NOT send SMS.
+app.get('/test-security-email', async (req, res) => {
+  try {
+    if (!securityCodeCollection) {
+      return res.status(500).json({ error: 'Database not connected' });
+    }
+
+    const activeCode = await securityCodeCollection.findOne({ type: 'daily_code' });
+    if (!activeCode?.code) {
+      return res.status(404).json({ error: 'No active code found' });
+    }
+
+    const emails = await getSecurityCodeEmailRecipients();
+    if (emails.length === 0) {
+      return res.json({ sent: 0, recipients: [], note: 'No email_N fields on the admin_code_daily doc' });
+    }
+
+    const result = await sendSecurityCodeEmails(activeCode.code, emails);
+    console.log(`📧 TEST security email: ${result.sent}/${emails.length} sent`);
+    res.json({ recipients: emails, ...result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.post('/trigger-scheduled', async (req, res) => {
   console.log('📅 Manual scheduled messages trigger');
   processScheduledMessages();
