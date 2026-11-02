@@ -825,20 +825,27 @@ async function getSecurityCodeEmailRecipients() {
   }
 }
 
-// One email per recipient (nobody sees anyone else's address), sent in a
-// single Resend batch call.
+// Sends through the Gmail account in EMAIL_USER / EMAIL_PASS (app password).
+// One email per recipient so nobody sees anyone else's address.
 async function sendSecurityCodeEmails(code, emails) {
   if (emails.length === 0) return { sent: 0, failed: [] };
 
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    console.warn('⚠️ RESEND_API_KEY not set — skipping security code emails');
+  const user = process.env.EMAIL_USER;
+  const pass = process.env.EMAIL_PASS;
+  if (!user || !pass) {
+    console.warn('⚠️ EMAIL_USER / EMAIL_PASS not set — skipping security code emails');
     return { sent: 0, failed: emails };
   }
 
-  const from =
-    process.env.SECURITY_CODE_EMAIL_FROM ||
-    'Texas Premium Admin <noreply@texaspremiumins.com>';
+  const nodemailer = require('nodemailer');
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user, pass },
+    // Fail fast instead of hanging the 7 AM job if SMTP is blocked
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+  });
 
   const dateLabel = new Date().toLocaleDateString('en-US', {
     timeZone: 'America/Chicago',
@@ -847,40 +854,31 @@ async function sendSecurityCodeEmails(code, emails) {
     day: 'numeric',
   });
 
-  const batch = emails.map(to => ({
-    from,
-    to: [to],
-    subject: `Admin security code — ${dateLabel}`,
-    text: `Your admin security code for today is: ${code}\n\nThis code expires in 24 hours.`,
-    html: `
-      <div style="font-family:Arial,sans-serif;max-width:420px;margin:0 auto;padding:24px;">
-        <p style="margin:0 0 12px;color:#333;">Your admin security code for ${dateLabel}:</p>
-        <p style="font-size:32px;font-weight:bold;letter-spacing:8px;margin:0 0 16px;color:#111;">${code}</p>
-        <p style="margin:0;color:#888;font-size:12px;">This code expires in 24 hours.</p>
-      </div>`,
-  }));
+  let sent = 0;
+  const failed = [];
 
-  try {
-    const res = await fetch('https://api.resend.com/emails/batch', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(batch),
-    });
-
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      console.error(`❌ Security code email batch failed: HTTP ${res.status} ${body.slice(0, 300)}`);
-      return { sent: 0, failed: emails };
+  for (const to of emails) {
+    try {
+      await transporter.sendMail({
+        from: `"Texas Premium Admin" <${user}>`,
+        to,
+        subject: `Admin security code — ${dateLabel}`,
+        text: `Your admin security code for today is: ${code}\n\nThis code expires in 24 hours.`,
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:420px;margin:0 auto;padding:24px;">
+            <p style="margin:0 0 12px;color:#333;">Your admin security code for ${dateLabel}:</p>
+            <p style="font-size:32px;font-weight:bold;letter-spacing:8px;margin:0 0 16px;color:#111;">${code}</p>
+            <p style="margin:0;color:#888;font-size:12px;">This code expires in 24 hours.</p>
+          </div>`,
+      });
+      sent++;
+    } catch (err) {
+      // Email is a second channel. It must never block the SMS path.
+      failed.push(`${to} (${err.code || err.message})`);
     }
-    return { sent: emails.length, failed: [] };
-  } catch (err) {
-    // Email is a second channel. It must never block the SMS path.
-    console.error('❌ Security code email error:', err.message);
-    return { sent: 0, failed: emails };
   }
+
+  return { sent, failed };
 }
 
 async function generateDailySecurityCode() {
