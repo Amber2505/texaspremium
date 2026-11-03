@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
         <!-- Logo -->
         <tr><td style="padding:22px 20px 18px;text-align:center;">
-          <img src="https://www.texaspremiumins.com/logo.png" alt="Texas Premium Insurance Services" style="height:44px;">
+          <img src="https://www.texaspremiumins.com/logo.png" alt="Texas Premium Insurance Services" height="72" style="height:72px;width:auto;max-width:100%;">
         </td></tr>
 
         <!-- Gradient header -->
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
           <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#fdf4f6;border-left:4px solid #8B1A3D;border-radius:6px;">
             <tr><td style="padding:14px 16px;">
               <p style="margin:0;font-size:13px;line-height:1.5;color:#6B1D3A;">
-                <strong>Keep this code private.</strong> Texas Premium staff will never ask you for it by phone, text, or email. If you didn't expect this message, let a manager know.
+                <strong>Internal use only.</strong> This code is for Texas Premium staff to access the admin dashboard. Please don't share it with customers or anyone outside the team.
               </p>
             </td></tr>
           </table>
