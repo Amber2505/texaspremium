@@ -825,60 +825,35 @@ async function getSecurityCodeEmailRecipients() {
   }
 }
 
-// Sends through the Gmail account in EMAIL_USER / EMAIL_PASS (app password).
-// One email per recipient so nobody sees anyone else's address.
+// Railway blocks outbound SMTP, so Vercel does the actual Gmail send.
 async function sendSecurityCodeEmails(code, emails) {
   if (emails.length === 0) return { sent: 0, failed: [] };
 
-  const user = process.env.EMAIL_USER;
-  const pass = process.env.EMAIL_PASS;
-  if (!user || !pass) {
-    console.warn('⚠️ EMAIL_USER / EMAIL_PASS not set — skipping security code emails');
+  if (!process.env.CRON_SECRET) {
+    console.warn('⚠️ CRON_SECRET not set — cannot call email route');
     return { sent: 0, failed: emails };
   }
 
-  const nodemailer = require('nodemailer');
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user, pass },
-    // Fail fast instead of hanging the 7 AM job if SMTP is blocked
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-  });
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.texaspremiumins.com';
+    const res = await fetch(`${appUrl}/api/security-code-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.CRON_SECRET}`,
+      },
+      body: JSON.stringify({ code, emails }),
+    });
 
-  const dateLabel = new Date().toLocaleDateString('en-US', {
-    timeZone: 'America/Chicago',
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-  });
-
-  let sent = 0;
-  const failed = [];
-
-  for (const to of emails) {
-    try {
-      await transporter.sendMail({
-        from: `"Texas Premium Admin" <${user}>`,
-        to,
-        subject: `Admin security code — ${dateLabel}`,
-        text: `Your admin security code for today is: ${code}\n\nThis code expires in 24 hours.`,
-        html: `
-          <div style="font-family:Arial,sans-serif;max-width:420px;margin:0 auto;padding:24px;">
-            <p style="margin:0 0 12px;color:#333;">Your admin security code for ${dateLabel}:</p>
-            <p style="font-size:32px;font-weight:bold;letter-spacing:8px;margin:0 0 16px;color:#111;">${code}</p>
-            <p style="margin:0;color:#888;font-size:12px;">This code expires in 24 hours.</p>
-          </div>`,
-      });
-      sent++;
-    } catch (err) {
-      // Email is a second channel. It must never block the SMS path.
-      failed.push(`${to} (${err.code || err.message})`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { sent: 0, failed: emails.map(e => `${e} (HTTP ${res.status}: ${data.error || ''})`) };
     }
+    return { sent: data.sent || 0, failed: data.failed || [] };
+  } catch (err) {
+    // Email is a second channel. It must never block the SMS path.
+    return { sent: 0, failed: emails.map(e => `${e} (${err.message})`) };
   }
-
-  return { sent, failed };
 }
 
 async function generateDailySecurityCode() {
