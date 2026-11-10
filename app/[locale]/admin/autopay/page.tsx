@@ -889,25 +889,38 @@ export default function AdminAutopayDashboard() {
                     </>
                   )}
 
-                  <div className="flex gap-3">
-                    {selectedCustomer && !selectedCustomer.completed && (
-                      <button
-                        onClick={async () => {
-                          await toggleCompleted(selectedCustomer._id, true);
-                          closeModal();
-                        }}
-                        className="flex-1 bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg"
-                      >
-                        ✓ MARK COMPLETE
-                      </button>
-                    )}
+                  {selectedCustomer && !selectedCustomer.completed ? (
+                    <div className="space-y-2">
+                      <div className="flex gap-3">
+                        <button
+                          onClick={closeModal}
+                          className="flex-1 bg-amber-50 text-amber-800 border-2 border-amber-300 py-4 rounded-xl font-bold hover:bg-amber-100 transition-all"
+                        >
+                          ⏳ KEEP PENDING
+                        </button>
+                        <button
+                          onClick={async () => {
+                            await toggleCompleted(selectedCustomer._id, true);
+                            closeModal();
+                            fetchCustomers(true, currentPage, pageSize, true);
+                          }}
+                          className="flex-1 bg-emerald-600 text-white py-4 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-lg"
+                        >
+                          ✓ MARK COMPLETE
+                        </button>
+                      </div>
+                      <p className="text-center text-[11px] text-gray-400">
+                        Mark Complete once autopay is set up with the carrier.
+                      </p>
+                    </div>
+                  ) : (
                     <button
                       onClick={closeModal}
-                      className="flex-1 bg-slate-900 text-white py-4 rounded-xl font-bold hover:bg-black transition-all shadow-lg"
+                      className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold hover:bg-black transition-all shadow-lg"
                     >
-                      DONE & SECURE
+                      CLOSE
                     </button>
-                  </div>
+                  )}
                 </div>
               </motion.div>
             </div>
