@@ -73,6 +73,20 @@ export async function POST(request: Request) {
 
     const fieldName = stepFieldMap[step];
 
+    // Already done: a revisit (back button, browser history, receipt link)
+    // must not re-stamp the time, rewind currentStage, or re-notify. A
+    // re-stamped payment time put a March payment back in the
+    // "Paid — Process Now" queue in November.
+    if (link.completedStages?.[fieldName]) {
+      console.log(`↩️ ${step} already complete for ${linkId} — ignoring repeat`);
+      return NextResponse.json({
+        success: true,
+        alreadyComplete: true,
+        message: `${step} already complete`,
+        completedStages: link.completedStages,
+      });
+    }
+
     const updateData: any = {
       [`completedStages.${fieldName}`]: true,
       [`timestamps.${fieldName}`]: new Date().toISOString(),
@@ -92,13 +106,19 @@ export async function POST(request: Request) {
 
     console.log("📝 Updating with:", updateData);
 
-    const result = await collection.updateOne(query, { $set: updateData });
+    // Conditional write: if two requests race past the check above, only
+    // the first one stamps the time.
+    const result = await collection.updateOne(
+      { ...query, [`completedStages.${fieldName}`]: { $ne: true } },
+      { $set: updateData },
+    );
 
     if (result.matchedCount === 0) {
-      return NextResponse.json(
-        { success: false, error: "Failed to update progress" },
-        { status: 500 }
-      );
+      return NextResponse.json({
+        success: true,
+        alreadyComplete: true,
+        message: `${step} already complete`,
+      });
     }
 
     console.log(`✅ Updated ${step} progress for linkId: ${linkId}`);

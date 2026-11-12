@@ -715,7 +715,7 @@ async function checkUnprocessedPayments() {
 
       if (mins >= PROCESS_ALERT_AFTER_MIN && !alerts.reminded) {
         pushAdminNotification({
-          section: 'create-payment-link',
+          section: 'payment-links',
           title: '💳 Paid — not processed yet',
           body: `${summary} · waiting ${Math.round(mins)} min`.slice(0, 120),
           eventId: `unprocessed-${link._id}`,

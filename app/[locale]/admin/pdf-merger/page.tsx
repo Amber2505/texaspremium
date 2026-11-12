@@ -260,6 +260,8 @@ export default function PdfMergerPage() {
   const [expirationDate, setExpirationDate] = useState("");
   const [monthlyAmount, setMonthlyAmount] = useState("");
   const [noReceipt, setNoReceipt] = useState(false);
+  // Policy # typed by the agent when there's no receipt to read it from
+  const [manualPolicy, setManualPolicy] = useState("");
   const [paidInFull, setPaidInFull] = useState(false);
   const [receiptInfo, setReceiptInfo] = useState<ReceiptInfo | null>(null);
   const [extractingReceipt, setExtractingReceipt] = useState(false);
@@ -287,12 +289,21 @@ export default function PdfMergerPage() {
   const isPolicyMissing =
     !noReceipt && !!officeReceipt && !receiptInfo?.policyNumber;
 
+  // Goes into the file name, which becomes the SignWell document name, which
+  // is how astral_api holds this policy's ID card until the customer signs.
+  const policyForFile = (
+    noReceipt ? manualPolicy : (receiptInfo?.policyNumber ?? "")
+  )
+    .replace(/[^A-Za-z0-9-]/g, "")
+    .toUpperCase();
+
   const canMerge =
     customerName.trim() &&
     companyApp &&
     !!paymentMethod &&
     !isPolicyTbd &&
     !isPolicyMissing &&
+    (!noReceipt || policyForFile.length >= 5) &&
     (noReceipt ||
       (officeReceipt && receiptFieldsReady && !receiptInfo?.notAReceipt)) &&
     (noReceipt || receiptType === "cash" || ccReceipts.length > 0);
@@ -868,7 +879,7 @@ export default function PdfMergerPage() {
           ? "_Cash"
           : "";
       const pifLabel = paidInFull ? "_PIF" : "";
-      const filename = `${safeName}_${policyLabel}${receiptLabel}${pifLabel}_${datePart}_${timePart}.pdf`;
+      const filename = `${safeName}_${policyForFile}_${policyLabel}${receiptLabel}${pifLabel}_${datePart}_${timePart}.pdf`;
 
       // ── Save to MongoDB before generating the PDF (skip if no receipt) ──
       if (!noReceipt) {
@@ -941,6 +952,7 @@ export default function PdfMergerPage() {
     setNoReceipt(false);
     setPaidInFull(false);
     setReceiptInfo(null);
+    setManualPolicy("");
     if (companyAppRef.current) companyAppRef.current.value = "";
     if (officeReceiptRef.current) officeReceiptRef.current.value = "";
     if (ccReceiptRef.current) ccReceiptRef.current.value = "";
@@ -1127,6 +1139,7 @@ export default function PdfMergerPage() {
                     {customerName && (
                       <p className="text-[11px] text-gray-400 mt-1.5 font-mono">
                         {customerName.trim().replace(/\s+/g, "_")}_
+                        {policyForFile || "POLICY#"}_
                         {nonOwner ? `${policyType}_NonOwner` : policyType}
                         {noReceipt
                           ? "_NoReceipt"
@@ -1363,14 +1376,30 @@ export default function PdfMergerPage() {
                 </div>
 
                 {noReceipt ? (
-                  <div className="flex items-center gap-3 px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl">
-                    <Ban className="w-5 h-5 text-gray-400" />
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl">
+                      <Ban className="w-5 h-5 text-gray-400" />
+                      <div>
+                        <p className="text-sm font-semibold text-gray-600">
+                          Receipt skipped
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          No office or CC receipt will be included.
+                        </p>
+                      </div>
+                    </div>
                     <div>
-                      <p className="text-sm font-semibold text-gray-600">
-                        Receipt skipped
-                      </p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        No office or CC receipt will be included.
+                      <FieldLabel required>Policy number</FieldLabel>
+                      <StyledInput
+                        type="text"
+                        value={manualPolicy}
+                        onChange={(e) => setManualPolicy(e.target.value)}
+                        placeholder="e.g. TXA2612M000161"
+                        className="font-mono uppercase"
+                      />
+                      <p className="text-[11px] text-gray-400 mt-1.5">
+                        Goes in the file name so the customer&apos;s ID card
+                        stays hidden until they sign in SignWell.
                       </p>
                     </div>
                   </div>
@@ -1859,7 +1888,9 @@ export default function PdfMergerPage() {
                           : !paymentMethod
                             ? "Select a payment method on file — Card, Bank (EFT), or None"
                             : noReceipt
-                              ? "Ready to merge"
+                              ? policyForFile.length < 5
+                                ? "Enter the policy number — it goes in the file name so SignWell can hold the ID card until signed"
+                                : "Ready to merge"
                               : !officeReceipt
                                 ? "Upload the Office Copy of the receipt, or toggle No Receipt"
                                 : !receiptFieldsReady

@@ -4,6 +4,7 @@
 // dec page, or COI — then files it where /view_documents can find it.
 
 const CAPTURE_URL = "https://astraldbapi.herokuapp.com/docs/office-capture";
+const RECEIPT_URL = "https://www.texaspremiumins.com/api/payments-to-process/receipt";
 const OFFICE_KEY = "oNa5EntolrNhAvhdWpJuXP9NLdq1IsIz";
 const SKIP_HOSTS = ["texaspremiumins.com", "astraldbapi.herokuapp.com"];
 const seen = new Set(); // per browser session — avoids re-sending the same URL
@@ -39,16 +40,27 @@ async function capture(url, host) {
     const blob = await res.blob();
     if (blob.size > 10 * 1024 * 1024) return;
 
-    const form = new FormData();
-    form.append("file", blob, "document.pdf");
-    form.append("source", host);
+    const send = async (url) => {
+      const form = new FormData();
+      form.append("file", blob, "document.pdf");
+      form.append("source", host);
+      const out = await fetch(url, {
+        method: "POST",
+        headers: { "X-Office-Key": OFFICE_KEY },
+        body: form,
+      });
+      return out.json().catch(() => ({ status: out.status }));
+    };
 
-    const out = await fetch(CAPTURE_URL, {
-      method: "POST",
-      headers: { "X-Office-Key": OFFICE_KEY },
-      body: form,
+    // Docs portal and receipt matcher each ignore what isn't theirs
+    const [docs, receipt] = await Promise.allSettled([
+      send(CAPTURE_URL),
+      send(RECEIPT_URL),
+    ]);
+    console.log("[office-helper]", host, {
+      docs: docs.value ?? docs.reason,
+      receipt: receipt.value ?? receipt.reason,
     });
-    console.log("[office-helper]", host, await out.json());
   } catch (err) {
     console.log("[office-helper] capture failed:", err);
   }
