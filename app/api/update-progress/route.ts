@@ -125,7 +125,7 @@ export async function POST(request: Request) {
 
     // Notify Railway to broadcast to admin clients
     try {
-      await fetch(`${process.env.NEXT_PUBLIC_RAILWAY_URL}/notify/payment-progress`, {
+      await fetch(`${process.env.NEXT_PUBLIC_SOCKET_URL}/notify/payment-progress`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ linkId }),

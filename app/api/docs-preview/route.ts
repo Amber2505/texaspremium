@@ -42,20 +42,33 @@ export async function POST(req: NextRequest) {
   }
 
   // Same daily code the autopay page checks
+  const railway = (process.env.NEXT_PUBLIC_SOCKET_URL || "").replace(/\/+$/, "");
+  if (!railway) {
+    console.error("docs-preview: NEXT_PUBLIC_SOCKET_URL is not set");
+    return NextResponse.json({ error: "Code check not configured." }, { status: 500 });
+  }
+
   let valid = false;
   try {
-    const r = await fetch(
-      `${process.env.NEXT_PUBLIC_RAILWAY_URL}/verify-security-code`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: String(securityCode).trim() }),
-      },
-    );
-    valid = !!(await r.json()).valid;
-  } catch {
-    valid = false;
+    const r = await fetch(`${railway}/verify-security-code`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: String(securityCode).trim() }),
+    });
+    const body = await r.json().catch(() => null);
+    if (!r.ok || !body) {
+      console.error(`docs-preview: code check failed HTTP ${r.status}`);
+      return NextResponse.json(
+        { error: `Couldn't check the code (HTTP ${r.status}).` },
+        { status: 502 },
+      );
+    }
+    valid = !!body.valid;
+  } catch (e) {
+    console.error("docs-preview: code check unreachable", e);
+    return NextResponse.json({ error: "Couldn't reach the code check." }, { status: 502 });
   }
+  // Only real wrong codes count toward the lockout
   await attempts.insertOne({ ip, ok: valid, at: new Date() });
   if (!valid) {
     return NextResponse.json({ error: "Wrong security code." }, { status: 401 });
