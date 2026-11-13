@@ -5,17 +5,15 @@ import {
   Eye,
   EyeOff,
   Users,
-  Calendar,
   Shield,
   MessageSquare,
   CreditCard,
-  Building2,
   Link2,
   FileText,
   ChevronRight,
-  BarChart2,
   BookOpen,
   Printer,
+  ShieldCheck,
 } from "lucide-react";
 import Image from "next/image";
 import {
@@ -213,14 +211,7 @@ export default function AdminLoginPage() {
       accent: "#0e7490",
       iconBg: "bg-cyan-100 text-cyan-700",
     },
-    {
-      label: "Reminders",
-      description: "Track payment schedules & renewals",
-      path: "/admin/reminder",
-      icon: <Calendar className="w-5 h-5" />,
-      accent: "#15803d",
-      iconBg: "bg-green-100 text-green-700",
-    },
+
     {
       label: "Autopay Portal",
       description: "View & manage customer payment methods",
@@ -257,20 +248,12 @@ export default function AdminLoginPage() {
       iconBg: "bg-teal-100 text-teal-700",
     },
     {
-      label: "Companies",
-      description: "Manage company database",
-      path: "/admin/companies-link",
-      icon: <Building2 className="w-5 h-5" />,
-      accent: "#4338ca",
-      iconBg: "bg-indigo-100 text-indigo-700",
-    },
-    {
-      label: "Accounting",
-      description: "Revenue, reconciliation & Square payouts",
-      path: "/admin/accounting",
-      icon: <BarChart2 className="w-5 h-5" />,
-      accent: "#059669",
-      iconBg: "bg-emerald-100 text-emerald-700",
+      label: "Super Admin",
+      description: "Reminders, companies, accounting & document preview",
+      path: "/admin/super-admin",
+      icon: <ShieldCheck className="w-5 h-5" />,
+      accent: "#334155",
+      iconBg: "bg-slate-200 text-slate-800",
     },
     {
       label: "Guides",

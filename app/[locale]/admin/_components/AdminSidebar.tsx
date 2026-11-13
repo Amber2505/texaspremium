@@ -19,6 +19,7 @@ import {
   BarChart2,
   BookOpen,
   Printer,
+  ShieldCheck,
 } from "lucide-react";
 
 interface NavItem {
@@ -64,16 +65,7 @@ const NAV_ITEMS: NavItem[] = [
     activeText: "text-cyan-700",
     section: "daily",
   },
-  {
-    label: "Reminders",
-    path: "/admin/reminder",
-    icon: <Calendar className="w-3.5 h-3.5" />,
-    iconBg: "bg-green-100",
-    iconColor: "text-green-700",
-    activeBg: "bg-green-50",
-    activeText: "text-green-700",
-    section: "daily",
-  },
+
   {
     label: "Autopay Portal",
     path: "/admin/autopay",
@@ -116,23 +108,13 @@ const NAV_ITEMS: NavItem[] = [
     section: "other",
   },
   {
-    label: "Companies",
-    path: "/admin/companies-link",
-    icon: <Building2 className="w-3.5 h-3.5" />,
-    iconBg: "bg-indigo-100",
-    iconColor: "text-indigo-700",
-    activeBg: "bg-indigo-50",
-    activeText: "text-indigo-700",
-    section: "other",
-  },
-  {
-    label: "Accounting",
-    path: "/admin/accounting",
-    icon: <BarChart2 className="w-3.5 h-3.5" />,
-    iconBg: "bg-emerald-100",
-    iconColor: "text-emerald-700",
-    activeBg: "bg-emerald-50",
-    activeText: "text-emerald-700",
+    label: "Super Admin",
+    path: "/admin/super-admin",
+    icon: <ShieldCheck className="w-3.5 h-3.5" />,
+    iconBg: "bg-slate-200",
+    iconColor: "text-slate-800",
+    activeBg: "bg-slate-100",
+    activeText: "text-slate-900",
     section: "other",
   },
   {
@@ -145,6 +127,15 @@ const NAV_ITEMS: NavItem[] = [
     activeText: "text-amber-700",
     section: "other",
   },
+];
+
+// Pages that live behind Super Admin keep its sidebar item highlighted
+const SUPER_ADMIN_PATHS = [
+  "/admin/super-admin",
+  "/admin/reminder",
+  "/admin/companies-link",
+  "/admin/accounting",
+  "/admin/docs-preview",
 ];
 
 interface AdminSidebarProps {
@@ -240,7 +231,10 @@ export default function AdminSidebar({ activePath }: AdminSidebarProps) {
             Other tools
           </p>
           {otherItems.map((item) => {
-            const isActive = activePath === item.path;
+            const isActive =
+              activePath === item.path ||
+              (item.path === "/admin/super-admin" &&
+                SUPER_ADMIN_PATHS.includes(activePath));
             return (
               <button
                 key={item.path}

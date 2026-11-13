@@ -721,6 +721,10 @@ export default function MessageStoredPage() {
   // Message pagination state
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false);
+  // State flips a render late, so fast scroll events could fire two loads for
+  // the same page. A ref lock is instant.
+  const loadingOlderRef = useRef(false);
+  const dupPagesRef = useRef(0);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [messagesSkip, setMessagesSkip] = useState(0);
   const [isLoadingConversation, setIsLoadingConversation] = useState(false);
@@ -1487,11 +1491,11 @@ export default function MessageStoredPage() {
 
   // Load older messages when scrolling up - useCallback version
   const loadMoreMessages = useCallback(async () => {
-    if (!selectedConversationId || isLoadingMoreMessages || !hasMoreMessages)
+    if (!selectedConversationId || loadingOlderRef.current || !hasMoreMessages)
       return;
 
+    loadingOlderRef.current = true;
     setIsLoadingMoreMessages(true);
-
     const container = messagesContainerRef.current;
     const previousScrollHeight = container?.scrollHeight || 0;
 
@@ -1539,13 +1543,18 @@ export default function MessageStoredPage() {
         setMessagesSkip((prev) => prev + newUniqueMessages.length);
         // A page of nothing but duplicates means we've hit the start — without
         // this the auto-fill check below would refetch the same page forever.
-        setHasMoreMessages(newUniqueMessages.length > 0 && !!data.hasMore);
+        // One duplicate page used to end paging for good. Trust the server's
+        // hasMore, but stop after 2 duplicate pages in a row so it can't loop.
+        dupPagesRef.current =
+          newUniqueMessages.length > 0 ? 0 : dupPagesRef.current + 1;
+        setHasMoreMessages(!!data.hasMore && dupPagesRef.current < 2);
       } else {
         setHasMoreMessages(false);
       }
     } catch {
       console.error("Failed to load more messages");
     } finally {
+      loadingOlderRef.current = false;
       setIsLoadingMoreMessages(false);
     }
   }, [
@@ -1953,6 +1962,7 @@ export default function MessageStoredPage() {
     setConversation([]);
     setMessagesSkip(0);
     setHasMoreMessages(true);
+    dupPagesRef.current = 0;
     setActiveSearchText("");
     setMatchingMessageIndices([]);
     setConversationLanguage("en");
@@ -3105,6 +3115,22 @@ export default function MessageStoredPage() {
       document.body.removeChild(link);
     }
   };
+
+  // Date dividers must follow what's actually shown. Comparing against the
+  // previous array entry broke when that entry was a hidden call: its
+  // divider never rendered, so the next day's messages sat under the old date.
+  const isHiddenRow = (m: RingCentralMessage) =>
+    !showCalls && m.type === "AnsweredCall";
+  const dateDividerIdx = new Set<number>();
+  {
+    let lastDay = "";
+    conversation.forEach((m, i) => {
+      if (isHiddenRow(m)) return;
+      const day = new Date(m.creationTime).toDateString();
+      if (day !== lastDay) dateDividerIdx.add(i);
+      lastDay = day;
+    });
+  }
 
   if (!mounted || isInitialLoad)
     return (
@@ -4586,12 +4612,7 @@ export default function MessageStoredPage() {
 
                   {conversation.map((msg, index) => {
                     const isOutbound = msg.direction === "Outbound";
-                    const showDate =
-                      index === 0 ||
-                      new Date(msg.creationTime).toDateString() !==
-                        new Date(
-                          conversation[index - 1]?.creationTime || "",
-                        ).toDateString();
+                    const showDate = dateDividerIdx.has(index);
                     const isSelected = selectedMessageIds.has(msg.id || "");
                     const isMatchingMessage =
                       matchingMessageIndices.includes(index);
@@ -4599,10 +4620,9 @@ export default function MessageStoredPage() {
                     // Skip at render rather than filtering the array — the
                     // inline search stores positions into `conversation`, so
                     // removing entries would misalign every highlight.
-                    if (
-                      !showCalls &&
-                      (msg.type === "MissedCall" || msg.type === "AnsweredCall")
-                    ) {
+                    // Missed calls and voicemails always show so agents can
+                    // call back; the toggle only hides answered calls.
+                    if (isHiddenRow(msg)) {
                       return null;
                     }
 

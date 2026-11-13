@@ -1781,8 +1781,31 @@ function pickOnePerSession(calls) {
   return out;
 }
 
+// RC often identifies an extension on a call leg only by its internal id —
+// no extensionNumber — so those calls showed no ext. Map id → number/name
+// from the account's extension list, refreshed hourly.
+let extDirectory = { map: new Map(), at: 0 };
+async function getExtensionDirectory(platform) {
+  if (extDirectory.map.size && Date.now() - extDirectory.at < 60 * 60 * 1000) {
+    return extDirectory.map;
+  }
+  try {
+    const r = await platform.get('/restapi/v1.0/account/~/extension', { perPage: 100 });
+    const d = await r.json();
+    const map = new Map();
+    for (const e of d.records || []) {
+      map.set(String(e.id), { number: e.extensionNumber, name: e.name });
+    }
+    extDirectory = { map, at: Date.now() };
+    console.log(`[ext] directory loaded: ${map.size} extensions`);
+  } catch (e) {
+    console.error('[ext] directory load failed:', e.message);
+  }
+  return extDirectory.map;
+}
+
 // Every extension that handled the call, in order: "101 → 104" for a transfer
-function getHandledBy(call) {
+function getHandledBy(call, extMap = new Map()) {
   const records = call._siblings || [call];
   const legs = records.flatMap(c => c.legs || []);
   const exts = [];
@@ -1792,15 +1815,51 @@ function getHandledBy(call) {
     if (name && !names.includes(name)) names.push(name);
   };
 
+  // A party may carry extensionNumber directly, or only an extensionId; a
+  // leg may carry neither but have extension.id. Resolve whichever exists.
+  const resolve = (party, legExt) => {
+    const id = party?.extensionId || legExt?.id;
+    const fromDir = id ? extMap.get(String(id)) : null;
+    return {
+      ext: party?.extensionNumber || fromDir?.number || null,
+      name: party?.name || fromDir?.name || null,
+    };
+  };
+
   if (call.direction === 'Outbound') {
-    const fromLeg = legs.find(l => l.from?.extensionNumber);
-    push(call.from?.extensionNumber || fromLeg?.from?.extensionNumber, call.from?.name || fromLeg?.from?.name);
-  }
-  for (const l of legs) {
-    if (l.to?.extensionNumber && ANSWERED_RESULTS.has(l.result)) {
-      push(l.to.extensionNumber, l.to.name);
+    const top = resolve(call.from, call.extension);
+    if (top.ext) {
+      push(top.ext, top.name);
+    } else {
+      for (const l of legs) {
+        const r = resolve(l.from, l.extension);
+        if (r.ext) { push(r.ext, r.name); break; }
+      }
     }
   }
+
+  for (const l of legs) {
+    if (!ANSWERED_RESULTS.has(l.result)) continue;
+    const r = resolve(l.to, l.extension);
+    push(r.ext, r.name);
+  }
+
+  // Legs gave nothing: fall back to the answered record(s) themselves
+  if (!exts.length && call.direction !== 'Outbound') {
+    for (const c of records) {
+      if (!ANSWERED_RESULTS.has(c.result)) continue;
+      const r = resolve(c.to, c.extension);
+      push(r.ext, r.name);
+    }
+  }
+
+  if (!exts.length && ANSWERED_RESULTS.has(call.result)) {
+    console.log(
+      `[ext] none found for call ${call.id}:`,
+      JSON.stringify(legs.map(l => ({ result: l.result, to: l.to, extension: l.extension }))).slice(0, 600),
+    );
+  }
+
   return {
     ext: exts.join(' → ') || null,
     name: names.join(' → ') || null,
@@ -1831,7 +1890,11 @@ async function syncMissedCalls(platform) {
     if (!platform) platform = await getCachedRCPlatform();
     const callAuth = await platform.auth().data();
     const authToken = callAuth?.access_token;
-    const dateFrom = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const extMap = await getExtensionDirectory(platform);
+    // 24h normally. Set CALL_SYNC_HOURS (e.g. 168) temporarily to backfill
+    // the ext on older calls, then remove it.
+    const callLookbackHours = parseInt(process.env.CALL_SYNC_HOURS || '24', 10);
+    const dateFrom = new Date(Date.now() - callLookbackHours * 60 * 60 * 1000).toISOString();
 
     // Account-level: every extension (101–104), not just the JWT user's.
     const response = await platform.get('/restapi/v1.0/account/~/call-log', {
@@ -1898,7 +1961,7 @@ async function syncMissedCalls(platform) {
         }
 
         if (nowAnswered || isOutboundCall) {
-          const h = getHandledBy(call);
+          const h = getHandledBy(call, extMap);
           if (h.ext && h.ext !== stored?.handledBy) $set['messages.$.handledBy'] = h.ext;
           if (h.name && h.name !== stored?.handledByName) $set['messages.$.handledByName'] = h.name;
         }
@@ -1964,7 +2027,7 @@ async function syncMissedCalls(platform) {
       }
 
       const { recordings } = await fetchCallRecordings(call, callId, authToken);
-      const handled = isAnswered || isOutboundCall ? getHandledBy(call) : { ext: null, name: null };
+      const handled = isAnswered || isOutboundCall ? getHandledBy(call, extMap) : { ext: null, name: null };
 
       const messageObj = {
         id: `call_${callId}`,

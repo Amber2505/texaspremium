@@ -172,7 +172,62 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    const allMessages = conversation.messages || [];
+    // A customer's history can be split across documents: threads from
+    // before conversationId existed live in a doc keyed only by phoneNumber,
+    // and the sync upserts newer messages into a separate doc by
+    // conversationId. Reading just one made older messages "disappear".
+    // Merge every document that belongs to this thread.
+    const threadKey = conversation.conversationId || conversation.phoneNumber;
+    const isGroupThread = !!conversation.isGroup || (threadKey || '').includes(',');
+
+    let siblingQuery: Record<string, unknown>;
+    if (isGroupThread) {
+      // Groups only ever match on the full participant list
+      const groupKeys = Array.from(
+        new Set([lookupValue, rawValue, threadKey].filter((k) => k && k.includes(','))),
+      );
+      siblingQuery = { conversationId: { $in: groupKeys } };
+    } else {
+      const keys = Array.from(
+        new Set([lookupValue, rawValue, threadKey, conversation.phoneNumber].filter(Boolean)),
+      ) as string[];
+      const last10 = (normalizePhone(threadKey) || '').replace(/\D/g, '').slice(-10);
+      siblingQuery = {
+        isGroup: { $ne: true },
+        $or: [
+          { conversationId: { $in: keys } },
+          // Legacy docs: no conversationId, phone stored in any format
+          {
+            $and: [
+              { $or: [{ conversationId: { $exists: false } }, { conversationId: null }] },
+              {
+                $or: [
+                  { phoneNumber: { $in: keys } },
+                  ...(last10.length === 10 ? [{ phoneNumber: { $regex: `${last10}$` } }] : []),
+                ],
+              },
+            ],
+          },
+        ],
+      };
+    }
+
+    const threadDocs = (await conversationsCollection
+      .find(siblingQuery)
+      .toArray()) as unknown as ConversationDocument[];
+    const sourceDocs = threadDocs.length ? threadDocs : [conversation];
+    if (sourceDocs.length > 1) {
+      console.log(`   🧩 Merged ${sourceDocs.length} documents for ${threadKey}`);
+    }
+
+    // Sort by real time, not string order — creationTime formats vary
+    // (with/without milliseconds) between RC, scheduled sends, and calls.
+    const allMessages = sourceDocs
+      .flatMap((d) => d.messages || [])
+      .sort(
+        (a: any, b: any) =>
+          new Date(a.creationTime).getTime() - new Date(b.creationTime).getTime(),
+      );
     
     // Deduplicate messages by ID
     const seenIds = new Set<string>();

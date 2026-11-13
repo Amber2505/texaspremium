@@ -3,6 +3,15 @@
 import { useState, useEffect, ReactNode } from "react";
 
 const UNLOCK_DURATION = 5 * 60 * 1000; // matches accounting
+const SUPER_KEY = "super_admin_unlocked_at";
+
+// Super Admin's unlock counts for every page behind it, so the password is
+// entered once, not once per page.
+function lastUnlock(storageKey: string): number {
+  const own = parseInt(sessionStorage.getItem(storageKey) || "0", 10) || 0;
+  const sup = parseInt(sessionStorage.getItem(SUPER_KEY) || "0", 10) || 0;
+  return Math.max(own, sup);
+}
 
 export default function CodeGate({
   title,
@@ -23,8 +32,8 @@ export default function CodeGate({
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
 
   useEffect(() => {
-    const at = sessionStorage.getItem(storageKey);
-    if (at && Date.now() - parseInt(at) < UNLOCK_DURATION) setUnlocked(true);
+    const at = lastUnlock(storageKey);
+    if (at && Date.now() - at < UNLOCK_DURATION) setUnlocked(true);
     else sessionStorage.removeItem(storageKey);
     setChecking(false);
   }, [storageKey]);
@@ -36,14 +45,15 @@ export default function CodeGate({
       return;
     }
     const tick = () => {
-      const at = sessionStorage.getItem(storageKey);
+      const at = lastUnlock(storageKey);
       if (!at) {
         setUnlocked(false);
         return;
       }
-      const remaining = UNLOCK_DURATION - (Date.now() - parseInt(at));
+      const remaining = UNLOCK_DURATION - (Date.now() - at);
       if (remaining <= 0) {
         sessionStorage.removeItem(storageKey);
+        sessionStorage.removeItem(SUPER_KEY);
         setUnlocked(false);
         setPinInput("");
         setPinError("");
@@ -67,7 +77,9 @@ export default function CodeGate({
         body: JSON.stringify({ code: pinInput.trim() }),
       });
       if (res.ok) {
-        sessionStorage.setItem(storageKey, String(Date.now()));
+        const now = String(Date.now());
+        sessionStorage.setItem(storageKey, now);
+        sessionStorage.setItem(SUPER_KEY, now);
         setUnlocked(true);
       } else {
         setPinError("Incorrect code. Try again.");
