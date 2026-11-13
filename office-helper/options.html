@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Office Helper — Activation</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 420px;
+        margin: 60px auto;
+        color: #1e293b;
+      }
+      h1 {
+        font-size: 20px;
+        margin-bottom: 4px;
+      }
+      p {
+        color: #64748b;
+        font-size: 14px;
+      }
+      input {
+        width: 100%;
+        padding: 10px;
+        font-size: 15px;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        box-sizing: border-box;
+      }
+      button {
+        margin-top: 12px;
+        width: 100%;
+        padding: 10px;
+        font-size: 15px;
+        font-weight: bold;
+        color: #fff;
+        background: #1e3a5f;
+        border: 0;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #status {
+        margin-top: 14px;
+        font-size: 14px;
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Texas Premium Office Helper</h1>
+    <p>Internal use only. Enter the activation code from your manager.</p>
+    <input
+      id="code"
+      type="password"
+      placeholder="Activation code"
+      autocomplete="off"
+    />
+    <button id="save">Activate</button>
+    <div id="status"></div>
+    <script src="options.js"></script>
+  </body>
+</html>

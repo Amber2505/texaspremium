@@ -5,7 +5,32 @@
 
 const CAPTURE_URL = "https://astraldbapi.herokuapp.com/docs/office-capture";
 const RECEIPT_URL = "https://www.texaspremiumins.com/api/payments-to-process/receipt";
-const OFFICE_KEY = "oNa5EntolrNhAvhdWpJuXP9NLdq1IsIz";
+// No key in the code: each computer is activated once from the options page.
+let OFFICE_KEY = null;
+
+const updateBadge = () =>
+  chrome.action.setBadgeText({ text: OFFICE_KEY ? "" : "OFF" });
+
+const keyReady = chrome.storage.local.get("officeKey").then(({ officeKey }) => {
+  OFFICE_KEY = officeKey || null;
+  updateBadge();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.officeKey) {
+    OFFICE_KEY = changes.officeKey.newValue || null;
+    updateBadge();
+  }
+});
+
+// First install (or not yet activated): open the activation page
+chrome.runtime.onInstalled.addListener(async () => {
+  const { officeKey } = await chrome.storage.local.get("officeKey");
+  if (!officeKey) chrome.runtime.openOptionsPage();
+});
+
+// Clicking the toolbar icon opens the activation page
+chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
 const SKIP_HOSTS = ["texaspremiumins.com", "astraldbapi.herokuapp.com"];
 const seen = new Set(); // per browser session — avoids re-sending the same URL
 
@@ -33,6 +58,8 @@ chrome.webRequest.onHeadersReceived.addListener(
 );
 
 async function capture(url, host) {
+  await keyReady;
+  if (!OFFICE_KEY) return; // not activated on this computer — do nothing
   try {
     // Uses the agent's existing carrier login cookies
     const res = await fetch(url, { credentials: "include" });
