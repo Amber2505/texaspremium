@@ -103,11 +103,20 @@ type MatchedReceipt = {
   amount: number;
   squarePaymentId: string | null;
   matched: boolean;
-  matchedBy: "reference" | "amount" | null;
+  matchedBy: "reference" | "amount" | "manual" | null;
   note?: string;
 };
 
 type UnmatchedSquarePayment = { id: string; amount: number; createdAt: string };
+
+type ManualMatch = {
+  _id: string;
+  receiptNo: string;
+  dateKey: string;
+  customer: string;
+  amount: number;
+  squarePaymentIds: string[];
+};
 
 type GlobalReconciliation = {
   totalCSVCC: number;
@@ -306,8 +315,10 @@ function groupIntoDays(receipts: Receipt[]): DaySummary[] {
       const recs = dayMap
         .get(dateKey)!
         .sort((a, b) => parseInt(a.receiptNo) - parseInt(b.receiptNo));
+      // Voided receipts were entered by mistake: list them, count nothing
+      const active = recs.filter((r) => !r.isVoided);
       const byMethod: Record<string, number> = {};
-      recs.forEach((r) =>
+      active.forEach((r) =>
         r.rows.forEach((row) => {
           byMethod[row.method] = (byMethod[row.method] || 0) + row.total;
         }),
@@ -316,9 +327,9 @@ function groupIntoDays(receipts: Receipt[]): DaySummary[] {
         dateKey,
         dateLabel: formatDateLabel(dateKey),
         receipts: recs,
-        grandTotal: recs.reduce((s, r) => s + r.totalAmount, 0),
-        totalPremium: recs.reduce((s, r) => s + r.totalPremium, 0),
-        totalFees: recs.reduce((s, r) => s + r.totalFees, 0),
+        grandTotal: active.reduce((s, r) => s + r.totalAmount, 0),
+        totalPremium: active.reduce((s, r) => s + r.totalPremium, 0),
+        totalFees: active.reduce((s, r) => s + r.totalFees, 0),
         byMethod,
       };
     });
@@ -327,12 +338,17 @@ function groupIntoDays(receipts: Receipt[]): DaySummary[] {
 function buildGlobalReconciliation(
   days: DaySummary[],
   squareByDate: Record<string, SquareDayData>,
+  manualMatches: ManualMatch[] = [],
 ): GlobalReconciliation {
   const allCSVReceipts = days.flatMap((d) =>
     d.receipts
       .filter(
         (r) =>
-          r.methods.includes("Credit Card") && r.totalAmount > 0 && !r.isVoided,
+          r.methods.includes("Credit Card") &&
+          !r.isVoided &&
+          !r.isVoided &&
+          r.totalAmount > 0 &&
+          !r.isVoided,
       )
       .map((r) => ({
         receiptNo: r.receiptNo,
@@ -355,11 +371,39 @@ function buildGlobalReconciliation(
   const matched: MatchedReceipt[] = [];
   const unmatchedCSV: MatchedReceipt[] = [];
 
-  const sorted = [...allCSVReceipts].sort(
-    (a, b) =>
-      (a.referenceNo.trim().length > 0 ? 0 : 1) -
-      (b.referenceNo.trim().length > 0 ? 0 : 1),
-  );
+  // Staff-confirmed multi-card links win before any automatic matching
+  const manuallyMatchedKeys = new Set<string>();
+  manualMatches.forEach((mm) => {
+    const csv = allCSVReceipts.find(
+      (r) => r.receiptNo === mm.receiptNo && r.dateKey === mm.dateKey,
+    );
+    if (!csv) return;
+    const pays = mm.squarePaymentIds
+      .map((id) => allSquarePayments.find((sp) => sp.id === id))
+      .filter(Boolean) as typeof allSquarePayments;
+    if (!pays.length || pays.some((p) => usedSquare.has(p.id))) return;
+    pays.forEach((p) => usedSquare.add(p.id));
+    manuallyMatchedKeys.add(`${csv.receiptNo}_${csv.dateKey}`);
+    const sum = pays.reduce((s, p) => s + p.amount, 0);
+    matched.push({
+      ...csv,
+      squarePaymentId: pays.map((p) => p.id).join(", "),
+      matched: true,
+      matchedBy: "manual",
+      note:
+        Math.abs(sum - csv.amount) < 0.02
+          ? `Linked ${pays.length} cards`
+          : `Linked ${pays.length} cards — ${fmt(sum)} vs ${fmt(csv.amount)}`,
+    });
+  });
+
+  const sorted = [...allCSVReceipts]
+    .filter((r) => !manuallyMatchedKeys.has(`${r.receiptNo}_${r.dateKey}`))
+    .sort(
+      (a, b) =>
+        (a.referenceNo.trim().length > 0 ? 0 : 1) -
+        (b.referenceNo.trim().length > 0 ? 0 : 1),
+    );
   const afterPass1A: typeof allCSVReceipts = [];
 
   sorted.forEach((csv) => {
@@ -614,7 +658,14 @@ function ReceiptCard({
         <span className="text-xs text-gray-400 w-16 text-right flex-shrink-0">
           {time}
         </span>
-        <span className="font-semibold text-gray-900 w-24 text-right flex-shrink-0">
+        <span
+          className={`font-semibold w-24 text-right flex-shrink-0 ${
+            receipt.isVoided ? "text-gray-400 line-through" : "text-gray-900"
+          }`}
+          title={
+            receipt.isVoided ? "Voided — not counted in totals" : undefined
+          }
+        >
           {fmt(displayTotal)}
         </span>
         {receipt._id && !editing && (
@@ -831,7 +882,11 @@ function SquarePanel({
     .forEach((sp) => {
       const otherTotals = allCsvReceipts
         .filter(
-          (r) => r.dateKey !== dateKey && r.methods.includes("Credit Card"),
+          (r) =>
+            r.dateKey !== dateKey &&
+            r.methods.includes("Credit Card") &&
+            !r.isVoided &&
+            !r.isVoided,
         )
         .map((r) => ({
           amount: r.rows
@@ -1204,8 +1259,183 @@ function SquarePanel({
 
 // ─── Global Recon Panel ───────────────────────────────────────────────────────
 
-function GlobalReconPanel({ recon }: { recon: GlobalReconciliation }) {
+// Finds Square payments within ±3 days that add up to the receipt exactly
+function suggestCombo(
+  target: number,
+  pool: UnmatchedSquarePayment[],
+  dateKey: string,
+): string[] | null {
+  const day = new Date(dateKey + "T12:00:00").getTime();
+  const near = pool
+    .filter(
+      (p) =>
+        Math.abs(new Date(toCST(p.createdAt) + "T12:00:00").getTime() - day) <=
+        3 * 86400000,
+    )
+    .slice(0, 20);
+  const goal = Math.round(target * 100);
+  const found: { ids: string[] | null } = { ids: null };
+  const picked: string[] = [];
+  const dfs = (i: number, sum: number) => {
+    if (found.ids) return;
+    if (picked.length >= 2 && Math.abs(sum - goal) <= 1) {
+      found.ids = [...picked];
+      return;
+    }
+    if (i >= near.length || picked.length >= 6 || sum > goal + 1) return;
+    picked.push(near[i].id);
+    dfs(i + 1, sum + Math.round(near[i].amount * 100));
+    picked.pop();
+    dfs(i + 1, sum);
+  };
+  dfs(0, 0);
+  return found.ids;
+}
+
+function LinkPicker({
+  receipt,
+  pool,
+  onCancel,
+  onSave,
+}: {
+  receipt: MatchedReceipt;
+  pool: UnmatchedSquarePayment[];
+  onCancel: () => void;
+  onSave: (ids: string[]) => Promise<void>;
+}) {
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [hint, setHint] = useState("");
+  const sum = pool
+    .filter((p) => picked.has(p.id))
+    .reduce((s, p) => s + p.amount, 0);
+  const exact = picked.size > 0 && Math.abs(sum - receipt.amount) < 0.02;
+
+  const toggle = (id: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const suggest = () => {
+    const ids = suggestCombo(receipt.amount, pool, receipt.dateKey);
+    if (ids) {
+      setPicked(new Set(ids));
+      setHint("");
+    } else {
+      setHint(
+        "No combination of nearby payments adds up exactly. Pick them manually.",
+      );
+    }
+  };
+
+  const save = async () => {
+    if (
+      !exact &&
+      !confirm(
+        `Selected ${fmt(sum)} doesn't equal ${fmt(receipt.amount)}. Link anyway?`,
+      )
+    )
+      return;
+    setSaving(true);
+    await onSave([...picked]);
+    setSaving(false);
+  };
+
+  return (
+    <div className="bg-blue-50 border-t border-blue-200 px-3 py-3">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-semibold text-blue-800">
+          Which Square payments make up #{receipt.receiptNo} (
+          {fmt(receipt.amount)})?
+        </p>
+        <button
+          onClick={suggest}
+          className="text-xs px-2 py-1 rounded bg-white border border-blue-300 text-blue-700 hover:bg-blue-100"
+        >
+          ✨ Suggest
+        </button>
+      </div>
+      {hint && <p className="text-[11px] text-amber-700 mb-2">{hint}</p>}
+      <div className="max-h-48 overflow-y-auto bg-white rounded border border-blue-100 divide-y divide-gray-100">
+        {pool.length === 0 && (
+          <p className="text-xs text-gray-400 p-3">
+            No unmatched Square payments.
+          </p>
+        )}
+        {[...pool]
+          .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+          .map((p) => (
+            <label
+              key={p.id}
+              className={`flex items-center gap-3 px-3 py-1.5 text-xs cursor-pointer hover:bg-gray-50 ${picked.has(p.id) ? "bg-blue-50" : ""}`}
+            >
+              <input
+                type="checkbox"
+                checked={picked.has(p.id)}
+                onChange={() => toggle(p.id)}
+              />
+              <span className="font-mono text-gray-500 w-36">
+                {new Date(p.createdAt).toLocaleString("en-US", {
+                  timeZone: "America/Chicago",
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: true,
+                })}
+              </span>
+              <span className="font-semibold text-gray-900">
+                {fmt(p.amount)}
+              </span>
+              <span className="text-gray-300 font-mono text-[10px] truncate">
+                {p.id}
+              </span>
+            </label>
+          ))}
+      </div>
+      <div className="flex items-center justify-between mt-2">
+        <p
+          className={`text-xs font-semibold ${exact ? "text-green-700" : "text-gray-600"}`}
+        >
+          Selected {picked.size} · {fmt(sum)} of {fmt(receipt.amount)}
+          {exact && " ✓"}
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={onCancel}
+            className="text-xs px-3 py-1 rounded border border-gray-200 text-gray-600 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={save}
+            disabled={!picked.size || saving}
+            className="text-xs px-3 py-1 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-40"
+          >
+            {saving ? "Saving…" : "Link"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GlobalReconPanel({
+  recon,
+  manualMatches,
+  onLink,
+  onUnlink,
+}: {
+  recon: GlobalReconciliation;
+  manualMatches: ManualMatch[];
+  onLink: (r: MatchedReceipt, ids: string[]) => Promise<void>;
+  onUnlink: (id: string) => Promise<void>;
+}) {
   const [showUnmatched, setShowUnmatched] = useState(false);
+  const [linkingKey, setLinkingKey] = useState<string | null>(null);
   const diff = recon.totalSquareGross - recon.totalCSVCC;
   return (
     <div
@@ -1278,7 +1508,10 @@ function GlobalReconPanel({ recon }: { recon: GlobalReconciliation }) {
           </div>
         ))}
       </div>
-      {(recon.unmatchedCSV.length > 0 || recon.unmatchedSquare.length > 0) && (
+
+      {(recon.unmatchedCSV.length > 0 ||
+        recon.unmatchedSquare.length > 0 ||
+        manualMatches.length > 0) && (
         <button
           onClick={() => setShowUnmatched(!showUnmatched)}
           className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1 mb-2"
@@ -1291,13 +1524,14 @@ function GlobalReconPanel({ recon }: { recon: GlobalReconciliation }) {
           {showUnmatched ? "Hide" : "Show"} unmatched details
         </button>
       )}
+
       {showUnmatched && (
         <div className="border border-red-200 rounded-lg overflow-hidden text-xs">
           {recon.unmatchedCSV.length > 0 && (
             <>
               <div className="bg-red-100 px-3 py-1.5 font-medium text-red-700">
-                CSV with no Square match — may not have been collected via
-                Square
+                CSV with no Square match. Paid with several cards? Use Link
+                cards.
               </div>
               <table className="w-full bg-white">
                 <thead>
@@ -1307,29 +1541,62 @@ function GlobalReconPanel({ recon }: { recon: GlobalReconciliation }) {
                     <th className="px-3 py-1.5 text-left">Customer</th>
                     <th className="px-3 py-1.5 text-left">Ref / Auth</th>
                     <th className="px-3 py-1.5 text-right">Amount</th>
+                    <th className="px-3 py-1.5" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {recon.unmatchedCSV.map((r) => (
-                    <tr
-                      key={`${r.receiptNo}_${r.dateKey}`}
-                      className="text-red-700"
-                    >
-                      <td className="px-3 py-1.5 text-gray-500">{r.dateKey}</td>
-                      <td className="px-3 py-1.5 font-mono">#{r.receiptNo}</td>
-                      <td className="px-3 py-1.5">{r.customer}</td>
-                      <td className="px-3 py-1.5 font-mono text-gray-500">
-                        {r.referenceNo || "—"}
-                      </td>
-                      <td className="px-3 py-1.5 text-right font-semibold">
-                        {fmt(r.amount)}
-                      </td>
-                    </tr>
-                  ))}
+                  {recon.unmatchedCSV.map((r) => {
+                    const key = `${r.receiptNo}_${r.dateKey}`;
+                    return (
+                      <React.Fragment key={key}>
+                        <tr className="text-red-700">
+                          <td className="px-3 py-1.5 text-gray-500">
+                            {r.dateKey}
+                          </td>
+                          <td className="px-3 py-1.5 font-mono">
+                            #{r.receiptNo}
+                          </td>
+                          <td className="px-3 py-1.5">{r.customer}</td>
+                          <td className="px-3 py-1.5 font-mono text-gray-500">
+                            {r.referenceNo || "—"}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-semibold">
+                            {fmt(r.amount)}
+                          </td>
+                          <td className="px-3 py-1.5 text-right">
+                            <button
+                              onClick={() =>
+                                setLinkingKey(linkingKey === key ? null : key)
+                              }
+                              className="text-[11px] px-2 py-0.5 rounded bg-blue-600 text-white hover:bg-blue-700"
+                            >
+                              Link cards
+                            </button>
+                          </td>
+                        </tr>
+                        {linkingKey === key && (
+                          <tr>
+                            <td colSpan={6} className="p-0">
+                              <LinkPicker
+                                receipt={r}
+                                pool={recon.unmatchedSquare}
+                                onCancel={() => setLinkingKey(null)}
+                                onSave={async (ids) => {
+                                  await onLink(r, ids);
+                                  setLinkingKey(null);
+                                }}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </>
           )}
+
           {recon.unmatchedSquare.length > 0 && (
             <>
               <div className="bg-orange-100 px-3 py-1.5 font-medium text-orange-700 border-t border-orange-200">
@@ -1361,6 +1628,45 @@ function GlobalReconPanel({ recon }: { recon: GlobalReconciliation }) {
                       </td>
                       <td className="px-3 py-1.5 text-gray-400 font-mono text-[10px]">
                         {sp.id}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {manualMatches.length > 0 && (
+            <>
+              <div className="bg-blue-100 px-3 py-1.5 font-medium text-blue-800 border-t border-blue-200">
+                Manually linked (split-card payments)
+              </div>
+              <table className="w-full bg-white">
+                <tbody className="divide-y divide-gray-100">
+                  {manualMatches.map((mm) => (
+                    <tr key={mm._id} className="text-blue-800">
+                      <td className="px-3 py-1.5 text-gray-500">
+                        {mm.dateKey}
+                      </td>
+                      <td className="px-3 py-1.5 font-mono">#{mm.receiptNo}</td>
+                      <td className="px-3 py-1.5">{mm.customer}</td>
+                      <td className="px-3 py-1.5 text-gray-500">
+                        {mm.squarePaymentIds.length} card
+                        {mm.squarePaymentIds.length !== 1 ? "s" : ""}
+                      </td>
+                      <td className="px-3 py-1.5 text-right font-semibold">
+                        {fmt(mm.amount)}
+                      </td>
+                      <td className="px-3 py-1.5 text-right">
+                        <button
+                          onClick={() =>
+                            confirm(`Unlink receipt #${mm.receiptNo}?`) &&
+                            onUnlink(mm._id)
+                          }
+                          className="text-[11px] text-gray-400 hover:text-red-600"
+                        >
+                          Unlink
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1409,7 +1715,9 @@ function MonthCalendar({
     const grossDiff = squareGross - csvCC;
     const squarePayments = squareByDate[dateKey]?.payments || [];
     const allCsvReceipts = days.flatMap((d) =>
-      d.receipts.filter((r) => r.methods.includes("Credit Card")),
+      d.receipts.filter(
+        (r) => r.methods.includes("Credit Card") && !r.isVoided,
+      ),
     );
     const shifted = squarePayments.reduce((s, sp) => {
       const m = allCsvReceipts.find((r) => {
@@ -1429,7 +1737,9 @@ function MonthCalendar({
     const csvClaimedElsewhere =
       days
         .find((d) => d.dateKey === dateKey)
-        ?.receipts.filter((r) => r.methods.includes("Credit Card"))
+        ?.receipts.filter(
+          (r) => r.methods.includes("Credit Card") && !r.isVoided,
+        )
         .reduce((total, r) => {
           const codes = (r.referenceNo || "")
             .split("/")
@@ -1558,7 +1868,7 @@ function DayBlock({
   const [collapsed, setCollapsed] = useState(true);
   const csvCCTotal = day.byMethod["Credit Card"] || 0;
   const allCsvReceipts = allDays.flatMap((d) =>
-    d.receipts.filter((r) => r.methods.includes("Credit Card")),
+    d.receipts.filter((r) => r.methods.includes("Credit Card") && !r.isVoided),
   );
 
   const statusPill =
@@ -1701,8 +2011,8 @@ function DayBlock({
               csvCCTotal={csvCCTotal}
               squareDay={squareByDate[day.dateKey]}
               payouts={squarePayouts}
-              csvReceipts={day.receipts.filter((r) =>
-                r.methods.includes("Credit Card"),
+              csvReceipts={day.receipts.filter(
+                (r) => r.methods.includes("Credit Card") && !r.isVoided,
               )}
               allCsvReceipts={allCsvReceipts}
               squareByDate={squareByDate}
@@ -2448,6 +2758,88 @@ function PayoutBreakdownTable({
   );
 }
 
+function MonthEndEstimate({
+  days,
+  monthKey,
+  totalRevenue,
+  totalPremium,
+  totalFees,
+  monthCommission,
+}: {
+  days: DaySummary[];
+  monthKey: string;
+  totalRevenue: number;
+  totalPremium: number;
+  totalFees: number;
+  monthCommission: number;
+}) {
+  const now = new Date();
+  if (monthKey !== getMonthKey(now.getFullYear(), now.getMonth())) return null;
+
+  const [y, m] = monthKey.split("-").map(Number);
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const dataDays = days
+    .filter((d) => d.dateKey.startsWith(monthKey))
+    .map((d) => parseInt(d.dateKey.slice(8), 10));
+  if (!dataDays.length) return null;
+  const lastDataDay = Math.max(...dataDays);
+
+  // Office is open Mon–Sat
+  const openDays = (from: number, to: number) => {
+    let n = 0;
+    for (let d = from; d <= to; d++)
+      if (new Date(y, m - 1, d).getDay() !== 0) n++;
+    return n;
+  };
+  const elapsed = openDays(1, lastDataDay);
+  const total = openDays(1, daysInMonth);
+  if (!elapsed) return null;
+  const f = total / elapsed;
+
+  const cards = [
+    { label: "Collected", value: totalRevenue * f, color: "text-gray-900" },
+    { label: "Premium", value: totalPremium * f, color: "text-blue-700" },
+    { label: "Agency fees", value: totalFees * f, color: "text-green-700" },
+    {
+      label: "Gross revenue",
+      value: totalFees * f + monthCommission,
+      color: "text-gray-900",
+    },
+  ];
+
+  return (
+    <div className="mb-4 pb-4 border-b border-gray-100">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-semibold text-gray-700">
+          📈 Month-end estimate
+        </p>
+        <p className="text-[10px] text-gray-400">
+          {elapsed} of {total} business days (Mon–Sat) · data through{" "}
+          {new Date(y, m - 1, lastDataDay).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+          })}
+        </p>
+      </div>
+      <div className="grid grid-cols-4 gap-3">
+        {cards.map((c) => (
+          <div
+            key={c.label}
+            className="rounded-lg bg-gray-50 border border-dashed border-gray-200 p-3"
+          >
+            <p className="text-xs text-gray-500 mb-0.5">{c.label}</p>
+            <p className={`text-lg font-bold ${c.color}`}>~{fmt(c.value)}</p>
+          </div>
+        ))}
+      </div>
+      <p className="text-[10px] text-gray-400 mt-1.5">
+        Projected from the pace so far. Commission is included as received to
+        date, not projected.
+      </p>
+    </div>
+  );
+}
+
 export default function AccountingPage() {
   const now = new Date();
   const [viewYear, setViewYear] = useState(now.getFullYear());
@@ -2480,6 +2872,7 @@ export default function AccountingPage() {
   const [globalRecon, setGlobalRecon] = useState<GlobalReconciliation | null>(
     null,
   );
+  const [manualMatches, setManualMatches] = useState<ManualMatch[]>([]);
 
   const monthKey = getMonthKey(viewYear, viewMonth);
 
@@ -2507,11 +2900,53 @@ export default function AccountingPage() {
     if (isCheckingAuth) return;
     loadFromDB();
     loadPlaidTransactions();
+    loadManualMatches();
     setSquareByDate({});
     setSquarePayouts([]);
     setGlobalRecon(null);
     setSelectedDate("all");
   }, [monthKey]);
+
+  const loadManualMatches = async () => {
+    try {
+      const r = await fetch(`/api/accounting/manual-matches?month=${monthKey}`);
+      if (r.ok) setManualMatches((await r.json()).matches || []);
+    } catch {
+      /* silent */
+    }
+  };
+
+  const linkPayments = async (r: MatchedReceipt, ids: string[]) => {
+    await fetch("/api/accounting/manual-matches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        receiptNo: r.receiptNo,
+        dateKey: r.dateKey,
+        customer: r.customer,
+        amount: r.amount,
+        squarePaymentIds: ids,
+      }),
+    });
+    await loadManualMatches();
+  };
+
+  const unlinkPayments = async (id: string) => {
+    await fetch("/api/accounting/manual-matches", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    await loadManualMatches();
+  };
+
+  // Recompute whenever links change, so a new link shows immediately
+  useEffect(() => {
+    if (!days.length || !Object.keys(squareByDate).length) return;
+    setGlobalRecon(
+      buildGlobalReconciliation(days, squareByDate, manualMatches),
+    );
+  }, [manualMatches, squareByDate, days]);
 
   const loadPlaidTransactions = async () => {
     try {
@@ -3033,6 +3468,15 @@ export default function AccountingPage() {
                                 </div>
                               </div>
                             </div>
+
+                            <MonthEndEstimate
+                              days={days}
+                              monthKey={monthKey}
+                              totalRevenue={totalRevenue}
+                              totalPremium={totalPremium}
+                              totalFees={totalFees}
+                              monthCommission={monthCommission}
+                            />
                           </>
                         );
                       })()}
@@ -3224,7 +3668,14 @@ export default function AccountingPage() {
                 />
 
                 {/* Global recon */}
-                {globalRecon && <GlobalReconPanel recon={globalRecon} />}
+                {globalRecon && (
+                  <GlobalReconPanel
+                    recon={globalRecon}
+                    manualMatches={manualMatches}
+                    onLink={linkPayments}
+                    onUnlink={unlinkPayments}
+                  />
+                )}
 
                 {/* Carrier Commissions (from Plaid) */}
                 {plaidTransactions.length > 0 && (
