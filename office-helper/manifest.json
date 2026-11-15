@@ -7,6 +7,14 @@
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js" },
   "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://*.turborater.com/*"],
+      "js": ["turborater.js"],
+      "all_frames": true,
+      "run_at": "document_idle"
+    }
+  ],
   "action": { "default_title": "Texas Premium Office Helper" },
   "icons": { "128": "icon128.png" }
 }

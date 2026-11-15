@@ -31,6 +31,29 @@ chrome.runtime.onInstalled.addListener(async () => {
 
 // Clicking the toolbar icon opens the activation page
 chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
+// TurboRater quotes from turborater.js -> astral_api follow-up list
+const QUOTE_URL = "https://astraldbapi.herokuapp.com/quotes/capture";
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (msg?.type !== "quote" || !/turborater\.com$/.test(new URL(sender.url || "https://x").hostname)) return;
+  (async () => {
+    await keyReady;
+    if (!OFFICE_KEY) return;
+    try {
+      const form = new FormData();
+      for (const k of ["first", "last", "phone", "page"]) form.append(k, msg[k] || "");
+      form.append("computer", COMPUTER_NAME);
+      const out = await fetch(QUOTE_URL, {
+        method: "POST",
+        headers: { "X-Office-Key": OFFICE_KEY },
+        body: form,
+      });
+      console.log("[office-helper] quote", msg.first, msg.last, await out.json().catch(() => out.status));
+    } catch (err) {
+      console.log("[office-helper] quote failed:", err);
+    }
+  })();
+});
+
 const SKIP_HOSTS = ["texaspremiumins.com", "astraldbapi.herokuapp.com"];
 const seen = new Set(); // per browser session — avoids re-sending the same URL
 

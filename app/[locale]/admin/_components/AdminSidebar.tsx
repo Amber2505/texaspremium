@@ -136,6 +136,7 @@ const SUPER_ADMIN_PATHS = [
   "/admin/companies-link",
   "/admin/accounting",
   "/admin/docs-preview",
+  "/admin/unsold-quotes",
 ];
 
 interface AdminSidebarProps {

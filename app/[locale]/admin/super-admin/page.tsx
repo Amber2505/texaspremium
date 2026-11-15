@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  ClipboardList,
 } from "lucide-react";
 import AdminShell from "../_components/AdminShell";
 import CodeGate from "../_components/CodeGate";
@@ -35,6 +36,13 @@ const TOOLS = [
     path: "/admin/accounting",
     icon: <BarChart2 className="w-5 h-5" />,
     iconBg: "bg-emerald-100 text-emerald-700",
+  },
+  {
+    label: "Unsold Quotes",
+    description: "TurboRater quotes that haven't bought yet — follow up",
+    path: "/admin/unsold-quotes",
+    icon: <ClipboardList className="w-5 h-5" />,
+    iconBg: "bg-amber-100 text-amber-700",
   },
   {
     label: "Preview Customer Documents",
