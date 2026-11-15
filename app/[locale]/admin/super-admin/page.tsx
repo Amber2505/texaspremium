@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Loader2,
   ClipboardList,
+  Activity,
 } from "lucide-react";
 import AdminShell from "../_components/AdminShell";
 import CodeGate from "../_components/CodeGate";
@@ -36,6 +37,13 @@ const TOOLS = [
     path: "/admin/accounting",
     icon: <BarChart2 className="w-5 h-5" />,
     iconBg: "bg-emerald-100 text-emerald-700",
+  },
+  {
+    label: "Agent Activity",
+    description: "When each computer was in use and when it sat idle",
+    path: "/admin/agent-activity",
+    icon: <Activity className="w-5 h-5" />,
+    iconBg: "bg-sky-100 text-sky-700",
   },
   {
     label: "Unsold Quotes",
