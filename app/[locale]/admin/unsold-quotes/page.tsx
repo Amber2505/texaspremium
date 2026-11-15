@@ -38,6 +38,8 @@ interface Quote {
   sold_policy?: string | null;
   last_contacted_at?: string;
   notes?: Note[];
+  agent?: string;
+  quoted_by?: string | null;
 }
 
 const TABS: { key: Tab; label: string }[] = [
@@ -228,7 +230,9 @@ export default function UnsoldQuotesPage() {
       .filter(
         (q) =>
           !s ||
-          `${q.first_name} ${q.last_name}`.toLowerCase().includes(s) ||
+          `${q.first_name} ${q.last_name} ${q.quoted_by || ""} ${q.agent || ""}`
+            .toLowerCase()
+            .includes(s) ||
           (digits.length >= 3 && q.phone.includes(digits)),
       )
       .sort((a, b) => {
@@ -323,7 +327,7 @@ export default function UnsoldQuotesPage() {
                   <input
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search name or phone"
+                    placeholder="Search name, phone or agent"
                     className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-slate-400 outline-none"
                   />
                 </div>
@@ -445,6 +449,8 @@ export default function UnsoldQuotesPage() {
                           </div>
                           <p className="text-xs text-gray-400 mt-1">
                             Quoted {ago(q.first_quoted_at)}
+                            {(q.quoted_by || q.agent) &&
+                              ` by ${q.quoted_by || q.agent}`}
                             {q.last_quoted_at !== q.first_quoted_at &&
                               ` · last opened ${ago(q.last_quoted_at)}`}
                             {q.computer && ` · ${q.computer}`}
