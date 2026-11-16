@@ -727,20 +727,19 @@ async function checkUnprocessedPayments() {
         console.log(`💳 Unprocessed payment reminder: ${summary}`);
       }
 
+      // 45 min: on-screen only (admin panel + extension notification) — no SMS cost
       if (mins >= PROCESS_ESCALATE_AFTER_MIN && !alerts.escalated) {
-        const text = encodeURIComponent(
-          `⚠️ Reminder: Payment NOT processed yet, after ${Math.round(mins)} min: ${summary}. Open Admin > Payment Links.⚠️`,
+        pushAdminNotification({
+          section: 'payment-links',
+          title: '🚨 Payment NOT processed — 45+ min',
+          body: `${summary} · waiting ${Math.round(mins)} min`.slice(0, 120),
+          eventId: `unprocessed-escalated-${link._id}`,
+        });
+        await paymentLinksCollection.updateOne(
+          { _id: link._id },
+          { $set: { 'processingAlerts.escalated': now.toISOString() } },
         );
-        try {
-          await fetch(`https://astraldbapi.herokuapp.com/message_send/?message=${text}&To=${PROCESS_ESCALATE_PHONE}`);
-          await paymentLinksCollection.updateOne(
-            { _id: link._id },
-            { $set: { 'processingAlerts.escalated': now.toISOString() } },
-          );
-          console.log(`🚨 Escalated unprocessed payment to manager: ${summary}`);
-        } catch (e) {
-          console.error('❌ Escalation SMS failed:', e.message);
-        }
+        console.log(`🚨 Unprocessed payment escalated on screen: ${summary}`);
       }
     }
   } catch (err) {
