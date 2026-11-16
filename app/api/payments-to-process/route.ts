@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import { ObjectId } from "mongodb";
 import clientPromise from "@/lib/mongodb";
+import { requireAdmin } from "@/lib/adminAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,9 @@ async function coll() {
   return client.db("db").collection("payment_link_generated");
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
   try {
     const c = await coll();
     const links = await c
@@ -41,6 +44,8 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const denied = requireAdmin(req);
+  if (denied) return denied;
   try {
     const { linkId, agentName, confirmation } = await req.json();
     if (!linkId || !String(agentName || "").trim() || !String(confirmation || "").trim()) {

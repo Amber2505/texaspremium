@@ -69,3 +69,34 @@ export function requireAdmin(request: NextRequest | Request): NextResponse | nul
   }
   return null;
 }
+
+/** Signed admin_auth cookie, valid until 11:59 PM Central (same as the portal session). */
+export function setAdminSession(res: NextResponse, username: string) {
+  // Time left in today's Central-time day, so it works on Vercel's UTC clock
+  const [h, m, s] = new Date()
+    .toLocaleTimeString("en-GB", { timeZone: "America/Chicago", hourCycle: "h23" })
+    .split(":")
+    .map(Number);
+  const msLeft = ((23 - h) * 3600 + (59 - m) * 60 + (59 - s)) * 1000 + 999;
+  const expiresAt = Date.now() + msLeft;
+
+  const dataB64 = Buffer.from(JSON.stringify({ username, expiresAt })).toString("base64url");
+  const sig = crypto
+    .createHmac("sha256", process.env.ADMIN_SECRET_KEY!)
+    .update(dataB64)
+    .digest("base64url");
+
+  res.cookies.set("admin_auth", `${dataB64}.${sig}`, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    expires: new Date(expiresAt),
+  });
+  return res;
+}
+
+export function clearAdminSession(res: NextResponse) {
+  res.cookies.set("admin_auth", "", { path: "/", maxAge: 0 });
+  return res;
+}

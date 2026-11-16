@@ -1,11 +1,14 @@
 // app/api/unsold-quotes/route.ts
 // Server-side proxy to astral_api — the office key never reaches the browser.
+import { requireAdmin } from "@/lib/adminAuth";
 import { NextRequest, NextResponse } from "next/server";
 
 const ASTRAL = "https://astraldbapi.herokuapp.com";
 const KEY = process.env.OFFICE_CAPTURE_KEY || "";
 
 export async function GET(req: NextRequest) {
+    const denied = requireAdmin(req);
+  if (denied) return denied;
   if (!KEY) return NextResponse.json({ error: "OFFICE_CAPTURE_KEY not set" }, { status: 500 });
   const days = req.nextUrl.searchParams.get("days") || "30";
   const res = await fetch(
@@ -17,6 +20,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+        const denied = requireAdmin(req);
+  if (denied) return denied;
   if (!KEY) return NextResponse.json({ error: "OFFICE_CAPTURE_KEY not set" }, { status: 500 });
   const { phone, status, note, by } = await req.json().catch(() => ({}));
   const digits = String(phone || "").replace(/\D/g, "");
