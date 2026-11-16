@@ -309,6 +309,7 @@ export default function CreatePaymentLink() {
   const descIsOver = descOver > 0;
   const descPct = Math.min(100, (descLength / DESCRIPTION_MAX) * 100);
   const descNearLimit = !descIsOver && descLength > DESCRIPTION_MAX * 0.85;
+  const phoneValid = customerPhone.length === 10;
 
   useEffect(() => {
     const checkAuth = () => {
@@ -493,6 +494,10 @@ export default function CreatePaymentLink() {
 
   const handleCreateLink = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (customerPhone.length !== 10) {
+      setError("Customer phone number must be 10 digits.");
+      return;
+    }
     setLoading(true);
     setError("");
     setGeneratedLink("");
@@ -1175,7 +1180,7 @@ export default function CreatePaymentLink() {
                       type="submit"
                       disabled={
                         loading ||
-                        !customerPhone ||
+                        !phoneValid ||
                         !language ||
                         !paymentMethod ||
                         (linkType === "payment" && descIsOver)

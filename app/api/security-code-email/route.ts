@@ -41,15 +41,10 @@ export async function POST(req: NextRequest) {
     day: 'numeric',
   });
 
-  const digitCells = code
-    .split('')
-    .map(
-      (d) => `
-        <td style="padding:0 5px;">
-          <div style="width:54px;height:66px;line-height:66px;text-align:center;font-family:'Courier New',Courier,monospace;font-size:34px;font-weight:bold;color:#1E3A5F;background-color:#f3f5f9;border:2px solid #d6dce8;border-radius:10px;">${d}</div>
-        </td>`,
-    )
-    .join('');
+  // One text node so the code copies as "8069". Separate cells per digit
+  // copied with separators between them and broke pasting into the login.
+  const codeBox = `
+        <td style="padding:14px 14px 14px 28px;text-align:center;font-family:'Courier New',Courier,monospace;font-size:34px;font-weight:bold;letter-spacing:14px;color:#1E3A5F;background-color:#f3f5f9;border:2px solid #d6dce8;border-radius:10px;">${code}</td>`;
 
   const html = `
 <!DOCTYPE html>
@@ -75,7 +70,7 @@ export async function POST(req: NextRequest) {
         <!-- Code -->
         <tr><td style="padding:32px 24px 8px;text-align:center;">
           <p style="margin:0 0 18px;font-size:15px;color:#374151;">Use this code to sign in to the admin dashboard today:</p>
-          <table cellpadding="0" cellspacing="0" align="center"><tr>${digitCells}</tr></table>
+          <table cellpadding="0" cellspacing="0" align="center"><tr>${codeBox}</tr></table>
           <p style="margin:18px 0 0;font-size:13px;color:#6b7280;">Valid until <strong style="color:#1E3A5F;">7:00 AM CST tomorrow</strong>, when a new code is issued.</p>
         </td></tr>
 
