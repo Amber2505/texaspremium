@@ -46,20 +46,21 @@ type Link = {
 
 function parseReceipt(raw: string): Receipt | null {
   if (!/Receipt By:/i.test(raw) || !/Amount Tendered/i.test(raw)) return null;
-  // The PDF holds a CUSTOMER COPY and an OFFICE COPY — read only the first
-  const text = raw.split(/OFFICE COPY/i)[0];
+  // The receipt may come after other pages (application packet) and holds a
+  // CUSTOMER COPY and an OFFICE COPY — read only the first copy
+  const startAt = raw.search(/CUSTOMER COPY/i);
+  const fromStart = startAt >= 0 ? raw.slice(startAt) : raw;
+  const text = fromStart.split(/OFFICE COPY/i)[0];
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
-  // Values come after the label block, in order:
+  // Labels are listed first, then the values in the same order:
   // date, customer #, office, receipt #, receipt by, payment made
-  const block = text.match(
-    /Payment Made:\s*([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*([ap]m)\s+(\d+)\s+\d+\s+(\d+)\s+(.+?)\s+(?:Over The Phone|In Office|In Person|Walk[- ]?In|Online|Mail)\b/i,
-  );
-  // Name sits between the agency email and "RECEIPT"; drop the customer's email after it
-  const customerRaw = text.match(/support@\S+\s+(.+?)\s+RECEIPT\b/);
-  const total = text.match(/Total\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/);
-  if (!block || !customerRaw || !total) return null;
-
-  const [, mon, dd, yyyy, hh, mi, ss, ampm, customerId, receiptNo, receiptBy] = block;
+  const pm = lines.findIndex((l) => /^Payment Made:?$/i.test(l));
+  if (pm < 0) return null;
+  const [dateLine, customerId, , receiptNo, receiptBy] = lines.slice(pm + 1, pm + 6) as (string | undefined)[];
+  const d = (dateLine || "").match(/([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([ap]m)/i);
+  if (!d || !customerId || !receiptNo || !/^\d+$/.test(customerId) || !/^\d+$/.test(receiptNo) || !receiptBy) return null;
+  const [, mon, dd, yyyy, hh, mi, ss = "0", ampm] = d;
   const monIdx = MONTHS.indexOf(mon.toLowerCase());
   if (monIdx < 0) return null;
   let h = parseInt(hh, 10) % 12;
@@ -68,20 +69,26 @@ function parseReceipt(raw: string): Receipt | null {
   // which the 90-minute tolerance below absorbs.
   const receiptAt = Date.UTC(+yyyy, monIdx, +dd, h + 6, +mi, +ss);
 
-  const customerName = customerRaw[1]
-    .split(/\s+/)
-    .filter((w) => !/@|(com|net|org)$/i.test(w))
-    .join(" ");
+  // Name: the line(s) between the agency's "Email:" line and "RECEIPT",
+  // minus the customer's email (which the PDF prints without "@" or dots)
+  const em = lines.findIndex((l) => /^Email:/i.test(l));
+  const rc = lines.findIndex((l, i) => i > em && /^RECEIPT$/i.test(l));
+  if (em < 0 || rc < 0) return null;
+  const between = lines.slice(em + 1, rc);
+  const customerName = (
+    between.filter((l) => /\s/.test(l) && !/@/.test(l)).join(" ") || between[0] || ""
+  ).trim();
+
+  const total = text.match(/Total\s+\$?\s*([\d,]+\.\d{2})\s+\$?\s*([\d,]+\.\d{2})/);
+  if (!total) return null;
 
   // Line items: "<policy> <type> CC <ref>[/<ref>...]"
-  const lines = [
+  const items = [
     ...text.matchAll(
       /(\S+)\s+[A-Z]{2,5}\s+(?:CC|DC|CREDIT|DEBIT)\s+([A-Za-z0-9-]{3,20}(?:\s*[\/,]\s*[A-Za-z0-9-]{3,20})*)/g,
     ),
   ];
-  const refs = [
-    ...new Set(lines.flatMap((l) => l[2].split(/\s*[\/,]\s*/)).filter((x) => x.length >= 3)),
-  ];
+  const refs = [...new Set(items.flatMap((l) => l[2].split(/\s*[\/,]\s*/)).filter((x) => x.length >= 3))];
 
   return {
     receiptNo,
@@ -90,7 +97,7 @@ function parseReceipt(raw: string): Receipt | null {
     customerName,
     totalCents: Math.round(parseFloat(total[2].replace(/,/g, "")) * 100),
     refs,
-    policyNos: [...new Set(lines.map((l) => l[1]))],
+    policyNos: [...new Set(items.map((l) => l[1]))],
     receiptAt,
   };
 }
@@ -172,7 +179,8 @@ export async function POST(req: Request) {
     if (!r) {
       if (/Receipt By:/i.test(text)) {
         // Looks like a receipt but the layout didn't parse; log it to fix the parser
-        console.warn("🧾 Receipt-like PDF did not parse:", text.slice(0, 1500));
+        const at = Math.max(0, text.search(/CUSTOMER COPY|RECEIPT INFO/i) - 50);
+        console.warn("🧾 Receipt-like PDF did not parse:", text.slice(at, at + 1500));
       }
       return NextResponse.json({ ignored: true });
     }
