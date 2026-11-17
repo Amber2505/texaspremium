@@ -138,6 +138,7 @@ const SUPER_ADMIN_PATHS = [
   "/admin/docs-preview",
   "/admin/unsold-quotes",
   "/admin/agent-activity",
+  "/admin/due-reminders",
 ];
 
 interface AdminSidebarProps {

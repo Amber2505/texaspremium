@@ -12,6 +12,7 @@ import {
   Loader2,
   ClipboardList,
   Activity,
+  BellRing,
 } from "lucide-react";
 import AdminShell from "../_components/AdminShell";
 import CodeGate from "../_components/CodeGate";
@@ -37,6 +38,14 @@ const TOOLS = [
     path: "/admin/accounting",
     icon: <BarChart2 className="w-5 h-5" />,
     iconBg: "bg-emerald-100 text-emerald-700",
+  },
+  {
+    label: "Due-date Reminders",
+    description:
+      "Payment reminders checked on each carrier's site before texting",
+    path: "/admin/due-reminders",
+    icon: <BellRing className="w-5 h-5" />,
+    iconBg: "bg-violet-100 text-violet-700",
   },
   {
     label: "Agent Activity",
