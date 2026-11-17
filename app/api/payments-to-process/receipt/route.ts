@@ -69,14 +69,15 @@ function parseReceipt(raw: string): Receipt | null {
   // which the 90-minute tolerance below absorbs.
   const receiptAt = Date.UTC(+yyyy, monIdx, +dd, h + 6, +mi, +ss);
 
-  // Name: the line(s) between the agency's "Email:" line and "RECEIPT",
-  // minus the customer's email (which the PDF prints without "@" or dots)
+  // Name: between the agency's "Email:" line and "RECEIPT", skipping the
+  // customer's email (which the PDF prints without "@" or dots)
   const em = lines.findIndex((l) => /^Email:/i.test(l));
   const rc = lines.findIndex((l, i) => i > em && /^RECEIPT$/i.test(l));
   if (em < 0 || rc < 0) return null;
+  // The name is the first line; an address (street, city) may follow it.
   const between = lines.slice(em + 1, rc);
   const customerName = (
-    between.filter((l) => /\s/.test(l) && !/@/.test(l)).join(" ") || between[0] || ""
+    between.find((l) => /\s/.test(l) && !/@/.test(l) && !/^\d/.test(l)) || between[0] || ""
   ).trim();
 
   const total = text.match(/Total\s+\$?\s*([\d,]+\.\d{2})\s+\$?\s*([\d,]+\.\d{2})/);
