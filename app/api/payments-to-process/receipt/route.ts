@@ -1,10 +1,18 @@
+// app/api/payments-to-process/receipt/route.ts
 // The Office Helper extension sends PDFs agents open. If one is an agency
-// receipt that matches exactly ONE payment waiting in "Paid — Process Now",
-// mark that payment processed. Anything less certain is left for a human.
+// receipt, find the waiting payment(s) in "Paid — Process Now" it belongs to and
+// mark them processed with the agent ("Receipt By") and the card authorization
+// number(s) ("Ref No"). Anything less than certain is left for a human.
+//
+// Matching: the customer's phone (from the AgencyMatrix customer page the agent
+// had open, sent by the extension), falling back to the customer's name.
+// Split payments: "Ref No" may hold several authorizations ("545453/54sdf55/8556f")
+// and the receipt total may cover several payment links that add up to it.
 import { NextResponse } from "next/server";
 import clientPromise from "@/lib/mongodb";
 import { extractText, getDocumentProxy } from "unpdf";
 import { notifyAdmin } from "@/lib/notifyAdmin";
+import type { ObjectId } from "mongodb";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,30 +23,43 @@ const TRACK_SINCE =
 const LIVE = process.env.RECEIPT_AUTOPROCESS === "on";
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const MAX_LINKS_PER_RECEIPT = 4; // a receipt can close up to 4 split payments
 
 type Receipt = {
   receiptNo: string;
   receiptBy: string;
+  customerId: string;
   customerName: string;
   totalCents: number;
-  refNo: string | null; // null when the receipt has more than one line item
-  policyNo: string | null;
+  refs: string[]; // card authorization numbers, one per card used
+  policyNos: string[];
   receiptAt: number;
 };
 
-function parseReceipt(text: string): Receipt | null {
-  if (!/Receipt By:/i.test(text) || !/Amount Tendered/i.test(text)) return null;
+type Link = {
+  _id: ObjectId;
+  amount?: number | null;
+  customerPhone?: string;
+  description?: string | null;
+  timestamps?: { payment?: string | Date };
+};
+
+function parseReceipt(raw: string): Receipt | null {
+  if (!/Receipt By:/i.test(raw) || !/Amount Tendered/i.test(raw)) return null;
+  // The PDF holds a CUSTOMER COPY and an OFFICE COPY — read only the first
+  const text = raw.split(/OFFICE COPY/i)[0];
 
   // Values come after the label block, in order:
   // date, customer #, office, receipt #, receipt by, payment made
   const block = text.match(
-    /Payment Made:\s*([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*([ap]m)\s+\d+\s+\d+\s+(\d+)\s+(.+?)\s+(?:Over The Phone|In Office|In Person|Walk[- ]?In|Online|Mail)\b/i,
+    /Payment Made:\s*([A-Z][a-z]{2})\s+(\d{1,2})\s+(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*([ap]m)\s+(\d+)\s+\d+\s+(\d+)\s+(.+?)\s+(?:Over The Phone|In Office|In Person|Walk[- ]?In|Online|Mail)\b/i,
   );
-  const customer = text.match(/support@\S+\s+([A-Za-z][A-Za-z' .-]+?)\s+\d/i);
+  // Name sits between the agency email and "RECEIPT"; drop the customer's email after it
+  const customerRaw = text.match(/support@\S+\s+(.+?)\s+RECEIPT\b/);
   const total = text.match(/Total\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})/);
-  if (!block || !customer || !total) return null;
+  if (!block || !customerRaw || !total) return null;
 
-  const [, mon, dd, yyyy, hh, mi, ss, ampm, receiptNo, receiptBy] = block;
+  const [, mon, dd, yyyy, hh, mi, ss, ampm, customerId, receiptNo, receiptBy] = block;
   const monIdx = MONTHS.indexOf(mon.toLowerCase());
   if (monIdx < 0) return null;
   let h = parseInt(hh, 10) % 12;
@@ -47,17 +68,29 @@ function parseReceipt(text: string): Receipt | null {
   // which the 90-minute tolerance below absorbs.
   const receiptAt = Date.UTC(+yyyy, monIdx, +dd, h + 6, +mi, +ss);
 
+  const customerName = customerRaw[1]
+    .split(/\s+/)
+    .filter((w) => !/@|(com|net|org)$/i.test(w))
+    .join(" ");
+
+  // Line items: "<policy> <type> CC <ref>[/<ref>...]"
   const lines = [
-    ...text.matchAll(/\b([A-Z0-9]{8,20})\s+[A-Z]{2,5}\s+(?:CC|DC|CREDIT|DEBIT)\s+([A-Za-z0-9-]{4,20})\b/g),
+    ...text.matchAll(
+      /(\S+)\s+[A-Z]{2,5}\s+(?:CC|DC|CREDIT|DEBIT)\s+([A-Za-z0-9-]{3,20}(?:\s*[\/,]\s*[A-Za-z0-9-]{3,20})*)/g,
+    ),
+  ];
+  const refs = [
+    ...new Set(lines.flatMap((l) => l[2].split(/\s*[\/,]\s*/)).filter((x) => x.length >= 3)),
   ];
 
   return {
     receiptNo,
     receiptBy: receiptBy.trim().slice(0, 60),
-    customerName: customer[1].trim(),
+    customerId,
+    customerName,
     totalCents: Math.round(parseFloat(total[2].replace(/,/g, "")) * 100),
-    refNo: lines.length === 1 ? lines[0][2] : null,
-    policyNo: lines.length === 1 ? lines[0][1] : null,
+    refs,
+    policyNos: [...new Set(lines.map((l) => l[1]))],
     receiptAt,
   };
 }
@@ -66,18 +99,50 @@ function nameTokens(s: string) {
   return s
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z\s]/g, " ")
     .split(/\s+/)
     .filter((t) => t.length >= 2);
 }
 
-function nameMatches(receiptName: string, description: string | null) {
+function nameMatches(receiptName: string, description: string | null | undefined) {
   if (!description) return false;
   const want = nameTokens(receiptName);
   const have = new Set(nameTokens(description));
   const hits = want.filter((t) => have.has(t)).length;
   return want.length === 1 ? hits === 1 : hits >= 2;
+}
+
+const last10 = (p: string | undefined) => (p || "").replace(/\D/g, "").slice(-10);
+
+/** Phone numbers the extension saw on this customer's AgencyMatrix page. */
+function phonesFor(customerId: string, amCustomersJson: FormDataEntryValue | null): string[] {
+  try {
+    const map = JSON.parse(String(amCustomersJson || "{}"));
+    const phones: unknown = map?.[customerId]?.phones;
+    return Array.isArray(phones) ? phones.map((p) => last10(String(p))).filter((p) => p.length === 10) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Every set of 1–4 links whose amounts add up exactly to the receipt total. */
+function setsAddingTo(links: Link[], totalCents: number): Link[][] {
+  const found: Link[][] = [];
+  const pool = links.slice(0, 12); // keep the search small
+  const walk = (start: number, picked: Link[], sum: number) => {
+    if (sum === totalCents && picked.length) found.push([...picked]);
+    if (sum >= totalCents || picked.length === MAX_LINKS_PER_RECEIPT || found.length > 1) return;
+    for (let i = start; i < pool.length; i++) {
+      const amt = pool[i].amount || 0;
+      if (amt <= 0) continue;
+      picked.push(pool[i]);
+      walk(i + 1, picked, sum + amt);
+      picked.pop();
+    }
+  };
+  walk(0, [], 0);
+  return found;
 }
 
 export async function POST(req: Request) {
@@ -112,42 +177,56 @@ export async function POST(req: Request) {
       return NextResponse.json({ ignored: true });
     }
 
-    console.log("🧾 Receipt captured:", r);
+    const phones = phonesFor(r.customerId, form.get("amCustomers"));
+    console.log("🧾 Receipt captured:", { ...r, phones });
 
-    const c = (await clientPromise).db("db").collection("payment_link_generated");
+    const c = (await clientPromise).db("db").collection<Link>("payment_link_generated");
+    const amt = `$${(r.totalCents / 100).toFixed(2)}`;
 
-    const candidates = await c
+    // One receipt can only ever close payments once
+    if (await c.findOne({ processedReceiptNo: r.receiptNo })) {
+      return NextResponse.json({ matched: false, reason: "receipt already used" });
+    }
+
+    const waiting = (await c
       .find({
         "completedStages.payment": true,
         processedAt: { $exists: false },
-        amount: r.totalCents,
         $or: [
           { "timestamps.payment": { $gte: TRACK_SINCE } },
           { "timestamps.payment": { $gte: new Date(TRACK_SINCE) } },
         ],
       })
-      .toArray();
+      .sort({ "timestamps.payment": 1 })
+      .limit(300)
+      .toArray()) as Link[];
 
-    const matches = candidates.filter((l) => {
-      const paidAt = new Date(l.timestamps?.payment).getTime();
-      if (isNaN(paidAt)) return false;
-      const timingOk =
-        r.receiptAt >= paidAt - 90 * 60 * 1000 &&
-        r.receiptAt - paidAt <= 7 * 24 * 60 * 60 * 1000;
-      return timingOk && nameMatches(r.customerName, l.description);
+    // Paid up to 7 days before the receipt (90 min slack for clock/DST)
+    const timely = waiting.filter((l) => {
+      const paidAt = new Date(l.timestamps?.payment as string).getTime();
+      return !isNaN(paidAt) && r.receiptAt >= paidAt - 90 * 60 * 1000 && r.receiptAt - paidAt <= 7 * 24 * 3600 * 1000;
     });
 
-    const amt = `$${(r.totalCents / 100).toFixed(2)}`;
+    // Same customer: by any of their AgencyMatrix phones, otherwise by name
+    const byPhone = phones.length
+      ? timely.filter((l) => phones.includes(last10(l.customerPhone)))
+      : [];
+    const matchedBy = byPhone.length ? "phone" : "name";
+    const sameCustomer = byPhone.length
+      ? byPhone
+      : timely.filter((l) => nameMatches(r.customerName, l.description));
 
-    if (!r.refNo || matches.length !== 1) {
-      const reason = !r.refNo
-        ? "receipt has multiple line items"
-        : matches.length === 0
-          ? "no waiting payment matched amount + name"
-          : `${matches.length} waiting payments matched`;
+    const sets = setsAddingTo(sameCustomer, r.totalCents);
+
+    let reason = "";
+    if (!r.refs.length) reason = "no card Ref No on the receipt";
+    else if (!sameCustomer.length) reason = `no waiting payment for this customer (matched by ${matchedBy})`;
+    else if (sets.length === 0) reason = `waiting payment amounts don't add up to ${amt}`;
+    else if (sets.length > 1) reason = "more than one combination of payments adds up — pick manually";
+
+    if (reason) {
       console.log(`🧾 Receipt #${r.receiptNo} not auto-processed: ${reason}`);
-      // Only nag when a waiting payment plausibly belongs to this receipt
-      if (candidates.length > 0) {
+      if (sameCustomer.length > 0) {
         await notifyAdmin({
           section: "payment-links",
           title: "🧾 Receipt needs manual match",
@@ -158,46 +237,44 @@ export async function POST(req: Request) {
       return NextResponse.json({ matched: false, reason });
     }
 
-    const link = matches[0];
-
-    // One receipt can only ever close one payment
-    const reused = await c.findOne({ processedReceiptNo: r.receiptNo });
-    if (reused) {
-      return NextResponse.json({ matched: false, reason: "receipt already used" });
-    }
+    const links = sets[0];
+    const confirmation = r.refs.join(" / ").slice(0, 80);
+    const ids = links.map((l) => l._id);
 
     if (!LIVE) {
       console.log(
-        `🧪 DRY RUN — would mark ${link._id} processed: by ${r.receiptBy}, auth #${r.refNo}, receipt #${r.receiptNo}`,
+        `🧪 DRY RUN — would mark ${ids.join(", ")} processed: by ${r.receiptBy}, auth ${confirmation}, receipt #${r.receiptNo} (matched by ${matchedBy})`,
       );
-      return NextResponse.json({ matched: true, dryRun: true, linkId: link._id });
+      return NextResponse.json({ matched: true, dryRun: true, linkIds: ids, matchedBy });
     }
 
-    const res = await c.updateOne(
-      { _id: link._id, processedAt: { $exists: false } },
+    const res = await c.updateMany(
+      { _id: { $in: ids }, processedAt: { $exists: false } },
       {
         $set: {
           processedAt: new Date().toISOString(),
           processedBy: r.receiptBy,
-          processedConfirmation: r.refNo,
+          processedConfirmation: confirmation,
+          processedConfirmations: r.refs,
           processedVia: "receipt",
+          processedMatchedBy: matchedBy,
           processedReceiptNo: r.receiptNo,
-          processedPolicyNo: r.policyNo,
+          processedPolicyNo: r.policyNos.join(", ") || null,
         },
       },
     );
 
-    if (res.modifiedCount === 1) {
-      console.log(`✅ Auto-processed ${link._id} from receipt #${r.receiptNo}`);
+    if (res.modifiedCount > 0) {
+      console.log(`✅ Auto-processed ${res.modifiedCount} payment(s) from receipt #${r.receiptNo}`);
       await notifyAdmin({
         section: "payment-links",
         title: "✅ Payment auto-processed",
-        body: `${r.customerName} · ${amt} · Auth #${r.refNo} · by ${r.receiptBy}`.slice(0, 120),
+        body: `${r.customerName} · ${amt}${links.length > 1 ? ` (${links.length} payments)` : ""} · Auth ${confirmation} · by ${r.receiptBy}`.slice(0, 120),
         eventId: `receipt-auto-${r.receiptNo}`,
       });
     }
 
-    return NextResponse.json({ matched: true, linkId: link._id });
+    return NextResponse.json({ matched: true, linkIds: ids, matchedBy });
   } catch (err) {
     console.error("receipt capture error:", err);
     return NextResponse.json({ error: "Failed" }, { status: 500 });

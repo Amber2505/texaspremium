@@ -54,7 +54,8 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    if (!/^[A-Za-z0-9-]{4,20}$/.test(String(confirmation).trim())) {
+    // One authorization #, or several from a split payment: "545453/54sdf55/8556f"
+    if (!/^[A-Za-z0-9-]{3,20}(\s*[\/,]\s*[A-Za-z0-9-]{3,20}){0,4}$/.test(String(confirmation).trim())) {
       return NextResponse.json(
         { error: "Authorization # doesn't look valid" },
         { status: 400 },
