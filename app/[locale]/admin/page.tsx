@@ -1,4 +1,4 @@
-// app/admin/page.tsx
+// app/[locale]/admin/page.tsx
 "use client";
 import { useState, useEffect } from "react";
 import {
@@ -14,6 +14,7 @@ import {
   BookOpen,
   Printer,
   ShieldCheck,
+  FolderOpen,
 } from "lucide-react";
 import Image from "next/image";
 import {
@@ -212,6 +213,14 @@ export default function AdminLoginPage() {
       iconBg: "bg-cyan-100 text-cyan-700",
     },
 
+    {
+      label: "Documents",
+      description: "Request & review customer documents",
+      path: "/admin/documents",
+      icon: <FolderOpen className="w-5 h-5" />,
+      accent: "#4338ca",
+      iconBg: "bg-indigo-100 text-indigo-700",
+    },
     {
       label: "Autopay Portal",
       description: "View & manage customer payment methods",

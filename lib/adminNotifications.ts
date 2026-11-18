@@ -12,6 +12,7 @@ const SEEN_CAP = 300;
 export type NotifySection =
   | "live-chat"
   | "messages"
+  | "documents"
   | "autopay"
   | "payment-links";
 
@@ -19,6 +20,7 @@ export type NotifySection =
 export const SECTION_BY_PATH: Record<string, NotifySection> = {
   "/admin/live-chat": "live-chat",
   "/admin/message-stored": "messages",
+  "/admin/documents": "documents",
   "/admin/autopay": "autopay",
   "/admin/create-payment-link": "payment-links",
 };

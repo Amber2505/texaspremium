@@ -20,6 +20,7 @@ import {
   BookOpen,
   Printer,
   ShieldCheck,
+  FolderOpen,
 } from "lucide-react";
 
 interface NavItem {
@@ -66,6 +67,16 @@ const NAV_ITEMS: NavItem[] = [
     section: "daily",
   },
 
+  {
+    label: "Documents",
+    path: "/admin/documents",
+    icon: <FolderOpen className="w-3.5 h-3.5" />,
+    iconBg: "bg-indigo-100",
+    iconColor: "text-indigo-700",
+    activeBg: "bg-indigo-50",
+    activeText: "text-indigo-700",
+    section: "daily",
+  },
   {
     label: "Autopay Portal",
     path: "/admin/autopay",
