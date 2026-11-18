@@ -225,7 +225,14 @@ export async function POST(req: Request) {
       ? byPhone
       : timely.filter((l) => nameMatches(r.customerName, l.description));
 
-    const sets = setsAddingTo(sameCustomer, r.totalCents);
+    let sets = setsAddingTo(sameCustomer, r.totalCents);
+    // Matched by phone with exactly one waiting payment: that's the one, even if
+    // the receipt total differs from the link (card fee, convenience fee, etc.)
+    if (sets.length === 0 && matchedBy === "phone" && sameCustomer.length === 1) {
+      const linkAmt = ((sameCustomer[0].amount || 0) / 100).toFixed(2);
+      console.log(`🧾 Receipt #${r.receiptNo}: ${amt} vs link $${linkAmt}; only waiting payment for this phone, using it`);
+      sets = [sameCustomer];
+    }
 
     let reason = "";
     if (!r.refs.length) reason = "no card Ref No on the receipt";
@@ -234,7 +241,8 @@ export async function POST(req: Request) {
     else if (sets.length > 1) reason = "more than one combination of payments adds up — pick manually";
 
     if (reason) {
-      console.log(`🧾 Receipt #${r.receiptNo} not auto-processed: ${reason}`);
+      const waitingAmts = sameCustomer.map((l) => `$${((l.amount || 0) / 100).toFixed(2)}`).join(", ");
+      console.log(`🧾 Receipt #${r.receiptNo} not auto-processed: ${reason}${waitingAmts ? ` (waiting: ${waitingAmts})` : ""}`);
       if (sameCustomer.length > 0) {
         await notifyAdmin({
           section: "payment-links",
