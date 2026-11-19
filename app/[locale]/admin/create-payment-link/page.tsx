@@ -26,6 +26,12 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import AdminShell from "../_components/AdminShell";
+import DocumentPicker, {
+  docPickerProblems,
+  docPickerToSpecs,
+  emptyDocPicker,
+  type DocPickerValue,
+} from "../_components/DocumentPicker";
 import { franc } from "franc";
 
 type LinkType = "payment" | "autopay-only";
@@ -87,6 +93,10 @@ export default function CreatePaymentLink() {
   const [translating, setTranslating] = useState(false);
   const [loading, setLoading] = useState(false);
   const [remindersEnabled, setRemindersEnabled] = useState(true);
+  const [customerName, setCustomerName] = useState("");
+  // "Need any documents from the customer?" — No by default (monthly payments)
+  const [needsDocs, setNeedsDocs] = useState(false);
+  const [docPicker, setDocPicker] = useState<DocPickerValue>(emptyDocPicker);
 
   const handleLanguageChange = async (lang: "en" | "es") => {
     if (lang === language) return;
@@ -304,7 +314,11 @@ export default function CreatePaymentLink() {
   // In search mode the server returns all matches; in paginated mode it returns one page
   const filteredLinks = historyLinks;
 
-  const descLength = description.length;
+  // Square and the history still get "Name - what it's for"
+  const fullDescription = customerName.trim()
+    ? `${customerName.trim()} - ${description.trim()}`
+    : description.trim();
+  const descLength = fullDescription.length;
   const descOver = descLength - DESCRIPTION_MAX;
   const descIsOver = descOver > 0;
   const descPct = Math.min(100, (descLength / DESCRIPTION_MAX) * 100);
@@ -467,6 +481,8 @@ export default function CreatePaymentLink() {
     generatedLink: string;
     squareLink?: string;
     remindersEnabled?: boolean;
+    customerName?: string;
+    documentSpecs?: unknown[] | null;
   }) => {
     try {
       const response = await fetch("/api/save-payment-link", {
@@ -482,6 +498,8 @@ export default function CreatePaymentLink() {
           generatedLink: linkData.generatedLink,
           squareLink: linkData.squareLink || null,
           remindersEnabled: linkData.remindersEnabled !== false,
+          customerName: linkData.customerName || null,
+          documentSpecs: linkData.documentSpecs || null,
         }),
       });
       const data = await response.json();
@@ -538,10 +556,29 @@ export default function CreatePaymentLink() {
         return;
       }
 
+      if (!customerName.trim()) {
+        setError("Please enter the customer's name.");
+        setLoading(false);
+        return;
+      }
+      if (needsDocs) {
+        const problems = docPickerProblems(docPicker);
+        if (problems.length) {
+          setError(problems[0]);
+          setLoading(false);
+          return;
+        }
+      }
+      const documentSpecs = needsDocs
+        ? await docPickerToSpecs(docPicker, language)
+        : null;
+
       const linkId = await saveToHistory({
         linkType: "payment",
         amount,
-        description,
+        customerName: customerName.trim(),
+        documentSpecs,
+        description: fullDescription,
         customerPhone,
         paymentMethod,
         language,
@@ -561,7 +598,7 @@ export default function CreatePaymentLink() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: parseFloat(amount) * 100,
-          description,
+          description: fullDescription,
           customerPhone,
           paymentMethod,
           language,
@@ -660,6 +697,9 @@ export default function CreatePaymentLink() {
     setPaymentMethod(null);
     setLanguage(null);
     setRemindersEnabled(true);
+    setCustomerName("");
+    setNeedsDocs(false);
+    setDocPicker(emptyDocPicker());
     setGeneratedLink("");
     setError("");
     setCopied(false);
@@ -983,6 +1023,20 @@ export default function CreatePaymentLink() {
                       <>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Customer Name{" "}
+                            <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={customerName}
+                            onChange={(e) => setCustomerName(e.target.value)}
+                            placeholder="e.g. Maria Lopez"
+                            required
+                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
                             Payment Amount{" "}
                             <span className="text-red-500">*</span>
                           </label>
@@ -1004,7 +1058,7 @@ export default function CreatePaymentLink() {
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                            Description <span className="text-red-500">*</span>
+                            Payment For <span className="text-red-500">*</span>
                             {translating && (
                               <span className="flex items-center gap-1 text-xs text-blue-500 font-normal">
                                 <Loader2 className="w-3 h-3 animate-spin" />{" "}
@@ -1017,7 +1071,7 @@ export default function CreatePaymentLink() {
                               type="text"
                               value={description}
                               onChange={(e) => setDescription(e.target.value)}
-                              placeholder="e.g., Customer Name - (Why you sending him the link ? eg Monthly pay, etc)"
+                              placeholder="e.g. Monthly payment, New policy, Rewrite , Renewal, etc."
                               required
                               disabled={translating}
                               className={`w-full px-4 py-3 pr-20 border rounded-lg outline-none transition disabled:opacity-60 ${
@@ -1149,6 +1203,55 @@ export default function CreatePaymentLink() {
                     </div>
 
                     {linkType === "payment" && (
+                      <div className="rounded-lg border border-gray-200 p-4 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-800">
+                              Need any documents from the customer?
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              e.g. car photos, license, proof of prior. Leave on
+                              No for monthly payments.
+                            </p>
+                          </div>
+                          <div className="flex gap-1 p-1 bg-gray-100 rounded-lg flex-shrink-0">
+                            {[false, true].map((v) => (
+                              <button
+                                key={String(v)}
+                                type="button"
+                                onClick={() => setNeedsDocs(v)}
+                                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
+                                  needsDocs === v
+                                    ? "bg-white text-gray-900 shadow-sm"
+                                    : "text-gray-500 hover:text-gray-700"
+                                }`}
+                              >
+                                {v ? "Yes" : "No"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {needsDocs && (
+                          <>
+                            <p className="text-xs font-semibold text-gray-600">
+                              What&apos;s missing?
+                            </p>
+                            <DocumentPicker
+                              value={docPicker}
+                              onChange={setDocPicker}
+                              language={language}
+                            />
+                            <p className="text-[11px] text-gray-400">
+                              After paying (and autopay), the customer is asked
+                              to upload these. If they choose to do it later, we
+                              text them the link.
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {linkType === "payment" && (
                       <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-gray-50">
                         <button
                           type="button"
@@ -1183,7 +1286,11 @@ export default function CreatePaymentLink() {
                         !phoneValid ||
                         !language ||
                         !paymentMethod ||
-                        (linkType === "payment" && descIsOver)
+                        (linkType === "payment" && descIsOver) ||
+                        (linkType === "payment" && !customerName.trim()) ||
+                        (linkType === "payment" &&
+                          needsDocs &&
+                          docPickerProblems(docPicker).length > 0)
                       }
                       className="w-full px-6 py-3 bg-gradient-to-r from-red-700 to-blue-800 text-white rounded-lg font-medium hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >

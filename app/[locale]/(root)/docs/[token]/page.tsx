@@ -59,7 +59,7 @@ const T = {
     title: "Upload Your Documents",
     hi: (n: string) => (n ? `Hi ${n},` : "Hi,"),
     intro:
-      "To complete your policy, please upload the documents below. Take your time. You can leave and come back to this link anytime before",
+      "To complete your policy, please upload the documents below as soon as possible. This link closes on",
     progress: (d: number, t: number) => `${d} of ${t} done`,
     upload: "Upload",
     add: "Add another",
@@ -88,12 +88,16 @@ const T = {
     errGeneric: "Upload failed. Please check your connection and try again.",
     remove: "Remove",
     help: "Questions? Call (469) 729-5185",
+    continueBtn: "Continue",
+    laterBtn: "I'll upload the rest later",
+    laterNote:
+      "No problem. We'll text you this link. Please upload the rest as soon as possible.",
   },
   es: {
     title: "Suba Sus Documentos",
     hi: (n: string) => (n ? `Hola ${n},` : "Hola,"),
     intro:
-      "Para completar su póliza, por favor suba los documentos a continuación. Tómese su tiempo. Puede salir y regresar a este enlace en cualquier momento antes del",
+      "Para completar su póliza, por favor suba los documentos a continuación lo antes posible. Este enlace vence el",
     progress: (d: number, t: number) => `${d} de ${t} listos`,
     upload: "Subir",
     add: "Agregar otro",
@@ -122,6 +126,10 @@ const T = {
     errGeneric: "No se pudo subir. Revise su conexión e intente de nuevo.",
     remove: "Quitar",
     help: "¿Preguntas? Llame al (469) 729-5185",
+    continueBtn: "Continuar",
+    laterBtn: "Subiré el resto más tarde",
+    laterNote:
+      "No hay problema. Le enviaremos este enlace por mensaje de texto. Por favor suba el resto lo antes posible.",
   },
 };
 
@@ -231,6 +239,27 @@ export default function DocumentUploadPage() {
   const [previews, setPreviews] = useState<Record<string, string>>({}); // fileId → object URL (this session only)
   const inputRef = useRef<HTMLInputElement>(null);
   const target = useRef<{ item: PubItem; slot: PubSlot } | null>(null);
+
+  // Opened from the payment-link flow (?linkId=…): show Continue / Later
+  const [fromPayment, setFromPayment] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  useEffect(() => {
+    setFromPayment(new URLSearchParams(window.location.search).has("linkId"));
+  }, []);
+
+  const finishStep = async (later: boolean) => {
+    setLeaving(true);
+    try {
+      await fetch(`/api/docs/${token}/finish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ later }),
+      });
+    } catch {
+      // Still move on — reminders cover anything missed
+    }
+    window.location.href = `/${lang}/payment-thankyou`;
+  };
 
   const load = useCallback(async () => {
     try {
@@ -652,6 +681,37 @@ export default function DocumentUploadPage() {
           );
         })}
       </div>
+
+      {fromPayment && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 mt-4">
+          {!allDone && (
+            <p className="text-xs text-gray-500 mb-3 text-center">
+              {t.laterNote}
+            </p>
+          )}
+          <button
+            type="button"
+            disabled={leaving || !!busy}
+            onClick={() => finishStep(!allDone)}
+            className={`w-full py-3.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 transition disabled:opacity-60 ${
+              allDone
+                ? "text-white"
+                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+            }`}
+            style={
+              allDone
+                ? {
+                    background:
+                      "linear-gradient(135deg,#1E3A5F 0%,#2B4C7E 40%,#6B1D3A 80%,#8B1A3D 100%)",
+                  }
+                : undefined
+            }
+          >
+            {leaving && <Loader2 className="w-4 h-4 animate-spin" />}
+            {allDone ? t.continueBtn : t.laterBtn}
+          </button>
+        </div>
+      )}
 
       <p className="text-center text-xs text-gray-400 mt-6">{t.help}</p>
       <p className="text-center text-xs text-gray-400 mt-1">

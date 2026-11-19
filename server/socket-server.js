@@ -199,6 +199,46 @@ app.post('/notify/payment-progress', (req, res) => {
   }
 });
 
+// Document request: customer chose "upload later" in the payment-link flow →
+// text them the link right away (Next.js claims laterTextAt, so this runs once)
+app.post('/notify/documents-later', async (req, res) => {
+  try {
+    const { ObjectId } = require('mongodb');
+    const { requestId } = req.body || {};
+    if (!documentRequestsCollection || !requestId || !ObjectId.isValid(requestId)) {
+      return res.status(400).json({ error: 'requestId required' });
+    }
+    const doc = await documentRequestsCollection.findOne({ _id: new ObjectId(requestId) });
+    if (!doc) return res.status(404).json({ error: 'not found' });
+    const es = doc.language === 'es';
+    const list = docMissingLines(doc);
+    const link = docLink(doc);
+    const text = es
+      ? `Hola, le escribimos de Texas Premium Insurance Services. Aquí está su enlace para subir los documentos que faltan para su póliza. Por favor súbalos lo antes posible:\n${list}\nSúbalos aquí: ${link}\n¿Preguntas? (469) 729-5185`
+      : `Hi from Texas Premium Insurance Services. Here's your link to upload the remaining documents for your policy. Please upload them as soon as possible:\n${list}\nUpload here: ${link}\nQuestions? (469) 729-5185`;
+    const sent = await sendPaymentReminderSMS(normalizePhone(doc.customerPhone), null, text);
+    console.log(`📄 "Upload later" text ${sent ? 'sent' : 'FAILED'} to ${doc.customerPhone}`);
+    res.json({ success: true, sent });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Document request: everything uploaded → "received" text + admin notification
+app.post('/notify/documents-received', async (req, res) => {
+  try {
+    const { ObjectId } = require('mongodb');
+    const { requestId } = req.body || {};
+    if (!requestId || !ObjectId.isValid(requestId)) {
+      return res.status(400).json({ error: 'requestId required' });
+    }
+    const sent = await sendDocumentsReceivedSMS({ _id: new ObjectId(requestId) });
+    res.json({ success: true, sent });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Manual sync trigger endpoint
 app.post('/trigger-sync', async (req, res) => {
   try {
@@ -748,6 +788,141 @@ async function checkUnprocessedPayments() {
 }
 
 // ================================================
+// DOCUMENT REQUEST REMINDERS
+// Texts the customer what's still missing: next morning, then days 3, 6
+// and 9 (Mon–Sat, 10 AM–7 PM). Stops as soon as every requested item has
+// an upload. Also sends the single "received, an agent will review" text.
+// ================================================
+let documentRequestsCollection;
+
+const DOC_REMINDERS = [
+  { key: 'reminder1', day: 1 },
+  { key: 'reminder2', day: 3 },
+  { key: 'reminder3', day: 6 },
+  { key: 'lastCall', day: 9 },
+];
+
+function cstDateKey(date) {
+  return new Date(date).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+}
+function cstDaysBetween(from, to) {
+  return Math.round((Date.parse(cstDateKey(to)) - Date.parse(cstDateKey(from))) / 86400000);
+}
+const docItemUploaded = (item) => (item.slots || []).every(s => (s.files || []).length > 0);
+
+function docLink(req) {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://www.texaspremiumins.com';
+  return `${appUrl}/${req.language === 'es' ? 'es' : 'en'}/docs/${req.token}`;
+}
+
+// Only what's still missing; 5+ items → first 3 and "+N more" to keep it ~2 SMS segments
+function docMissingLines(req) {
+  const es = req.language === 'es';
+  const missing = (req.items || []).filter(i => !docItemUploaded(i)).map(i => (es ? i.labelEs : i.labelEn));
+  const shown = missing.length > 4 ? missing.slice(0, 3) : missing;
+  const lines = shown.map(l => `• ${l}`);
+  if (missing.length > 4) lines.push(es ? `• +${missing.length - 3} más` : `• +${missing.length - 3} more`);
+  return lines.join('\n');
+}
+
+function buildDocReminder(req, key) {
+  const es = req.language === 'es';
+  const list = docMissingLines(req);
+  const link = docLink(req);
+  if (key === 'lastCall') {
+    return es
+      ? `Hola, le escribimos de Texas Premium Insurance Services. Su enlace para subir documentos vence mañana. Todavía falta:\n${list}\nSúbalos aquí: ${link}\nSi necesita más tiempo, llámenos al (469) 729-5185.\nNota: Este es un mensaje automático de recordatorio.`
+      : `Hi from Texas Premium Insurance Services. Your document upload link closes tomorrow. Still needed:\n${list}\nUpload here: ${link}\nIf you need more time, call us at (469) 729-5185.\nNote: This is an automatic reminder message.`;
+  }
+  return es
+    ? `Hola, le escribimos de Texas Premium Insurance Services. Todavía nos faltan algunos documentos para su póliza:\n${list}\nSúbalos aquí: ${link}\n¿Preguntas? (469) 729-5185\nNota: Este es un mensaje automático de recordatorio.`
+    : `Hi from Texas Premium Insurance Services. We're still missing a few documents for your policy:\n${list}\nUpload here: ${link}\nQuestions? (469) 729-5185\nNote: This is an automatic reminder message.`;
+}
+
+const DOC_RECEIVED_TEXT = {
+  en: `Thank you! We've received your documents. An agent will review them and get back to you. – Texas Premium Insurance Services`,
+  es: `¡Gracias! Recibimos sus documentos. Un agente los revisará y se comunicará con usted. – Texas Premium Insurance Services`,
+};
+
+// Claims the request first, so the upload trigger and the sweep can never both text
+async function sendDocumentsReceivedSMS(filter) {
+  if (!documentRequestsCollection) return false;
+  const h = getCSTTimeDecimal(new Date());
+  if (h < 8 || h >= 21) return false; // held until 8 AM; the sweep sends it
+  const req = await documentRequestsCollection.findOneAndUpdate(
+    { ...filter, allReceivedAt: { $ne: null }, allReceivedSmsAt: null },
+    { $set: { allReceivedSmsAt: new Date() } },
+    { returnDocument: 'after' },
+  );
+  if (!req) return false;
+  const ok = await sendPaymentReminderSMS(
+    normalizePhone(req.customerPhone),
+    null,
+    DOC_RECEIVED_TEXT[req.language === 'es' ? 'es' : 'en'],
+  );
+  if (!ok) {
+    // Release so the next sweep retries
+    await documentRequestsCollection.updateOne({ _id: req._id }, { $set: { allReceivedSmsAt: null } });
+    return false;
+  }
+  console.log(`📄 "Documents received" text sent to ${req.customerPhone}`);
+  pushAdminNotification({
+    section: 'documents',
+    title: '📄 All documents uploaded',
+    body: `${req.customerName} uploaded everything requested`,
+    eventId: `docs-all-${req._id}`,
+  });
+  return true;
+}
+
+async function processDocumentReminders() {
+  if (!documentRequestsCollection) return;
+  try {
+    // "Received" texts held overnight or after a failed send
+    const pendingReceived = await documentRequestsCollection
+      .find({ allReceivedAt: { $ne: null }, allReceivedSmsAt: null }, { projection: { _id: 1 } })
+      .limit(20)
+      .toArray();
+    for (const r of pendingReceived) await sendDocumentsReceivedSMS({ _id: r._id });
+
+    const now = new Date();
+    const nowDec = getCSTTimeDecimal(now);
+    const weekday = now.toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'short' });
+    if (weekday === 'Sun' || nowDec < 10 || nowDec >= 19) return; // Mon–Sat, 10 AM–7 PM
+
+    const open = await documentRequestsCollection
+      .find({ allReceivedAt: null, expiresAt: { $gt: now } })
+      .toArray();
+
+    for (const req of open) {
+      if ((req.items || []).every(docItemUploaded)) continue;
+      const days = cstDaysBetween(req.reopenedAt || req.createdAt, now);
+      const due = DOC_REMINDERS.filter(r => r.day <= days);
+      if (!due.length) continue;
+      // If one was missed (e.g. it fell on a Sunday), send the current one, not a backlog
+      const latest = due[due.length - 1];
+      if ((req.sentReminders || []).includes(latest.key)) continue;
+
+      const ok = await sendPaymentReminderSMS(
+        normalizePhone(req.customerPhone),
+        null,
+        buildDocReminder(req, latest.key),
+      );
+      if (ok) {
+        await documentRequestsCollection.updateOne(
+          { _id: req._id },
+          { $addToSet: { sentReminders: latest.key } },
+        );
+        console.log(`📄 Document ${latest.key} sent to ${req.customerPhone}`);
+      }
+      await new Promise(r => setTimeout(r, 2000)); // pace RingCentral
+    }
+  } catch (err) {
+    console.error('❌ Document reminder error:', err.message);
+  }
+}
+
+// ================================================
 // DAILY AUTOPAY SECURITY CODE SYSTEM
 // Generates new 4-digit code daily at 7 AM CST
 // ================================================
@@ -760,6 +935,7 @@ async function connectSecurityCodeDB() {
   try {
     securityCodeCollection = mongoClient.db('db').collection('texas_autopay_security');
     loginDataCollection = mongoClient.db('db').collection('data_login');
+    documentRequestsCollection = mongoClient.db('db').collection('document_requests');
     console.log('✅ Security code database connected');
     return true;
   } catch (error) {
@@ -2895,6 +3071,10 @@ async function startServer() {
     // Paid-but-not-processed nag + escalation, every 5 min in office hours
     setInterval(checkUnprocessedPayments, 5 * 60 * 1000);
     setTimeout(checkUnprocessedPayments, 15000);
+
+    // Document request reminders + "received" texts, every 5 min
+    setInterval(processDocumentReminders, 5 * 60 * 1000);
+    setTimeout(processDocumentReminders, 25000);
     console.log('⏰ Payment reminder system started');
     // Scheduled messages — run every 60 seconds
     setInterval(processScheduledMessages, 60 * 1000);

@@ -9,6 +9,7 @@ import {
   Car,
   Check,
   Copy,
+  Download,
   ExternalLink,
   FileText,
   FolderOpen,
@@ -25,7 +26,6 @@ import {
   ShieldCheck,
   Trash2,
   X,
-  XCircle,
 } from "lucide-react";
 import AdminShell from "../_components/AdminShell";
 
@@ -110,7 +110,6 @@ interface ListItem {
   id: string;
   label: string;
   uploaded: boolean;
-  review: "accepted" | "rejected" | null;
 }
 interface RequestRow {
   id: string;
@@ -134,13 +133,11 @@ interface ViewFile {
   size: number;
   uploadedAt: string;
   url: string;
+  downloadUrl: string;
 }
 interface ViewItem {
   id: string;
   label: string;
-  review: "accepted" | "rejected" | null;
-  reviewNote: string | null;
-  reviewedBy: string | null;
   slots: { key: string; label: string; files: ViewFile[] }[];
 }
 
@@ -231,12 +228,18 @@ export default function DocumentsPage() {
 
   // ── Requests list ─────────────────────────────────────────────────────────
   const [rows, setRows] = useState<RequestRow[]>([]);
-  const [listStatus, setListStatus] = useState<
-    "open" | "received" | "closed" | "all"
-  >("open");
+  const [listStatus, setListStatus] = useState<"pending" | "completed">(
+    "pending",
+  );
   const [search, setSearch] = useState("");
   const [listLoading, setListLoading] = useState(false);
   const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
+
+  // ── Delete (password protected, like Guides) ──────────────────────────────
+  const [deleteTarget, setDeleteTarget] = useState<RequestRow | null>(null);
+  const [deleteCode, setDeleteCode] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   // ── Viewer (daily code gated) ─────────────────────────────────────────────
   const codeRef = useRef<string>(""); // verified code, kept in memory for this page only
@@ -246,6 +249,21 @@ export default function DocumentsPage() {
   const [viewing, setViewing] = useState<RequestRow | null>(null);
   const [viewItems, setViewItems] = useState<ViewItem[]>([]);
   const [viewLoading, setViewLoading] = useState(false);
+
+  // ── Download all (one file at a time, remembered per file) ────────────────
+  const [downloaded, setDownloaded] = useState<Set<string>>(() => {
+    try {
+      return new Set<string>(
+        JSON.parse(localStorage.getItem("docs_downloaded") || "[]"),
+      );
+    } catch {
+      return new Set<string>();
+    }
+  });
+  const [dlProgress, setDlProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -482,10 +500,54 @@ export default function DocumentsPage() {
   };
 
   const openViewer = (row: RequestRow) => {
-    if (codeRef.current) return void loadView(row, codeRef.current);
-    setCodeInput("");
-    setCodeError("");
-    setCodeFor(row);
+    loadView(row, "");
+  };
+
+  const markDownloaded = (id: string) =>
+    setDownloaded((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      try {
+        localStorage.setItem(
+          "docs_downloaded",
+          JSON.stringify([...next].slice(-2000)),
+        );
+      } catch {}
+      return next;
+    });
+
+  // Each download link is signed as an attachment, so the browser saves the
+  // file instead of opening it. Chrome asks once to "allow multiple downloads".
+  const downloadAll = async () => {
+    if (!viewing || dlProgress) return;
+    setDlProgress({ done: 0, total: 0 });
+    try {
+      // Fresh links: the ones on screen stop working after 15 minutes
+      const res = await fetch(`/api/document-requests/${viewing.id}/view`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error("load");
+      setViewItems(data.items);
+      const files: ViewFile[] = (data.items as ViewItem[]).flatMap((i) =>
+        i.slots.flatMap((s) => s.files),
+      );
+      for (let n = 0; n < files.length; n++) {
+        setDlProgress({ done: n, total: files.length });
+        const a = document.createElement("a");
+        a.href = files[n].downloadUrl;
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        markDownloaded(files[n].id);
+        await new Promise((r) => setTimeout(r, 700)); // browsers drop back-to-back downloads
+      }
+    } catch {
+      alert("Couldn't download the files. Try again.");
+    } finally {
+      setDlProgress(null);
+    }
   };
 
   const submitCode = async () => {
@@ -494,47 +556,6 @@ export default function DocumentsPage() {
     setCodeFor(null);
     (document.activeElement as HTMLElement)?.blur();
     await loadView(row, codeInput);
-  };
-
-  const setReview = async (
-    item: ViewItem,
-    review: "accepted" | "rejected" | null,
-  ) => {
-    if (!viewing) return;
-    let note: string | null = null;
-    if (review === "rejected") {
-      note = window.prompt("Reason (optional, internal only):", "") ?? null;
-    }
-    const res = await fetch(`/api/document-requests/${viewing.id}/review`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ itemId: item.id, review, note, by: agentName }),
-    });
-    if (!res.ok) return alert("Couldn't save.");
-    setViewItems((prev) =>
-      prev.map((i) =>
-        i.id === item.id
-          ? {
-              ...i,
-              review,
-              reviewNote: note,
-              reviewedBy: review ? agentName : null,
-            }
-          : i,
-      ),
-    );
-    setRows((prev) =>
-      prev.map((r) =>
-        r.id === viewing.id
-          ? {
-              ...r,
-              items: r.items.map((i) =>
-                i.id === item.id ? { ...i, review } : i,
-              ),
-            }
-          : r,
-      ),
-    );
   };
 
   const reopen = async (row: RequestRow) => {
@@ -547,6 +568,31 @@ export default function DocumentsPage() {
     });
     if (!res.ok) return alert("Couldn't reopen.");
     fetchList(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget || !deleteCode || deleting) return;
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      const res = await fetch(
+        `/api/document-requests/${deleteTarget.id}?code=${encodeURIComponent(deleteCode)}`,
+        { method: "DELETE" },
+      );
+      if (res.status === 403) {
+        setDeleteError("Incorrect code. Try again.");
+        return;
+      }
+      if (!res.ok) {
+        setDeleteError("Couldn't delete. Try again.");
+        return;
+      }
+      setRows((prev) => prev.filter((r) => r.id !== deleteTarget.id));
+      setDeleteTarget(null);
+      setDeleteCode("");
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -591,7 +637,7 @@ export default function DocumentsPage() {
             {(
               [
                 ["new", "New Request", Plus],
-                ["requests", "Requests", FolderOpen],
+                ["requests", "Sent Links", FolderOpen],
               ] as const
             ).map(([k, label, Icon]) => (
               <button
@@ -936,10 +982,8 @@ export default function DocumentsPage() {
               <div className="flex gap-1 mb-5 p-1 bg-gray-100 rounded-lg">
                 {(
                   [
-                    ["open", "Open"],
-                    ["received", "Received"],
-                    ["closed", "Closed"],
-                    ["all", "All"],
+                    ["pending", "Pending"],
+                    ["completed", "Completed"],
                   ] as const
                 ).map(([k, label]) => (
                   <button
@@ -997,10 +1041,10 @@ export default function DocumentsPage() {
                                 }`}
                               >
                                 {r.status === "received"
-                                  ? "ALL RECEIVED"
+                                  ? "COMPLETED"
                                   : r.status === "closed"
-                                    ? "CLOSED"
-                                    : `OPEN · ${daysLeft}d left`}
+                                    ? "LINK CLOSED"
+                                    : `PENDING · ${daysLeft}d left`}
                               </span>
                             </div>
                             <p className="text-xs text-gray-500 mt-0.5">
@@ -1031,7 +1075,7 @@ export default function DocumentsPage() {
                                 </>
                               ) : (
                                 <>
-                                  <Copy className="w-4 h-4" /> Copy
+                                  <Copy className="w-4 h-4" /> Copy Link
                                 </>
                               )}
                             </button>
@@ -1043,6 +1087,17 @@ export default function DocumentsPage() {
                                 <RefreshCw className="w-4 h-4" /> Reopen 10 days
                               </button>
                             )}
+                            <button
+                              onClick={() => {
+                                setDeleteTarget(r);
+                                setDeleteCode("");
+                                setDeleteError("");
+                              }}
+                              title="Delete request"
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-300 hover:text-rose-500 hover:bg-rose-50 transition"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
                         </div>
 
@@ -1081,20 +1136,12 @@ export default function DocumentsPage() {
                               <span
                                 key={i.id}
                                 className={`text-[11px] px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 ${
-                                  i.review === "accepted"
-                                    ? "bg-emerald-600 text-white"
-                                    : i.review === "rejected"
-                                      ? "bg-red-100 text-red-700"
-                                      : i.uploaded
-                                        ? "bg-emerald-100 text-emerald-800"
-                                        : "bg-gray-100 text-gray-500"
+                                  i.uploaded
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : "bg-gray-100 text-gray-500"
                                 }`}
                               >
-                                {i.review === "accepted" ? (
-                                  <Check className="w-3 h-3" />
-                                ) : i.review === "rejected" ? (
-                                  <XCircle className="w-3 h-3" />
-                                ) : null}
+                                {i.uploaded && <Check className="w-3 h-3" />}
                                 {i.label}
                               </span>
                             ))}
@@ -1109,6 +1156,72 @@ export default function DocumentsPage() {
           )}
         </div>
       </div>
+
+      {/* Delete confirmation */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-6 w-full max-w-sm mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-500" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-gray-800">
+                  Delete Request
+                </p>
+                <p className="text-xs text-gray-400 line-clamp-1">
+                  {deleteTarget.customerName} ·{" "}
+                  {formatPhone(deleteTarget.customerPhone)}
+                </p>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              This deletes the link and every uploaded file, and stops the
+              reminders. Enter the admin delete code to confirm. This cannot be
+              undone.
+            </p>
+            <input
+              type="password"
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore
+              className="w-full px-3.5 py-2.5 text-sm bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition placeholder-gray-300 mb-2"
+              placeholder="Enter delete code"
+              value={deleteCode}
+              onChange={(e) => {
+                setDeleteCode(e.target.value);
+                setDeleteError("");
+              }}
+              onKeyDown={(e) => e.key === "Enter" && confirmDelete()}
+              autoFocus
+            />
+            {deleteError && (
+              <p className="text-xs text-rose-600 mb-2">{deleteError}</p>
+            )}
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="flex-1 text-xs px-4 py-2 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={!deleteCode || deleting}
+                className="flex-1 flex items-center justify-center gap-1.5 text-xs px-4 py-2 rounded-lg bg-rose-600 text-white font-semibold hover:bg-rose-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deleting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Security code prompt */}
       {codeFor && (
@@ -1176,6 +1289,37 @@ export default function DocumentsPage() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                {(() => {
+                  const all = viewItems.flatMap((i) =>
+                    i.slots.flatMap((s) => s.files),
+                  );
+                  const allDone =
+                    all.length > 0 && all.every((f) => downloaded.has(f.id));
+                  return (
+                    <button
+                      onClick={downloadAll}
+                      disabled={!!dlProgress || all.length === 0}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold rounded-lg disabled:opacity-60 ${
+                        allDone && !dlProgress
+                          ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                          : "bg-gradient-to-r from-red-700 to-blue-800 text-white hover:opacity-90"
+                      }`}
+                    >
+                      {dlProgress ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : allDone ? (
+                        <Check className="w-4 h-4" />
+                      ) : (
+                        <Download className="w-4 h-4" />
+                      )}
+                      {dlProgress
+                        ? `Downloading ${Math.min(dlProgress.done + 1, dlProgress.total || 1)} of ${dlProgress.total || "…"}`
+                        : allDone
+                          ? "All downloaded"
+                          : `Download all (${all.length})`}
+                    </button>
+                  );
+                })()}
                 <button
                   onClick={() => loadView(viewing, codeRef.current)}
                   disabled={viewLoading}
@@ -1208,57 +1352,12 @@ export default function DocumentsPage() {
                         <p className="text-sm font-bold text-gray-900">
                           {item.label}
                         </p>
-                        {item.review && (
-                          <p
-                            className={`text-[11px] font-semibold ${item.review === "accepted" ? "text-emerald-700" : "text-red-700"}`}
-                          >
-                            {item.review === "accepted"
-                              ? "Accepted"
-                              : "Rejected"}
-                            {item.reviewedBy ? ` by ${item.reviewedBy}` : ""}
-                            {item.reviewNote ? ` · ${item.reviewNote}` : ""}
-                          </p>
-                        )}
                         {!anyFiles && (
                           <p className="text-[11px] text-gray-400">
                             Not uploaded yet
                           </p>
                         )}
                       </div>
-                      {anyFiles && (
-                        <div className="flex gap-1.5 flex-shrink-0">
-                          <button
-                            onClick={() =>
-                              setReview(
-                                item,
-                                item.review === "accepted" ? null : "accepted",
-                              )
-                            }
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1 ${
-                              item.review === "accepted"
-                                ? "bg-emerald-600 text-white"
-                                : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                            }`}
-                          >
-                            <Check className="w-3.5 h-3.5" /> Accept
-                          </button>
-                          <button
-                            onClick={() =>
-                              setReview(
-                                item,
-                                item.review === "rejected" ? null : "rejected",
-                              )
-                            }
-                            className={`px-3 py-1.5 text-xs font-bold rounded-lg flex items-center gap-1 ${
-                              item.review === "rejected"
-                                ? "bg-red-600 text-white"
-                                : "bg-red-50 text-red-700 hover:bg-red-100"
-                            }`}
-                          >
-                            <XCircle className="w-3.5 h-3.5" /> Reject
-                          </button>
-                        </div>
-                      )}
                     </div>
                     <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
                       {item.slots.map((slot) =>
@@ -1294,6 +1393,11 @@ export default function DocumentsPage() {
                                   <FileText className="w-10 h-10 text-gray-400" />
                                 )}
                                 <ExternalLink className="w-4 h-4 text-white absolute top-2 right-2 drop-shadow opacity-0 group-hover:opacity-100" />
+                                {downloaded.has(f.id) && (
+                                  <span className="absolute bottom-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold shadow">
+                                    <Check className="w-3 h-3" /> Downloaded
+                                  </span>
+                                )}
                               </div>
                               <div className="px-2 py-1.5">
                                 <p className="text-[11px] font-semibold text-gray-700 truncate">

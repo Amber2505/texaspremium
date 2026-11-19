@@ -1,6 +1,7 @@
 // app/api/check-progress/route.ts
 import { NextResponse } from "next/server";
 import { MongoClient, ObjectId } from "mongodb";
+import { ensureRequestForPaymentLink } from "@/lib/documentRequests";
 
 const uri = process.env.MONGODB_URI!;
 
@@ -109,6 +110,28 @@ export async function GET(request: Request) {
 
     console.log("📊 Progress:", progress);
 
+    // Upload-documents step: only when the agent asked for documents, and
+    // only once payment, consent and autopay (if any) are done. The request
+    // is created here, so unpaid links never start document reminders.
+    let docsStep: { token: string; done: boolean } | null = null;
+    const autopayDone = progress.autopay || paymentMethod === "direct-bill";
+    if (
+      progress.payment &&
+      progress.consent &&
+      autopayDone &&
+      Array.isArray(link.documentSpecs) &&
+      link.documentSpecs.length > 0 &&
+      !completedStages.documents
+    ) {
+      try {
+        docsStep = await ensureRequestForPaymentLink(
+          link as unknown as Parameters<typeof ensureRequestForPaymentLink>[0],
+        );
+      } catch (err) {
+        console.error("Document step error:", err);
+      }
+    }
+
     // Determine next step
     let nextStep = "";
     let redirectTo = "";
@@ -125,6 +148,10 @@ export async function GET(request: Request) {
       nextStep = "autopay";
       redirectTo = `/${lang}/setup-autopay?${paymentMethod}&phone=${link.customerPhone}&redirect=payment&linkId=${linkId}`;
       console.log("➡️ Next: Autopay");
+    } else if (docsStep && !docsStep.done) {
+      nextStep = "documents";
+      redirectTo = `/${lang}/docs/${docsStep.token}?linkId=${linkId}`;
+      console.log("➡️ Next: Upload documents");
     } else {
       nextStep = "complete";
       redirectTo = `/${lang}/payment-thankyou`;

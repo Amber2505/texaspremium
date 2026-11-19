@@ -341,7 +341,8 @@ export default function SetupAutopayContent() {
         }
 
         if (redirectTo === "payment") {
-          router.push(`/payment-thankyou`);
+          // Back through the link so the upload-documents step can come next
+          router.push(linkId ? `/pay/${linkId}` : `/payment-thankyou`);
         } else {
           router.push(`/autopay-success`);
         }

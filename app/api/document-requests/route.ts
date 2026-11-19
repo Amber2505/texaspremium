@@ -67,11 +67,15 @@ export async function GET(req: NextRequest) {
   try {
     const sp = req.nextUrl.searchParams;
     const search = (sp.get("search") || "").trim();
-    const status = sp.get("status") || "open";
+    const status = sp.get("status") || "pending";
     const now = new Date();
 
     const filter: Record<string, unknown> = {};
-    if (status === "open") Object.assign(filter, { allReceivedAt: null, expiresAt: { $gt: now } });
+    // Pending = anything not fully uploaded (open or closed link); Completed = all received
+    if (status === "pending") Object.assign(filter, { allReceivedAt: null });
+    else if (status === "completed")
+      Object.assign(filter, { allReceivedAt: { $ne: null } });
+    else if (status === "open") Object.assign(filter, { allReceivedAt: null, expiresAt: { $gt: now } });
     else if (status === "received") Object.assign(filter, { allReceivedAt: { $ne: null } });
     else if (status === "closed") Object.assign(filter, { allReceivedAt: null, expiresAt: { $lte: now } });
 

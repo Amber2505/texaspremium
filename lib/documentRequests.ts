@@ -89,6 +89,8 @@ export interface DocRequest {
   allReceivedSmsAt: Date | null;
   lastUploadAt: Date | null;
   lastViewedAt: Date | null;
+  paymentLinkId?: ObjectId | null; // set when the request came from a payment link
+  laterTextAt?: Date | null; // "upload later" text sent
 }
 
 export type RequestSpec =
@@ -285,6 +287,73 @@ export async function requestsCollection() {
 
 export const newToken = () => randomBytes(9).toString("base64url"); // 12 chars
 
+/**
+ * Payment-link flow: creates the document request the first time the customer
+ * reaches the upload step, so links that never get paid never start
+ * reminders. Returns null when the link didn't ask for documents.
+ */
+export async function ensureRequestForPaymentLink(link: {
+  _id: ObjectId;
+  customerName?: string | null;
+  description?: string | null;
+  customerPhone?: string | null;
+  language?: string | null;
+  documentSpecs?: RequestSpec[] | null;
+  documentRequestId?: ObjectId | null;
+}): Promise<{ token: string; done: boolean } | null> {
+  const col = await requestsCollection();
+  const client = await connectToDatabase;
+  const links = client.db("db").collection("payment_link_generated");
+  const result = (r: DocRequest) => ({ token: r.token, done: requestStatus(r) !== "open" });
+
+  if (link.documentRequestId) {
+    const existing = await col.findOne({ _id: link.documentRequestId });
+    return existing ? result(existing) : null;
+  }
+  if (!link.documentSpecs?.length) return null;
+
+  let items: DocItem[];
+  try {
+    items = buildItems(link.documentSpecs);
+  } catch {
+    return null;
+  }
+
+  const now = new Date();
+  const doc: DocRequest = {
+    token: newToken(),
+    customerName: (link.customerName || (link.description || "").split(" - ")[0] || "Customer").trim().slice(0, 80),
+    customerPhone: String(link.customerPhone || "").replace(/\D/g, "").slice(-10),
+    language: link.language === "es" ? "es" : "en",
+    items,
+    createdAt: now,
+    createdBy: "Payment link",
+    expiresAt: new Date(now.getTime() + LINK_DAYS * 24 * 60 * 60 * 1000),
+    reopenedAt: null,
+    sentReminders: [],
+    allReceivedAt: null,
+    allReceivedSmsAt: null,
+    lastUploadAt: null,
+    lastViewedAt: null,
+    paymentLinkId: link._id,
+    laterTextAt: null,
+  };
+  const { insertedId } = await col.insertOne(doc);
+
+  // Two tabs at once: only one request may attach to the link
+  const claimed = await links.updateOne(
+    { _id: link._id, documentRequestId: null },
+    { $set: { documentRequestId: insertedId } },
+  );
+  if (!claimed.modifiedCount) {
+    await col.deleteOne({ _id: insertedId });
+    const fresh = await links.findOne({ _id: link._id });
+    const existing = fresh?.documentRequestId ? await col.findOne({ _id: fresh.documentRequestId }) : null;
+    return existing ? result(existing) : null;
+  }
+  return { token: doc.token, done: false };
+}
+
 /** Same check as the Autopay Portal: today's 4-digit code from Railway. */
 export async function verifyDailyCode(code: unknown): Promise<boolean> {
   if (typeof code !== "string" || !/^\d{4}$/.test(code)) return false;
@@ -320,7 +389,7 @@ function getAzure() {
 export const docsContainer = () => getAzure().service.getContainerClient(DOCS_CONTAINER);
 
 /** Read-only link that stops working after `minutes`. */
-export function signedReadUrl(blobName: string, minutes = 15) {
+export function signedReadUrl(blobName: string, minutes = 15, downloadName?: string) {
   const { cred } = getAzure();
   const blob = docsContainer().getBlockBlobClient(blobName);
   const sas = generateBlobSASQueryParameters(
@@ -330,6 +399,8 @@ export function signedReadUrl(blobName: string, minutes = 15) {
       permissions: BlobSASPermissions.parse("r"),
       startsOn: new Date(Date.now() - 5 * 60 * 1000), // clock skew
       expiresOn: new Date(Date.now() + minutes * 60 * 1000),
+      // Makes the browser save the file (with this name) instead of opening it
+      ...(downloadName ? { contentDisposition: `attachment; filename="${downloadName}"` } : {}),
     },
     cred,
   ).toString();

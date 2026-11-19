@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { MongoClient } from "mongodb";
 import crypto from "crypto";
+import { buildItems, type RequestSpec } from "@/lib/documentRequests";
 
 const uri = process.env.MONGODB_URI!;
 
@@ -20,7 +21,21 @@ export async function POST(request: NextRequest) {
       generatedLink,
       squareLink,
       remindersEnabled,
+      customerName,
+      documentSpecs,
     } = body;
+
+    // Documents the agent asked for. Checked now so a bad list fails here,
+    // not when the customer reaches the upload step.
+    const specs: RequestSpec[] | null =
+      Array.isArray(documentSpecs) && documentSpecs.length > 0 ? documentSpecs : null;
+    if (specs) {
+      try {
+        buildItems(specs);
+      } catch (e) {
+        return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+      }
+    }
 
     client = await MongoClient.connect(uri);
     const db = client.db("db");
@@ -44,6 +59,9 @@ export async function POST(request: NextRequest) {
       // Default ON — only an explicit false turns reminders off, matching the
       // $ne: false query in the reminder processor.
       remindersEnabled: remindersEnabled !== false,
+      customerName: typeof customerName === "string" && customerName.trim() ? customerName.trim().slice(0, 80) : null,
+      documentSpecs: specs,
+      documentRequestId: null,
       createdAt: new Date(),
       createdAtTimestamp: Date.now(),
       currentStage: null,
