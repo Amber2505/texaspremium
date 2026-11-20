@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import AdminShell from "../_components/AdminShell";
 import CodeGate from "../_components/CodeGate";
+import CarrierTraining from "./CarrierTraining";
 
 type Status = "pending" | "sent" | "would_send" | "skipped" | "review";
 
@@ -33,18 +34,6 @@ interface Check {
     autopay?: boolean | null;
     status?: string;
   };
-}
-
-interface Carriers {
-  methods: {
-    host: string;
-    kind: "url" | "search";
-    seen: number;
-    trusted: boolean;
-  }[];
-  companies: { name: string; hosts: string[] }[];
-  trustAfter: number;
-  builtIn: string[];
 }
 
 interface Run {
@@ -98,8 +87,6 @@ export default function DueRemindersPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [carriers, setCarriers] = useState<Carriers | null>(null);
-  const [showCarriers, setShowCarriers] = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("admin_session");
@@ -140,14 +127,6 @@ export default function DueRemindersPage() {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (isCheckingAuth || !showCarriers || carriers) return;
-    fetch("/api/due-reminders?carriers=1", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => d.methods && setCarriers(d))
-      .catch(() => {});
-  }, [isCheckingAuth, showCarriers, carriers]);
 
   useEffect(() => {
     if (isCheckingAuth) return;
@@ -308,80 +287,7 @@ export default function DueRemindersPage() {
               )}
             </div>
 
-            <div className="bg-white border border-gray-100 rounded-2xl mb-4">
-              <button
-                onClick={() => setShowCarriers(!showCarriers)}
-                className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-700"
-              >
-                Carriers the reminders can look up
-                <ChevronRight
-                  className={`w-4 h-4 text-gray-400 transition-transform ${showCarriers ? "rotate-90" : ""}`}
-                />
-              </button>
-              {showCarriers && (
-                <div className="px-4 pb-4 text-sm">
-                  {!carriers ? (
-                    <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-                  ) : (
-                    <>
-                      <p className="text-xs text-gray-500 mb-2">
-                        Learned from agents&apos; own lookups. A site is used
-                        once the same lookup has worked for{" "}
-                        {carriers.trustAfter} different policies. Built in:{" "}
-                        {carriers.builtIn.join(", ") || "none"}.
-                      </p>
-                      {carriers.methods.length === 0 ? (
-                        <p className="text-xs text-gray-400">
-                          Nothing learned yet.
-                        </p>
-                      ) : (
-                        <div className="space-y-1.5">
-                          {carriers.methods
-                            .sort(
-                              (a, b) =>
-                                Number(b.trusted) - Number(a.trusted) ||
-                                b.seen - a.seen,
-                            )
-                            .map((m) => {
-                              const names = carriers.companies
-                                .filter((c) => c.hosts.includes(m.host))
-                                .map((c) => c.name);
-                              return (
-                                <div
-                                  key={`${m.host}-${m.kind}`}
-                                  className="flex flex-wrap items-center gap-2 text-xs"
-                                >
-                                  <span
-                                    className={`px-2 py-0.5 rounded-full font-semibold ${
-                                      m.trusted
-                                        ? "bg-green-100 text-green-800"
-                                        : "bg-amber-100 text-amber-800"
-                                    }`}
-                                  >
-                                    {m.trusted
-                                      ? "In use"
-                                      : `Learning ${m.seen}/${carriers.trustAfter}`}
-                                  </span>
-                                  <span className="font-medium text-gray-800">
-                                    {m.host}
-                                  </span>
-                                  <span className="text-gray-500">
-                                    {m.kind === "url"
-                                      ? "policy address"
-                                      : "search box"}
-                                    {names.length > 0 &&
-                                      ` · ${names.join(", ")}`}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </div>
+            <CarrierTraining checks={checks} />
 
             <div className="flex gap-1 p-1 bg-gray-100 rounded-lg mb-4">
               {TABS.map((t) => (
