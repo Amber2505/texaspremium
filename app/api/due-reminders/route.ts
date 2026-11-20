@@ -2,9 +2,8 @@
 // Admin-only proxy to astral_api's due-date reminder log.
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/adminAuth";
-
-const ASTRAL = "https://astraldbapi.herokuapp.com";
-const KEY = process.env.OFFICE_CAPTURE_KEY || "";
+const ASTRAL = process.env.ASTRAL_API_URL || "https://astraldbapi.herokuapp.com";
+const KEY = process.env.OFFICE_KEY || "";
 
 export async function GET(req: NextRequest) {
   const denied = requireAdmin(req);
