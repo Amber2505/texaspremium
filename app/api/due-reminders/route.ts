@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/adminAuth";
 const ASTRAL = process.env.ASTRAL_API_URL || "https://astraldbapi.herokuapp.com";
-const KEY = process.env.OFFICE_KEY || "";
+const KEY = process.env.OFFICE_CAPTURE_KEY || "";
 
 export async function GET(req: NextRequest) {
   const denied = requireAdmin(req);
