@@ -33,6 +33,7 @@ interface Check {
     amount_due?: number | null;
     autopay?: boolean | null;
     status?: string;
+    cancel_date?: string | null;
   };
 }
 
@@ -44,15 +45,24 @@ interface Run {
   error?: string | null;
 }
 
-const TABS: { key: string; label: string; match: (s: Status) => boolean }[] = [
-  { key: "review", label: "Needs review", match: (s) => s === "review" },
+const TABS: { key: string; label: string; match: (c: Check) => boolean }[] = [
+  { key: "review", label: "Needs review", match: (c) => c.status === "review" },
   {
     key: "sent",
     label: "Texted",
-    match: (s) => s === "sent" || s === "would_send",
+    match: (c) => c.status === "sent" || c.status === "would_send",
   },
-  { key: "skipped", label: "Skipped", match: (s) => s === "skipped" },
-  { key: "pending", label: "Not checked yet", match: (s) => s === "pending" },
+  { key: "skipped", label: "Skipped", match: (c) => c.status === "skipped" },
+  {
+    key: "cancel",
+    label: "Pending cancel",
+    match: (c) => c.facts?.status === "pending_cancel",
+  },
+  {
+    key: "pending",
+    label: "Not checked yet",
+    match: (c) => c.status === "pending",
+  },
 ];
 
 function chicagoToday() {
@@ -87,6 +97,10 @@ export default function DueRemindersPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [codeRequests, setCodeRequests] = useState<
+    { host: string; carrier: string; asked_at: string }[]
+  >([]);
+  const [codes, setCodes] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const saved = localStorage.getItem("admin_session");
@@ -121,6 +135,7 @@ export default function DueRemindersPage() {
       setChecks(data.checks || []);
       setRun(data.run || null);
       setDryRun(data.dryRun !== false);
+      setCodeRequests(data.codeRequests || []);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't load");
     } finally {
@@ -168,19 +183,35 @@ export default function DueRemindersPage() {
     }
   };
 
+  // A carrier asked the cloud worker for an authenticator code (e.g. Progressive)
+  const sendCode = async (host: string) => {
+    const code = (codes[host] || "").replace(/\D/g, "");
+    if (code.length < 4) return;
+    setError("");
+    try {
+      const res = await fetch("/api/due-reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "code", host, code }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(data.detail || data.error || "Couldn't send the code");
+      setCodes((x) => ({ ...x, [host]: "" }));
+      setCodeRequests((r) => r.filter((x) => x.host !== host));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't send the code");
+    }
+  };
+
   const counts = useMemo(
     () =>
       Object.fromEntries(
-        TABS.map((t) => [
-          t.key,
-          checks.filter((c) => t.match(c.status)).length,
-        ]),
+        TABS.map((t) => [t.key, checks.filter((c) => t.match(c)).length]),
       ),
     [checks],
   );
-  const shown = checks.filter((c) =>
-    TABS.find((t) => t.key === tab)!.match(c.status),
-  );
+  const shown = checks.filter((c) => TABS.find((t) => t.key === tab)!.match(c));
   const isToday = date === chicagoToday();
 
   if (isCheckingAuth) {
@@ -251,6 +282,37 @@ export default function DueRemindersPage() {
                 </button>
               </div>
             </div>
+
+            {codeRequests.map((r) => (
+              <div
+                key={r.host}
+                className="flex flex-wrap items-center gap-2 text-sm text-indigo-900 bg-indigo-50 border border-indigo-200 px-3 py-2 rounded-lg mb-3"
+              >
+                <span className="flex-1 min-w-[220px]">
+                  🔐 <b>{r.carrier}</b> is asking for its authenticator code.
+                  Enter the current code from the authenticator app.
+                </span>
+                <input
+                  value={codes[r.host] || ""}
+                  onChange={(e) =>
+                    setCodes((x) => ({
+                      ...x,
+                      [r.host]: e.target.value.replace(/\D/g, "").slice(0, 8),
+                    }))
+                  }
+                  onKeyDown={(e) => e.key === "Enter" && sendCode(r.host)}
+                  inputMode="numeric"
+                  placeholder="Code"
+                  className="w-28 px-3 py-1.5 border border-indigo-200 rounded-lg bg-white"
+                />
+                <button
+                  onClick={() => sendCode(r.host)}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
+                >
+                  Send code
+                </button>
+              </div>
+            ))}
 
             {dryRun && (
               <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 px-3 py-2 rounded-lg mb-3">
@@ -351,6 +413,17 @@ export default function DueRemindersPage() {
                           {c.facts?.autopay === false && " · direct bill"}
                           {c.agent && ` · ${c.agent}`}
                         </p>
+                        {c.facts?.status === "pending_cancel" && (
+                          <p className="text-xs font-semibold text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-1.5 mt-1.5 inline-block">
+                            Pending cancellation
+                            {c.facts.cancel_date
+                              ? ` · cancels ${md(c.facts.cancel_date)}`
+                              : ""}
+                            {c.facts.amount_due != null
+                              ? ` · $${Number(c.facts.amount_due).toFixed(2)} to keep it active`
+                              : ""}
+                          </p>
+                        )}
                         {c.reason && (
                           <p className="text-sm text-gray-700 mt-1.5">
                             {c.reason}
