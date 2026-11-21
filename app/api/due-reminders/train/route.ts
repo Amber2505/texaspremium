@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 // Same values as app/api/due-reminders/route.ts — copy those two lines if yours differ
 const ASTRAL =
   process.env.ASTRAL_API_URL || "https://astraldbapi.herokuapp.com";
-const KEY = process.env.OFFICE_KEY || "";
+const KEY = process.env.OFFICE_CAPTURE_KEY || "";
 
 async function companiesColl() {
   const client = await connectToDatabase;
