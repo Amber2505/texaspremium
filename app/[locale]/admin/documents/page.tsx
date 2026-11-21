@@ -123,6 +123,8 @@ interface RequestRow {
   status: "open" | "received" | "closed";
   sentReminders: string[];
   allReceivedAt: string | null;
+  completedAt: string | null;
+  completedBy: string | null;
   hasNew: boolean;
   items: ListItem[];
 }
@@ -228,9 +230,15 @@ export default function DocumentsPage() {
 
   // ── Requests list ─────────────────────────────────────────────────────────
   const [rows, setRows] = useState<RequestRow[]>([]);
-  const [listStatus, setListStatus] = useState<"pending" | "completed">(
-    "pending",
-  );
+  const [listStatus, setListStatus] = useState<
+    "pending" | "uploaded" | "completed"
+  >("uploaded");
+  const [counts, setCounts] = useState({
+    pending: 0,
+    uploaded: 0,
+    completed: 0,
+  });
+  const [completingId, setCompletingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [listLoading, setListLoading] = useState(false);
   const [copiedRowId, setCopiedRowId] = useState<string | null>(null);
@@ -305,7 +313,10 @@ export default function DocumentsPage() {
           cache: "no-store",
         });
         const data = await res.json();
-        if (data.success) setRows(data.requests);
+        if (data.success) {
+          setRows(data.requests);
+          if (data.counts) setCounts(data.counts);
+        }
       } catch (e) {
         console.error("Documents list error:", e);
       } finally {
@@ -315,8 +326,9 @@ export default function DocumentsPage() {
     [listStatus],
   );
 
+  // Runs on both tabs, so the Sent Links badge shows uploads waiting for review
   useEffect(() => {
-    if (isCheckingAuth || tab !== "requests") return;
+    if (isCheckingAuth) return;
     fetchList();
     const id = setInterval(() => fetchList(true), 30000);
     return () => clearInterval(id);
@@ -570,6 +582,23 @@ export default function DocumentsPage() {
     fetchList(true);
   };
 
+  // Agent took care of it -> Completed (reminders stop). Undo puts it back.
+  const markCompleted = async (row: RequestRow, undo = false) => {
+    setCompletingId(row.id);
+    try {
+      const res = await fetch(`/api/document-requests/${row.id}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ by: agentName, undo }),
+      });
+      if (!res.ok) return alert("Couldn't update. Try again.");
+      setRows((prev) => prev.filter((r) => r.id !== row.id));
+      fetchList(true);
+    } finally {
+      setCompletingId(null);
+    }
+  };
+
   const confirmDelete = async () => {
     if (!deleteTarget || !deleteCode || deleting) return;
     setDeleting(true);
@@ -650,6 +679,11 @@ export default function DocumentsPage() {
                 }`}
               >
                 <Icon className="w-5 h-5" /> {label}
+                {k === "requests" && counts.uploaded > 0 && (
+                  <span className="px-1.5 py-0.5 text-[10px] font-bold bg-red-500 text-white rounded-full">
+                    {counts.uploaded} to review
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -983,6 +1017,7 @@ export default function DocumentsPage() {
                 {(
                   [
                     ["pending", "Pending"],
+                    ["uploaded", "Uploaded"],
                     ["completed", "Completed"],
                   ] as const
                 ).map(([k, label]) => (
@@ -995,10 +1030,26 @@ export default function DocumentsPage() {
                         : "text-gray-500 hover:text-gray-700"
                     }`}
                   >
-                    {label}
+                    {label}{" "}
+                    <span
+                      className={
+                        k === "uploaded" && counts.uploaded > 0
+                          ? "ml-1 px-1.5 py-0.5 rounded-full text-[10px] bg-red-500 text-white"
+                          : "ml-1 text-gray-400 font-normal"
+                      }
+                    >
+                      {counts[k]}
+                    </span>
                   </button>
                 ))}
               </div>
+              <p className="text-[11px] text-gray-400 -mt-3 mb-4">
+                {listStatus === "pending"
+                  ? "Waiting on the customer to upload everything."
+                  : listStatus === "uploaded"
+                    ? "The customer uploaded everything. Review it, then mark it completed."
+                    : "Taken care of by an agent."}
+              </p>
 
               {listLoading && rows.length === 0 ? (
                 <div className="flex justify-center py-12">
@@ -1006,7 +1057,9 @@ export default function DocumentsPage() {
                 </div>
               ) : rows.length === 0 ? (
                 <div className="text-center py-12 text-gray-500 text-sm">
-                  No requests here
+                  {listStatus === "uploaded"
+                    ? "Nothing waiting for review"
+                    : "No requests here"}
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1033,18 +1086,22 @@ export default function DocumentsPage() {
                               )}
                               <span
                                 className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
-                                  r.status === "received"
+                                  r.completedAt
                                     ? "bg-emerald-100 text-emerald-700"
-                                    : r.status === "closed"
-                                      ? "bg-gray-200 text-gray-600"
-                                      : "bg-amber-100 text-amber-700"
+                                    : r.allReceivedAt
+                                      ? "bg-blue-100 text-blue-700"
+                                      : r.status === "closed"
+                                        ? "bg-gray-200 text-gray-600"
+                                        : "bg-amber-100 text-amber-700"
                                 }`}
                               >
-                                {r.status === "received"
+                                {r.completedAt
                                   ? "COMPLETED"
-                                  : r.status === "closed"
-                                    ? "LINK CLOSED"
-                                    : `PENDING · ${daysLeft}d left`}
+                                  : r.allReceivedAt
+                                    ? "UPLOADED · NEEDS REVIEW"
+                                    : r.status === "closed"
+                                      ? "LINK CLOSED"
+                                      : `PENDING · ${daysLeft}d left`}
                               </span>
                             </div>
                             <p className="text-xs text-gray-500 mt-0.5">
@@ -1056,8 +1113,15 @@ export default function DocumentsPage() {
                               {fmtDate(r.createdAt)}
                               {r.createdBy ? ` · by ${r.createdBy}` : ""}
                             </p>
+                            {r.completedAt && (
+                              <p className="text-[11px] text-emerald-700 flex items-center gap-1 mt-0.5">
+                                <Check className="w-3 h-3" /> Completed{" "}
+                                {fmtDate(r.completedAt)}
+                                {r.completedBy ? ` by ${r.completedBy}` : ""}
+                              </p>
+                            )}
                           </div>
-                          <div className="flex gap-2 flex-shrink-0">
+                          <div className="flex flex-wrap justify-end gap-2 flex-shrink-0">
                             <button
                               onClick={() => openViewer(r)}
                               disabled={up === 0 || viewLoading}
@@ -1079,7 +1143,34 @@ export default function DocumentsPage() {
                                 </>
                               )}
                             </button>
-                            {r.status === "closed" && (
+                            {r.completedAt ? (
+                              <button
+                                onClick={() => markCompleted(r, true)}
+                                disabled={completingId === r.id}
+                                className="px-3 py-1.5 text-sm rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50"
+                              >
+                                Undo
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => markCompleted(r)}
+                                disabled={completingId === r.id || up === 0}
+                                title={
+                                  up === 0
+                                    ? "Nothing uploaded yet"
+                                    : "Mark as taken care of"
+                                }
+                                className="px-3 py-1.5 text-sm rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 flex items-center gap-1.5"
+                              >
+                                {completingId === r.id ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Check className="w-4 h-4" />
+                                )}{" "}
+                                Mark completed
+                              </button>
+                            )}
+                            {r.status === "closed" && !r.completedAt && (
                               <button
                                 onClick={() => reopen(r)}
                                 className="px-3 py-1.5 text-sm rounded-lg bg-amber-100 text-amber-800 hover:bg-amber-200 flex items-center gap-1.5"
@@ -1106,7 +1197,7 @@ export default function DocumentsPage() {
                             <span>
                               {up} of {r.items.length} uploaded
                             </span>
-                            {r.status === "open" && (
+                            {r.status === "open" && !r.completedAt && (
                               <span className="flex items-center gap-1">
                                 Reminders:
                                 {REMINDER_PILLS.map((p) => {

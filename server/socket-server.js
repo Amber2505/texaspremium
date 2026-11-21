@@ -891,7 +891,7 @@ async function processDocumentReminders() {
     if (weekday === 'Sun' || nowDec < 10 || nowDec >= 19) return; // Mon–Sat, 10 AM–7 PM
 
     const open = await documentRequestsCollection
-      .find({ allReceivedAt: null, expiresAt: { $gt: now } })
+      .find({ allReceivedAt: null, completedAt: null, expiresAt: { $gt: now } })
       .toArray();
 
     for (const req of open) {

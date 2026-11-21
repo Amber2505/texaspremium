@@ -19,21 +19,38 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const customerName = String(body.customerName || "").replace(/\s+/g, " ").trim().slice(0, 80);
+    const customerName = String(body.customerName || "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80);
     const customerPhone = String(body.customerPhone || "").replace(/\D/g, "");
-    const language = body.language === "es" ? "es" : body.language === "en" ? "en" : null;
-    const specs = Array.isArray(body.specs) ? (body.specs as RequestSpec[]) : [];
+    const language =
+      body.language === "es" ? "es" : body.language === "en" ? "en" : null;
+    const specs = Array.isArray(body.specs)
+      ? (body.specs as RequestSpec[])
+      : [];
 
-    if (!customerName) return NextResponse.json({ error: "Customer name is required." }, { status: 400 });
+    if (!customerName)
+      return NextResponse.json(
+        { error: "Customer name is required." },
+        { status: 400 },
+      );
     if (customerPhone.length !== 10)
-      return NextResponse.json({ error: "Customer phone number must be 10 digits." }, { status: 400 });
-    if (!language) return NextResponse.json({ error: "Pick a language." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Customer phone number must be 10 digits." },
+        { status: 400 },
+      );
+    if (!language)
+      return NextResponse.json({ error: "Pick a language." }, { status: 400 });
 
     let items;
     try {
       items = buildItems(specs);
     } catch (e) {
-      return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+      return NextResponse.json(
+        { error: (e as Error).message },
+        { status: 400 },
+      );
     }
 
     const now = new Date();
@@ -56,10 +73,17 @@ export async function POST(req: NextRequest) {
 
     const col = await requestsCollection();
     const { insertedId } = await col.insertOne(doc);
-    return NextResponse.json({ success: true, id: insertedId.toString(), link: linkFor(doc) });
+    return NextResponse.json({
+      success: true,
+      id: insertedId.toString(),
+      link: linkFor(doc),
+    });
   } catch (e) {
     console.error("Create document request error:", e);
-    return NextResponse.json({ error: "Couldn't create the request." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Couldn't create the request." },
+      { status: 500 },
+    );
   }
 }
 
@@ -68,16 +92,17 @@ export async function GET(req: NextRequest) {
     const sp = req.nextUrl.searchParams;
     const search = (sp.get("search") || "").trim();
     const status = sp.get("status") || "pending";
-    const now = new Date();
 
     const filter: Record<string, unknown> = {};
-    // Pending = anything not fully uploaded (open or closed link); Completed = all received
-    if (status === "pending") Object.assign(filter, { allReceivedAt: null });
-    else if (status === "completed")
-      Object.assign(filter, { allReceivedAt: { $ne: null } });
-    else if (status === "open") Object.assign(filter, { allReceivedAt: null, expiresAt: { $gt: now } });
-    else if (status === "received") Object.assign(filter, { allReceivedAt: { $ne: null } });
-    else if (status === "closed") Object.assign(filter, { allReceivedAt: null, expiresAt: { $lte: now } });
+    // pending   = customer hasn't uploaded everything yet
+    // uploaded  = customer uploaded everything, an agent hasn't handled it
+    // completed = an agent marked it done
+    const STAGES: Record<string, Record<string, unknown>> = {
+      pending: { completedAt: null, allReceivedAt: null },
+      uploaded: { completedAt: null, allReceivedAt: { $ne: null } },
+      completed: { completedAt: { $ne: null } },
+    };
+    Object.assign(filter, STAGES[status] || STAGES.pending);
 
     if (search) {
       const digits = search.replace(/\D/g, "");
@@ -89,7 +114,17 @@ export async function GET(req: NextRequest) {
     }
 
     const col = await requestsCollection();
-    const docs = await col.find(filter).sort({ createdAt: -1 }).limit(100).toArray();
+    const [docs, pendingCount, uploadedCount, completedCount] =
+      await Promise.all([
+        col
+          .find(filter)
+          .sort({ completedAt: -1, lastUploadAt: -1, createdAt: -1 })
+          .limit(100)
+          .toArray(),
+        col.countDocuments(STAGES.pending),
+        col.countDocuments(STAGES.uploaded),
+        col.countDocuments(STAGES.completed),
+      ]);
 
     const requests = docs.map((d) => ({
       id: d._id!.toString(),
@@ -103,13 +138,33 @@ export async function GET(req: NextRequest) {
       status: requestStatus(d),
       sentReminders: d.sentReminders || [],
       allReceivedAt: d.allReceivedAt,
-      hasNew: !!d.lastUploadAt && (!d.lastViewedAt || d.lastUploadAt > d.lastViewedAt),
-      items: d.items.map((i) => ({ id: i.id, label: i.labelEn, uploaded: itemUploaded(i), review: i.review })),
+      completedAt: d.completedAt || null,
+      completedBy: d.completedBy || null,
+      hasNew:
+        !!d.lastUploadAt &&
+        (!d.lastViewedAt || d.lastUploadAt > d.lastViewedAt),
+      items: d.items.map((i) => ({
+        id: i.id,
+        label: i.labelEn,
+        uploaded: itemUploaded(i),
+        review: i.review,
+      })),
     }));
 
-    return NextResponse.json({ success: true, requests });
+    return NextResponse.json({
+      success: true,
+      requests,
+      counts: {
+        pending: pendingCount,
+        uploaded: uploadedCount,
+        completed: completedCount,
+      },
+    });
   } catch (e) {
     console.error("List document requests error:", e);
-    return NextResponse.json({ error: "Couldn't load requests." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Couldn't load requests." },
+      { status: 500 },
+    );
   }
 }

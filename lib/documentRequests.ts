@@ -91,6 +91,8 @@ export interface DocRequest {
   lastViewedAt: Date | null;
   paymentLinkId?: ObjectId | null; // set when the request came from a payment link
   laterTextAt?: Date | null; // "upload later" text sent
+  completedAt?: Date | null; // agent marked it taken care of
+  completedBy?: string | null;
 }
 
 export type RequestSpec =
