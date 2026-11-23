@@ -5,7 +5,10 @@
 # reminders keep running with every office computer off.
 #   report  -> sign in to AgencyMatrix, pull the due-date report, send the rows
 #   policy  -> open the policy on the carrier site (signing in if needed),
-#              send the page text; astral_api decides text / skip / review
+#              send the page text; astral_api decides text / skip / review.
+#              Carriers with no known lookup: an AI agent searches the policy and
+#              clicks through to billing, like a person; what works is saved per
+#              site and replayed with no AI.
 #
 # Logins come from Bitwarden (synced every hour, so changed passwords are picked
 # up). Email verification codes are read from EMAIL_INTERNAL. Authenticator-app
@@ -116,6 +119,34 @@ class Vault:
         return {"user": best["login"].get("username") or "", "pass": best["login"]["password"],
                 "item": best.get("name")}
 
+
+    def site_for(self, names):
+        """The carrier's agent site from Bitwarden, matched by carrier name words
+        ("Kemper Insurance company" -> the Bitwarden login named/linked "kemper")."""
+        self.load()
+        words = {w for n in names for w in re.findall(r"[a-z]{4,}", (n or "").lower())} - GENERIC_WORDS
+        if not words:
+            return None
+        best, score = None, 0.0
+        for it in self.items:
+            uris = [(u.get("uri") or "").strip() for u in (it["login"].get("uris") or [])]
+            uris = [u if "://" in u else "https://" + u for u in uris if u]
+            if not uris:
+                continue
+            hay = ((it.get("name") or "") + " " + " ".join(uris)).lower()
+            s = sum(1 for w in words if w in hay)
+            if not s:
+                continue
+            if re.search(r"agent|producer|portal", hay):
+                s += 0.5
+            if s > score:
+                best, score = uris[0], s
+        return best
+
+
+GENERIC_WORDS = {"insurance", "company", "casualty", "mutual", "county", "group", "agency", "services",
+                 "general", "national", "american", "texas", "lloyds", "exchange", "managing", "corporation",
+                 "underwriting", "underwriters", "specialty", "personal", "lines", "auto", "automobile"}
 
 vault = Vault()
 
@@ -409,6 +440,241 @@ def sign_in_if_needed(page, host, carrier):
     return f"Still on the sign-in page for {site_domain(host)}", did
 
 
+# ---------------- AI agent (finds a policy on a site with no known lookup) ----------------
+# Like a person would: search the policy number, open it, click to the billing page.
+# What worked is saved per site and replayed with no AI; AI only runs again when
+# the saved steps stop working.
+OBSERVE_JS = r"""() => {
+  const vis = (el) => el && el.offsetParent !== null && !el.disabled && el.getBoundingClientRect().width > 0;
+  document.querySelectorAll("[data-tpi]").forEach((e) => e.removeAttribute("data-tpi"));
+  const els = [...document.querySelectorAll("input, button, select, textarea, a, [role=button], [role=tab], [role=link], [onclick]")]
+    .filter(vis).filter((e) => !(e.tagName === "INPUT" && /^(hidden|password)$/i.test(e.type || ""))).slice(0, 140);
+  const out = els.map((e, i) => {
+    e.setAttribute("data-tpi", String(i));
+    return { i, tag: e.tagName.toLowerCase(), type: e.type || "", id: e.id || "", name: e.getAttribute("name") || "",
+      placeholder: e.placeholder || "", aria: e.getAttribute("aria-label") || "",
+      text: (e.innerText || e.value || e.title || "").trim().replace(/\s+/g, " ").slice(0, 50) };
+  });
+  return { url: location.href, title: document.title, elements: out,
+           text: (document.body && document.body.innerText || "").replace(/\s+\n/g, "\n").slice(0, 2500) };
+}"""
+
+POLICY_PAGE_JS = r"""(policy) => {
+  const norm = (s) => (s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const text = document.body && document.body.innerText || "";
+  return norm(text).includes(norm(policy)) &&
+    /amount due|next amount due|payment due|next due|due date|amount outstanding|current due|minimum due|balance due/i.test(text);
+}"""
+
+FIND_JS = r"""(d) => {
+  const vis = (el) => el && el.offsetParent !== null && !el.disabled;
+  document.querySelectorAll("[data-tp=r]").forEach((e) => e.removeAttribute("data-tp"));
+  let el = null;
+  if (d.id && !/\d{5,}/.test(d.id)) el = document.getElementById(d.id);
+  if (!vis(el) && d.name) el = document.querySelector(`${d.tag}[name="${CSS.escape(d.name)}"]`);
+  if (!vis(el) && d.placeholder) el = document.querySelector(`${d.tag}[placeholder="${CSS.escape(d.placeholder)}"]`);
+  const norm = (s) => (s || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (!vis(el) && d.text === "{policy}" && d.policy) el = [...document.querySelectorAll(d.tag || "a")].find((e) => vis(e) &&
+    norm(e.innerText || e.value).includes(norm(d.policy))) || null;
+  else if (!vis(el) && d.text) el = [...document.querySelectorAll(d.tag || "*")].find((e) => vis(e) &&
+    (e.innerText || e.value || e.title || "").trim().replace(/\s+/g, " ").slice(0, 50) === d.text) || null;
+  if (!vis(el)) return false;
+  el.setAttribute("data-tp", "r");
+  return true;
+}"""
+
+
+def ai_next_action(policy, names, obs, history):
+    key = os.getenv("OPENAI_API_KEY")
+    if not key:
+        return {"action": "fail", "reason": "OPENAI_API_KEY not set"}
+    els = "\n".join(
+        f'[{e["i"]}] {e["tag"]}{("/" + e["type"]) if e["type"] else ""} '
+        f'{e["text"] or e["placeholder"] or e["aria"] or e["name"] or e["id"]!r}'
+        for e in obs["elements"])
+    prompt = (
+        "You operate an insurance AGENT portal in a web browser. Goal: open policy number "
+        f"{policy} (carrier: {', '.join(names)}) and get to the page that shows that policy's billing: "
+        "amount due and next payment due date. Sign-in is already handled for you.\n"
+        "Pick ONE next action. Answer JSON only, one of:\n"
+        '{"action":"click","i":N}\n'
+        '{"action":"type","i":N,"text":"...","enter":true|false}\n'
+        '{"action":"goto","url":"https://..."}\n'
+        '{"action":"back"}\n'
+        '{"action":"done"}   (this page shows the policy\'s amount due / due date)\n'
+        '{"action":"fail","reason":"..."}  (policy not found, or the site can\'t do it)\n'
+        "Tips: use the policy search box (often 'Policy #', 'Find', 'Quick Search', 'Search'); "
+        "open the matching policy from the results; billing is often under a 'Billing', 'Payments' "
+        "or 'Account' tab. Never type passwords. Don't repeat an action that didn't change anything.\n\n"
+        f"Your previous actions:\n{chr(10).join(history[-8:]) or '(none)'}\n\n"
+        f"URL: {obs['url']}\nTitle: {obs['title']}\n\nPage text (start):\n{obs['text']}\n\n"
+        f"Clickable / typeable elements:\n{els}"
+    )
+    try:
+        r = requests.post("https://api.openai.com/v1/chat/completions",
+                          headers={"Authorization": f"Bearer {key}"}, timeout=60,
+                          json={"model": os.getenv("DUE_AGENT_MODEL", AI_MODEL), "temperature": 0,
+                                "response_format": {"type": "json_object"},
+                                "messages": [{"role": "user", "content": prompt}]})
+        r.raise_for_status()
+        return json.loads(r.json()["choices"][0]["message"]["content"])
+    except Exception as e:
+        return {"action": "fail", "reason": f"AI error: {e}"[:200]}
+
+
+def _desc(e):
+    return {k: e[k] for k in ("tag", "id", "name", "placeholder", "text")}
+
+
+def _do_step(ctx, page, step, policy):
+    """Run one saved/AI step. Returns the page now in front (a click may open a new tab)."""
+    before = len(ctx.pages)
+    if step["do"] == "goto":
+        page.goto(step["url"], wait_until="domcontentloaded", timeout=45000)
+    elif step["do"] == "back":
+        page.go_back(wait_until="domcontentloaded", timeout=30000)
+    else:
+        if not page.evaluate(FIND_JS, {**step["target"], "policy": policy}):
+            raise RuntimeError(f"step target not found: {step['target']}")
+        loc = page.locator("[data-tp=r]").first
+        if step["do"] == "type":
+            loc.fill(step["text"].replace("{policy}", policy))
+            if step.get("enter"):
+                loc.press("Enter")
+        else:
+            loc.click()
+    settle(page, 3000)
+    if len(ctx.pages) > before:
+        newest = ctx.pages[-1]
+        settle(newest, 3000)
+        return newest
+    return page
+
+
+def _on_policy_page(page, policy):
+    try:
+        return bool(page.evaluate(POLICY_PAGE_JS, policy))
+    except Exception:
+        return False
+
+
+def run_agent(ctx, page, task):
+    policy, names = task["policy"], task.get("names") or []
+    start = task.get("portal") or vault.site_for(names)
+    if not start:
+        return {"error": f"No website known for {names[0] if names else 'this carrier'} "
+                         "(save its login in Bitwarden or its link on the Carriers list)", "text": ""}
+    host = (urlparse(start).hostname or "").lower()
+    site = site_domain(host)
+    carrier = names[0] if names else site
+
+    page.goto(start, wait_until="domcontentloaded", timeout=45000)
+    settle(page)
+    err, _ = sign_in_if_needed(page, host, carrier)
+    if err:
+        return {"error": err, **read_page(page)}
+    home = page.url
+
+    # 1) Saved steps for this site: no AI
+    saved = recipes().get(site, {}).get("agent")
+    if saved:
+        try:
+            cur = page
+            for step in saved:
+                cur = _do_step(ctx, cur, step, policy)
+            if _on_policy_page(cur, policy):
+                log(f"[agent] {site}: saved steps worked")
+                out = read_page(cur)
+                if cur is not page:
+                    cur.close()
+                return out
+            if cur is not page:
+                cur.close()
+        except Exception as e:
+            log(f"[agent] {site}: saved steps failed ({e}), asking AI")
+        page.goto(home, wait_until="domcontentloaded", timeout=45000)
+        settle(page)
+
+    # 2) AI drives the site, one action at a time
+    cur, history, steps = page, [], []
+    for _ in range(int(os.getenv("DUE_AGENT_MAX_STEPS", "15"))):
+        err, _ = sign_in_if_needed(cur, (urlparse(cur.url).hostname or host), carrier)
+        if err:
+            return {"error": err, **read_page(cur)}
+        if _on_policy_page(cur, policy):
+            break
+        obs = cur.evaluate(OBSERVE_JS)
+        act = ai_next_action(policy, names, obs, history)
+        kind = act.get("action")
+        by_i = {e["i"]: e for e in obs["elements"]}
+        if kind == "done":
+            break
+        if kind == "fail" or kind not in ("click", "type", "goto", "back"):
+            return {"error": f"AI couldn't find the policy: {act.get('reason') or kind}"[:200], **read_page(cur)}
+        if kind in ("click", "type"):
+            el = by_i.get(act.get("i"))
+            if not el:
+                history.append(f"(invalid element {act.get('i')})")
+                continue
+            text = str(act.get("text") or "")
+            step = {"do": kind, "target": _desc(el)}
+            if kind == "click" and _norm_js(policy) in _norm_js(el["text"]):
+                # A results link showing this policy number: match by the number next time
+                step["target"] = {**step["target"], "id": "", "text": "{policy}"}
+            if kind == "type":
+                step.update(text="{policy}" if _norm_js(text) == _norm_js(policy) else text,
+                            enter=bool(act.get("enter")))
+            history.append(f"{kind} [{el['i']}] {el['text'] or el['placeholder'] or el['name']!r}"
+                           + (f" text={text!r}" if kind == "type" else ""))
+            try:
+                loc = cur.locator(f'[data-tpi="{el["i"]}"]').first
+                before = len(ctx.pages)
+                if kind == "type":
+                    loc.fill(text)
+                    if act.get("enter"):
+                        loc.press("Enter")
+                else:
+                    loc.click()
+                settle(cur, 3000)
+                if len(ctx.pages) > before:
+                    cur = ctx.pages[-1]
+                    settle(cur, 3000)
+            except Exception as e:
+                history.append(f"  -> failed: {str(e)[:80]}")
+                continue
+        elif kind == "goto":
+            step = {"do": "goto", "url": str(act.get("url") or "")}
+            if not step["url"].startswith("https://"):
+                history.append("(goto needs https://)")
+                continue
+            history.append(f"goto {step['url']}")
+            cur.goto(step["url"], wait_until="domcontentloaded", timeout=45000)
+            settle(cur)
+        else:
+            step = {"do": "back"}
+            history.append("back")
+            cur.go_back(wait_until="domcontentloaded", timeout=30000)
+            settle(cur)
+        steps.append(step)
+    else:
+        return {"error": "AI ran out of steps before reaching the policy", **read_page(cur)}
+
+    if _on_policy_page(cur, policy) and steps:
+        # Save the steps with the policy number as a placeholder, so the next
+        # policy on this site needs no AI
+        if any(st.get("text") == "{policy}" for st in steps) or any(st["do"] == "goto" for st in steps):
+            save_recipe(site, "agent", steps)
+            log(f"[agent] {site}: learned {len(steps)} steps")
+    out = read_page(cur)
+    if cur is not page:
+        cur.close()
+    return out
+
+
+def _norm_js(s):
+    return re.sub(r"[^A-Z0-9]", "", (s or "").upper())
+
+
 # ---------------- Tasks ----------------
 def cell_text(html):
     t = re.sub(r"<br\s*/?>", " ", html, flags=re.I)
@@ -524,11 +790,15 @@ def main():
                     elif kind == "policy":
                         busy = True
                         try:
-                            result = run_policy(ctx, page, task)
+                            if task.get("mode") == "agent":
+                                result = run_agent(ctx, page, task)
+                            else:
+                                result = run_policy(ctx, page, task)
                         except Exception as e:
                             result = {"error": f"{type(e).__name__}: {e}"[:300], **read_page(page)}
                         out = api("/reminders/check", {"computer": NAME, "runId": task["runId"], "id": task["id"],
-                                                       "url": task["url"], **result})
+                                                       "url": task.get("url") or result.get("finalUrl") or "",
+                                                       **result})
                         log(f"[policy] {task['id']} -> {out.get('status')}"
                             f"{' (' + result['error'] + ')' if result.get('error') else ''}")
                     else:
