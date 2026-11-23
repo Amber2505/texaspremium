@@ -558,7 +558,19 @@ def _on_policy_page(page, policy):
         return False
 
 
-def run_agent(ctx, page, task):
+BILLING_RE = re.compile(r"amount due|next amount due|payment due|next due|due date|amount outstanding|"
+                        r"current due|minimum due|balance due", re.I)
+
+
+def shows_billing(result, policy):
+    text = result.get("text") or ""
+    return bool(policy) and _norm_js(policy) in _norm_js(text) and bool(BILLING_RE.search(text))
+
+
+SIGNIN_TROUBLE = re.compile(r"bitwarden|rejected|code|authenticator", re.I)
+
+
+def run_agent(ctx, page, task, recipe_key="agent"):
     policy, names = task["policy"], task.get("names") or []
     start = task.get("portal") or vault.site_for(names)
     if not start:
@@ -576,7 +588,7 @@ def run_agent(ctx, page, task):
     home = page.url
 
     # 1) Saved steps for this site: no AI
-    saved = recipes().get(site, {}).get("agent")
+    saved = recipes().get(site, {}).get(recipe_key)
     if saved:
         try:
             cur = page
@@ -662,8 +674,12 @@ def run_agent(ctx, page, task):
     if _on_policy_page(cur, policy) and steps:
         # Save the steps with the policy number as a placeholder, so the next
         # policy on this site needs no AI
-        if any(st.get("text") == "{policy}" for st in steps) or any(st["do"] == "goto" for st in steps):
-            save_recipe(site, "agent", steps)
+        # Only steps that work for any policy: ones that use the policy number, or (starting
+        # from a policy page) generic clicks like the Billing tab
+        uses_policy = any(st.get("text") == "{policy}" or (st.get("target") or {}).get("text") == "{policy}"
+                          for st in steps)
+        if uses_policy or recipe_key == "agent_after_lookup":
+            save_recipe(site, recipe_key, steps)
             log(f"[agent] {site}: learned {len(steps)} steps")
     out = read_page(cur)
     if cur is not page:
@@ -794,6 +810,16 @@ def main():
                                 result = run_agent(ctx, page, task)
                             else:
                                 result = run_policy(ctx, page, task)
+                                # The saved lookup didn't reach the billing page (site changed,
+                                # billing on another tab...): let the AI take it from there
+                                policy = task.get("policy") or (task.get("search") or {}).get("policy") or ""
+                                if policy and not shows_billing(result, policy) and \
+                                        not SIGNIN_TROUBLE.search(result.get("error") or ""):
+                                    log(f"[policy] {task['id']}: lookup didn't reach billing, AI takes over")
+                                    alt = run_agent(ctx, page, {**task, "policy": policy, "portal": task["url"]},
+                                                    recipe_key="agent_after_lookup")
+                                    if not alt.get("error") or not result.get("text"):
+                                        result = alt
                         except Exception as e:
                             result = {"error": f"{type(e).__name__}: {e}"[:300], **read_page(page)}
                         out = api("/reminders/check", {"computer": NAME, "runId": task["runId"], "id": task["id"],
