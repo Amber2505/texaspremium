@@ -1113,6 +1113,16 @@ def take_over(ctx, task):
 
 def main():
     os.makedirs(PROFILE, exist_ok=True)
+    # A container that was killed leaves Chrome's lock files on the volume, and the
+    # next start then refuses the profile ("in use on another computer"). Only this
+    # worker uses the volume, so clear them.
+    for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        try:
+            os.unlink(os.path.join(PROFILE, name))  # unlink also removes broken symlinks
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            log(f"Couldn't clear {name}: {e}")
     headless = start_screen()
     with sync_playwright() as p:
         # Looks like a normal person's Chrome: real (non-headless) window on a virtual
