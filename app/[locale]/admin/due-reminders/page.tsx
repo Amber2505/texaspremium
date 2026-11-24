@@ -12,6 +12,7 @@ import {
 import AdminShell from "../_components/AdminShell";
 import CodeGate from "../_components/CodeGate";
 import CarrierTraining from "./CarrierTraining";
+import CloudHelp from "./CloudHelp";
 
 type Status = "pending" | "sent" | "would_send" | "skipped" | "review";
 
@@ -246,7 +247,7 @@ export default function DueRemindersPage() {
                 </h1>
                 <p className="text-sm text-gray-500">
                   Checked on each carrier&apos;s site before texting. Runs 9
-                  AM–7 PM, Monday–Saturday. AM, Monday–Saturday.
+                  AM–7 PM, Monday–Saturday.
                 </p>
               </div>
               <div className="flex items-center gap-1.5">
@@ -348,6 +349,8 @@ export default function DueRemindersPage() {
                 "Hasn't run for this day."
               )}
             </div>
+
+            <CloudHelp />
 
             <CarrierTraining checks={checks} />
 

@@ -1,7 +1,9 @@
 // app/[locale]/admin/due-reminders/CloudHelp.tsx
-// When the cloud browser is stuck (sign-in, can't find the policy, unknown site),
-// it shows up here live. Click on the screenshot and type to drive it; press Done
-// on the billing page. The steps are remembered for that carrier.
+// The cloud browser, live on the page. While it checks a policy you watch it work
+// and can press Take control or Stop task at any time. When it's stuck (sign-in,
+// can't find the policy, unknown site) it asks you to take over. You click on the
+// screen and type to drive it, then press Done on the billing page. Your steps are
+// remembered for that carrier, so next time it does it alone (no AI).
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -11,8 +13,12 @@ import {
   CornerDownLeft,
   Hand,
   Loader2,
+  Monitor,
   MousePointerClick,
+  Pause,
+  Play,
   SkipForward,
+  Square,
 } from "lucide-react";
 
 interface HelpReq {
@@ -28,8 +34,24 @@ interface HelpReq {
   updated_at: string;
 }
 
+interface LiveState {
+  online: boolean;
+  busy: boolean;
+  taskId: string;
+  carrier: string;
+  policy: string;
+  customer?: string | null;
+  note: string;
+  paused: boolean;
+  control?: string | null;
+  url: string;
+  screenshot: string;
+}
+
 export default function CloudHelp() {
   const [reqs, setReqs] = useState<HelpReq[]>([]);
+  const [live, setLive] = useState<LiveState | null>(null);
+  const [handing, setHanding] = useState<"" | "take" | "stop">("");
   const [text, setText] = useState("");
   const [goUrl, setGoUrl] = useState("");
   const [sending, setSending] = useState(false);
@@ -41,18 +63,43 @@ export default function CloudHelp() {
 
   const load = useCallback(async () => {
     try {
-      const d = await fetch("/api/due-reminders?help=1", {
+      const d = await fetch("/api/due-reminders?live=1", {
         cache: "no-store",
       }).then((r) => r.json());
       setReqs(d.help || []);
+      setLive(d.live || null);
     } catch {}
   }, []);
 
   useEffect(() => {
     load();
-    const id = setInterval(load, 2500);
+    const id = setInterval(load, 2000);
     return () => clearInterval(id);
   }, [load]);
+
+  // Clear "Handing over…" once the browser reacts (help opens or the task ends)
+  useEffect(() => {
+    if (handing && (reqs.length || !live?.busy)) setHanding("");
+  }, [handing, reqs.length, live?.busy]);
+
+  const control = async (c: "take" | "stop" | "pause" | "resume") => {
+    setError("");
+    if (c === "take" || c === "stop") setHanding(c);
+    try {
+      const res = await fetch("/api/due-reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "live", control: c }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(data.detail || data.error || "Couldn't send");
+      setTimeout(load, 800);
+    } catch (e) {
+      setHanding("");
+      setError(e instanceof Error ? e.message : "Couldn't send");
+    }
+  };
 
   const req = reqs[0];
 
@@ -89,7 +136,115 @@ export default function CloudHelp() {
     act({ type: "click", x, y });
   };
 
-  if (!req) return null;
+  if (!req) {
+    // Not stuck: show what the cloud browser is doing right now
+    if (!live) return null;
+    if (!live.busy) {
+      return (
+        <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-2xl px-4 py-2.5 mb-4 text-sm">
+          <Monitor className="w-4 h-4 text-gray-400" />
+          <span
+            className={`w-2 h-2 rounded-full ${
+              !live.online
+                ? "bg-red-500"
+                : live.paused
+                  ? "bg-amber-500"
+                  : "bg-green-500"
+            }`}
+          />
+          <span className="text-gray-700">
+            Cloud browser{" "}
+            {!live.online
+              ? "is offline (check the due-worker on Railway)"
+              : live.paused
+                ? "is paused"
+                : "is idle. It checks policies 9 AM–7 PM."}
+          </span>
+          <button
+            onClick={() => control(live.paused ? "resume" : "pause")}
+            className="ml-auto px-3 py-1 rounded-lg border border-gray-300 text-gray-700 flex items-center gap-1"
+          >
+            {live.paused ? (
+              <>
+                <Play className="w-3.5 h-3.5" /> Resume
+              </>
+            ) : (
+              <>
+                <Pause className="w-3.5 h-3.5" /> Pause
+              </>
+            )}
+          </button>
+          {error && <span className="text-red-600">{error}</span>}
+        </div>
+      );
+    }
+    return (
+      <div className="bg-slate-50 border-2 border-slate-300 rounded-2xl p-4 mb-4">
+        <div className="flex flex-wrap items-start gap-3 mb-2">
+          <Monitor className="w-6 h-6 text-slate-600 flex-shrink-0 mt-0.5" />
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-gray-900">
+              Cloud browser is checking {live.carrier || "a policy"}
+              {live.policy ? ` · policy ${live.policy}` : ""}
+              {live.customer ? ` · ${live.customer}` : ""}
+            </p>
+            <p className="text-sm text-gray-600 mt-0.5 flex items-center gap-1.5">
+              <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
+              {handing === "take"
+                ? "Handing control to you…"
+                : handing === "stop"
+                  ? "Stopping…"
+                  : live.note || "Working…"}
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => control("take")}
+              disabled={!!handing}
+              className="px-3 py-2 text-sm font-semibold rounded-lg bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 flex items-center gap-1"
+            >
+              <Hand className="w-4 h-4" /> Take control
+            </button>
+            <button
+              onClick={() => control("stop")}
+              disabled={!!handing}
+              className="px-3 py-2 text-sm rounded-lg bg-white border border-red-300 text-red-600 hover:bg-red-50 disabled:opacity-50 flex items-center gap-1"
+            >
+              <Square className="w-4 h-4" /> Stop task
+            </button>
+            <button
+              onClick={() => control("pause")}
+              title="Finish this policy, then stop until you press Resume"
+              className="px-3 py-2 text-sm rounded-lg bg-white border border-gray-300 text-gray-600 flex items-center gap-1"
+            >
+              <Pause className="w-4 h-4" /> Pause
+            </button>
+          </div>
+        </div>
+        <p className="text-[11px] text-gray-500 truncate mb-1">{live.url}</p>
+        <div className="relative border border-gray-300 rounded-lg overflow-hidden bg-white">
+          {live.screenshot ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`data:image/jpeg;base64,${live.screenshot}`}
+              alt="Cloud browser"
+              className="w-full select-none"
+            />
+          ) : (
+            <div className="h-48 flex items-center justify-center text-sm text-gray-400">
+              Connecting to the screen…
+            </div>
+          )}
+          <span className="absolute top-2 left-2 px-2 py-0.5 rounded bg-black/60 text-white text-[11px]">
+            Live · press Take control to click
+          </span>
+        </div>
+        {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+      </div>
+    );
+  }
+
+  const tookControl = req.question.startsWith("You have control");
 
   return (
     <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-4 mb-4">
@@ -97,8 +252,10 @@ export default function CloudHelp() {
         <Hand className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
         <div className="min-w-0">
           <p className="font-semibold text-gray-900">
-            The cloud browser needs your help: {req.carrier || "carrier"} ·
-            policy {req.policy}
+            {tookControl
+              ? "You're in control"
+              : "The cloud browser needs your help"}
+            : {req.carrier || "carrier"} · policy {req.policy}
             {req.customer ? ` · ${req.customer}` : ""}
           </p>
           <p className="text-sm text-gray-700 mt-0.5">{req.question}</p>
@@ -226,7 +383,7 @@ export default function CloudHelp() {
           onClick={() => act({ type: "skip" })}
           className="px-3 py-2 text-sm rounded-lg bg-white border border-gray-300 text-gray-600 flex items-center gap-1"
         >
-          <SkipForward className="w-4 h-4" /> Skip
+          <SkipForward className="w-4 h-4" /> Stop task (skip)
         </button>
       </div>
       {error && <p className="text-sm text-red-600 mt-2">{error}</p>}

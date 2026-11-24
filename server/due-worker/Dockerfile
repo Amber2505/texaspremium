@@ -16,4 +16,5 @@ COPY worker.py .
 # Bitwarden's local data and the learned per-site steps across deploys.
 ENV DATA_DIR=/data BITWARDENCLI_APPDATA_DIR=/data/bw PYTHONUNBUFFERED=1
 # A real (headed) Chrome on a virtual screen looks more like a person than headless
-CMD ["xvfb-run", "-a", "-s", "-screen 0 1366x900x24", "python", "-u", "worker.py"]
+# worker.py starts its own virtual screen (Xvfb), so any Start Command works
+CMD ["python", "-u", "worker.py"]

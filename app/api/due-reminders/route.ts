@@ -14,6 +14,44 @@ export async function GET(req: NextRequest) {
       { error: "OFFICE_CAPTURE_KEY not set" },
       { status: 500 },
     );
+  // Live cloud browser: what it's doing now + any help request (one call for the page)
+  if (req.nextUrl.searchParams.get("live")) {
+    const opts = {
+      headers: { "X-Office-Key": KEY },
+      cache: "no-store" as const,
+    };
+    const [live, help] = await Promise.all([
+      fetch(`${ASTRAL}/reminders/live?watch=1`, opts)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      fetch(`${ASTRAL}/reminders/help`, opts)
+        .then((r) => (r.ok ? r.json() : {}))
+        .catch(() => ({})),
+    ]);
+    return NextResponse.json({
+      live,
+      help: (help as { help?: unknown[] }).help || [],
+    });
+  }
+  // Live cloud browser: what it's doing now + any help request (one call for the page)
+  if (req.nextUrl.searchParams.get("live")) {
+    const opts = {
+      headers: { "X-Office-Key": KEY },
+      cache: "no-store" as const,
+    };
+    const [live, help] = await Promise.all([
+      fetch(`${ASTRAL}/reminders/live?watch=1`, opts)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      fetch(`${ASTRAL}/reminders/help`, opts)
+        .then((r) => (r.ok ? r.json() : {}))
+        .catch(() => ({})),
+    ]);
+    return NextResponse.json({
+      live,
+      help: (help as { help?: unknown[] }).help || [],
+    });
+  }
   // Cloud browser waiting for a person's help (live screenshot)
   if (req.nextUrl.searchParams.get("help")) {
     const r = await fetch(`${ASTRAL}/reminders/help`, {
@@ -54,9 +92,35 @@ export async function POST(req: NextRequest) {
       { error: "OFFICE_CAPTURE_KEY not set" },
       { status: 500 },
     );
-  const { id, action, by, host, code, act } = await req
+  const { id, action, by, host, code, act, control } = await req
     .json()
     .catch(() => ({}));
+
+  // Take control / Stop task / Pause / Resume for the live cloud browser
+  if (action === "live") {
+    if (!["take", "stop", "pause", "resume"].includes(control))
+      return NextResponse.json({ error: "Bad request" }, { status: 400 });
+    const res = await fetch(`${ASTRAL}/reminders/live/control`, {
+      method: "POST",
+      headers: { "X-Office-Key": KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ control }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return NextResponse.json(data, { status: res.status });
+  }
+
+  // Take control / Stop task / Pause / Resume for the live cloud browser
+  if (action === "live") {
+    if (!["take", "stop", "pause", "resume"].includes(control))
+      return NextResponse.json({ error: "Bad request" }, { status: 400 });
+    const res = await fetch(`${ASTRAL}/reminders/live/control`, {
+      method: "POST",
+      headers: { "X-Office-Key": KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ control }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return NextResponse.json(data, { status: res.status });
+  }
 
   // A click / typing / Done for the cloud browser that asked for help
   if (action === "help") {

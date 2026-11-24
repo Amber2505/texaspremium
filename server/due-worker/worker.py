@@ -315,12 +315,94 @@ REPORT_JS = r"""async (day) => {
 }"""
 
 
+# ---------------- Live view: the admin page watches this browser ----------------
+class Stopped(BaseException):
+    """Admin pressed Stop task. BaseException so no 'except Exception' swallows it."""
+
+
+class TakeOver(BaseException):
+    """Admin pressed Take control."""
+
+
+LIVE_EVERY = float(os.getenv("DUE_LIVE_EVERY_SEC", "2"))
+
+
+class Live:
+    def __init__(self):
+        self.task, self.status, self.last, self.watching = None, "Starting", 0.0, False
+        self.paused = False  # True while a person is driving (help mode) or a report runs
+        self.hold = False    # admin pressed Pause: finish nothing new until Resume
+        self.defer, self.pending = False, None  # hold a Take control until the AI's step is recorded
+
+    def start(self, task, status):
+        self.task, self.last, self.paused, self.defer, self.pending = task, 0.0, False, False, None
+        self.status = status
+        log(f"[live] {status}")
+
+    def say(self, status, page=None):
+        self.status = status[:200]
+        log(f"[live] {self.status}")
+        if page is not None:
+            self.tick(page, force=True)
+
+    def tick(self, page=None, force=False):
+        if not force and time.time() - self.last < LIVE_EVERY:
+            return
+        self.last = time.time()
+        t = self.task or {}
+        names = t.get("names") or []
+        body = {"computer": NAME, "id": t.get("id", ""), "carrier": names[0] if names else "",
+                "policy": t.get("policy") or (t.get("search") or {}).get("policy") or "",
+                "note": self.status, "url": "", "screenshot": ""}
+        if page is not None:
+            try:
+                body["url"] = page.url
+            except Exception:
+                pass
+            if self.watching and not self.paused:
+                body["screenshot"] = _shot(page)
+        try:
+            r = api("/reminders/live", body)
+        except Exception:
+            return  # astral not updated yet / network blip: never break a check over this
+        was = self.watching
+        self.watching = bool(r.get("watching"))
+        if self.watching and not was:
+            self.last = 0.0  # someone just opened the page: send a screenshot right away
+        self.hold = bool(r.get("paused"))
+        control = r.get("control") or (None if self.defer else self.pending)
+        if self.paused or not t.get("id"):
+            return
+        if self.defer:
+            self.pending = control or self.pending
+            return
+        self.pending = None
+        if control == "stop":
+            raise Stopped()
+        if control == "take":
+            raise TakeOver()
+
+    def idle(self, status="Idle"):
+        self.task, self.status, self.paused = None, status, False
+        self.tick(force=True)
+
+
+live = Live()
+
+
 def settle(page, ms=4000):
     try:
         page.wait_for_load_state("domcontentloaded", timeout=30000)
     except Exception:
         pass
-    page.wait_for_timeout(ms)
+    # Wait in small slices so the live view stays fresh and Stop/Take control react fast
+    end = time.time() + ms / 1000
+    while True:
+        live.tick(page)
+        left = end - time.time()
+        if left <= 0:
+            break
+        page.wait_for_timeout(int(min(left, LIVE_EVERY) * 1000))
 
 
 def click_or_enter(page, sel, field_sel):
@@ -583,7 +665,8 @@ _help_snooze_until = 0.0
 POINT_JS = r"""([x, y]) => {
   let el = document.elementFromPoint(x, y);
   if (!el) return null;
-  el = el.closest("a, button, input, select, textarea, [role=button], [role=tab], [role=link], [onclick], tr, li") || el;
+  el = el.closest("a, button, input, select, textarea, label, [role=button], [role=tab], [role=link], [role=menuitem], [onclick], tr, li");
+  if (!el) return null;  // clicked empty space: do it, but don't save it as a step
   return { tag: el.tagName.toLowerCase(), id: el.id || "", name: el.getAttribute("name") || "",
     placeholder: el.placeholder || "",
     text: (el.innerText || el.value || el.title || "").trim().replace(/\s+/g, " ").slice(0, 50) };
@@ -604,18 +687,30 @@ def _shot(page):
         return ""
 
 
-def ask_for_help(ctx, page, task, question):
-    """Returns (result, page, steps). result: done | skip | timeout | snoozed."""
+def ask_for_help(ctx, page, task, question, forced=False):
+    """Returns (result, page, steps). result: done | skip | timeout | snoozed.
+    forced: the admin pressed Take control (no snooze, no text message)."""
     global _help_snooze_until
-    if time.time() < _help_snooze_until:
+    if not forced and time.time() < _help_snooze_until:
         return "snoozed", page, []
+    live.paused = True  # first, so a stray Take control/Stop can't fire inside help mode
+    live.say(("Your turn: " if forced else "Waiting for your help: ") + question[:150], page)
+    try:
+        return _help_loop(ctx, page, task, question, forced)
+    finally:
+        live.paused = False
+        live.say("Back to work", None)
+
+
+def _help_loop(ctx, page, task, question, forced):
+    global _help_snooze_until
     hid = task["id"]
     policy = task.get("policy") or ""
     names = task.get("names") or []
     log(f"[help] asking for help: {question}")
     api("/reminders/help/open", {"id": hid, "computer": NAME, "carrier": names[0] if names else "",
                                  "policy": policy, "question": question, "url": page.url,
-                                 "screenshot": _shot(page)})
+                                 "screenshot": _shot(page), "quiet": forced})
     steps, deadline, last_frame = [], time.time() + HELP_WAIT_MIN * 60, time.time()
     while time.time() < deadline:
         acts = api("/reminders/help/take", {"id": hid}).get("actions") or []
@@ -667,7 +762,7 @@ def ask_for_help(ctx, page, task, question):
                     settle(page)
             except Exception as e:
                 log(f"[help] action {t} failed: {e}")
-        if acts or time.time() - last_frame > 12:
+        if acts or time.time() - last_frame > 4:
             try:
                 title = page.title()
             except Exception:
@@ -676,7 +771,9 @@ def ask_for_help(ctx, page, task, question):
             last_frame = time.time()
         time.sleep(1.5)
     api("/reminders/help/close", {"id": hid, "status": "timeout"})
-    _help_snooze_until = time.time() + 60 * 60  # don't keep blocking the queue for the next hour
+    if forced:
+        return "timeout", page, steps
+    _help_snooze_until = time.time() + 60 * 60
     log("[help] nobody answered; won't ask again for an hour")
     return "timeout", page, steps
 
@@ -719,6 +816,7 @@ def run_agent(ctx, page, task, recipe_key="agent"):
     host = (urlparse(start).hostname or "").lower()
     site = site_domain(host)
 
+    live.say(f"Opening {site} for policy {policy}", page)
     page.goto(start, wait_until="domcontentloaded", timeout=45000)
     settle(page)
     err, _ = sign_in_if_needed(page, host, carrier)
@@ -733,6 +831,7 @@ def run_agent(ctx, page, task, recipe_key="agent"):
     # 1) Saved steps for this site: no AI
     saved = recipes().get(site, {}).get(recipe_key)
     if saved:
+        live.say(f"Following the {len(saved)} saved steps for {site}", page)
         try:
             cur = page
             for step in saved:
@@ -752,8 +851,12 @@ def run_agent(ctx, page, task, recipe_key="agent"):
 
     # 2) AI drives the site, one action at a time; a person helps when it's stuck
     cur, history, steps = page, [], []
-    stuck = None
+    stuck, took = None, False
     for _ in range(int(os.getenv("DUE_AGENT_MAX_STEPS", "15"))):
+      try:
+        live.defer = False
+        live.say(f"AI is looking for policy {policy}" + (f" · last: {history[-1]}" if history else ""), cur)
+        live.defer = True  # from here a Take control waits for this step to be recorded
         err, _ = sign_in_if_needed(cur, (urlparse(cur.url).hostname or host), carrier)
         if err:
             res, cur, _ = ask_for_help(ctx, cur, task, f"{err}. Please sign in on the screen, then press Done.")
@@ -821,13 +924,24 @@ def run_agent(ctx, page, task, recipe_key="agent"):
             cur.go_back(wait_until="domcontentloaded", timeout=30000)
             settle(cur)
         steps.append(step)
+      except TakeOver:
+        stuck, took = "You took control", True
+        break
+      finally:
+        live.defer = False
     else:
         stuck = "AI ran out of steps before reaching the policy"
+    if not took and live.pending == "take":  # pressed during the AI's very last step
+        live.pending, stuck, took = None, "You took control", True
 
     if stuck:
         res, cur, hsteps = ask_for_help(
-            ctx, cur, task, f"I couldn't get to policy {policy}'s billing on {site} ({stuck}). "
-                            "Please click through to the page that shows its amount due, then press Done.")
+            ctx, cur, task,
+            (f"You have control of {site}. Click through to policy {policy}'s amount due, then press Done."
+             if took else
+             f"I couldn't get to policy {policy}'s billing on {site} ({stuck}). "
+             "Please click through to the page that shows its amount due, then press Done."),
+            forced=took)
         if res != "done":
             return {"error": stuck[:200], **read_page(cur)}
         steps += hsteps
@@ -843,6 +957,7 @@ def run_agent(ctx, page, task, recipe_key="agent"):
         if uses_policy or recipe_key == "agent_after_lookup":
             save_recipe(site, recipe_key, steps)
             log(f"[agent] {site}: learned {len(steps)} steps{' (with help)' if helped else ''}")
+    live.say(f"Reading policy {policy}'s billing", cur)
     out = read_page(cur)
     if cur is not page:
         cur.close()
@@ -904,6 +1019,7 @@ def run_policy(ctx, page, task):
     search = task.get("search")
     policy = (search or {}).get("policy") or ""
 
+    live.say(f"Opening {site_domain(host)}" + (f" for policy {policy}" if policy else ""), page)
     page.goto(url, wait_until="domcontentloaded", timeout=45000)
     settle(page)
     err, signed_in = sign_in_if_needed(page, host, site_domain(host))
@@ -931,6 +1047,7 @@ def run_policy(ctx, page, task):
                 done = True
         if not done:
             return {"error": "Couldn't find the policy search box", **read_page(page)}
+        live.say(f"Searching policy {policy}", page)
         page.locator("[data-tp=search]").first.fill(policy)
         before = len(ctx.pages)
         click_or_enter(page, "[data-tp=searchgo]", "[data-tp=search]")
@@ -955,13 +1072,53 @@ if (!window.chrome) window.chrome = { runtime: {} };
 """
 
 
+def start_screen():
+    """Real Chrome needs a screen. Start a virtual one (Xvfb) if there isn't one, so it
+    works even when Railway's Start Command skips xvfb-run. Returns True = run headless."""
+    if os.getenv("HEADLESS", "0") == "1":
+        return True
+    if os.environ.get("DISPLAY"):
+        return False
+    try:
+        subprocess.Popen(["Xvfb", ":99", "-screen", "0", "1366x900x24", "-nolisten", "tcp", "-ac"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        log("Xvfb isn't installed: running Chrome headless")
+        return True
+    os.environ["DISPLAY"] = ":99"
+    for _ in range(100):
+        if os.path.exists("/tmp/.X11-unix/X99"):
+            break
+        time.sleep(0.1)
+    log("Virtual screen :99 started")
+    return False
+
+
+def take_over(ctx, task):
+    """Admin pressed Take control outside the AI loop (signing in, saved steps, search)."""
+    page = ctx.pages[-1] if ctx.pages else ctx.new_page()
+    policy = task.get("policy") or (task.get("search") or {}).get("policy") or ""
+    res, page, steps = ask_for_help(ctx, page, {**task, "policy": policy},
+                                    f"You have control. Click through to policy {policy}'s amount due, "
+                                    "then press Done.", forced=True)
+    if res != "done":
+        return {"error": "Taken over from the admin page and not finished", **read_page(page)}
+    if steps and task.get("mode") == "agent" and any(
+            st.get("text") == "{policy}" or (st.get("target") or {}).get("text") == "{policy}" for st in steps):
+        site = site_domain(urlparse(steps[0].get("url") or page.url).hostname or "")
+        save_recipe(site, "agent", steps)
+        log(f"[agent] {site}: learned {len(steps)} steps from you")
+    return read_page(page)
+
+
 def main():
     os.makedirs(PROFILE, exist_ok=True)
+    headless = start_screen()
     with sync_playwright() as p:
         # Looks like a normal person's Chrome: real (non-headless) window on a virtual
         # screen, a regular Chrome user agent, no automation flags, Texas time zone.
         ctx = p.chromium.launch_persistent_context(
-            PROFILE, headless=os.getenv("HEADLESS", "0") == "1",
+            PROFILE, headless=headless,
             viewport={"width": 1366, "height": 900}, locale="en-US", timezone_id="America/Chicago",
             user_agent=os.getenv("BROWSER_UA", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                                                "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"),
@@ -974,15 +1131,25 @@ def main():
         log(f"Cloud worker '{NAME}' started")
         while True:
             busy = False
+            if live.hold:  # Paused from the admin page
+                live.idle("Paused from the admin page")
+                time.sleep(10)
+                continue
             try:
                 for _ in range(25):
+                    if live.hold:
+                        break
                     task = api("/reminders/next", {"computer": NAME})
                     kind = task.get("type")
                     if kind == "report":
                         busy = True
+                        live.start(task, "Pulling the due-date report from AgencyMatrix")
+                        live.paused = True  # no Take control / Stop on the report
                         run_report(page, task)
+                        live.paused = False
                     elif kind == "policy":
                         busy = True
+                        live.start(task, "Starting a policy check")
                         try:
                             if task.get("mode") == "agent":
                                 result = run_agent(ctx, page, task)
@@ -997,8 +1164,20 @@ def main():
                                                     recipe_key="agent_after_lookup")
                                     if not alt.get("error") or not result.get("text"):
                                         result = alt
+                        except Stopped:
+                            log(f"[policy] {task['id']}: stopped from the admin page")
+                            result = {"error": "Stopped from the admin page", **read_page(ctx.pages[-1])}
+                        except TakeOver:
+                            result = take_over(ctx, task)
                         except Exception as e:
                             result = {"error": f"{type(e).__name__}: {e}"[:300], **read_page(page)}
+                        # Close extra tabs a carrier site opened so the next check starts clean
+                        for extra in ctx.pages[1:]:
+                            if extra is not page:
+                                try:
+                                    extra.close()
+                                except Exception:
+                                    pass
                         out = api("/reminders/check", {"computer": NAME, "runId": task["runId"], "id": task["id"],
                                                        "url": task.get("url") or result.get("finalUrl") or "",
                                                        **result})
@@ -1006,13 +1185,14 @@ def main():
                             f"{' (' + result['error'] + ')' if result.get('error') else ''}")
                     else:
                         break
-            except Exception:
+            except (Exception, Stopped, TakeOver):
                 log("[loop] error:\n" + traceback.format_exc()[-1500:])
                 try:
                     page.close()
                 except Exception:
                     pass
                 page = ctx.new_page()
+            live.idle()
             time.sleep(5 if busy else 60)
 
 
