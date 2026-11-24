@@ -2929,12 +2929,22 @@ export default function AccountingPage() {
 
   const loadCashPayroll = async () => {
     try {
-      const r = await fetch(`/api/accounting/cash-payroll?month=${monthKey}`);
+      const r = await fetch(`/api/accounting/cash-payroll?month=${monthKey}`, {
+        cache: "no-store",
+      });
       if (r.ok) setCashPayroll((await r.json()).entries || []);
+      else console.error("Couldn't load cash payroll", r.status);
     } catch {
       /* silent */
     }
   };
+
+  // Load cash payroll on open and on every month change
+  useEffect(() => {
+    if (isCheckingAuth) return;
+    loadCashPayroll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthKey, isCheckingAuth]);
 
   const addCashPayroll = async (e: {
     date: string;
