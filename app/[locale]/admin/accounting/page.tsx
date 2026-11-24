@@ -2910,7 +2910,8 @@ export default function AccountingPage() {
     setSquarePayouts([]);
     setGlobalRecon(null);
     setSelectedDate("all");
-  }, [monthKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monthKey, isCheckingAuth]);
 
   const loadManualMatches = async () => {
     try {
@@ -3075,7 +3076,9 @@ export default function AccountingPage() {
       setSquarePayouts(payoutsData.payouts || []);
       setSquarePendingPayouts(payoutsData.sentPayouts || []);
       setSquareTotalInTransit(payoutsData.totalSent || 0);
-      setGlobalRecon(buildGlobalReconciliation(days, filteredByDate));
+      setGlobalRecon(
+        buildGlobalReconciliation(days, filteredByDate, manualMatches),
+      );
       // Load Plaid bank transactions for verification
       try {
         const plaidRes = await fetch("/api/plaid/transactions");
