@@ -27,6 +27,7 @@ import subprocess
 import time
 import traceback
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
 
@@ -1166,6 +1167,84 @@ def run_report(page, task):
     log(f"[report] sent {sum(len(r['rows']) for r in results)} rows -> {out}")
 
 
+# ---------------- Daily: Transaction Details -> Accounting ----------------
+# Same direct request the Transaction Details page sends; the HTML table is turned
+# into the same columns as the CSV and sent to the Accounting import.
+TX_JS = r"""async ([day, asof, url]) => {
+  const form = new URLSearchParams({ territory: "21889", division: "23094", region: "22632", district: "69830",
+    "office[]": "0", customerType: "0", customerSubType: "0", company: "0|- All Companies -",
+    dateType: "trandate|Transaction Date", sdate: day, sdateDateRange: "Date Range", edate: day,
+    adate: asof, adateDateRange: "Date Range", orderBy: "All|All", tranType: "All|All", status: "Any|Any Status",
+    carrier: "0|No", saveReportFrequency: "None", saveReportReportType: "HTML-Link" });
+  const res = await fetch(url || "https://agents.agencymatrix.com/rptTransDetail2.php?Action=Run", { method: "POST",
+    credentials: "include", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form });
+  const html = await res.text();
+  if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const clean = (t) => (t || "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  let headers = null;
+  const rows = [];
+  for (const table of doc.querySelectorAll("table")) {
+    const trs = [...table.querySelectorAll("tr")];
+    const hi = trs.findIndex((tr) => {
+      const cells = [...tr.children].map((c) => clean(c.textContent));
+      return cells.includes("Receipt") && (cells.includes("Policy Type") || cells.includes("Method"));
+    });
+    if (hi < 0) continue;
+    const h = [...trs[hi].children].map((c) => clean(c.textContent));
+    if (!headers) headers = h;
+    for (const tr of trs.slice(hi + 1)) {
+      const cells = [...tr.children].map((c) => clean(c.textContent));
+      if (cells.length !== h.length || cells.join("") === h.join("")) continue;
+      const row = {};
+      h.forEach((name, i) => { if (name) row[name] = cells[i]; });
+      // A voided receipt may only be shown with strike-through: mark it like the CSV does
+      if (tr.querySelector("s, strike, del") || /line-through/.test(tr.getAttribute("style") || "")) row._void = "VOIDED";
+      rows.push(row);
+    }
+  }
+  const text = clean(doc.body ? doc.body.textContent : "");
+  if (!headers && !/no (records|results|transactions)|nothing to report/i.test(text))
+    return { ok: false, error: "Couldn't find the Transaction Detail table", sample: text.slice(0, 300) };
+  return { ok: true, headers: headers || [], rows };
+}"""
+
+SITE_URL = os.getenv("SITE_URL", "https://www.texaspremiumins.com").rstrip("/")
+
+
+def run_txreport(page, task):
+    """task: {"date": "11/23/2026", "dateKey": "2026-11-23"}"""
+    day, key = task["date"], task["dateKey"]
+
+    def done(ok, **info):
+        api("/accounting/pull-done", {"dateKey": key, "ok": ok, **info})
+
+    live.start(task, f"Pulling Transaction Details for {day} from AgencyMatrix")
+    live.paused = True
+    try:
+        page.goto(AM_HOME, wait_until="domcontentloaded", timeout=45000)
+        settle(page)
+        err, _ = sign_in_if_needed(page, AM_HOST, "AgencyMatrix")
+        if err:
+            return done(False, error=err)
+        asof = datetime.now(ZoneInfo("America/Chicago")).strftime("%m/%d/%Y")
+        out = page.evaluate(TX_JS, [day, asof, os.getenv("AM_TX_URL", "")])
+        if not out.get("ok"):
+            log(f"[tx] {day}: {out.get('error')} {out.get('sample', '')}")
+            return done(False, error=out.get("error", "")[:200])
+        r = requests.post(f"{SITE_URL}/api/accounting/auto-import", timeout=120,
+                          headers={"X-Office-Key": KEY},
+                          json={"dateKey": key, "headers": out["headers"], "rows": out["rows"]})
+        info = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        if not r.ok:
+            log(f"[tx] {day}: import refused {r.status_code} {info}")
+            return done(False, error=str(info.get("error") or f"HTTP {r.status_code}")[:200])
+        log(f"[tx] {day}: {len(out['rows'])} rows -> {info}")
+        return done(True, inserted=info.get("inserted", 0), rows=len(out["rows"]))
+    finally:
+        live.paused = False
+
+
 def run_policy(ctx, page, task):
     url = task["url"]
     host = (urlparse(url).hostname or "").lower()
@@ -1306,7 +1385,10 @@ def main():
                         break
                     task = api("/reminders/next", {"computer": NAME})
                     kind = task.get("type")
-                    if kind == "report":
+                    if kind == "txreport":
+                        busy = True
+                        run_txreport(page, task)
+                    elif kind == "report":
                         busy = True
                         live.start(task, "Pulling the due-date report from AgencyMatrix")
                         live.paused = True  # no Take control / Stop on the report

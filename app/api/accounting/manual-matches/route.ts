@@ -24,9 +24,8 @@ async function coll() {
 
 export async function GET(req: NextRequest) {
   const month = req.nextUrl.searchParams.get("month") || "";
-  if (!/^\d{4}-\d{2}$/.test(month)) {
+  if (!/^\d{4}-\d{2}$/.test(month))
     return NextResponse.json({ error: "month=YYYY-MM required" }, { status: 400 });
-  }
   const matches = await (await coll())
     .find({ dateKey: { $regex: `^${month}` } })
     .toArray();
@@ -34,22 +33,16 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => ({}));
-  const { receiptNo, dateKey, customer, amount, squarePaymentIds } = body as {
-    receiptNo?: string;
-    dateKey?: string;
-    customer?: string;
-    amount?: number;
-    squarePaymentIds?: string[];
-  };
-  if (
-    !receiptNo ||
-    !dateKey ||
-    !Array.isArray(squarePaymentIds) ||
-    squarePaymentIds.length === 0
-  ) {
+  const { receiptNo, dateKey, customer, amount, squarePaymentIds } =
+    (await req.json().catch(() => ({}))) as {
+      receiptNo?: string;
+      dateKey?: string;
+      customer?: string;
+      amount?: number;
+      squarePaymentIds?: string[];
+    };
+  if (!receiptNo || !dateKey || !Array.isArray(squarePaymentIds) || !squarePaymentIds.length)
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
-  }
   const _id = `${receiptNo}_${dateKey}`;
   await (await coll()).updateOne(
     { _id },

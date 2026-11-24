@@ -7,6 +7,9 @@ import React, { useState, useCallback, useEffect } from "react";
 import AdminShell from "../_components/AdminShell";
 import CodeGate from "../_components/CodeGate";
 import AgencyFeeChart from "./_components/AgencyFeeChart";
+import CashPayrollCard, {
+  type CashPayrollEntry,
+} from "./_components/CashPayrollCard";
 import {
   Upload,
   ChevronDown,
@@ -2873,6 +2876,7 @@ export default function AccountingPage() {
     null,
   );
   const [manualMatches, setManualMatches] = useState<ManualMatch[]>([]);
+  const [cashPayroll, setCashPayroll] = useState<CashPayrollEntry[]>([]);
 
   const monthKey = getMonthKey(viewYear, viewMonth);
 
@@ -2901,6 +2905,7 @@ export default function AccountingPage() {
     loadFromDB();
     loadPlaidTransactions();
     loadManualMatches();
+    loadCashPayroll();
     setSquareByDate({});
     setSquarePayouts([]);
     setGlobalRecon(null);
@@ -2909,15 +2914,56 @@ export default function AccountingPage() {
 
   const loadManualMatches = async () => {
     try {
-      const r = await fetch(`/api/accounting/manual-matches?month=${monthKey}`);
+      const r = await fetch(
+        `/api/accounting/manual-matches?month=${monthKey}`,
+        {
+          cache: "no-store",
+        },
+      );
       if (r.ok) setManualMatches((await r.json()).matches || []);
+      else console.error("Couldn't load card links", r.status);
     } catch {
       /* silent */
     }
   };
 
+  const loadCashPayroll = async () => {
+    try {
+      const r = await fetch(`/api/accounting/cash-payroll?month=${monthKey}`);
+      if (r.ok) setCashPayroll((await r.json()).entries || []);
+    } catch {
+      /* silent */
+    }
+  };
+
+  const addCashPayroll = async (e: {
+    date: string;
+    name: string;
+    amount: number;
+  }) => {
+    const r = await fetch("/api/accounting/cash-payroll", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(e),
+    });
+    if (!r.ok)
+      throw new Error(
+        (await r.json().catch(() => ({}))).error || "Couldn't save",
+      );
+    await loadCashPayroll();
+  };
+
+  const deleteCashPayroll = async (id: string) => {
+    await fetch("/api/accounting/cash-payroll", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    await loadCashPayroll();
+  };
+
   const linkPayments = async (r: MatchedReceipt, ids: string[]) => {
-    await fetch("/api/accounting/manual-matches", {
+    const res = await fetch("/api/accounting/manual-matches", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -2928,6 +2974,10 @@ export default function AccountingPage() {
         squarePaymentIds: ids,
       }),
     });
+    if (!res.ok) {
+      alert(`The link wasn't saved (error ${res.status}). Please tell Amber.`);
+      return;
+    }
     await loadManualMatches();
   };
 
@@ -2947,6 +2997,16 @@ export default function AccountingPage() {
       buildGlobalReconciliation(days, squareByDate, manualMatches),
     );
   }, [manualMatches, squareByDate, days]);
+
+  // Reconcile with Square on its own once this month's receipts are loaded
+  const autoSquareFor = React.useRef("");
+  useEffect(() => {
+    if (!days.length || !days[0].dateKey.startsWith(monthKey)) return;
+    if (squareLoading || autoSquareFor.current === monthKey) return;
+    autoSquareFor.current = monthKey;
+    fetchSquareData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [days, monthKey]);
 
   const loadPlaidTransactions = async () => {
     try {
@@ -3336,8 +3396,15 @@ export default function AccountingPage() {
                           );
 
                         const grossRevenue = totalFees + monthCommission;
+                        const monthCashPayroll = cashPayroll.reduce(
+                          (s, e) => s + e.amount,
+                          0,
+                        );
                         const netRevenue =
-                          grossRevenue - monthPayroll - monthPayrollFees;
+                          grossRevenue -
+                          monthPayroll -
+                          monthPayrollFees -
+                          monthCashPayroll;
 
                         return (
                           <>
@@ -3451,7 +3518,12 @@ export default function AccountingPage() {
                                   </p>
                                 </div>
                               </div>
-                              <div />
+                              <CashPayrollCard
+                                monthKey={monthKey}
+                                entries={cashPayroll}
+                                onAdd={addCashPayroll}
+                                onDelete={deleteCashPayroll}
+                              />
                               <div className="flex items-center">
                                 <span className="text-xl text-gray-300 font-light mr-2">
                                   =
