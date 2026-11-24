@@ -450,7 +450,10 @@ TEXAS_JS = r"""() => {
     if (!/state/i.test(label) && opts.length < 40) continue;
     const cur = s.selectedIndex >= 0 ? opts[s.selectedIndex] : null;
     const blank = !cur || !s.value || /^(-+|select.*|choose.*|please.*|state)$/i.test(cur.text.trim());
-    if (!blank) continue;
+    // On a sign-in form the state is the agency's, so it's always Texas (Safeway starts on California)
+    const login = (s.form ? !!s.form.querySelector("input[type=password]")
+                          : /^(agent |agency )?state$/i.test(label) && !!document.querySelector("input[type=password]"));
+    if (!blank && !login) continue;
     s.value = tx.value;
     s.dispatchEvent(new Event("input", { bubbles: true }));
     s.dispatchEvent(new Event("change", { bubbles: true }));
