@@ -158,7 +158,7 @@ export default function CloudHelp() {
               ? "is offline (check the due-worker on Railway)"
               : live.paused
                 ? "is paused"
-                : "is idle. It checks policies 9 AM–7 PM."}
+                : "is idle. It checks new policies as they come in."}
           </span>
           <button
             onClick={() => control(live.paused ? "resume" : "pause")}

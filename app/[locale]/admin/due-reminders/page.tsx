@@ -246,8 +246,8 @@ export default function DueRemindersPage() {
                   Due-date Reminders
                 </h1>
                 <p className="text-sm text-gray-500">
-                  Checked on each carrier&apos;s site before texting. Runs 9
-                  AM–7 PM, Monday–Saturday.
+                  Checked on each carrier&apos;s site before texting. Runs all
+                  day, every day.
                 </p>
               </div>
               <div className="flex items-center gap-1.5">
