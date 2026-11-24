@@ -184,6 +184,29 @@ export default function DueRemindersPage() {
     }
   };
 
+  // Send checks back to the cloud browser (one card, or every open card today)
+  const recheck = async (c?: Check) => {
+    if (!c && !confirm("Send every open card back to the cloud browser?"))
+      return;
+    setBusyId(c?._id || "all");
+    setError("");
+    try {
+      const res = await fetch("/api/due-reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "recheck", id: c?._id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(data.detail || data.error || "Couldn't re-check");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't re-check");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   // A carrier asked the cloud worker for an authenticator code (e.g. Progressive)
   const sendCode = async (host: string) => {
     const code = (codes[host] || "").replace(/\D/g, "");
@@ -373,6 +396,27 @@ export default function DueRemindersPage() {
               ))}
             </div>
 
+            {isToday && (counts.review || 0) + (counts.pending || 0) > 0 && (
+              <div className="flex items-center justify-between gap-3 bg-white border border-gray-100 rounded-xl px-4 py-2.5 mb-4 text-sm text-gray-600">
+                <span>
+                  {(counts.review || 0) + (counts.pending || 0)} open today.
+                  Send them back to the cloud browser to check again.
+                </span>
+                <button
+                  onClick={() => recheck()}
+                  disabled={busyId === "all"}
+                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 text-white hover:bg-slate-900 disabled:opacity-50 flex items-center gap-1"
+                >
+                  {busyId === "all" ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  )}
+                  Re-check all
+                </button>
+              </div>
+            )}
+
             {error && (
               <p className="text-sm text-red-600 bg-red-50 border border-red-100 px-3 py-2 rounded-lg mb-4">
                 {error}
@@ -464,6 +508,15 @@ export default function DueRemindersPage() {
                                 className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-green-50 text-green-700 hover:bg-green-100"
                               >
                                 Send text
+                              </button>
+                            )}
+                            {isToday && (
+                              <button
+                                onClick={() => recheck(c)}
+                                disabled={busyId === c._id}
+                                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200"
+                              >
+                                Re-check
                               </button>
                             )}
                             <button

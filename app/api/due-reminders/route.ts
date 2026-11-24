@@ -109,6 +109,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data, { status: res.status });
   }
 
+  // Put today's open checks back in the cloud browser's queue
+  if (action === "recheck") {
+    const res = await fetch(`${ASTRAL}/reminders/recheck`, {
+      method: "POST",
+      headers: { "X-Office-Key": KEY, "Content-Type": "application/json" },
+      body: JSON.stringify(id ? { ids: [String(id)] } : { all_open: true }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return NextResponse.json(data, { status: res.status });
+  }
+
   // Take control / Stop task / Pause / Resume for the live cloud browser
   if (action === "live") {
     if (!["take", "stop", "pause", "resume"].includes(control))
