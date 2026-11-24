@@ -76,7 +76,12 @@ interface Segment {
   state: State | "off";
 }
 
-function analyze(samples: Sample[]) {
+function analyze(allSamples: Sample[]) {
+  // Only office hours count: 8 AM–8 PM Central
+  const samples = allSamples.filter((s) => {
+    const m = minuteOfDay(s.t);
+    return m >= DAY_START * 60 && m < DAY_END * 60;
+  });
   const byMin = new Map<number, Sample>();
   samples.forEach((s) => byMin.set(minuteOfDay(s.t), s));
   const mins = [...byMin.keys()].sort((a, b) => a - b);
