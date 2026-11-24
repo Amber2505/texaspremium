@@ -121,7 +121,15 @@ type ManualMatch = {
   squarePaymentIds: string[];
 };
 
+type IgnoredPayment = {
+  _id: string; // Square payment id
+  dateKey: string;
+  amount: number;
+  note: string;
+};
+
 type GlobalReconciliation = {
+  ignoredTotal: number;
   totalCSVCC: number;
   totalSquareGross: number;
   totalRefunds: number;
@@ -342,6 +350,7 @@ function buildGlobalReconciliation(
   days: DaySummary[],
   squareByDate: Record<string, SquareDayData>,
   manualMatches: ManualMatch[] = [],
+  ignored: IgnoredPayment[] = [],
 ): GlobalReconciliation {
   const allCSVReceipts = days.flatMap((d) =>
     d.receipts
@@ -412,7 +421,7 @@ function buildGlobalReconciliation(
   sorted.forEach((csv) => {
     const refCodes = csv.referenceNo
       ? csv.referenceNo
-          .split("/")
+          .split(/[\/,+;&]+/)
           .map((r) => r.trim())
           .filter(Boolean)
       : [];
@@ -497,7 +506,7 @@ function buildGlobalReconciliation(
   unmatchedCSV.forEach((csv) => {
     const codes = csv.referenceNo
       ? csv.referenceNo
-          .split("/")
+          .split(/[\/,+;&]+/)
           .map((r) => r.trim())
           .filter(Boolean)
       : [];
@@ -541,8 +550,13 @@ function buildGlobalReconciliation(
   unmatchedCSV.length = 0;
   stillUnmatched.forEach((r) => unmatchedCSV.push(r));
 
+  // Payments staff ignored (no Matrix receipt, with a note) aren't unmatched
+  const ignoredIds = new Set(ignored.map((i) => i._id));
+  const ignoredTotal = allSquarePayments
+    .filter((sp) => !usedSquare.has(sp.id) && ignoredIds.has(sp.id))
+    .reduce((s, sp) => s + sp.amount, 0);
   const unmatchedSquare = allSquarePayments
-    .filter((sp) => !usedSquare.has(sp.id))
+    .filter((sp) => !usedSquare.has(sp.id) && !ignoredIds.has(sp.id))
     .map((sp) => ({ id: sp.id, amount: sp.amount, createdAt: sp.createdAt }));
   const totalRefunds = Object.values(squareByDate).reduce(
     (s, d) => s + (d.refundAmount || 0),
@@ -550,13 +564,16 @@ function buildGlobalReconciliation(
   );
 
   return {
+    ignoredTotal,
     totalCSVCC,
     totalSquareGross,
     totalRefunds,
     matched,
     unmatchedCSV,
     unmatchedSquare,
-    isBalanced: Math.abs(totalCSVCC - (totalSquareGross - totalRefunds)) < 0.5,
+    isBalanced:
+      Math.abs(totalCSVCC - (totalSquareGross - totalRefunds - ignoredTotal)) <
+      0.5,
   };
 }
 
@@ -898,7 +915,7 @@ function SquarePanel({
           customer: r.customer,
           dateKey: r.dateKey,
           authCodes: (r.referenceNo || "")
-            .split("/")
+            .split(/[\/,+;&]+/)
             .map((c) => c.trim())
             .filter(Boolean),
         }));
@@ -928,7 +945,7 @@ function SquarePanel({
   const unmatchedCSV = csvReceiptTotals.filter((csv, i) => {
     if (usedCSV.has(i)) return false;
     const authCodes = (csv.referenceNo || "")
-      .split("/")
+      .split(/[\/,+;&]+/)
       .map((c) => c.trim())
       .filter(Boolean);
     if (authCodes.length > 0) {
@@ -954,7 +971,7 @@ function SquarePanel({
   const csvClaimedByOtherDays = csvReceiptTotals.reduce((total, csv, i) => {
     if (usedCSV.has(i)) return total; // already matched locally
     const authCodes = (csv.referenceNo || "")
-      .split("/")
+      .split(/[\/,+;&]+/)
       .map((c) => c.trim())
       .filter(Boolean);
     if (authCodes.length > 0) {
@@ -1431,15 +1448,23 @@ function GlobalReconPanel({
   manualMatches,
   onLink,
   onUnlink,
+  ignored,
+  onIgnore,
+  onUnignore,
 }: {
   recon: GlobalReconciliation;
   manualMatches: ManualMatch[];
   onLink: (r: MatchedReceipt, ids: string[]) => Promise<void>;
   onUnlink: (id: string) => Promise<void>;
+  ignored: IgnoredPayment[];
+  onIgnore: (sp: UnmatchedSquarePayment, note: string) => Promise<void>;
+  onUnignore: (id: string) => Promise<void>;
 }) {
   const [showUnmatched, setShowUnmatched] = useState(false);
   const [linkingKey, setLinkingKey] = useState<string | null>(null);
-  const diff = recon.totalSquareGross - recon.totalCSVCC;
+  const [ignoringId, setIgnoringId] = useState<string | null>(null);
+  const [ignoreNote, setIgnoreNote] = useState("");
+  const diff = recon.totalSquareGross - recon.ignoredTotal - recon.totalCSVCC;
   return (
     <div
       className={`rounded-xl border px-5 py-4 mb-6 ${recon.isBalanced ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}`}
@@ -1491,6 +1516,9 @@ function GlobalReconPanel({
                 },
               ]
             : []),
+          ...(recon.ignoredTotal > 0
+            ? [{ label: "Ignored", value: fmt(recon.ignoredTotal) }]
+            : []),
           ...(recon.unmatchedSquare.length > 0
             ? [
                 {
@@ -1514,7 +1542,8 @@ function GlobalReconPanel({
 
       {(recon.unmatchedCSV.length > 0 ||
         recon.unmatchedSquare.length > 0 ||
-        manualMatches.length > 0) && (
+        manualMatches.length > 0 ||
+        ignored.length > 0) && (
         <button
           onClick={() => setShowUnmatched(!showUnmatched)}
           className="text-xs text-red-600 hover:text-red-800 flex items-center gap-1 mb-2"
@@ -1611,26 +1640,111 @@ function GlobalReconPanel({
                     <th className="px-3 py-1.5 text-left">Time (CST)</th>
                     <th className="px-3 py-1.5 text-right">Amount</th>
                     <th className="px-3 py-1.5 text-left">Square ID</th>
+                    <th className="px-3 py-1.5" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {recon.unmatchedSquare.map((sp) => (
-                    <tr key={sp.id} className="text-orange-700">
-                      <td className="px-3 py-1.5 font-mono">
-                        {new Date(sp.createdAt).toLocaleString("en-US", {
-                          timeZone: "America/Chicago",
-                          month: "short",
-                          day: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          hour12: true,
-                        })}
+                    <React.Fragment key={sp.id}>
+                      <tr className="text-orange-700">
+                        <td className="px-3 py-1.5 font-mono">
+                          {new Date(sp.createdAt).toLocaleString("en-US", {
+                            timeZone: "America/Chicago",
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            hour12: true,
+                          })}
+                        </td>
+                        <td className="px-3 py-1.5 text-right font-semibold">
+                          {fmt(sp.amount)}
+                        </td>
+                        <td className="px-3 py-1.5 text-gray-400 font-mono text-[10px]">
+                          {sp.id}
+                        </td>
+                        <td className="px-3 py-1.5 text-right">
+                          <button
+                            onClick={() => {
+                              setIgnoringId(
+                                ignoringId === sp.id ? null : sp.id,
+                              );
+                              setIgnoreNote("");
+                            }}
+                            className="text-[11px] px-2 py-0.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+                          >
+                            Ignore
+                          </button>
+                        </td>
+                      </tr>
+                      {ignoringId === sp.id && (
+                        <tr className="bg-gray-50">
+                          <td colSpan={4} className="px-3 py-2">
+                            <div className="flex gap-2">
+                              <input
+                                autoFocus
+                                value={ignoreNote}
+                                onChange={(e) => setIgnoreNote(e.target.value)}
+                                onKeyDown={async (e) => {
+                                  if (e.key === "Enter" && ignoreNote.trim()) {
+                                    await onIgnore(sp, ignoreNote.trim());
+                                    setIgnoringId(null);
+                                  }
+                                }}
+                                placeholder="Why? e.g. No Matrix receipt, refunded in Square"
+                                className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+                              />
+                              <button
+                                disabled={!ignoreNote.trim()}
+                                onClick={async () => {
+                                  await onIgnore(sp, ignoreNote.trim());
+                                  setIgnoringId(null);
+                                }}
+                                className="text-xs px-3 py-1 rounded bg-gray-900 text-white font-semibold disabled:opacity-40"
+                              >
+                                Save
+                              </button>
+                              <button
+                                onClick={() => setIgnoringId(null)}
+                                className="text-xs px-2 py-1 rounded border border-gray-200 text-gray-500"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {ignored.length > 0 && (
+            <>
+              <div className="bg-gray-100 px-3 py-1.5 font-medium text-gray-700 border-t border-gray-200">
+                Ignored Square payments ({fmt(recon.ignoredTotal)}), not counted
+                against the balance
+              </div>
+              <table className="w-full bg-white">
+                <tbody className="divide-y divide-gray-100">
+                  {ignored.map((ig) => (
+                    <tr key={ig._id} className="text-gray-600">
+                      <td className="px-3 py-1.5 text-gray-500 w-24">
+                        {ig.dateKey}
                       </td>
-                      <td className="px-3 py-1.5 text-right font-semibold">
-                        {fmt(sp.amount)}
+                      <td className="px-3 py-1.5 font-semibold w-24 text-right">
+                        {fmt(ig.amount)}
                       </td>
-                      <td className="px-3 py-1.5 text-gray-400 font-mono text-[10px]">
-                        {sp.id}
+                      <td className="px-3 py-1.5 italic">{ig.note}</td>
+                      <td className="px-3 py-1.5 text-right">
+                        <button
+                          onClick={() => onUnignore(ig._id)}
+                          className="text-[11px] text-gray-400 hover:text-red-600"
+                        >
+                          Undo
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -1726,7 +1840,7 @@ function MonthCalendar({
       const m = allCsvReceipts.find((r) => {
         if (r.dateKey === dateKey) return false;
         return (r.referenceNo || "")
-          .split("/")
+          .split(/[\/,+;&]+/)
           .map((c) => c.trim())
           .filter(Boolean)
           .some((code) => normalizeAuth(sp.authCode) === normalizeAuth(code));
@@ -1745,7 +1859,7 @@ function MonthCalendar({
         )
         .reduce((total, r) => {
           const codes = (r.referenceNo || "")
-            .split("/")
+            .split(/[\/,+;&]+/)
             .map((c) => c.trim())
             .filter(Boolean);
           if (!codes.length) return total;
@@ -1884,7 +1998,7 @@ function DayBlock({
             const m = allCsvReceipts.find((r) => {
               if (r.dateKey === day.dateKey) return false;
               return (r.referenceNo || "")
-                .split("/")
+                .split(/[\/,+;&]+/)
                 .map((c) => c.trim())
                 .filter(Boolean)
                 .some(
@@ -1897,7 +2011,7 @@ function DayBlock({
             .filter((r) => r.dateKey === day.dateKey)
             .reduce((total, r) => {
               const codes = (r.referenceNo || "")
-                .split("/")
+                .split(/[\/,+;&]+/)
                 .map((c) => c.trim())
                 .filter(Boolean);
               if (!codes.length) return total;
@@ -2876,6 +2990,7 @@ export default function AccountingPage() {
     null,
   );
   const [manualMatches, setManualMatches] = useState<ManualMatch[]>([]);
+  const [ignored, setIgnored] = useState<IgnoredPayment[]>([]);
   const [cashPayroll, setCashPayroll] = useState<CashPayrollEntry[]>([]);
 
   const monthKey = getMonthKey(viewYear, viewMonth);
@@ -2905,6 +3020,7 @@ export default function AccountingPage() {
     loadFromDB();
     loadPlaidTransactions();
     loadManualMatches();
+    loadIgnored();
     loadCashPayroll();
     setSquareByDate({});
     setSquarePayouts([]);
@@ -2992,6 +3108,44 @@ export default function AccountingPage() {
     await loadManualMatches();
   };
 
+  const loadIgnored = async () => {
+    try {
+      const r = await fetch(`/api/accounting/ignored?month=${monthKey}`, {
+        cache: "no-store",
+      });
+      if (r.ok) setIgnored((await r.json()).ignored || []);
+    } catch {
+      /* silent */
+    }
+  };
+
+  const ignorePayment = async (sp: UnmatchedSquarePayment, note: string) => {
+    const res = await fetch("/api/accounting/ignored", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: sp.id,
+        dateKey: toCST(sp.createdAt),
+        amount: sp.amount,
+        note,
+      }),
+    });
+    if (!res.ok) {
+      alert(`Couldn't save (error ${res.status}).`);
+      return;
+    }
+    await loadIgnored();
+  };
+
+  const unignorePayment = async (id: string) => {
+    await fetch("/api/accounting/ignored", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    await loadIgnored();
+  };
+
   const unlinkPayments = async (id: string) => {
     await fetch("/api/accounting/manual-matches", {
       method: "DELETE",
@@ -3005,9 +3159,9 @@ export default function AccountingPage() {
   useEffect(() => {
     if (!days.length || !Object.keys(squareByDate).length) return;
     setGlobalRecon(
-      buildGlobalReconciliation(days, squareByDate, manualMatches),
+      buildGlobalReconciliation(days, squareByDate, manualMatches, ignored),
     );
-  }, [manualMatches, squareByDate, days]);
+  }, [manualMatches, ignored, squareByDate, days]);
 
   // Reconcile with Square on its own once this month's receipts are loaded
   const autoSquareFor = React.useRef("");
@@ -3077,7 +3231,7 @@ export default function AccountingPage() {
       setSquarePendingPayouts(payoutsData.sentPayouts || []);
       setSquareTotalInTransit(payoutsData.totalSent || 0);
       setGlobalRecon(
-        buildGlobalReconciliation(days, filteredByDate, manualMatches),
+        buildGlobalReconciliation(days, filteredByDate, manualMatches, ignored),
       );
       // Load Plaid bank transactions for verification
       try {
@@ -3759,6 +3913,9 @@ export default function AccountingPage() {
                     manualMatches={manualMatches}
                     onLink={linkPayments}
                     onUnlink={unlinkPayments}
+                    ignored={ignored}
+                    onIgnore={ignorePayment}
+                    onUnignore={unignorePayment}
                   />
                 )}
 
