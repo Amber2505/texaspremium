@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
+  Bot,
   Check,
   CornerDownLeft,
   Hand,
@@ -401,6 +402,13 @@ export default function CloudHelp() {
           className="px-3 py-2 text-sm rounded-lg bg-white border border-gray-300 disabled:opacity-40 flex items-center gap-1"
         >
           <MousePointerClick className="w-4 h-4" /> Go to
+        </button>
+        <button
+          onClick={() => act({ type: "resume" })}
+          title="You got it past the hard part: the AI takes it from this page"
+          className="px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1"
+        >
+          <Bot className="w-4 h-4" /> Let AI continue
         </button>
         <button
           onClick={() => act({ type: "done" })}

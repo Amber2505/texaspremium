@@ -818,7 +818,7 @@ def _help_loop(ctx, page, task, question, forced):
                 api("/reminders/help/close", {"id": hid, "status": "down"})
                 log("[help] admin says the site is down")
                 raise SiteDown(f"{site_domain(urlparse(page.url).hostname or '')} marked down from the admin page")
-            if t in ("done", "skip"):
+            if t in ("done", "skip", "resume"):  # resume = "Let AI continue" from here
                 api("/reminders/help/close", {"id": hid, "status": t})
                 log(f"[help] {t} ({len(steps)} steps)")
                 return t, page, steps
@@ -926,15 +926,17 @@ def run_agent(ctx, page, task, recipe_key="agent"):
         res, page2, hsteps = ask_for_help(
             ctx, page, task, f"I don't know {carrier}'s agent website. Use 'Go to' to open it, "
                              f"sign in if needed, open policy {policy}'s billing page, then press Done.")
-        if res != "done":
+        if res not in ("done", "resume"):
             return {"error": f"No website known for {carrier} (save its login in Bitwarden, or help when asked)",
                     "text": ""}
         first_goto = next((s["url"] for s in hsteps if s["do"] == "goto"), page2.url)
         _remember_portal(names, first_goto)
-        out = read_page(page2)
-        if page2 is not page:
-            page2.close()
-        return out
+        if res == "done":
+            out = read_page(page2)
+            if page2 is not page:
+                page2.close()
+            return out
+        start = first_goto  # "Let AI continue": the AI takes it from this site
 
     host = (urlparse(start).hostname or "").lower()
     site = site_domain(host)
@@ -942,11 +944,12 @@ def run_agent(ctx, page, task, recipe_key="agent"):
     live.say(f"Opening {site} for policy {policy}", page)
     open_site(page, start)
     err, _ = sign_in_if_needed(page, host, carrier)
-    check_down(page)  # some portals show the maintenance page only after sign-in
+    check_down(page)
     if err:
         res, page, _ = ask_for_help(ctx, page, task, f"{err}. Please sign in on the screen "
-                                                     f"(or fix it in Bitwarden and press Skip), then press Done.")
-        if res != "done":
+                                                     f"(or fix it in Bitwarden and press Skip), then press "
+                                                     f"Let AI continue.")
+        if res not in ("done", "resume"):
             return {"error": err, **read_page(page)}
         helped = True
     home = page.url
@@ -974,116 +977,128 @@ def run_agent(ctx, page, task, recipe_key="agent"):
 
     # 2) AI drives the site, one action at a time; a person helps when it's stuck
     cur, history, steps = page, [], []
-    stuck, took = None, False
-    for _ in range(int(os.getenv("DUE_AGENT_MAX_STEPS", "15"))):
-      try:
-        live.defer = False
-        live.say(f"AI is looking for policy {policy}" + (f" · last: {history[-1]}" if history else ""), cur)
-        live.defer = True  # from here a Take control waits for this step to be recorded
-        err, _ = sign_in_if_needed(cur, (urlparse(cur.url).hostname or host), carrier)
-        if err:
-            res, cur, _ = ask_for_help(ctx, cur, task, f"{err}. Please sign in on the screen, then press Done.")
-            if res != "done":
-                return {"error": err, **read_page(cur)}
-            helped = True
-            continue
-        if _on_policy_page(cur, policy):
-            break
-        obs = cur.evaluate(OBSERVE_JS)
-        act = ai_next_action(policy, names, obs, history)
-        kind = act.get("action")
-        by_i = {e["i"]: e for e in obs["elements"]}
-        if kind == "done":
-            break
-        if kind == "fail" or kind not in ("click", "type", "select", "goto", "back"):
-            stuck = f"AI couldn't find the policy: {act.get('reason') or kind}"
-            break
-        if kind in ("click", "type"):
-            el = by_i.get(act.get("i"))
-            if not el:
-                history.append(f"(invalid element {act.get('i')})")
+    for _round in range(int(os.getenv("DUE_AGENT_ROUNDS", "4"))):  # AI, a person helps, AI again...
+        stuck, took = None, False
+        for _ in range(int(os.getenv("DUE_AGENT_MAX_STEPS", "15"))):
+          try:
+            live.defer = False
+            live.say(f"AI is looking for policy {policy}" + (f" · last: {history[-1]}" if history else ""), cur)
+            live.defer = True  # from here a Take control waits for this step to be recorded
+            err, _ = sign_in_if_needed(cur, (urlparse(cur.url).hostname or host), carrier)
+            if err:
+                res, cur, _ = ask_for_help(ctx, cur, task, f"{err}. Please sign in on the screen, "
+                                                           "then press Let AI continue.")
+                if res not in ("done", "resume"):
+                    return {"error": err, **read_page(cur)}
+                helped = True
                 continue
-            text = str(act.get("text") or "")
-            step = {"do": kind, "target": _desc(el)}
-            if kind == "click" and _norm_js(policy) in _norm_js(el["text"]):
-                # A results link showing this policy number: match by the number next time
-                step["target"] = {**step["target"], "id": "", "text": "{policy}"}
-            if kind == "type":
-                step.update(text="{policy}" if _norm_js(text) == _norm_js(policy) else text,
-                            enter=bool(act.get("enter")))
-            history.append(f"{kind} [{el['i']}] {el['text'] or el['placeholder'] or el['name']!r}"
-                           + (f" text={text!r}" if kind == "type" else ""))
-            try:
-                loc = cur.locator(f'[data-tpi="{el["i"]}"]').first
-                before = len(ctx.pages)
-                time.sleep(random.uniform(0.4, 1.2))  # people pause before acting
+            if _on_policy_page(cur, policy):
+                break
+            obs = cur.evaluate(OBSERVE_JS)
+            act = ai_next_action(policy, names, obs, history)
+            kind = act.get("action")
+            by_i = {e["i"]: e for e in obs["elements"]}
+            if kind == "done":
+                break
+            if kind == "fail" or kind not in ("click", "type", "select", "goto", "back"):
+                stuck = f"AI couldn't find the policy: {act.get('reason') or kind}"
+                break
+            if kind in ("click", "type"):
+                el = by_i.get(act.get("i"))
+                if not el:
+                    history.append(f"(invalid element {act.get('i')})")
+                    continue
+                text = str(act.get("text") or "")
+                step = {"do": kind, "target": _desc(el)}
+                if kind == "click" and _norm_js(policy) in _norm_js(el["text"]):
+                    # A results link showing this policy number: match by the number next time
+                    step["target"] = {**step["target"], "id": "", "text": "{policy}"}
                 if kind == "type":
-                    loc.click()
-                    loc.fill("")
-                    loc.press_sequentially(text, delay=random.randint(50, 110))
-                    if act.get("enter"):
-                        loc.press("Enter")
-                else:
-                    loc.hover()
-                    loc.click(delay=random.randint(40, 120))
-                settle(cur, 3000)
-                if len(ctx.pages) > before:
-                    cur = ctx.pages[-1]
+                    step.update(text="{policy}" if _norm_js(text) == _norm_js(policy) else text,
+                                enter=bool(act.get("enter")))
+                history.append(f"{kind} [{el['i']}] {el['text'] or el['placeholder'] or el['name']!r}"
+                               + (f" text={text!r}" if kind == "type" else ""))
+                try:
+                    loc = cur.locator(f'[data-tpi="{el["i"]}"]').first
+                    before = len(ctx.pages)
+                    time.sleep(random.uniform(0.4, 1.2))  # people pause before acting
+                    if kind == "type":
+                        loc.click()
+                        loc.fill("")
+                        loc.press_sequentially(text, delay=random.randint(50, 110))
+                        if act.get("enter"):
+                            loc.press("Enter")
+                    else:
+                        loc.hover()
+                        loc.click(delay=random.randint(40, 120))
                     settle(cur, 3000)
-            except Exception as e:
-                history.append(f"  -> failed: {str(e)[:80]}")
-                continue
-        elif kind == "select":
-            el = by_i.get(act.get("i"))
-            opt = str(act.get("option") or "")
-            if not el or el.get("options") is None or opt not in el["options"]:
-                history.append(f"(select needs a dropdown and one of its options: {act.get('i')} {opt!r})")
-                continue
-            step = {"do": "select", "target": _desc(el), "option": opt}
-            history.append(f"select [{el['i']}] {el['aria'] or el['name'] or el['id']!r} -> {opt!r}")
-            try:
-                time.sleep(random.uniform(0.4, 1.0))
-                cur.locator(f'[data-tpi="{el["i"]}"]').first.select_option(label=opt)
-                settle(cur, 2500)
-            except Exception as e:
-                history.append(f"  -> failed: {str(e)[:80]}")
-                continue
-        elif kind == "goto":
-            step = {"do": "goto", "url": str(act.get("url") or "")}
-            if not step["url"].startswith("https://"):
-                history.append("(goto needs https://)")
-                continue
-            history.append(f"goto {step['url']}")
-            cur.goto(step["url"], wait_until="domcontentloaded", timeout=45000)
-            settle(cur)
+                    if len(ctx.pages) > before:
+                        cur = ctx.pages[-1]
+                        settle(cur, 3000)
+                except Exception as e:
+                    history.append(f"  -> failed: {str(e)[:80]}")
+                    continue
+            elif kind == "select":
+                el = by_i.get(act.get("i"))
+                opt = str(act.get("option") or "")
+                if not el or el.get("options") is None or opt not in el["options"]:
+                    history.append(f"(select needs a dropdown and one of its options: {act.get('i')} {opt!r})")
+                    continue
+                step = {"do": "select", "target": _desc(el), "option": opt}
+                history.append(f"select [{el['i']}] {el['aria'] or el['name'] or el['id']!r} -> {opt!r}")
+                try:
+                    time.sleep(random.uniform(0.4, 1.0))
+                    cur.locator(f'[data-tpi="{el["i"]}"]').first.select_option(label=opt)
+                    settle(cur, 2500)
+                except Exception as e:
+                    history.append(f"  -> failed: {str(e)[:80]}")
+                    continue
+            elif kind == "goto":
+                step = {"do": "goto", "url": str(act.get("url") or "")}
+                if not step["url"].startswith("https://"):
+                    history.append("(goto needs https://)")
+                    continue
+                history.append(f"goto {step['url']}")
+                cur.goto(step["url"], wait_until="domcontentloaded", timeout=45000)
+                settle(cur)
+            else:
+                step = {"do": "back"}
+                history.append("back")
+                cur.go_back(wait_until="domcontentloaded", timeout=30000)
+                settle(cur)
+            steps.append(step)
+          except TakeOver:
+            stuck, took = "You took control", True
+            break
+          finally:
+            live.defer = False
         else:
-            step = {"do": "back"}
-            history.append("back")
-            cur.go_back(wait_until="domcontentloaded", timeout=30000)
-            settle(cur)
-        steps.append(step)
-      except TakeOver:
-        stuck, took = "You took control", True
-        break
-      finally:
-        live.defer = False
-    else:
-        stuck = "AI ran out of steps before reaching the policy"
-    if not took and live.pending == "take":  # pressed during the AI's very last step
-        live.pending, stuck, took = None, "You took control", True
+            stuck = "AI ran out of steps before reaching the policy"
+        if not took and live.pending == "take":  # pressed during the AI's very last step
+            live.pending, stuck, took = None, "You took control", True
 
-    if stuck:
+        if not stuck:
+            break
         res, cur, hsteps = ask_for_help(
             ctx, cur, task,
-            (f"You have control of {site}. Click through to policy {policy}'s amount due, then press Done."
+            (f"You have control of {site}. Do what's needed (or click through to policy {policy}'s amount due), "
+             "then press Let AI continue (or Done on the billing page)."
              if took else
-             f"I couldn't get to policy {policy}'s billing on {site} ({stuck}). "
-             "Please click through to the page that shows its amount due, then press Done."),
+             f"I couldn't get to policy {policy}'s billing on {site} ({stuck}). Help me past this step and press "
+             "Let AI continue, or click through to the amount due and press Done."),
             forced=took)
-        if res != "done":
+        if res not in ("done", "resume"):
             return {"error": stuck[:200], **read_page(cur)}
         steps += hsteps
         helped = True
+        if res == "done":
+            break
+        for st in hsteps:
+            tg = st.get("target") or {}
+            history.append(f"(person) {st['do']} {tg.get('text') or tg.get('placeholder') or tg.get('name') or tg.get('id') or st.get('url') or ''!r}"
+                           + (f" -> {st['option']!r}" if st.get("option") else ""))
+        history.append("(a person helped with the steps above; continue from this page)")
+        log(f"[agent] {site}: you helped with {len(hsteps)} steps, AI continues")
 
     if steps and (_on_policy_page(cur, policy) or helped):
         # Save the steps with the policy number as a placeholder, so the next policy
@@ -1238,7 +1253,9 @@ def take_over(ctx, task):
     policy = task.get("policy") or (task.get("search") or {}).get("policy") or ""
     res, page, steps = ask_for_help(ctx, page, {**task, "policy": policy},
                                     f"You have control. Click through to policy {policy}'s amount due, "
-                                    "then press Done.", forced=True)
+                                    "then press Done, or Let AI continue.", forced=True)
+    if res == "resume":  # the AI takes it from the page you left it on (not saved as the site's steps)
+        return run_agent(ctx, page, {**task, "policy": policy, "portal": page.url}, recipe_key="_resumed")
     if res != "done":
         return {"error": "Taken over from the admin page and not finished", **read_page(page)}
     if steps and task.get("mode") == "agent" and any(
