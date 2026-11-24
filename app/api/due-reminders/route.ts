@@ -14,6 +14,16 @@ export async function GET(req: NextRequest) {
       { error: "OFFICE_CAPTURE_KEY not set" },
       { status: 500 },
     );
+  // Cloud browser waiting for a person's help (live screenshot)
+  if (req.nextUrl.searchParams.get("help")) {
+    const r = await fetch(`${ASTRAL}/reminders/help`, {
+      headers: { "X-Office-Key": KEY },
+      cache: "no-store",
+    });
+    return NextResponse.json(await r.json().catch(() => ({})), {
+      status: r.status,
+    });
+  }
   // Learned carrier lookups (learning mode)
   if (req.nextUrl.searchParams.get("carriers")) {
     const r = await fetch(`${ASTRAL}/reminders/carriers`, {
@@ -44,7 +54,22 @@ export async function POST(req: NextRequest) {
       { error: "OFFICE_CAPTURE_KEY not set" },
       { status: 500 },
     );
-  const { id, action, by, host, code } = await req.json().catch(() => ({}));
+  const { id, action, by, host, code, act } = await req
+    .json()
+    .catch(() => ({}));
+
+  // A click / typing / Done for the cloud browser that asked for help
+  if (action === "help") {
+    if (!id || !act || typeof act !== "object")
+      return NextResponse.json({ error: "Bad request" }, { status: 400 });
+    const res = await fetch(`${ASTRAL}/reminders/help/act`, {
+      method: "POST",
+      headers: { "X-Office-Key": KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ id: String(id), action: act }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return NextResponse.json(data, { status: res.status });
+  }
 
   // Authenticator code the cloud worker is waiting for (e.g. Progressive)
   if (action === "code") {

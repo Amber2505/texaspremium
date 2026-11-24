@@ -18,7 +18,9 @@
 
 import email
 import imaplib
+import base64
 import json
+import random
 import os
 import re
 import subprocess
@@ -570,21 +572,162 @@ def shows_billing(result, policy):
 SIGNIN_TROUBLE = re.compile(r"bitwarden|rejected|code|authenticator", re.I)
 
 
+# ---------------- "Ask Amber" help mode ----------------
+# When the AI is stuck (sign-in it can't finish, policy it can't find, site it
+# doesn't know), the worker pauses, texts the admin, and shows the live browser
+# on the Due-date Reminders page. Clicks and typing there drive this browser; the
+# steps are saved per site so next time no help (and no AI) is needed.
+HELP_WAIT_MIN = int(os.getenv("DUE_HELP_WAIT_MIN", "10"))
+_help_snooze_until = 0.0
+
+POINT_JS = r"""([x, y]) => {
+  let el = document.elementFromPoint(x, y);
+  if (!el) return null;
+  el = el.closest("a, button, input, select, textarea, [role=button], [role=tab], [role=link], [onclick], tr, li") || el;
+  return { tag: el.tagName.toLowerCase(), id: el.id || "", name: el.getAttribute("name") || "",
+    placeholder: el.placeholder || "",
+    text: (el.innerText || el.value || el.title || "").trim().replace(/\s+/g, " ").slice(0, 50) };
+}"""
+
+FOCUS_JS = r"""() => {
+  const el = document.activeElement;
+  if (!el || el === document.body) return null;
+  return { tag: el.tagName.toLowerCase(), id: el.id || "", name: el.getAttribute("name") || "",
+    placeholder: el.placeholder || "", text: "", secret: (el.type || "").toLowerCase() === "password" };
+}"""
+
+
+def _shot(page):
+    try:
+        return base64.b64encode(page.screenshot(type="jpeg", quality=55)).decode()
+    except Exception:
+        return ""
+
+
+def ask_for_help(ctx, page, task, question):
+    """Returns (result, page, steps). result: done | skip | timeout | snoozed."""
+    global _help_snooze_until
+    if time.time() < _help_snooze_until:
+        return "snoozed", page, []
+    hid = task["id"]
+    policy = task.get("policy") or ""
+    names = task.get("names") or []
+    log(f"[help] asking for help: {question}")
+    api("/reminders/help/open", {"id": hid, "computer": NAME, "carrier": names[0] if names else "",
+                                 "policy": policy, "question": question, "url": page.url,
+                                 "screenshot": _shot(page)})
+    steps, deadline, last_frame = [], time.time() + HELP_WAIT_MIN * 60, time.time()
+    while time.time() < deadline:
+        acts = api("/reminders/help/take", {"id": hid}).get("actions") or []
+        for a in acts:
+            deadline = max(deadline, time.time() + HELP_WAIT_MIN * 60)  # someone is helping
+            t = a.get("type")
+            if t in ("done", "skip"):
+                api("/reminders/help/close", {"id": hid, "status": t})
+                log(f"[help] {t} ({len(steps)} steps)")
+                return t, page, steps
+            try:
+                if t == "click":
+                    x, y = float(a["x"]), float(a["y"])
+                    desc = page.evaluate(POINT_JS, [x, y])
+                    before = len(ctx.pages)
+                    page.mouse.move(x - 3, y - 2)
+                    page.mouse.click(x, y, delay=random.randint(40, 120))
+                    if desc and (desc["id"] or desc["name"] or desc["placeholder"] or desc["text"]):
+                        st = {"do": "click", "target": desc}
+                        if policy and _norm_js(policy) in _norm_js(desc["text"]):
+                            st["target"] = {**desc, "id": "", "text": "{policy}"}
+                        steps.append(st)
+                    settle(page, 2500)
+                    if len(ctx.pages) > before:
+                        page = ctx.pages[-1]
+                        settle(page, 2500)
+                elif t == "type":
+                    text = str(a.get("text") or "")
+                    focused = page.evaluate(FOCUS_JS)
+                    page.keyboard.type(text, delay=random.randint(50, 110))
+                    if focused and not focused.pop("secret", False):
+                        steps.append({"do": "type", "target": focused,
+                                      "text": "{policy}" if policy and _norm_js(text) == _norm_js(policy) else text})
+                elif t == "key" and a.get("key") in ("Enter", "Tab", "Escape", "Backspace"):
+                    page.keyboard.press(a["key"])
+                    if a["key"] == "Enter" and steps and steps[-1]["do"] == "type":
+                        steps[-1]["enter"] = True
+                    settle(page, 2500)
+                elif t == "goto" and str(a.get("url") or "").startswith("http"):
+                    page.goto(a["url"], wait_until="domcontentloaded", timeout=45000)
+                    steps.append({"do": "goto", "url": a["url"]})
+                    settle(page)
+                elif t == "scroll":
+                    page.mouse.wheel(0, float(a.get("dy") or 500))
+                    time.sleep(0.5)
+                elif t == "back":
+                    page.go_back(wait_until="domcontentloaded", timeout=30000)
+                    steps.append({"do": "back"})
+                    settle(page)
+            except Exception as e:
+                log(f"[help] action {t} failed: {e}")
+        if acts or time.time() - last_frame > 12:
+            try:
+                title = page.title()
+            except Exception:
+                title = ""
+            api("/reminders/help/frame", {"id": hid, "url": page.url, "title": title, "screenshot": _shot(page)})
+            last_frame = time.time()
+        time.sleep(1.5)
+    api("/reminders/help/close", {"id": hid, "status": "timeout"})
+    _help_snooze_until = time.time() + 60 * 60  # don't keep blocking the queue for the next hour
+    log("[help] nobody answered; won't ask again for an hour")
+    return "timeout", page, steps
+
+
+def _portal_memory(names):
+    return (recipes().get("_portals") or {}).get(_norm_js(names[0])) if names else None
+
+
+def _remember_portal(names, url):
+    if names and url.startswith("http"):
+        portals = dict(recipes().get("_portals") or {})
+        portals[_norm_js(names[0])] = url
+        data = recipes()
+        data["_portals"] = portals
+        with open(RECIPES, "w") as f:
+            json.dump(data, f, indent=1)
+
+
 def run_agent(ctx, page, task, recipe_key="agent"):
     policy, names = task["policy"], task.get("names") or []
-    start = task.get("portal") or vault.site_for(names)
+    carrier = names[0] if names else "this carrier"
+    start = task.get("portal") or _portal_memory(names) or vault.site_for(names)
+    helped = False
+
     if not start:
-        return {"error": f"No website known for {names[0] if names else 'this carrier'} "
-                         "(save its login in Bitwarden or its link on the Carriers list)", "text": ""}
+        page.goto("about:blank")
+        res, page2, hsteps = ask_for_help(
+            ctx, page, task, f"I don't know {carrier}'s agent website. Use 'Go to' to open it, "
+                             f"sign in if needed, open policy {policy}'s billing page, then press Done.")
+        if res != "done":
+            return {"error": f"No website known for {carrier} (save its login in Bitwarden, or help when asked)",
+                    "text": ""}
+        first_goto = next((s["url"] for s in hsteps if s["do"] == "goto"), page2.url)
+        _remember_portal(names, first_goto)
+        out = read_page(page2)
+        if page2 is not page:
+            page2.close()
+        return out
+
     host = (urlparse(start).hostname or "").lower()
     site = site_domain(host)
-    carrier = names[0] if names else site
 
     page.goto(start, wait_until="domcontentloaded", timeout=45000)
     settle(page)
     err, _ = sign_in_if_needed(page, host, carrier)
     if err:
-        return {"error": err, **read_page(page)}
+        res, page, _ = ask_for_help(ctx, page, task, f"{err}. Please sign in on the screen "
+                                                     f"(or fix it in Bitwarden and press Skip), then press Done.")
+        if res != "done":
+            return {"error": err, **read_page(page)}
+        helped = True
     home = page.url
 
     # 1) Saved steps for this site: no AI
@@ -607,12 +750,17 @@ def run_agent(ctx, page, task, recipe_key="agent"):
         page.goto(home, wait_until="domcontentloaded", timeout=45000)
         settle(page)
 
-    # 2) AI drives the site, one action at a time
+    # 2) AI drives the site, one action at a time; a person helps when it's stuck
     cur, history, steps = page, [], []
+    stuck = None
     for _ in range(int(os.getenv("DUE_AGENT_MAX_STEPS", "15"))):
         err, _ = sign_in_if_needed(cur, (urlparse(cur.url).hostname or host), carrier)
         if err:
-            return {"error": err, **read_page(cur)}
+            res, cur, _ = ask_for_help(ctx, cur, task, f"{err}. Please sign in on the screen, then press Done.")
+            if res != "done":
+                return {"error": err, **read_page(cur)}
+            helped = True
+            continue
         if _on_policy_page(cur, policy):
             break
         obs = cur.evaluate(OBSERVE_JS)
@@ -622,7 +770,8 @@ def run_agent(ctx, page, task, recipe_key="agent"):
         if kind == "done":
             break
         if kind == "fail" or kind not in ("click", "type", "goto", "back"):
-            return {"error": f"AI couldn't find the policy: {act.get('reason') or kind}"[:200], **read_page(cur)}
+            stuck = f"AI couldn't find the policy: {act.get('reason') or kind}"
+            break
         if kind in ("click", "type"):
             el = by_i.get(act.get("i"))
             if not el:
@@ -641,12 +790,16 @@ def run_agent(ctx, page, task, recipe_key="agent"):
             try:
                 loc = cur.locator(f'[data-tpi="{el["i"]}"]').first
                 before = len(ctx.pages)
+                time.sleep(random.uniform(0.4, 1.2))  # people pause before acting
                 if kind == "type":
-                    loc.fill(text)
+                    loc.click()
+                    loc.fill("")
+                    loc.press_sequentially(text, delay=random.randint(50, 110))
                     if act.get("enter"):
                         loc.press("Enter")
                 else:
-                    loc.click()
+                    loc.hover()
+                    loc.click(delay=random.randint(40, 120))
                 settle(cur, 3000)
                 if len(ctx.pages) > before:
                     cur = ctx.pages[-1]
@@ -669,18 +822,27 @@ def run_agent(ctx, page, task, recipe_key="agent"):
             settle(cur)
         steps.append(step)
     else:
-        return {"error": "AI ran out of steps before reaching the policy", **read_page(cur)}
+        stuck = "AI ran out of steps before reaching the policy"
 
-    if _on_policy_page(cur, policy) and steps:
-        # Save the steps with the policy number as a placeholder, so the next
-        # policy on this site needs no AI
-        # Only steps that work for any policy: ones that use the policy number, or (starting
-        # from a policy page) generic clicks like the Billing tab
+    if stuck:
+        res, cur, hsteps = ask_for_help(
+            ctx, cur, task, f"I couldn't get to policy {policy}'s billing on {site} ({stuck}). "
+                            "Please click through to the page that shows its amount due, then press Done.")
+        if res != "done":
+            return {"error": stuck[:200], **read_page(cur)}
+        steps += hsteps
+        helped = True
+
+    if steps and (_on_policy_page(cur, policy) or helped):
+        # Save the steps with the policy number as a placeholder, so the next policy
+        # on this site needs no AI and no help. Only steps that work for any policy:
+        # ones that use the policy number, or (starting from a policy page) generic
+        # clicks like the Billing tab.
         uses_policy = any(st.get("text") == "{policy}" or (st.get("target") or {}).get("text") == "{policy}"
                           for st in steps)
         if uses_policy or recipe_key == "agent_after_lookup":
             save_recipe(site, recipe_key, steps)
-            log(f"[agent] {site}: learned {len(steps)} steps")
+            log(f"[agent] {site}: learned {len(steps)} steps{' (with help)' if helped else ''}")
     out = read_page(cur)
     if cur is not page:
         cur.close()
@@ -784,14 +946,30 @@ def run_policy(ctx, page, task):
     return read_page(page)
 
 
+HUMAN_JS = r"""
+Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en"] });
+Object.defineProperty(navigator, "platform", { get: () => "Win32" });
+Object.defineProperty(navigator, "hardwareConcurrency", { get: () => 8 });
+if (!window.chrome) window.chrome = { runtime: {} };
+"""
+
+
 def main():
     os.makedirs(PROFILE, exist_ok=True)
     with sync_playwright() as p:
+        # Looks like a normal person's Chrome: real (non-headless) window on a virtual
+        # screen, a regular Chrome user agent, no automation flags, Texas time zone.
         ctx = p.chromium.launch_persistent_context(
-            PROFILE, headless=os.getenv("HEADLESS", "1") == "1",
+            PROFILE, headless=os.getenv("HEADLESS", "0") == "1",
             viewport={"width": 1366, "height": 900}, locale="en-US", timezone_id="America/Chicago",
-            args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+            user_agent=os.getenv("BROWSER_UA", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                                               "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"),
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox",
+                  "--disable-dev-shm-usage", "--window-size=1366,900"],
+            ignore_default_args=["--enable-automation"],
         )
+        ctx.add_init_script(HUMAN_JS)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         log(f"Cloud worker '{NAME}' started")
         while True:
@@ -813,8 +991,7 @@ def main():
                                 # The saved lookup didn't reach the billing page (site changed,
                                 # billing on another tab...): let the AI take it from there
                                 policy = task.get("policy") or (task.get("search") or {}).get("policy") or ""
-                                if policy and not shows_billing(result, policy) and \
-                                        not SIGNIN_TROUBLE.search(result.get("error") or ""):
+                                if policy and not shows_billing(result, policy):
                                     log(f"[policy] {task['id']}: lookup didn't reach billing, AI takes over")
                                     alt = run_agent(ctx, page, {**task, "policy": policy, "portal": task["url"]},
                                                     recipe_key="agent_after_lookup")
