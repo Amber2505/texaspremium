@@ -324,6 +324,49 @@ class TakeOver(BaseException):
     """Admin pressed Take control."""
 
 
+class SiteDown(BaseException):
+    """The carrier site is down / in its nightly maintenance: try other carriers."""
+
+
+DOWN_RE = re.compile(
+    r"scheduled maintenance|under maintenance|maintenance (window|mode|in progress)|"
+    r"temporarily (unavailable|down)|currently (unavailable|down|offline)|"
+    r"system (is )?(currently |temporarily )?(unavailable|down|offline)|"
+    r"(site|service|application|portal) (is )?(currently |temporarily )?(unavailable|down|offline)|"
+    r"outside (of )?(our |normal |regular )?(business|system|service|operating) hours|"
+    r"(available|back) (again )?(from|between|at|after) \d|"
+    r"bad gateway|service unavailable|gateway time-?out", re.I)
+
+
+def check_down(page):
+    """Raise SiteDown if the page is a maintenance / outage page. Only short pages
+    count, so a normal portal page that mentions 'maintenance' somewhere doesn't."""
+    try:
+        text = page.evaluate("() => (document.body && document.body.innerText || '').slice(0, 4000)") or ""
+    except Exception:
+        return
+    if len(text.strip()) < 2500 and DOWN_RE.search(text):
+        site = site_domain(urlparse(page.url).hostname or "")
+        line = DOWN_RE.search(text).group(0)
+        raise SiteDown(f"{site} is down for now ('{line}')")
+
+
+def open_site(page, url):
+    """page.goto that turns 'site down' into SiteDown instead of a review card."""
+    site = site_domain(urlparse(url).hostname or "")
+    try:
+        resp = page.goto(url, wait_until="domcontentloaded", timeout=45000)
+    except Exception as e:
+        msg = str(e).split("\n")[0]
+        if "net::ERR" in msg or "Timeout" in msg:
+            raise SiteDown(f"{site} isn't loading ({msg[:80]})")
+        raise
+    if resp is not None and resp.status >= 500:
+        raise SiteDown(f"{site} returned error {resp.status}")
+    settle(page)
+    check_down(page)
+
+
 LIVE_EVERY = float(os.getenv("DUE_LIVE_EVERY_SEC", "2"))
 
 
@@ -394,11 +437,44 @@ class Live:
 live = Live()
 
 
+# The agency is licensed only in Texas: a blank state dropdown is always Texas.
+# Only blank ones ("Select...", "--", empty), never a state that's already filled in.
+TEXAS_JS = r"""() => {
+  const picked = [];
+  for (const s of document.querySelectorAll("select")) {
+    if (s.disabled || s.offsetParent === null) continue;
+    const opts = [...s.options];
+    const tx = opts.find((o) => /^(texas|tx)$/i.test(o.text.trim()) || /^(texas|tx)$/i.test((o.value || "").trim()));
+    if (!tx || s.value === tx.value) continue;
+    const label = ((s.labels && s.labels[0] && s.labels[0].innerText) || s.getAttribute("aria-label") || s.name || s.id || "").trim();
+    if (!/state/i.test(label) && opts.length < 40) continue;
+    const cur = s.selectedIndex >= 0 ? opts[s.selectedIndex] : null;
+    const blank = !cur || !s.value || /^(-+|select.*|choose.*|please.*|state)$/i.test(cur.text.trim());
+    if (!blank) continue;
+    s.value = tx.value;
+    s.dispatchEvent(new Event("input", { bubbles: true }));
+    s.dispatchEvent(new Event("change", { bubbles: true }));
+    picked.push(label.slice(0, 40) || "state");
+  }
+  return picked;
+}"""
+
+
+def pick_texas(page):
+    try:
+        picked = page.evaluate(TEXAS_JS)
+    except Exception:
+        return
+    if picked:
+        log(f"[texas] picked Texas in: {', '.join(picked)}")
+
+
 def settle(page, ms=4000):
     try:
         page.wait_for_load_state("domcontentloaded", timeout=30000)
     except Exception:
         pass
+    pick_texas(page)
     # Wait in small slices so the live view stays fresh and Stop/Take control react fast
     end = time.time() + ms / 1000
     while True:
@@ -539,9 +615,12 @@ OBSERVE_JS = r"""() => {
     .filter(vis).filter((e) => !(e.tagName === "INPUT" && /^(hidden|password)$/i.test(e.type || ""))).slice(0, 140);
   const out = els.map((e, i) => {
     e.setAttribute("data-tpi", String(i));
-    return { i, tag: e.tagName.toLowerCase(), type: e.type || "", id: e.id || "", name: e.getAttribute("name") || "",
-      placeholder: e.placeholder || "", aria: e.getAttribute("aria-label") || "",
-      text: (e.innerText || e.value || e.title || "").trim().replace(/\s+/g, " ").slice(0, 50) };
+    const sel = e.tagName === "SELECT";
+    return { i, tag: e.tagName.toLowerCase(), type: sel ? "" : (e.type || ""), id: e.id || "", name: e.getAttribute("name") || "",
+      placeholder: e.placeholder || "", aria: e.getAttribute("aria-label") || (e.labels && e.labels[0] ? e.labels[0].innerText.trim().slice(0, 40) : ""),
+      text: sel ? "" : (e.innerText || e.value || e.title || "").trim().replace(/\s+/g, " ").slice(0, 50),
+      options: sel ? [...e.options].map((o) => o.text.trim()).filter(Boolean).slice(0, 30) : undefined,
+      selected: sel && e.selectedIndex >= 0 ? (e.options[e.selectedIndex].text || "").trim() : undefined };
   });
   return { url: location.href, title: document.title, elements: out,
            text: (document.body && document.body.innerText || "").replace(/\s+\n/g, "\n").slice(0, 2500) };
@@ -579,6 +658,7 @@ def ai_next_action(policy, names, obs, history):
     els = "\n".join(
         f'[{e["i"]}] {e["tag"]}{("/" + e["type"]) if e["type"] else ""} '
         f'{e["text"] or e["placeholder"] or e["aria"] or e["name"] or e["id"]!r}'
+        + (f' dropdown, now {e.get("selected")!r}, options: {e["options"]}' if e.get("options") is not None else "")
         for e in obs["elements"])
     prompt = (
         "You operate an insurance AGENT portal in a web browser. Goal: open policy number "
@@ -587,13 +667,15 @@ def ai_next_action(policy, names, obs, history):
         "Pick ONE next action. Answer JSON only, one of:\n"
         '{"action":"click","i":N}\n'
         '{"action":"type","i":N,"text":"...","enter":true|false}\n'
+        '{"action":"select","i":N,"option":"exact option text"}   (for a dropdown)\n'
         '{"action":"goto","url":"https://..."}\n'
         '{"action":"back"}\n'
         '{"action":"done"}   (this page shows the policy\'s amount due / due date)\n'
         '{"action":"fail","reason":"..."}  (policy not found, or the site can\'t do it)\n'
         "Tips: use the policy search box (often 'Policy #', 'Find', 'Quick Search', 'Search'); "
         "open the matching policy from the results; billing is often under a 'Billing', 'Payments' "
-        "or 'Account' tab. Never type passwords. Don't repeat an action that didn't change anything.\n\n"
+        "or 'Account' tab. Never type passwords. Don't repeat an action that didn't change anything. "
+        "The agency is licensed only in Texas: whenever a page asks for a state, choose Texas (TX).\n\n"
         f"Your previous actions:\n{chr(10).join(history[-8:]) or '(none)'}\n\n"
         f"URL: {obs['url']}\nTitle: {obs['title']}\n\nPage text (start):\n{obs['text']}\n\n"
         f"Clickable / typeable elements:\n{els}"
@@ -625,7 +707,9 @@ def _do_step(ctx, page, step, policy):
         if not page.evaluate(FIND_JS, {**step["target"], "policy": policy}):
             raise RuntimeError(f"step target not found: {step['target']}")
         loc = page.locator("[data-tp=r]").first
-        if step["do"] == "type":
+        if step["do"] == "select":
+            loc.select_option(label=step["option"])
+        elif step["do"] == "type":
             loc.fill(step["text"].replace("{policy}", policy))
             if step.get("enter"):
                 loc.press("Enter")
@@ -671,9 +755,12 @@ POINT_JS = r"""([x, y]) => {
   if (!el) return null;
   el = el.closest("a, button, input, select, textarea, label, [role=button], [role=tab], [role=link], [role=menuitem], [onclick], tr, li");
   if (!el) return null;  // clicked empty space: do it, but don't save it as a step
+  const sel = el.tagName === "SELECT";
   return { tag: el.tagName.toLowerCase(), id: el.id || "", name: el.getAttribute("name") || "",
     placeholder: el.placeholder || "",
-    text: (el.innerText || el.value || el.title || "").trim().replace(/\s+/g, " ").slice(0, 50) };
+    text: sel ? "" : (el.innerText || el.value || el.title || "").trim().replace(/\s+/g, " ").slice(0, 50),
+    options: sel ? [...el.options].map((o) => o.text.trim()).filter(Boolean).slice(0, 60) : null,
+    label: sel ? ((el.labels && el.labels[0] && el.labels[0].innerText.trim()) || el.getAttribute("aria-label") || el.name || "").slice(0, 60) : "" };
 }"""
 
 FOCUS_JS = r"""() => {
@@ -697,7 +784,9 @@ def ask_for_help(ctx, page, task, question, forced=False):
     global _help_snooze_until
     if not forced and time.time() < _help_snooze_until:
         return "snoozed", page, []
-    live.paused = True  # first, so a stray Take control/Stop can't fire inside help mode
+    if not forced and page.url.startswith("http"):
+        check_down(page)  # a site in maintenance isn't something you can help with
+    live.paused = True
     live.say(("Your turn: " if forced else "Waiting for your help: ") + question[:150], page)
     try:
         return _help_loop(ctx, page, task, question, forced)
@@ -716,11 +805,16 @@ def _help_loop(ctx, page, task, question, forced):
                                  "policy": policy, "question": question, "url": page.url,
                                  "screenshot": _shot(page), "quiet": forced})
     steps, deadline, last_frame = [], time.time() + HELP_WAIT_MIN * 60, time.time()
+    choose = None  # a dropdown the admin clicked: its options, shown on the admin page
     while time.time() < deadline:
         acts = api("/reminders/help/take", {"id": hid}).get("actions") or []
         for a in acts:
             deadline = max(deadline, time.time() + HELP_WAIT_MIN * 60)  # someone is helping
             t = a.get("type")
+            if t == "down":  # admin looked and says the site is down
+                api("/reminders/help/close", {"id": hid, "status": "down"})
+                log("[help] admin says the site is down")
+                raise SiteDown(f"{site_domain(urlparse(page.url).hostname or '')} marked down from the admin page")
             if t in ("done", "skip"):
                 api("/reminders/help/close", {"id": hid, "status": t})
                 log(f"[help] {t} ({len(steps)} steps)")
@@ -729,6 +823,15 @@ def _help_loop(ctx, page, task, question, forced):
                 if t == "click":
                     x, y = float(a["x"]), float(a["y"])
                     desc = page.evaluate(POINT_JS, [x, y])
+                    if desc and desc.get("options") is not None:
+                        # A dropdown's list is drawn outside the page, so it never shows in the
+                        # screenshot: send its options to the admin page to pick from instead
+                        choose = {"x": x, "y": y, "label": desc.get("label") or "", "options": desc["options"]}
+                        last_frame = 0
+                        continue
+                    if desc:
+                        desc.pop("options", None)
+                        desc.pop("label", None)
                     before = len(ctx.pages)
                     page.mouse.move(x - 3, y - 2)
                     page.mouse.click(x, y, delay=random.randint(40, 120))
@@ -741,6 +844,18 @@ def _help_loop(ctx, page, task, question, forced):
                     if len(ctx.pages) > before:
                         page = ctx.pages[-1]
                         settle(page, 2500)
+                elif t == "select":
+                    x, y, value = float(a["x"]), float(a["y"]), str(a.get("value") or "")
+                    desc = page.evaluate(POINT_JS, [x, y])
+                    page.evaluate("""([x, y]) => { document.querySelectorAll("[data-tps]").forEach((e) => e.removeAttribute("data-tps"));
+                        const el = document.elementFromPoint(x, y); const s = el && el.closest("select"); if (s) s.setAttribute("data-tps", "1"); }""", [x, y])
+                    page.locator("[data-tps]").first.select_option(label=value)
+                    choose = None
+                    if desc:
+                        desc.pop("options", None)
+                        desc.pop("label", None)
+                        steps.append({"do": "select", "target": desc, "option": value})
+                    settle(page, 2500)
                 elif t == "type":
                     text = str(a.get("text") or "")
                     focused = page.evaluate(FOCUS_JS)
@@ -748,7 +863,7 @@ def _help_loop(ctx, page, task, question, forced):
                     if focused and not focused.pop("secret", False):
                         steps.append({"do": "type", "target": focused,
                                       "text": "{policy}" if policy and _norm_js(text) == _norm_js(policy) else text})
-                elif t == "key" and a.get("key") in ("Enter", "Tab", "Escape", "Backspace"):
+                elif t == "key" and a.get("key") in ("Enter", "Tab", "Escape", "Backspace", "ArrowDown", "ArrowUp"):
                     page.keyboard.press(a["key"])
                     if a["key"] == "Enter" and steps and steps[-1]["do"] == "type":
                         steps[-1]["enter"] = True
@@ -771,7 +886,8 @@ def _help_loop(ctx, page, task, question, forced):
                 title = page.title()
             except Exception:
                 title = ""
-            api("/reminders/help/frame", {"id": hid, "url": page.url, "title": title, "screenshot": _shot(page)})
+            api("/reminders/help/frame", {"id": hid, "url": page.url, "title": title, "screenshot": _shot(page),
+                                          "select": choose})
             last_frame = time.time()
         time.sleep(1.5)
     api("/reminders/help/close", {"id": hid, "status": "timeout"})
@@ -821,9 +937,9 @@ def run_agent(ctx, page, task, recipe_key="agent"):
     site = site_domain(host)
 
     live.say(f"Opening {site} for policy {policy}", page)
-    page.goto(start, wait_until="domcontentloaded", timeout=45000)
-    settle(page)
+    open_site(page, start)
     err, _ = sign_in_if_needed(page, host, carrier)
+    check_down(page)  # some portals show the maintenance page only after sign-in
     if err:
         res, page, _ = ask_for_help(ctx, page, task, f"{err}. Please sign in on the screen "
                                                      f"(or fix it in Bitwarden and press Skip), then press Done.")
@@ -876,7 +992,7 @@ def run_agent(ctx, page, task, recipe_key="agent"):
         by_i = {e["i"]: e for e in obs["elements"]}
         if kind == "done":
             break
-        if kind == "fail" or kind not in ("click", "type", "goto", "back"):
+        if kind == "fail" or kind not in ("click", "type", "select", "goto", "back"):
             stuck = f"AI couldn't find the policy: {act.get('reason') or kind}"
             break
         if kind in ("click", "type"):
@@ -911,6 +1027,21 @@ def run_agent(ctx, page, task, recipe_key="agent"):
                 if len(ctx.pages) > before:
                     cur = ctx.pages[-1]
                     settle(cur, 3000)
+            except Exception as e:
+                history.append(f"  -> failed: {str(e)[:80]}")
+                continue
+        elif kind == "select":
+            el = by_i.get(act.get("i"))
+            opt = str(act.get("option") or "")
+            if not el or el.get("options") is None or opt not in el["options"]:
+                history.append(f"(select needs a dropdown and one of its options: {act.get('i')} {opt!r})")
+                continue
+            step = {"do": "select", "target": _desc(el), "option": opt}
+            history.append(f"select [{el['i']}] {el['aria'] or el['name'] or el['id']!r} -> {opt!r}")
+            try:
+                time.sleep(random.uniform(0.4, 1.0))
+                cur.locator(f'[data-tpi="{el["i"]}"]').first.select_option(label=opt)
+                settle(cur, 2500)
             except Exception as e:
                 history.append(f"  -> failed: {str(e)[:80]}")
                 continue
@@ -1024,9 +1155,9 @@ def run_policy(ctx, page, task):
     policy = (search or {}).get("policy") or ""
 
     live.say(f"Opening {site_domain(host)}" + (f" for policy {policy}" if policy else ""), page)
-    page.goto(url, wait_until="domcontentloaded", timeout=45000)
-    settle(page)
+    open_site(page, url)
     err, signed_in = sign_in_if_needed(page, host, site_domain(host))
+    check_down(page)
     if err:
         return {"error": err, **read_page(page)}
     if signed_in:  # portals usually land on their home page after a sign-in
@@ -1178,6 +1309,9 @@ def main():
                                                     recipe_key="agent_after_lookup")
                                     if not alt.get("error") or not result.get("text"):
                                         result = alt
+                        except SiteDown as e:
+                            live.say(f"{e}. Moving on to other carriers", None)
+                            result = {"error": f"SITE_DOWN: {e}"[:300], "text": ""}
                         except Stopped:
                             log(f"[policy] {task['id']}: stopped from the admin page")
                             result = {"error": "Stopped from the admin page", **read_page(ctx.pages[-1])}
@@ -1199,7 +1333,7 @@ def main():
                             f"{' (' + result['error'] + ')' if result.get('error') else ''}")
                     else:
                         break
-            except (Exception, Stopped, TakeOver):
+            except (Exception, Stopped, TakeOver, SiteDown):
                 log("[loop] error:\n" + traceback.format_exc()[-1500:])
                 try:
                     page.close()

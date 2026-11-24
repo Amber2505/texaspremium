@@ -19,6 +19,7 @@ import {
   Play,
   SkipForward,
   Square,
+  CloudOff,
 } from "lucide-react";
 
 interface HelpReq {
@@ -32,6 +33,7 @@ interface HelpReq {
   screenshot: string;
   pending: number;
   updated_at: string;
+  select?: { x: number; y: number; label: string; options: string[] } | null;
 }
 
 interface LiveState {
@@ -301,6 +303,33 @@ export default function CloudHelp() {
         )}
       </div>
 
+      {req.select && (
+        <div className="mt-3 bg-white border-2 border-amber-400 rounded-lg p-3">
+          <p className="text-sm font-semibold text-gray-900 mb-2">
+            Choose from the dropdown
+            {req.select.label ? `: ${req.select.label}` : ""}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {req.select.options.map((o) => (
+              <button
+                key={o}
+                onClick={() =>
+                  act({
+                    type: "select",
+                    x: req.select!.x,
+                    y: req.select!.y,
+                    value: o,
+                  })
+                }
+                className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 hover:bg-amber-50 hover:border-amber-400"
+              >
+                {o}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2 mt-3">
         <input
           value={text}
@@ -378,6 +407,13 @@ export default function CloudHelp() {
           className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 flex items-center gap-1"
         >
           <Check className="w-4 h-4" /> Done: this shows the amount due
+        </button>
+        <button
+          onClick={() => act({ type: "down" })}
+          title="Skip this carrier for an hour and check the other companies"
+          className="px-3 py-2 text-sm rounded-lg bg-white border border-gray-300 text-gray-600 flex items-center gap-1"
+        >
+          <CloudOff className="w-4 h-4" /> Site is down
         </button>
         <button
           onClick={() => act({ type: "skip" })}
