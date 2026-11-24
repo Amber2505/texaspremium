@@ -359,8 +359,12 @@ class Live:
                 body["url"] = page.url
             except Exception:
                 pass
-            if self.watching and not self.paused:
+            # Every 2s while someone watches, and at least every 10s otherwise,
+            # so the admin page never shows an empty box during a check
+            if not self.paused and t.get("id") and (
+                    self.watching or time.time() - getattr(self, "last_shot", 0) >= 10):
                 body["screenshot"] = _shot(page)
+                self.last_shot = time.time()
         try:
             r = api("/reminders/live", body)
         except Exception:
