@@ -26,7 +26,7 @@ import re
 import subprocess
 import time
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlparse
@@ -1227,7 +1227,10 @@ def run_txreport(page, task):
         err, _ = sign_in_if_needed(page, AM_HOST, "AgencyMatrix")
         if err:
             return done(False, error=err)
-        asof = datetime.now(ZoneInfo("America/Chicago")).strftime("%m/%d/%Y")
+        try:
+            asof = datetime.now(ZoneInfo("America/Chicago")).strftime("%m/%d/%Y")
+        except Exception:  # no time-zone data: Central time without daylight saving is close enough here
+            asof = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=-6))).strftime("%m/%d/%Y")
         out = page.evaluate(TX_JS, [day, asof, os.getenv("AM_TX_URL", "")])
         if not out.get("ok"):
             log(f"[tx] {day}: {out.get('error')} {out.get('sample', '')}")
@@ -1241,6 +1244,9 @@ def run_txreport(page, task):
             return done(False, error=str(info.get("error") or f"HTTP {r.status_code}")[:200])
         log(f"[tx] {day}: {len(out['rows'])} rows -> {info}")
         return done(True, inserted=info.get("inserted", 0), rows=len(out["rows"]))
+    except Exception as e:  # any other crash: record it so it retries, instead of staying "running"
+        log(f"[tx] {day}: {type(e).__name__}: {e}")
+        return done(False, error=f"{type(e).__name__}: {e}"[:200])
     finally:
         live.paused = False
 
