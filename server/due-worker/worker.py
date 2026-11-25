@@ -1146,23 +1146,70 @@ def parse_due_report(html):
     return rows
 
 
-def run_report(page, task):
+def _am_open(ctx, page, task, what):
+    """Open AgencyMatrix signed in. If sign-in fails, ask the admin to sign in on the
+    live screen. Returns (page, error or None)."""
+    live.say(f"Opening AgencyMatrix to pull {what}", page)
+    page.goto(AM_HOME, wait_until="domcontentloaded", timeout=45000)
+    settle(page)
+    err, _ = sign_in_if_needed(page, AM_HOST, "AgencyMatrix")
+    if not err:
+        return page, None
+    res, page, _ = ask_for_help(ctx, page, task, f"AgencyMatrix: {err}. Please sign in on the screen, "
+                                                 "then press Let AI continue.")
+    if res not in ("done", "resume"):
+        return page, err
+    err, _ = sign_in_if_needed(page, AM_HOST, "AgencyMatrix")  # make sure it really is signed in now
+    return page, err
+
+
+def _am_guarded(ctx, page, task, what, work):
+    """Run work(page) with Take control available: after you hand it back, it runs again."""
+    for _ in range(3):
+        try:
+            return work(page)
+        except TakeOver:
+            res, page, _ = ask_for_help(ctx, ctx.pages[-1], task, f"You have control of AgencyMatrix ({what}). "
+                                        "Do what's needed, then press Let AI continue.", forced=True)
+            if res not in ("done", "resume"):
+                raise Stopped()
+    return work(page)
+
+
+def run_report(ctx, page, task):
     def fail(why):
         log(f"[report] failed: {why}")
         return api("/reminders/report", {"computer": NAME, "runId": task["runId"], "ok": False, "error": why})
 
-    page.goto(AM_HOME, wait_until="domcontentloaded", timeout=45000)
-    settle(page)
-    err, _ = sign_in_if_needed(page, AM_HOST, "AgencyMatrix")
-    if err:
-        return fail(err)
-    by_target = {}
-    for q in task["queries"]:
-        html = page.evaluate(REPORT_JS, q["query"])
-        if not html:
-            return fail("AgencyMatrix report not available on this login")
-        by_target.setdefault(q["target"], []).extend(parse_due_report(html))
-    results = [{"target": t, "rows": rows} for t, rows in by_target.items()]
+    def work(page):
+        page, err = _am_open(ctx, page, task, "the due-date report")
+        if err:
+            return "fail", err, page
+        by_target = {}
+        for q in task["queries"]:
+            live.say(f"Pulling the due-date report for {q['target']}", page)
+            html = page.evaluate(REPORT_JS, q["query"])
+            if not html:
+                res, page, _ = ask_for_help(
+                    ctx, page, task, "AgencyMatrix is open but the due-date report didn't come back. Check the "
+                                     "screen (sign in again if needed), then press Let AI continue to try again.")
+                if res in ("done", "resume"):
+                    html = page.evaluate(REPORT_JS, q["query"])
+                if not html:
+                    return "fail", "AgencyMatrix report not available on this login", page
+            by_target.setdefault(q["target"], []).extend(parse_due_report(html))
+        return "ok", by_target, page
+
+    try:
+        status, val, page = _am_guarded(ctx, page, task, "due-date report", work)
+    except Stopped:
+        return fail("Stopped from the admin page")
+    except SiteDown as e:
+        return fail(f"AgencyMatrix is down: {e}")
+    if status == "fail":
+        return fail(val)
+    results = [{"target": t, "rows": rows} for t, rows in val.items()]
+    live.say(f"Sending {sum(len(r['rows']) for r in results)} due policies to the list", page)
     out = api("/reminders/report", {"computer": NAME, "runId": task["runId"], "ok": True, "results": results})
     log(f"[report] sent {sum(len(r['rows']) for r in results)} rows -> {out}")
 
@@ -1212,26 +1259,24 @@ TX_JS = r"""async ([day, asof, url]) => {
 SITE_URL = os.getenv("SITE_URL", "https://www.texaspremiumins.com").rstrip("/")
 
 
-def run_txreport(page, task):
+def run_txreport(ctx, page, task):
     """task: {"date": "11/23/2026", "dateKey": "2026-11-23"}"""
     day, key = task["date"], task["dateKey"]
 
     def done(ok, **info):
         api("/accounting/pull-done", {"dateKey": key, "ok": ok, **info})
 
-    live.start(task, f"Pulling Transaction Details for {day} from AgencyMatrix")
-    live.paused = True
     try:
-        page.goto(AM_HOME, wait_until="domcontentloaded", timeout=45000)
-        settle(page)
-        err, _ = sign_in_if_needed(page, AM_HOST, "AgencyMatrix")
+        page, err = _am_open(ctx, page, task, f"Transaction Details for {day}")
         if err:
             return done(False, error=err)
         try:
             asof = datetime.now(ZoneInfo("America/Chicago")).strftime("%m/%d/%Y")
         except Exception:  # no time-zone data: Central time without daylight saving is close enough here
             asof = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=-6))).strftime("%m/%d/%Y")
-        out = page.evaluate(TX_JS, [day, asof, os.getenv("AM_TX_URL", "")])
+        live.say(f"Pulling Transaction Details for {day}", page)
+        out = _am_guarded(ctx, page, task, "Transaction Details",
+                          lambda pg: pg.evaluate(TX_JS, [day, asof, os.getenv("AM_TX_URL", "")]))
         if not out.get("ok"):
             log(f"[tx] {day}: {out.get('error')} {out.get('sample', '')}")
             return done(False, error=out.get("error", "")[:200])
@@ -1244,11 +1289,12 @@ def run_txreport(page, task):
             return done(False, error=str(info.get("error") or f"HTTP {r.status_code}")[:200])
         log(f"[tx] {day}: {len(out['rows'])} rows -> {info}")
         return done(True, inserted=info.get("inserted", 0), rows=len(out["rows"]))
+    except (Stopped, SiteDown) as e:
+        log(f"[tx] {day}: {type(e).__name__} {e}")
+        return done(False, error=f"{type(e).__name__}: {e}"[:200])
     except Exception as e:  # any other crash: record it so it retries, instead of staying "running"
         log(f"[tx] {day}: {type(e).__name__}: {e}")
         return done(False, error=f"{type(e).__name__}: {e}"[:200])
-    finally:
-        live.paused = False
 
 
 def run_policy(ctx, page, task):
@@ -1393,13 +1439,16 @@ def main():
                     kind = task.get("type")
                     if kind == "txreport":
                         busy = True
-                        run_txreport(page, task)
+                        task.setdefault("names", ["AgencyMatrix"])
+                        live.start(task, f"Pulling Transaction Details for {task['date']} from AgencyMatrix")
+                        run_txreport(ctx, page, task)
                     elif kind == "report":
                         busy = True
+                        # The live view shows it, with Take control / Stop and help if sign-in fails
+                        task.setdefault("id", f"report-{task['runId']}")
+                        task.setdefault("names", ["AgencyMatrix"])
                         live.start(task, "Pulling the due-date report from AgencyMatrix")
-                        live.paused = True  # no Take control / Stop on the report
-                        run_report(page, task)
-                        live.paused = False
+                        run_report(ctx, page, task)
                     elif kind == "policy":
                         busy = True
                         live.start(task, "Starting a policy check")
