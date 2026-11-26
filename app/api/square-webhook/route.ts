@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { sendPaymentNotification } from '@/lib/email';
 import { WebhooksHelper } from 'square';
 import { getDatabase } from '@/lib/mongodb';
+import { notifyAdmin } from '@/lib/notifyAdmin';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -157,6 +158,59 @@ export async function POST(request: Request) {
       // ⚠️ This is critical - if we can't store the payment, the user will be stuck
       // Don't just continue - we need to know about this
       throw storeError;
+    }
+
+    // --- 4b. MARK THE PAYMENT LINK PAID ---
+    // Square confirmed this payment, so the link it belongs to is paid even if the
+    // customer closed the tab before coming back to /pay/{linkId}.
+    // Same phone + same amount, not paid yet, created in the last 3 days.
+    try {
+      const last10 = (p: string) => (p || '').replace(/\D/g, '').slice(-10);
+      const links = db.collection('payment_link_generated');
+      const candidates = await links
+        .find({
+          amount: amountCents,
+          'completedStages.payment': { $ne: true },
+          createdAtTimestamp: { $gte: Date.now() - 3 * 24 * 60 * 60 * 1000 },
+        })
+        .sort({ createdAtTimestamp: -1 })
+        .limit(20)
+        .toArray();
+      const phone = last10(storedPhone);
+      const hit = phone ? candidates.find((l: any) => last10(l.customerPhone) === phone) : null;
+      if (hit) {
+        const nowIso = new Date().toISOString();
+        const res = await links.updateOne(
+          { _id: hit._id, 'completedStages.payment': { $ne: true } },
+          {
+            $set: {
+              'completedStages.payment': true,
+              'timestamps.payment': nowIso,
+              lastUpdated: nowIso,
+              currentStage: 'payment',
+              squarePaymentId: paymentId,
+              paidVia: 'webhook',
+            },
+          },
+        );
+        if (res.modifiedCount) {
+          console.log(`🔗 Link ${hit._id} marked paid from webhook (${paymentId})`);
+          const linkId = hit.publicLinkId || String(hit._id);
+          await notifyAdmin({
+            section: 'payment-links',
+            title: 'Payment completed',
+            body: `${hit.customerPhone || ''} — $${amountDollars}`,
+            eventId: `payment-${linkId}`,
+          }).catch(() => {});
+          fetch(`${process.env.NEXT_PUBLIC_SOCKET_URL}/notify/payment-progress`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ linkId }),
+          }).catch(() => {});
+        }
+      }
+    } catch (linkErr: any) {
+      console.error('⚠️ Could not mark payment link paid:', linkErr.message);
     }
 
     // --- 5. SEND INTERNAL NOTIFICATION EMAIL ---

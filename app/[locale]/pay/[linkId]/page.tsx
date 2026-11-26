@@ -18,7 +18,7 @@ export default function PaymentProxyPage() {
   const t = lang === "es" ? es.paymentProxy : en.paymentProxy;
 
   const [status, setStatus] = useState<
-    "loading" | "disabled" | "redirecting" | "error"
+    "loading" | "disabled" | "redirecting" | "error" | "notPaid"
   >("loading");
   const [errorMessage, setErrorMessage] = useState("");
   const [nextStep, setNextStep] = useState("");
@@ -35,11 +35,17 @@ export default function PaymentProxyPage() {
     const handleRouting = async () => {
       try {
         if (transactionId) {
-          await fetch("/api/update-progress", {
+          // The server checks with Square; a Square ID in the address isn't proof of payment
+          const up = await fetch("/api/update-progress", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ linkId, step: "payment" }),
           });
+          const upData = await up.json().catch(() => ({}));
+          if (upData.notPaid) {
+            setStatus("notPaid");
+            return;
+          }
 
           await fetch("/api/update-payment-link", {
             method: "POST",
@@ -155,6 +161,44 @@ export default function PaymentProxyPage() {
             >
               {t.contactBtn}
             </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Came back from Square, but no payment went through
+  if (status === "notPaid") {
+    const es = lang === "es";
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-amber-50 to-orange-50 p-6">
+        <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 text-center">
+          <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+            {es
+              ? "Aún no recibimos su pago"
+              : "We haven't received your payment yet"}
+          </h1>
+          <p className="text-gray-600 mb-6">
+            {es
+              ? "Si acaba de pagar, espere unos segundos y verifique de nuevo. Si no, puede pagar ahora."
+              : "If you just paid, wait a few seconds and check again. If not, you can pay now."}
+          </p>
+          <div className="space-y-3">
+            <button
+              onClick={() => (window.location.href = `/${lang}/pay/${linkId}`)}
+              className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition"
+            >
+              {es ? "Pagar ahora" : "Pay now"}
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition"
+            >
+              {es
+                ? "Ya pagué, verificar de nuevo"
+                : "I already paid, check again"}
+            </button>
           </div>
         </div>
       </div>

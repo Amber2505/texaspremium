@@ -4,6 +4,7 @@
 import { NextResponse } from "next/server";
 import { MongoClient, ObjectId } from "mongodb";
 import { notifyAdmin } from "@/lib/notifyAdmin";
+import { verifySquarePayment } from "@/lib/verifySquarePayment";
 
 const uri = process.env.MONGODB_URI!;
 
@@ -87,12 +88,30 @@ export async function POST(request: Request) {
       });
     }
 
+    // "Paid" only when Square confirms it. Coming back to this page from Square
+    // checkout without paying (Back button, closed tab) must not count as paid.
+    let squarePaymentId: string | null = null;
+    if (step === "payment") {
+      const v = await verifySquarePayment(db, link as any);
+      if (!v.paid) {
+        console.warn(`🚫 Payment step refused for ${linkId}: no Square payment found`);
+        return NextResponse.json(
+          { success: false, notPaid: true, error: "No payment received yet" },
+          { status: 402 },
+        );
+      }
+      squarePaymentId = v.paymentId;
+      console.log(`✅ Square payment ${v.paymentId} confirmed for ${linkId} (via ${v.via})`);
+    }
+
     const updateData: any = {
       [`completedStages.${fieldName}`]: true,
       [`timestamps.${fieldName}`]: new Date().toISOString(),
       lastUpdated: new Date().toISOString(),
       currentStage: step,
     };
+
+    if (squarePaymentId) updateData.squarePaymentId = squarePaymentId;
 
     const paymentMethod = link.paymentMethod;
 

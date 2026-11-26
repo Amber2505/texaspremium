@@ -20,6 +20,7 @@ export async function POST(request: NextRequest) {
       language,
       generatedLink,
       squareLink,
+      squareLinkId,
       remindersEnabled,
       customerName,
       documentSpecs,
@@ -55,6 +56,9 @@ export async function POST(request: NextRequest) {
       language,
       generatedLink,
       squareLink: squareLink || null,
+      // Square's own ID for the payment link. Lets the server ask Square
+      // whether this link's order was actually paid.
+      squareLinkId: typeof squareLinkId === "string" && squareLinkId ? squareLinkId : null,
       disabled: false,
       // Default ON — only an explicit false turns reminders off, matching the
       // $ne: false query in the reminder processor.
