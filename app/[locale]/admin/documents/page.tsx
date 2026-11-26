@@ -227,6 +227,13 @@ export default function DocumentsPage() {
   const [createError, setCreateError] = useState("");
   const [createdLink, setCreatedLink] = useState("");
   const [copied, setCopied] = useState(false);
+  // Set when the agent is adding documents to a link that's already been sent
+  const [addTo, setAddTo] = useState<RequestRow | null>(null);
+  // Result of a "Request more": was the text sent, and what was asked for
+  const [addResult, setAddResult] = useState<{
+    smsSent: boolean;
+    labels: string[];
+  } | null>(null);
 
   // ── Requests list ─────────────────────────────────────────────────────────
   const [rows, setRows] = useState<RequestRow[]>([]);
@@ -429,20 +436,37 @@ export default function DocumentsPage() {
         }
       }
 
-      const res = await fetch("/api/document-requests", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerName: customerName.trim(),
-          customerPhone,
-          language,
-          specs,
-          createdBy: agentName,
-        }),
-      });
+      const res = addTo
+        ? await fetch(`/api/document-requests/${addTo.id}/add`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ specs, by: agentName }),
+          })
+        : await fetch("/api/document-requests", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              customerName: customerName.trim(),
+              customerPhone,
+              language,
+              specs,
+              createdBy: agentName,
+            }),
+          });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Couldn't create the link.");
-      setCreatedLink(data.link);
+      if (!res.ok)
+        throw new Error(
+          data.error ||
+            (addTo
+              ? "Couldn't add the documents."
+              : "Couldn't create the link."),
+        );
+      setCreatedLink(data.link || addTo?.link || "");
+      if (addTo)
+        setAddResult({
+          smsSent: data.smsSent !== false,
+          labels: Array.isArray(data.labels) ? data.labels : [],
+        });
       setCopied(false);
     } catch (e: any) {
       setCreateError(e.message);
@@ -465,6 +489,18 @@ export default function DocumentsPage() {
     setCreatedLink("");
     setCreateError("");
     setCopied(false);
+    setAddTo(null);
+    setAddResult(null);
+  };
+
+  const startAddMore = (row: RequestRow) => {
+    resetForm();
+    setAddTo(row);
+    setCustomerName(row.customerName);
+    setCustomerPhone(row.customerPhone);
+    setLanguage(row.language);
+    setTab("new");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const copy = async (text: string, rowId?: string) => {
@@ -691,7 +727,36 @@ export default function DocumentsPage() {
           {/* ── NEW REQUEST ── */}
           {tab === "new" && !createdLink && (
             <div className="bg-white rounded-xl shadow-sm p-6 space-y-5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {addTo && (
+                <div className="flex items-start justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+                  <p className="text-sm text-amber-900">
+                    <strong>Adding to {addTo.customerName}&apos;s link.</strong>{" "}
+                    Pick what else you need. They&apos;ll get a text and can
+                    upload it with the same link (
+                    {Math.max(
+                      0,
+                      Math.ceil(
+                        (new Date(addTo.expiresAt).getTime() - Date.now()) /
+                          86400000,
+                      ),
+                    )}{" "}
+                    days left).
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetForm();
+                      setTab("requests");
+                    }}
+                    className="text-xs font-semibold text-amber-800 hover:text-amber-950 flex-shrink-0"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
+              <div
+                className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${addTo ? "pointer-events-none opacity-60" : ""}`}
+              >
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Customer Name <span className="text-red-500">*</span>
@@ -725,7 +790,7 @@ export default function DocumentsPage() {
                 </div>
               </div>
 
-              <div>
+              <div className={addTo ? "pointer-events-none opacity-60" : ""}>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Language <span className="text-red-500">*</span>
                 </label>
@@ -933,7 +998,8 @@ export default function DocumentsPage() {
                   </>
                 ) : (
                   <>
-                    <FolderOpen className="w-5 h-5" /> Create Document Link
+                    <FolderOpen className="w-5 h-5" />{" "}
+                    {addTo ? "Request These Documents" : "Create Document Link"}
                   </>
                 )}
               </button>
@@ -950,9 +1016,46 @@ export default function DocumentsPage() {
               <div className="flex items-center gap-2 mb-3">
                 <Check className="w-5 h-5 text-green-600" />
                 <h3 className="font-semibold text-green-900">
-                  Document link created for {customerName}
+                  {addTo
+                    ? `Additional documents requested from ${customerName}`
+                    : `Document link created for ${customerName}`}
                 </h3>
               </div>
+              {addTo && addResult && (
+                <div
+                  className={`text-sm rounded-lg border p-3 mb-4 ${
+                    addResult.smsSent
+                      ? "bg-white border-green-200 text-green-900"
+                      : "bg-red-50 border-red-200 text-red-800"
+                  }`}
+                >
+                  {addResult.smsSent ? (
+                    <>
+                      <strong>✓ Text already sent.</strong> {customerName} (
+                      {formatPhone(customerPhone)}) was texted this link asking
+                      for the additional documents. No need to send it again.
+                    </>
+                  ) : (
+                    <>
+                      <strong>The text didn&apos;t send.</strong> The documents
+                      were added, so copy the link below and send it to the
+                      customer yourself.
+                    </>
+                  )}
+                  {addResult.labels.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {addResult.labels.map((l) => (
+                        <span
+                          key={l}
+                          className="text-[11px] px-2 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800"
+                        >
+                          + {l}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <p className="text-sm text-gray-800 break-all font-mono bg-white border border-green-200 p-3 rounded mb-4">
                 {createdLink}
               </p>
@@ -971,17 +1074,31 @@ export default function DocumentsPage() {
                 )}
               </button>
               <p className="text-xs text-blue-800 bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
-                <strong>Next:</strong> send this link to the customer by text or
-                email. The link stays open 10 days. If anything is still
-                missing, the customer gets reminder texts the next morning, then
-                on days 3, 6 and 9. The reminders stop once everything is
-                uploaded.
+                {addTo ? (
+                  <>
+                    <strong>Same link as before.</strong> The customer uploads
+                    the new documents with it until{" "}
+                    {new Date(addTo.expiresAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                    . The request is back in Pending until they do.
+                  </>
+                ) : (
+                  <>
+                    <strong>Next:</strong> send this link to the customer by
+                    text or email. The link stays open 10 days. If anything is
+                    still missing, the customer gets reminder texts the next
+                    morning, then on days 3, 6 and 9. The reminders stop once
+                    everything is uploaded.
+                  </>
+                )}
               </p>
               <button
                 onClick={resetForm}
                 className="w-full mt-3 px-6 py-3 bg-white text-gray-600 rounded-lg font-medium border border-gray-200 hover:bg-gray-50"
               >
-                Create another request
+                {addTo ? "Done" : "Create another request"}
               </button>
             </div>
           )}
@@ -1168,6 +1285,14 @@ export default function DocumentsPage() {
                                   <Check className="w-4 h-4" />
                                 )}{" "}
                                 Mark completed
+                              </button>
+                            )}
+                            {new Date(r.expiresAt).getTime() > Date.now() && (
+                              <button
+                                onClick={() => startAddMore(r)}
+                                className="px-3 py-1.5 text-sm rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200 flex items-center gap-1.5"
+                              >
+                                <Plus className="w-4 h-4" /> Request more
                               </button>
                             )}
                             {r.status === "closed" && !r.completedAt && (

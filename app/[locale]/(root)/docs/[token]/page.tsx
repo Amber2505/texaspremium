@@ -1,5 +1,6 @@
 // app/[locale]/docs/[token]/page.tsx
 // Customer-facing document upload page. Link: /{en|es}/docs/{token}
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -13,7 +14,6 @@ import {
   Lock,
   Plus,
   Upload,
-  X,
   AlertCircle,
   Clock,
 } from "lucide-react";
@@ -532,11 +532,11 @@ export default function DocumentUploadPage() {
                       <div key={slot.key}>
                         <button
                           type="button"
-                          disabled={isBusy || item.locked}
+                          disabled={isBusy || item.locked || !!f}
                           onClick={() => pick(item, slot)}
                           className={`relative w-full aspect-[4/3] rounded-lg border-2 overflow-hidden flex items-center justify-center transition ${
                             f
-                              ? "border-emerald-400"
+                              ? "border-emerald-400 cursor-default"
                               : "border-dashed border-gray-300 hover:border-[#1E3A5F]"
                           }`}
                         >
@@ -569,7 +569,7 @@ export default function DocumentUploadPage() {
                             ) : (
                               <Camera className="w-3 h-3" />
                             )}
-                            {isBusy ? t.uploading : f ? t.replace : t.upload}
+                            {isBusy ? t.uploading : f ? t.uploaded : t.upload}
                           </span>
                         </button>
                         <p className="text-xs font-semibold text-gray-700 mt-1.5">
@@ -617,18 +617,7 @@ export default function DocumentUploadPage() {
                               )}
                               <p className="text-xs font-medium text-emerald-900 truncate flex-1">
                                 {f.originalName}
-                              </p>
-                              {!item.locked && (
-                                <button
-                                  type="button"
-                                  onClick={() => removeFile(item, slot, f.id)}
-                                  disabled={isBusy}
-                                  aria-label={t.remove}
-                                  className="w-7 h-7 rounded-full flex items-center justify-center text-emerald-500 hover:text-red-600 hover:bg-red-50"
-                                >
-                                  <X className="w-4 h-4" />
-                                </button>
-                              )}
+                              </p>{" "}
                             </div>
                           ))}
                         </div>
