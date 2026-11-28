@@ -16,7 +16,9 @@ import {
   Loader2,
   Monitor,
   MoreHorizontal,
+  Lightbulb,
   Pause,
+  PenLine,
   Play,
   SkipForward,
   Square,
@@ -79,6 +81,19 @@ export default function CloudHelp() {
   const [clickMark, setClickMark] = useState<{ x: number; y: number } | null>(
     null,
   );
+  // Draw around something on the screen to show the AI where the info is
+  const [drawMode, setDrawMode] = useState(false);
+  const [path, setPath] = useState<{ x: number; y: number }[]>([]);
+  const drawing = useRef(false);
+  const [box, setBox] = useState<{
+    x: number;
+    y: number;
+    x2: number;
+    y2: number;
+  } | null>(null); // in cloud-browser page pixels
+  const [boxNote, setBoxNote] = useState("");
+  const [tip, setTip] = useState("");
+  const [saved, setSaved] = useState("");
 
   const imgRef = useRef<HTMLImageElement>(null);
   const screenRef = useRef<HTMLDivElement>(null);
@@ -200,7 +215,57 @@ export default function CloudHelp() {
     };
   };
 
+  // ── Drawing: freehand around the spot; its outline box is sent to the worker ──
+  const local = (e: React.PointerEvent) => {
+    const r = imgRef.current!.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+  const onDrawStart = (e: React.PointerEvent) => {
+    if (!imgRef.current) return;
+    (e.target as Element).setPointerCapture(e.pointerId);
+    drawing.current = true;
+    setBox(null);
+    setPath([local(e)]);
+  };
+  const onDrawMove = (e: React.PointerEvent) => {
+    if (drawing.current) setPath((p) => [...p, local(e)]);
+  };
+  const onDrawEnd = () => {
+    drawing.current = false;
+    const img = imgRef.current;
+    if (!img || path.length < 2) return;
+    const r = img.getBoundingClientRect();
+    const k = img.naturalWidth / r.width;
+    const xs = path.map((p) => p.x);
+    const ys = path.map((p) => p.y);
+    setBox({
+      x: Math.round(Math.min(...xs) * k),
+      y: Math.round(Math.min(...ys) * k),
+      x2: Math.round(Math.max(...xs) * k),
+      y2: Math.round(Math.max(...ys) * k),
+    });
+  };
+  const sendMark = () => {
+    if (!box) return;
+    act({ type: "mark", ...box, text: boxNote.trim() });
+    setSaved(boxNote.trim() || "Marked spot");
+    setTimeout(() => setSaved(""), 4000);
+    setBox(null);
+    setPath([]);
+    setBoxNote("");
+    setDrawMode(false);
+  };
+  const sendTip = () => {
+    const t = tip.trim();
+    if (!t) return;
+    act({ type: "hint", text: t });
+    setSaved(t);
+    setTimeout(() => setSaved(""), 4000);
+    setTip("");
+  };
+
   const onClick = (e: React.MouseEvent) => {
+    if (drawMode) return;
     screenRef.current?.focus();
     const p = toPage(e.clientX, e.clientY);
     if (!p) return;
@@ -400,6 +465,21 @@ export default function CloudHelp() {
           )}
         </div>
         <button
+          onClick={() => {
+            setDrawMode(!drawMode);
+            setBox(null);
+            setPath([]);
+          }}
+          title="Draw around where the information is, so the AI knows where to look"
+          className={`px-3 py-2 text-sm font-semibold rounded-lg border flex items-center gap-1.5 ${
+            drawMode
+              ? "bg-rose-600 text-white border-rose-600"
+              : "bg-white text-gray-700 border-gray-300"
+          }`}
+        >
+          <PenLine className="w-4 h-4" /> {drawMode ? "Drawing…" : "Mark"}
+        </button>
+        <button
           onClick={() => finish("resume")}
           className="px-3 py-2 text-sm font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
         >
@@ -492,6 +572,25 @@ export default function CloudHelp() {
             Waiting for the screen…
           </div>
         )}
+        {drawMode && req.screenshot && (
+          <svg
+            className="absolute inset-0 w-full h-full cursor-crosshair touch-none"
+            onPointerDown={onDrawStart}
+            onPointerMove={onDrawMove}
+            onPointerUp={onDrawEnd}
+          >
+            {path.length > 1 && (
+              <polyline
+                points={path.map((p) => `${p.x},${p.y}`).join(" ")}
+                fill="rgba(225,29,72,0.08)"
+                stroke="#e11d48"
+                strokeWidth={3}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            )}
+          </svg>
+        )}
         {clickMark && (
           <span
             className="absolute w-6 h-6 -ml-3 -mt-3 rounded-full border-2 border-red-500 bg-red-500/20 pointer-events-none animate-ping"
@@ -511,6 +610,70 @@ export default function CloudHelp() {
           </span>
         )}
       </div>
+      {drawMode && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 bg-white border-2 border-rose-300 rounded-lg p-2">
+          <PenLine className="w-4 h-4 text-rose-600 flex-shrink-0" />
+          {box ? (
+            <>
+              <input
+                autoFocus
+                value={boxNote}
+                onChange={(e) => setBoxNote(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendMark()}
+                placeholder="What's here? e.g. Next due date, Last payment"
+                className="flex-1 min-w-[200px] px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+              />
+              <button
+                onClick={sendMark}
+                className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-rose-600 text-white"
+              >
+                Save mark
+              </button>
+              <button
+                onClick={() => {
+                  setBox(null);
+                  setPath([]);
+                }}
+                className="px-2 py-1.5 text-sm text-gray-500"
+              >
+                Redo
+              </button>
+            </>
+          ) : (
+            <span className="text-sm text-gray-600">
+              Circle the spot on the screen that shows the information (scroll
+              first if it&apos;s lower down).
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="mt-2 flex gap-2">
+        <div className="relative flex-1">
+          <Lightbulb className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-500" />
+          <input
+            value={tip}
+            onChange={(e) => setTip(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && sendTip()}
+            placeholder="Tip for the AI, e.g. scroll down to Coverage Summary for the next due date"
+            className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 rounded-lg bg-white"
+          />
+        </div>
+        <button
+          onClick={sendTip}
+          disabled={!tip.trim()}
+          className="px-3 py-2 text-sm font-semibold rounded-lg bg-amber-500 text-white disabled:opacity-40"
+        >
+          Send tip
+        </button>
+      </div>
+      {saved && (
+        <p className="text-xs text-green-700 mt-1">
+          ✓ Remembered for {req.carrier || "this carrier"}: “{saved}”. The AI
+          uses it now and on every future check.
+        </p>
+      )}
+
       <p className="text-[11px] text-gray-500 mt-1 truncate">
         {req.title ? `${req.title} · ` : ""}
         {req.url} · Passwords you type are never saved · Alt+← goes back

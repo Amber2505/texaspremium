@@ -310,6 +310,46 @@ def email_code(since_ts, host, timeout=240, carrier=""):
     return None
 
 
+def email_link(since_ts, host, timeout=240, carrier=""):
+    """The sign-in link a carrier emailed after since_ts (for sites with no code option)."""
+    words = {site_domain(host).split(".")[0]} | (
+        {w for w in re.findall(r"[a-z]{4,}", (carrier or "").lower())} - GENERIC_WORDS)
+    end = time.time() + timeout
+    while time.time() < end:
+        time.sleep(6)
+        for user, pw in _code_inboxes():
+            try:
+                m = imaplib.IMAP4_SSL(IMAP_HOST)
+                m.login(user, pw)
+                m.select("INBOX")
+                day = datetime.fromtimestamp(since_ts - 86400, timezone.utc).strftime("%d-%b-%Y")
+                _, data = m.search(None, f'(SINCE "{day}")')
+                for mid in reversed(data[0].split()[-30:]):
+                    _, raw = m.fetch(mid, "(RFC822)")
+                    msg = email.message_from_bytes(raw[0][1])
+                    sent = parsedate_to_datetime(msg.get("Date"))
+                    if sent.tzinfo is None:
+                        sent = sent.replace(tzinfo=timezone.utc)
+                    if sent.timestamp() < since_ts - 60:
+                        continue
+                    html = " ".join(p.get_payload(decode=True).decode(p.get_content_charset() or "utf-8", "ignore")
+                                    for p in (msg.walk() if msg.is_multipart() else [msg])
+                                    if p.get_content_type() in ("text/html", "text/plain") and p.get_payload(decode=True))
+                    if not any(w in f"{msg.get('From')} {msg.get('Subject')} {html}".lower() for w in words):
+                        continue
+                    for url in re.findall(r'https://[^\s"\'<>]+', html):
+                        url = url.replace("&amp;", "&")
+                        if re.search(r"sign|log-?in|auth|magic|verify|token|session", url, re.I) and \
+                                not re.search(r"unsubscribe|privacy|terms|help", url, re.I):
+                            m.logout()
+                            log(f"[code] sign-in link for {host} found in {user}")
+                            return url
+                m.logout()
+            except Exception as e:
+                log(f"[code] inbox check failed for {user}: {e}")
+    return None
+
+
 def admin_code(host, carrier):
     """Authenticator-app code: text the admin, wait for it on the admin page."""
     api("/reminders/need-code", {"computer": NAME, "host": host, "carrier": carrier})
@@ -374,13 +414,23 @@ MFA_JS = r"""() => {
   document.querySelectorAll("[data-tpm]").forEach((e) => e.removeAttribute("data-tpm"));
   const text = (document.body && document.body.innerText || "").slice(0, 5000);
   const mfa = /verification code|security code|one[- ]time|passcode|2-step|two-step|two-factor|multi-?factor|\bmfa\b|verify (it'?s|that it'?s) you|verify your identity|confirm your identity|send (me )?(a |the )?code|receive (a |the |your )?(code|passcode)|how (would|do) you (like|want) to (receive|get|verify)|choose (a |your )?(verification )?(method|option)|delivery method/i;
-  if (!mfa.test(text)) return { kind: null };
-  const label = (e) => ((e.labels && e.labels[0] && e.labels[0].innerText) || e.innerText || e.value ||
-    e.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim();
+  const label = (e) =>((e.labels && e.labels[0] && e.labels[0].innerText) || e.innerText || e.value ||
+  e.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim();
   const around = (e) => label(e) + " " + ((e.closest("label, li, tr") || e.parentElement || e).innerText || "").replace(/\s+/g, " ").slice(0, 160);
   const emailRe = /\be-?mail\b|[\w.*-]+@[\w*-]+\.[\w.*]+/i;
   const phoneRe = /\b(text|sms|call|phone|voice|mobile|cell|authenticator)\b/i;
   const notIt = /forgot|change|update|edit|contact us|help|privacy|unsubscribe/i;
+  // A "we emailed you a sign-in link" page (THREE): ask for a code instead, the worker reads codes
+  if (/sign[- ]?in link|log[- ]?in link|magic link|click the link in (the|your) e-?mail/i.test(text)) {
+    const inst = [...document.querySelectorAll("a, button, [role=button]")].filter(vis)
+      .find((e) => /code instead|use a code|send (me )?a code|enter (a )?code/i.test(label(e)));
+    if (inst) {
+      inst.setAttribute("data-tpm", "codeinstead");
+      return { kind: "codeinstead", how: label(inst).slice(0, 60) };
+    }
+    return { kind: "magiclink" };
+  }
+  if (!mfa.test(text)) return { kind: null };
   // 1) a dropdown of methods
   for (const s of document.querySelectorAll("select")) {
     if (!vis(s)) continue;
@@ -663,12 +713,108 @@ def click_or_enter(page, sel, field_sel):
         page.locator(field_sel).first.press("Enter")
 
 
+# Scroll the page and every scrollable box top to bottom (some summary pages only load
+# the billing / last payment parts once you scroll to them), then back to the top.
+SCROLL_ALL_JS = r"""async () => {
+  const boxes = [document.scrollingElement, ...[...document.querySelectorAll("body *")].filter((e) =>
+    e.scrollHeight > e.clientHeight + 40 && /(auto|scroll)/.test(getComputedStyle(e).overflowY))].filter(Boolean).slice(0, 12);
+  for (const el of boxes) {
+    const step = Math.max(300, el.clientHeight * 0.8);
+    for (let y = 0; y < Math.min(el.scrollHeight, 25000); y += step) {
+      el.scrollTop = y;
+      await new Promise((r) => setTimeout(r, 120));
+    }
+  }
+  await new Promise((r) => setTimeout(r, 400));
+  boxes.forEach((el) => { el.scrollTop = 0; });
+  return boxes.length;
+}"""
+
+
 def read_page(page):
+    """All the text on the page, including parts you'd have to scroll to and
+    boxes inside frames (Apollo's Coverage Summary, for example)."""
     try:
-        return {"text": page.evaluate("() => (document.body && document.body.innerText || '').slice(0, 15000)"),
-                "finalUrl": page.url, "title": page.title()}
+        for fr in page.frames:
+            try:
+                fr.evaluate(SCROLL_ALL_JS)
+            except Exception:
+                pass
+        parts = []
+        for i, fr in enumerate(page.frames):
+            try:
+                t = fr.evaluate("() => (document.body && document.body.innerText || '')") or ""
+            except Exception:
+                continue
+            t = re.sub(r"[ \t]+", " ", re.sub(r"\n\s*\n+", "\n", t)).strip()
+            if len(t) > 30:
+                parts.append(t if i == 0 else f"--- section ---\n{t}")
+        return {"text": "\n".join(parts)[:30000], "finalUrl": page.url, "title": page.title()}
     except Exception as e:
         return {"text": "", "finalUrl": page.url, "title": "", "error": str(e)[:200]}
+
+
+# Sites whose policy page keeps the amount due / next due date on another tab.
+# The tab is clicked before the page is read (read_page then scrolls through it).
+# Add more on Railway: DUE_SITE_TABS='{"carrier.com": ["Billing"]}'
+SITE_TABS = {"falconinsgroup.com": ["Billing"]}
+try:
+    SITE_TABS.update(json.loads(os.getenv("DUE_SITE_TABS") or "{}"))
+except Exception:
+    pass
+# Built-in tips for the billing reader (yours from the admin page are added to these)
+SITE_TIPS = {"falconinsgroup.com": "Open the Billing tab and scroll down: the amount due, next due date "
+                                   "and last payment are listed there."}
+
+CLICK_TAB_JS = r"""(names) => {
+  const vis = (el) => el && el.offsetParent !== null && el.getBoundingClientRect().width > 0;
+  for (const want of names) {
+    const el = [...document.querySelectorAll("a, button, [role=tab], li, span")].filter(vis)
+      .find((e) => (e.innerText || "").trim().toLowerCase() === want.toLowerCase());
+    if (el) { el.removeAttribute && el.removeAttribute("target"); el.click(); return want; }
+  }
+  return null;
+}"""
+
+
+def open_billing_tab(page):
+    """Click the site's billing tab first, if it has one (Falcon). Returns the tab clicked."""
+    tabs = SITE_TABS.get(site_domain(urlparse(page.url).hostname or ""))
+    if not tabs:
+        return None
+    try:
+        hit = page.evaluate(CLICK_TAB_JS, tabs)
+    except Exception:
+        hit = None
+    if hit:
+        live.say(f"Opening the {hit} tab", page)
+        settle(page, 4000)
+    return hit
+
+
+# ---------------- Tips you give the AI (per site, remembered) ----------------
+def site_hints(url):
+    site = site_domain(urlparse(url or "").hostname or "")
+    hs = (recipes().get("_hints") or {}).get(site) or []
+    lines = [f"- {SITE_TIPS[site]}"] if site in SITE_TIPS else []
+    lines += [f"- {h['note']}" + (f" (shown near: {h['near']})" if h.get("near") else "") for h in hs]
+    return "\n".join(lines)
+
+
+def add_hint(url, note, near=""):
+    site = site_domain(urlparse(url or "").hostname or "")
+    if not site or not (note or near):
+        return
+    data = recipes()
+    hints = dict(data.get("_hints") or {})
+    lst = [h for h in (hints.get(site) or []) if h.get("note") != note or h.get("near") != near]
+    lst.append({"note": (note or "The information you need is here")[:200], "near": (near or "")[:300]})
+    hints[site] = lst[-6:]
+    data["_hints"] = hints
+    os.makedirs(DATA, exist_ok=True)
+    with open(RECIPES, "w") as f:
+        json.dump(data, f, indent=1)
+    log(f"[hint] {site}: {note!r}" + (f" near {near[:60]!r}" if near else ""))
 
 
 # ---------------- Saved per-site steps (only AI writes these) ----------------
@@ -816,7 +962,7 @@ def sign_in_if_needed(page, host, carrier, home_host=None):
             if st["pass"]:
                 _wait_signed_in(page, fr)
                 continue
-        elif not code_sent_at and (m := _mfa(fr))["kind"] == "choice":
+        elif (m := _mfa(fr))["kind"] == "choice" and not code_sent_at:
             # Text / call / authenticator / email: always email
             try:
                 if m.get("select"):
@@ -836,6 +982,20 @@ def sign_in_if_needed(page, host, carrier, home_host=None):
             code_sent_at = sent_at
             did = True
             log(f"[code] picked email for the code on {login_host} ({m.get('how')})")
+        elif not code_sent_at and m["kind"] == "codeinstead":
+            fr.locator("[data-tpm=codeinstead]").first.click()
+            code_sent_at = time.time() - 5
+            did = True
+            log(f"[code] {login_host} sent a sign-in link: asked for a code instead ({m.get('how')})")
+        elif m["kind"] == "magiclink" and not code_sent_at:
+            # No "code instead" option: open the sign-in link from the email ourselves
+            link = email_link(time.time() - 300, login_host, carrier=carrier)
+            if not link:
+                return f"{carrier}: sign-in link email never arrived", did
+            page.goto(link, wait_until="domcontentloaded", timeout=45000)
+            code_sent_at = time.time()
+            did = True
+            log(f"[code] opened the sign-in link from the email for {login_host}")
         elif not code_sent_at and switched < 2 and m["kind"] == "switch":
             fr.locator("[data-tpm=other]").first.click()
             switched += 1
@@ -911,7 +1071,7 @@ FIND_JS = r"""(d) => {
 }"""
 
 
-def ai_next_action(policy, names, obs, history):
+def ai_next_action(policy, names, obs, history, hints=""):
     key = os.getenv("OPENAI_API_KEY")
     if not key:
         return {"action": "fail", "reason": "OPENAI_API_KEY not set"}
@@ -936,7 +1096,8 @@ def ai_next_action(policy, names, obs, history):
         "open the matching policy from the results; billing is often under a 'Billing', 'Payments' "
         "or 'Account' tab. Never type passwords. Don't repeat an action that didn't change anything. "
         "The agency is licensed only in Texas: whenever a page asks for a state, choose Texas (TX).\n\n"
-        f"Your previous actions:\n{chr(10).join(history[-8:]) or '(none)'}\n\n"
+        + (f"Tips from the agency for this site (follow them):\n{hints}\n\n" if hints else "")
+        + f"Your previous actions:\n{chr(10).join(history[-8:]) or '(none)'}\n\n"
         f"URL: {obs['url']}\nTitle: {obs['title']}\n\nPage text (start):\n{obs['text']}\n\n"
         f"Clickable / typeable elements:\n{els}"
     )
@@ -1042,6 +1203,21 @@ POINT_JS = r"""([x, y]) => {
     label: sel ? ((el.labels && el.labels[0] && el.labels[0].innerText.trim()) || el.getAttribute("aria-label") || el.name || "").slice(0, 60) : "" };
 }"""
 
+# Text inside a box you drew on the screen (so the AI knows what to look for)
+MARK_TEXT_JS = r"""([x1, y1, x2, y2]) => {
+  const out = [];
+  const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let n;
+  while ((n = walk.nextNode()) && out.length < 40) {
+    const t = n.textContent.replace(/\s+/g, " ").trim();
+    if (!t) continue;
+    const r = document.createRange(); r.selectNodeContents(n);
+    const b = r.getBoundingClientRect();
+    if (b.width && b.right >= x1 && b.left <= x2 && b.bottom >= y1 && b.top <= y2) out.push(t);
+  }
+  return out.join(" | ").slice(0, 300);
+}"""
+
 FOCUS_JS = r"""() => {
   const el = document.activeElement;
   if (!el || el === document.body) return null;
@@ -1084,6 +1260,7 @@ def _help_loop(ctx, page, task, question, forced):
                                  "policy": policy, "question": question, "url": page.url,
                                  "screenshot": _shot(page), "quiet": forced})
     steps, deadline, last_frame = [], time.time() + HELP_WAIT_MIN * 60, time.time()
+    hints_given = task.setdefault("_hints_given", [])
     choose = None  # a dropdown the admin clicked: its options, shown on the admin page
     while time.time() < deadline:
         acts = api("/reminders/help/take", {"id": hid}).get("actions") or []
@@ -1169,6 +1346,15 @@ def _help_loop(ctx, page, task, question, forced):
                     page.go_back(wait_until="domcontentloaded", timeout=30000)
                     steps.append({"do": "back"})
                     settle(page)
+                elif t == "hint":  # a tip typed on the admin page: remembered for this site
+                    add_hint(page.url, str(a.get("text") or "").strip())
+                    hints_given.append(str(a.get("text") or "").strip())
+                elif t == "mark":  # you drew around something: remember what's in that spot
+                    box = [float(a["x"]), float(a["y"]), float(a.get("x2") or a["x"]), float(a.get("y2") or a["y"])]
+                    box = [min(box[0], box[2]), min(box[1], box[3]), max(box[0], box[2]), max(box[1], box[3])]
+                    near = page.evaluate(MARK_TEXT_JS, box)
+                    add_hint(page.url, str(a.get("text") or "").strip() or "The billing information is here", near)
+                    hints_given.append(f"{a.get('text') or 'look here'} (near: {near[:120]})")
             except Exception as e:
                 log(f"[help] action {t} failed: {e}")
         if acts or time.time() - last_frame > 1.2:
@@ -1290,7 +1476,8 @@ def run_agent(ctx, page, task, recipe_key="agent"):
             if _on_policy_page(cur, policy):
                 break
             obs = cur.evaluate(OBSERVE_JS)
-            act = _ai_wait(cur, ai_next_action, policy, names, obs, history)
+            act = _ai_wait(cur, ai_next_action, policy, names, obs, history,
+                           "\n".join(filter(None, [site_hints(cur.url), *task.get("_hints_given", [])])))
             kind = act.get("action")
             by_i = {e["i"]: e for e in obs["elements"]}
             if kind == "done":
@@ -1406,6 +1593,7 @@ def run_agent(ctx, page, task, recipe_key="agent"):
             save_recipe(site, recipe_key, steps)
             log(f"[agent] {site}: learned {len(steps)} steps{' (with help)' if helped else ''}")
     live.say(f"Reading policy {policy}'s billing", cur)
+    open_billing_tab(cur)
     out = read_page(cur)
     if cur is not page:
         cur.close()
@@ -1666,9 +1854,11 @@ def run_policy(ctx, page, task):
         if len(ctx.pages) > before:  # opened in a new tab
             newest = ctx.pages[-1]
             settle(newest, 3000)
+            open_billing_tab(newest)
             out = read_page(newest)
             newest.close()
             return out
+    open_billing_tab(page)
     return read_page(page)
 
 
@@ -1813,9 +2003,10 @@ def main():
                                     extra.close()
                                 except Exception:
                                     pass
+                        hints = site_hints(result.get("finalUrl") or task.get("url") or "")
                         out = api("/reminders/check", {"computer": NAME, "runId": task["runId"], "id": task["id"],
                                                        "url": task.get("url") or result.get("finalUrl") or "",
-                                                       **result})
+                                                       **result, "hints": hints})
                         log(f"[policy] {task['id']} -> {out.get('status')}"
                             f"{' (' + result['error'] + ')' if result.get('error') else ''}")
                     else:
