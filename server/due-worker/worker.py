@@ -239,43 +239,74 @@ def _email_text(msg):
     return re.sub(r"<[^>]+>", " ", " ".join(parts))
 
 
-def email_code(since_ts, host, timeout=240):
-    """Newest code emailed to EMAIL_INTERNAL by this carrier after since_ts."""
-    user, pw = os.getenv("EMAIL_INTERNAL"), os.getenv("EMAIL_INTERNAL_PASS")
-    if not user or not pw:
-        log("[code] EMAIL_INTERNAL not set")
+def _code_inboxes():
+    """Every inbox a carrier may send a verification code to:
+    EMAIL_INTERNAL (preinsurance2024@gmail.com / appointment@) and
+    EMAIL_USER (texaspremiuminsuranceservices@gmail.com: support@, nhussain@)."""
+    out = []
+    for u, p in (("EMAIL_INTERNAL", "EMAIL_INTERNAL_PASS"), ("EMAIL_USER", "EMAIL_PASS")):
+        user, pw = os.getenv(u), os.getenv(p)
+        if user and pw and user not in [x[0] for x in out]:
+            out.append((user, pw))
+    return out
+
+
+def _code_in_inbox(user, pw, since_ts, words):
+    m = imaplib.IMAP4_SSL(IMAP_HOST)
+    try:
+        m.login(user, pw)
+        m.select("INBOX")
+        day = datetime.fromtimestamp(since_ts - 86400, timezone.utc).strftime("%d-%b-%Y")
+        _, data = m.search(None, f'(SINCE "{day}")')
+        for mid in reversed(data[0].split()[-30:]):
+            _, raw = m.fetch(mid, "(RFC822)")
+            msg = email.message_from_bytes(raw[0][1])
+            try:
+                sent = parsedate_to_datetime(msg.get("Date"))
+                if sent.tzinfo is None:  # "-0000" dates come back without a zone: they're UTC
+                    sent = sent.replace(tzinfo=timezone.utc)
+                if sent.timestamp() < since_ts - 60:
+                    continue
+            except Exception:
+                continue
+            subject = str(email.header.make_header(email.header.decode_header(msg.get("Subject") or "")))
+            body = _email_text(msg)
+            hay = f"{msg.get('From')} {subject} {body}".lower()
+            if not any(w in hay for w in words):
+                continue
+            hit = re.search(r"(?<![\d$.,])(\d{6})(?![\d,])", f"{subject} {body}") or \
+                re.search(r"(?<![\d$.,])(\d{4,8})(?![\d,])", f"{subject} {body}")
+            if hit:
+                return hit.group(1)
         return None
-    word = site_domain(host).split(".")[0]
+    finally:
+        try:
+            m.logout()
+        except Exception:
+            pass
+
+
+def email_code(since_ts, host, timeout=240, carrier=""):
+    """Newest code this carrier emailed after since_ts, from any of our inboxes."""
+    boxes = _code_inboxes()
+    if not boxes:
+        log("[code] no inbox set (EMAIL_INTERNAL / EMAIL_USER)")
+        return None
+    words = {site_domain(host).split(".")[0]} | (
+        {w for w in re.findall(r"[a-z]{4,}", (carrier or "").lower())} - GENERIC_WORDS)
     end = time.time() + timeout
     while time.time() < end:
-        time.sleep(10)
-        try:
-            m = imaplib.IMAP4_SSL(IMAP_HOST)
-            m.login(user, pw)
-            m.select("INBOX")
-            day = datetime.fromtimestamp(since_ts - 86400, timezone.utc).strftime("%d-%b-%Y")
-            _, data = m.search(None, f'(SINCE "{day}")')
-            for mid in reversed(data[0].split()[-20:]):
-                _, raw = m.fetch(mid, "(RFC822)")
-                msg = email.message_from_bytes(raw[0][1])
-                try:
-                    if parsedate_to_datetime(msg.get("Date")).timestamp() < since_ts - 60:
-                        continue
-                except Exception:
-                    continue
-                subject = str(email.header.make_header(email.header.decode_header(msg.get("Subject") or "")))
-                body = _email_text(msg)
-                if word not in f"{msg.get('From')} {subject} {body}".lower():
-                    continue
-                hit = re.search(r"(?<![\d$.,])(\d{6})(?![\d,])", f"{subject} {body}") or \
-                    re.search(r"(?<![\d$.,])(\d{4,8})(?![\d,])", f"{subject} {body}")
-                if hit:
-                    m.logout()
-                    log(f"[code] email code found for {host}")
-                    return hit.group(1)
-            m.logout()
-        except Exception as e:
-            log(f"[code] inbox check failed: {e}")
+        time.sleep(6)
+        for user, pw in boxes:
+            try:
+                code = _code_in_inbox(user, pw, since_ts, words)
+            except Exception as e:
+                log(f"[code] inbox check failed for {user}: {e}")
+                continue
+            if code:
+                log(f"[code] email code for {host} found in {user}")
+                return code
+    log(f"[code] no code from {host} in {', '.join(u for u, _ in boxes)} after {timeout}s")
     return None
 
 
@@ -333,6 +364,57 @@ MARK_JS = r"""() => {
   mark(remember, "remember");
   return { pass: !!pass, user: !!user, otp: !!otp, asksCode, emailOpt: !!emailOpt,
            authApp: /authenticator/i.test(text) && !/e-?mail/i.test(text.slice(0, 1500)) };
+}"""
+
+# Multi-factor sign-in: when a site offers text / call / authenticator / email, always
+# pick email (the worker reads that inbox). If a code was already sent to a phone,
+# use the site's "try another way" / "email instead" link to switch to email.
+MFA_JS = r"""() => {
+  const vis = (el) => el && el.offsetParent !== null && !el.disabled && el.getBoundingClientRect().width > 0;
+  document.querySelectorAll("[data-tpm]").forEach((e) => e.removeAttribute("data-tpm"));
+  const text = (document.body && document.body.innerText || "").slice(0, 5000);
+  const mfa = /verification code|security code|one[- ]time|passcode|2-step|two-step|two-factor|multi-?factor|\bmfa\b|verify (it'?s|that it'?s) you|verify your identity|confirm your identity|send (me )?(a |the )?code|receive (a |the |your )?(code|passcode)|how (would|do) you (like|want) to (receive|get|verify)|choose (a |your )?(verification )?(method|option)|delivery method/i;
+  if (!mfa.test(text)) return { kind: null };
+  const label = (e) => ((e.labels && e.labels[0] && e.labels[0].innerText) || e.innerText || e.value ||
+    e.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim();
+  const around = (e) => label(e) + " " + ((e.closest("label, li, tr") || e.parentElement || e).innerText || "").replace(/\s+/g, " ").slice(0, 160);
+  const emailRe = /\be-?mail\b|[\w.*-]+@[\w*-]+\.[\w.*]+/i;
+  const phoneRe = /\b(text|sms|call|phone|voice|mobile|cell|authenticator)\b/i;
+  const notIt = /forgot|change|update|edit|contact us|help|privacy|unsubscribe/i;
+  // 1) a dropdown of methods
+  for (const s of document.querySelectorAll("select")) {
+    if (!vis(s)) continue;
+    const o = [...s.options].find((x) => emailRe.test(x.text));
+    if (o && [...s.options].some((x) => phoneRe.test(x.text))) {
+      s.setAttribute("data-tpm", "emailsel");
+      return { kind: "choice", select: o.text.trim(), how: "dropdown" };
+    }
+  }
+  // 2) radio buttons / buttons / links / list items
+  const cands = [...document.querySelectorAll("input[type=radio], [role=radio], label, button, a, li, [role=button], [role=option], [role=menuitem]")]
+    .filter((e) => e.type === "radio" ? !!e.closest("label, li, div") : vis(e));
+  const phoneOpt = cands.some((e) => phoneRe.test(label(e).slice(0, 80)) || (e.type === "radio" && phoneRe.test(around(e))));
+  const email = cands.find((e) => {
+    const l = e.type === "radio" ? around(e) : label(e);
+    return l && l.length < 140 && emailRe.test(l) && !notIt.test(l) &&
+      !(e.tagName === "A" && /^mailto:/i.test(e.getAttribute("href") || ""));
+  });
+  if (email && (phoneOpt || /send|code|verif/i.test(label(email)))) {
+    const radio = email.matches("input[type=radio]") ? email
+      : (email.querySelector && email.querySelector("input[type=radio]")) ||
+        (email.tagName === "LABEL" && email.htmlFor && document.getElementById(email.htmlFor));
+    (radio || email).setAttribute("data-tpm", "email");
+    return { kind: "choice", radio: !!radio, how: label(email).slice(0, 60) };
+  }
+  // 3) a code box, but the code went to a phone: switch to email
+  const toPhone = /(sent|texted|text message|sms|call(ed|ing)?)[^.]{0,80}(phone|number|ending|mobile|\*{2,}|x{3,}|\d{4}\b)/i.test(text) ||
+                  /phone (number )?ending|authenticator app/i.test(text);
+  const other = cands.find((e) => vis(e) && /e-?mail (me )?instead|use (your |my )?e-?mail|send (it |the code )?to (my |your )?e-?mail|try another (way|method)|use (a )?different (method|option|way)|other (options|ways|methods)|choose another|another way|more options|didn'?t (get|receive)/i.test(label(e).slice(0, 80)));
+  if (toPhone && other) {
+    other.setAttribute("data-tpm", "other");
+    return { kind: "switch", how: label(other).slice(0, 60) };
+  }
+  return { kind: null };
 }"""
 
 # Same search logic as the extension (duedates.js)
@@ -688,10 +770,17 @@ def _find_cred(host, home_host, carrier):
     return vault.login_by_name([carrier]) if carrier else None
 
 
+def _mfa(fr):
+    try:
+        return fr.evaluate(MFA_JS)
+    except Exception:
+        return {"kind": None}
+
+
 def sign_in_if_needed(page, host, carrier, home_host=None):
     """Handles login forms (also username-first and iframe ones), 'send code by email'
     choices and code boxes. Returns (error_or_None, signed_in_now)."""
-    did, code_sent_at, pass_tries, user_only = False, None, 0, 0
+    did, code_sent_at, pass_tries, user_only, switched = False, None, 0, 0, 0
     for _ in range(8):
         fr, st = _login_frame(page)
         login_host = (urlparse(page.url).hostname or host or "").lower()
@@ -727,18 +816,35 @@ def sign_in_if_needed(page, host, carrier, home_host=None):
             if st["pass"]:
                 _wait_signed_in(page, fr)
                 continue
-        elif st["asksCode"] and st["emailOpt"] and not code_sent_at:
-            fr.locator("[data-tp=email]").first.click()
-            page.wait_for_timeout(800)
-            fr.evaluate(MARK_JS)
-            click_or_enter(fr, "[data-tp=go]", None)
-            code_sent_at = time.time()
-            log(f"[code] asked {login_host} to email the code")
+        elif not code_sent_at and (m := _mfa(fr))["kind"] == "choice":
+            # Text / call / authenticator / email: always email
+            try:
+                if m.get("select"):
+                    fr.locator("[data-tpm=emailsel]").first.select_option(label=m["select"])
+                elif m.get("radio"):
+                    fr.locator("[data-tpm=email]").first.check(force=True)
+                else:
+                    fr.locator("[data-tpm=email]").first.click()
+            except Exception as e:
+                log(f"[code] couldn't pick email on {login_host}: {e}")
+                return f"{carrier}: couldn't choose email for the verification code", did
+            sent_at = time.time() - 5
+            page.wait_for_timeout(1200)
+            again = fr.evaluate(MARK_JS)  # clicking "Email me" often sends it right away
+            if not again["otp"] and fr.locator("[data-tp=go]").count():
+                click_or_enter(fr, "[data-tp=go]", None)
+            code_sent_at = sent_at
+            did = True
+            log(f"[code] picked email for the code on {login_host} ({m.get('how')})")
+        elif not code_sent_at and switched < 2 and m["kind"] == "switch":
+            fr.locator("[data-tpm=other]").first.click()
+            switched += 1
+            log(f"[code] the code went to a phone on {login_host}: switching to email ({m.get('how')})")
         elif st["otp"]:
-            if st["authApp"]:
+            if st["authApp"] and not code_sent_at:
                 code = admin_code(login_host, carrier)
             else:
-                code = email_code(code_sent_at or time.time() - 180, login_host)
+                code = email_code(code_sent_at or time.time() - 180, login_host, carrier=carrier)
             if not code:
                 return f"{carrier}: verification code never arrived", did
             fr.evaluate(MARK_JS)
