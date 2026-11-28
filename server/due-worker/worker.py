@@ -24,6 +24,7 @@ import random
 import os
 import re
 import subprocess
+import threading
 import time
 import traceback
 from datetime import datetime, timedelta, timezone
@@ -425,7 +426,7 @@ def open_site(page, url):
     check_down(page)
 
 
-LIVE_EVERY = float(os.getenv("DUE_LIVE_EVERY_SEC", "2"))
+LIVE_EVERY = float(os.getenv("DUE_LIVE_EVERY_SEC", "1"))
 
 
 class Live:
@@ -535,9 +536,15 @@ def settle(page, ms=4000):
         page.wait_for_load_state("domcontentloaded", timeout=30000)
     except Exception:
         pass
+    # Stop waiting as soon as the page has gone quiet (most pages: well under a second)
+    end = time.time() + ms / 1000
+    try:
+        page.wait_for_load_state("networkidle", timeout=min(ms, 3000))
+        end = min(end, time.time() + 0.4)
+    except Exception:
+        pass
     pick_texas(page)
     # Wait in small slices so the live view stays fresh and Stop/Take control react fast
-    end = time.time() + ms / 1000
     while True:
         live.tick(page)
         left = end - time.time()
@@ -757,6 +764,23 @@ def ai_next_action(policy, names, obs, history):
         return {"action": "fail", "reason": f"AI error: {e}"[:200]}
 
 
+def _ai_wait(page, fn, *args):
+    """Run an AI call in the background and keep the live view / Take control
+    responsive while it thinks (nothing has been done on the page yet, so a
+    Take control here loses nothing)."""
+    box = {}
+    th = threading.Thread(target=lambda: box.setdefault("r", fn(*args)), daemon=True)
+    th.start()
+    deferred, live.defer = live.defer, False
+    try:
+        while th.is_alive():
+            live.tick(page)
+            th.join(0.3)
+    finally:
+        live.defer = deferred
+    return box.get("r") or {"action": "fail", "reason": "AI gave no answer"}
+
+
 def _desc(e):
     return {k: e[k] for k in ("tag", "id", "name", "placeholder", "text")}
 
@@ -813,6 +837,8 @@ SIGNIN_TROUBLE = re.compile(r"bitwarden|rejected|code|authenticator", re.I)
 # on the Due-date Reminders page. Clicks and typing there drive this browser; the
 # steps are saved per site so next time no help (and no AI) is needed.
 HELP_WAIT_MIN = int(os.getenv("DUE_HELP_WAIT_MIN", "10"))
+HELP_KEYS = {"Enter", "Tab", "Escape", "Backspace", "Delete", "ArrowDown", "ArrowUp", "ArrowLeft",
+             "ArrowRight", "Home", "End", "PageUp", "PageDown", "Space"}
 _help_snooze_until = 0.0
 
 POINT_JS = r"""([x, y]) => {
@@ -899,16 +925,16 @@ def _help_loop(ctx, page, task, question, forced):
                         desc.pop("label", None)
                     before = len(ctx.pages)
                     page.mouse.move(x - 3, y - 2)
-                    page.mouse.click(x, y, delay=random.randint(40, 120))
+                    page.mouse.click(x, y, delay=random.randint(30, 70))
                     if desc and (desc["id"] or desc["name"] or desc["placeholder"] or desc["text"]):
                         st = {"do": "click", "target": desc}
                         if policy and _norm_js(policy) in _norm_js(desc["text"]):
                             st["target"] = {**desc, "id": "", "text": "{policy}"}
                         steps.append(st)
-                    settle(page, 2500)
+                    settle(page, 2000)
                     if len(ctx.pages) > before:
                         page = ctx.pages[-1]
-                        settle(page, 2500)
+                        settle(page, 2000)
                 elif t == "select":
                     x, y, value = float(a["x"]), float(a["y"]), str(a.get("value") or "")
                     desc = page.evaluate(POINT_JS, [x, y])
@@ -924,29 +950,40 @@ def _help_loop(ctx, page, task, question, forced):
                 elif t == "type":
                     text = str(a.get("text") or "")
                     focused = page.evaluate(FOCUS_JS)
-                    page.keyboard.type(text, delay=random.randint(50, 110))
+                    page.keyboard.type(text, delay=random.randint(15, 40))
                     if focused and not focused.pop("secret", False):
-                        steps.append({"do": "type", "target": focused,
-                                      "text": "{policy}" if policy and _norm_js(text) == _norm_js(policy) else text})
-                elif t == "key" and a.get("key") in ("Enter", "Tab", "Escape", "Backspace", "ArrowDown", "ArrowUp"):
+                        prev = steps[-1] if steps and steps[-1]["do"] == "type" and steps[-1]["target"] == focused else None
+                        full = (prev["text"] if prev and prev["text"] != "{policy}" else (policy if prev else "")) + text
+                        st = {"do": "type", "target": focused,
+                              "text": "{policy}" if policy and _norm_js(full) == _norm_js(policy) else full}
+                        if prev:
+                            steps[-1] = st
+                        else:
+                            steps.append(st)
+                elif t == "key" and a.get("key") in HELP_KEYS:
                     page.keyboard.press(a["key"])
                     if a["key"] == "Enter" and steps and steps[-1]["do"] == "type":
                         steps[-1]["enter"] = True
-                    settle(page, 2500)
+                    if a["key"] == "Backspace" and steps and steps[-1]["do"] == "type" and steps[-1]["text"] != "{policy}":
+                        steps[-1]["text"] = steps[-1]["text"][:-1]
+                    if a["key"] == "Enter":
+                        settle(page, 2000)
                 elif t == "goto" and str(a.get("url") or "").startswith("http"):
                     page.goto(a["url"], wait_until="domcontentloaded", timeout=45000)
                     steps.append({"do": "goto", "url": a["url"]})
                     settle(page)
                 elif t == "scroll":
-                    page.mouse.wheel(0, float(a.get("dy") or 500))
-                    time.sleep(0.5)
+                    if a.get("x") is not None and a.get("y") is not None:
+                        page.mouse.move(float(a["x"]), float(a["y"]))  # scroll the part under the mouse
+                    page.mouse.wheel(0, max(-3000.0, min(3000.0, float(a.get("dy") or 500))))
+                    time.sleep(0.15)
                 elif t == "back":
                     page.go_back(wait_until="domcontentloaded", timeout=30000)
                     steps.append({"do": "back"})
                     settle(page)
             except Exception as e:
                 log(f"[help] action {t} failed: {e}")
-        if acts or time.time() - last_frame > 4:
+        if acts or time.time() - last_frame > 1.2:
             try:
                 title = page.title()
             except Exception:
@@ -954,7 +991,7 @@ def _help_loop(ctx, page, task, question, forced):
             api("/reminders/help/frame", {"id": hid, "url": page.url, "title": title, "screenshot": _shot(page),
                                           "select": choose})
             last_frame = time.time()
-        time.sleep(1.5)
+        time.sleep(0.25)
     api("/reminders/help/close", {"id": hid, "status": "timeout"})
     if forced:
         return "timeout", page, steps
@@ -1003,10 +1040,17 @@ def run_agent(ctx, page, task, recipe_key="agent"):
     host = (urlparse(start).hostname or "").lower()
     site = site_domain(host)
 
-    live.say(f"Opening {site} for policy {policy}", page)
-    open_site(page, start)
-    err, _ = sign_in_if_needed(page, host, carrier)
-    check_down(page)
+    if task.get("here"):
+        # You just handed it back: carry on from this exact page (no reload, no saved steps)
+        saved = None
+        home = page.url
+        err = None
+        live.say(f"AI continues from your page for policy {policy}", page)
+    else:
+        live.say(f"Opening {site} for policy {policy}", page)
+        open_site(page, start)
+        err, _ = sign_in_if_needed(page, host, carrier)
+        check_down(page)
     if err:
         res, page, _ = ask_for_help(ctx, page, task, f"{err}. Please sign in on the screen "
                                                      f"(or fix it in Bitwarden and press Skip), then press "
@@ -1014,10 +1058,11 @@ def run_agent(ctx, page, task, recipe_key="agent"):
         if res not in ("done", "resume"):
             return {"error": err, **read_page(page)}
         helped = True
-    home = page.url
+    if not task.get("here"):
+        home = page.url
+        saved = recipes().get(site, {}).get(recipe_key)
 
     # 1) Saved steps for this site: no AI
-    saved = recipes().get(site, {}).get(recipe_key)
     if saved:
         live.say(f"Following the {len(saved)} saved steps for {site}", page)
         try:
@@ -1057,7 +1102,7 @@ def run_agent(ctx, page, task, recipe_key="agent"):
             if _on_policy_page(cur, policy):
                 break
             obs = cur.evaluate(OBSERVE_JS)
-            act = ai_next_action(policy, names, obs, history)
+            act = _ai_wait(cur, ai_next_action, policy, names, obs, history)
             kind = act.get("action")
             by_i = {e["i"]: e for e in obs["elements"]}
             if kind == "done":
@@ -1477,7 +1522,8 @@ def take_over(ctx, task):
                                     f"You have control. Click through to policy {policy}'s amount due, "
                                     "then press Done, or Let AI continue.", forced=True)
     if res == "resume":  # the AI takes it from the page you left it on (not saved as the site's steps)
-        return run_agent(ctx, page, {**task, "policy": policy, "portal": page.url}, recipe_key="_resumed")
+        return run_agent(ctx, page, {**task, "policy": policy, "portal": page.url, "here": True},
+                         recipe_key="_resumed")
     if res != "done":
         return {"error": "Taken over from the admin page and not finished", **read_page(page)}
     if steps and task.get("mode") == "agent" and any(
