@@ -44,6 +44,9 @@ IMAP_HOST = os.getenv("EMAIL_INTERNAL_IMAP", "imap.gmail.com")
 AI_MODEL = os.getenv("DUE_REMINDER_MODEL", "gpt-4o-mini")
 AM_HOME = "https://agents.agencymatrix.com/"
 AM_HOST = "agents.agencymatrix.com"
+# The report pages agents use. The worker opens them on the live screen before pulling.
+AM_DUE_PAGE = "https://agents.agencymatrix.com/#/reports/due_dates"
+AM_TX_PAGE = "https://agents.agencymatrix.com/#/reports/trans_detail"
 HEADERS = {"X-Office-Key": KEY}
 
 
@@ -312,7 +315,13 @@ REPORT_JS = r"""async (day) => {
   const res = await fetch("https://agents.agencymatrix.com/rptDueDate2.php?Action=Run", { method: "POST",
     credentials: "include", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: form });
   const html = await res.text();
-  return res.ok && html.includes("Policy Due Dates") && html.includes("id='sortable'") ? html : null;
+  if (res.ok && html.includes("Policy Due Dates") && /id=["']?sortable/.test(html)) return { ok: true, html };
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const text = (doc.body ? doc.body.textContent : html).replace(/\s+/g, " ").trim();
+  // No policies due that day is a real answer, not a failure
+  if (res.ok && html.includes("Policy Due Dates") && /no (records|results|policies)|nothing to report/i.test(text))
+    return { ok: true, html: "" };
+  return { ok: false, error: res.ok ? "unexpected page" : `HTTP ${res.status}`, sample: text.slice(0, 300) };
 }"""
 
 
@@ -1163,6 +1172,25 @@ def _am_open(ctx, page, task, what):
     return page, err
 
 
+def _am_report_page(ctx, page, task, url, what):
+    """Open the AgencyMatrix report page (Reports > Policy Due Dates / Transaction Detail)
+    on the live screen, so you can watch it and take over. If it bounced to sign-in,
+    sign in again. Returns (page, error or None)."""
+    live.say(f"Opening {what} in AgencyMatrix", page)
+    page.goto(url, wait_until="domcontentloaded", timeout=45000)
+    settle(page)
+    try:
+        page.wait_for_function("() => /run\\s*report/i.test(document.body.innerText || '')", timeout=15000)
+    except Exception:
+        err, _ = sign_in_if_needed(page, AM_HOST, "AgencyMatrix")
+        if err:
+            return page, err
+        page.goto(url, wait_until="domcontentloaded", timeout=45000)
+        settle(page)
+    live.say(f"{what} open, pulling the report", page)
+    return page, None
+
+
 def _am_guarded(ctx, page, task, what, work):
     """Run work(page) with Take control available: after you hand it back, it runs again."""
     for _ in range(3):
@@ -1185,19 +1213,27 @@ def run_report(ctx, page, task):
         page, err = _am_open(ctx, page, task, "the due-date report")
         if err:
             return "fail", err, page
+        page, err = _am_report_page(ctx, page, task, AM_DUE_PAGE, "Policy Due Dates")
+        if err:
+            return "fail", err, page
         by_target = {}
         for q in task["queries"]:
             live.say(f"Pulling the due-date report for {q['target']}", page)
-            html = page.evaluate(REPORT_JS, q["query"])
-            if not html:
+            out = page.evaluate(REPORT_JS, q["query"])
+            if not out.get("ok"):
+                log(f"[report] {q['target']}: {out.get('error')} {out.get('sample', '')}")
                 res, page, _ = ask_for_help(
-                    ctx, page, task, "AgencyMatrix is open but the due-date report didn't come back. Check the "
-                                     "screen (sign in again if needed), then press Let AI continue to try again.")
+                    ctx, page, task, f"The due-date report for {q['target']} didn't come back "
+                                     f"({out.get('error')}). Check the screen (sign in again if needed), "
+                                     "then press Let AI continue to try again.")
                 if res in ("done", "resume"):
-                    html = page.evaluate(REPORT_JS, q["query"])
-                if not html:
-                    return "fail", "AgencyMatrix report not available on this login", page
-            by_target.setdefault(q["target"], []).extend(parse_due_report(html))
+                    page, _ = _am_report_page(ctx, page, task, AM_DUE_PAGE, "Policy Due Dates")
+                    out = page.evaluate(REPORT_JS, q["query"])
+                if not out.get("ok"):
+                    return "fail", f"Due-date report: {out.get('error')} {out.get('sample', '')[:120]}", page
+            rows = parse_due_report(out["html"]) if out["html"] else []
+            log(f"[report] {q['target']}: {len(rows)} policies")
+            by_target.setdefault(q["target"], []).extend(rows)
         return "ok", by_target, page
 
     try:
@@ -1268,6 +1304,9 @@ def run_txreport(ctx, page, task):
 
     try:
         page, err = _am_open(ctx, page, task, f"Transaction Details for {day}")
+        if err:
+            return done(False, error=err)
+        page, err = _am_report_page(ctx, page, task, AM_TX_PAGE, "Transaction Detail")
         if err:
             return done(False, error=err)
         try:
