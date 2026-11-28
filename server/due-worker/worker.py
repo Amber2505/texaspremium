@@ -864,7 +864,7 @@ FOCUS_JS = r"""() => {
 
 def _shot(page):
     try:
-        return base64.b64encode(page.screenshot(type="jpeg", quality=55)).decode()
+        return base64.b64encode(page.screenshot(type="jpeg", quality=40)).decode()
     except Exception:
         return ""
 
