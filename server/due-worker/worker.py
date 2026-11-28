@@ -175,6 +175,27 @@ class Vault:
                 "item": best.get("name")}
 
 
+    def login_by_name(self, names):
+        """A login whose Bitwarden name or website has a word from the carrier's name
+        ("Apollo Managing General Agency" -> the item named "Apollo MGA")."""
+        self.load()
+        words = {w for n in names for w in re.findall(r"[a-z]{4,}", (n or "").lower())} - GENERIC_WORDS
+        best, score = None, 0.0
+        for it in self.items:
+            uris = " ".join((u.get("uri") or "") for u in (it["login"].get("uris") or []))
+            hay = ((it.get("name") or "") + " " + uris).lower()
+            s = sum(1 for w in words if w in hay)
+            if not s:
+                continue
+            if re.search(r"admin|texas premium|agent|producer|portal", hay):
+                s += 0.5
+            if s > score:
+                best, score = it, s
+        if not best:
+            return None
+        return {"user": best["login"].get("username") or "", "pass": best["login"]["password"],
+                "item": best.get("name")}
+
     def site_for(self, names):
         """The carrier's agent site from Bitwarden, matched by carrier name words
         ("Kemper Insurance company" -> the Bitwarden login named/linked "kemper")."""
@@ -625,55 +646,116 @@ def ai_pick_search(page, host):
 
 
 # ---------------- Signing in ----------------
-def sign_in_if_needed(page, host, carrier):
-    """Handles login forms, 'send code by email' choices and code boxes.
-    Returns (error_or_None, signed_in_now)."""
-    did, code_sent_at = False, None
-    for _ in range(6):
-        st = page.evaluate(MARK_JS)
+def _login_frame(page):
+    """The page or iframe that holds the sign-in form (some carriers put it in an iframe)."""
+    st = page.evaluate(MARK_JS)
+    if st["pass"] or st["user"] or st["otp"] or st["asksCode"]:
+        return page, st
+    for fr in page.frames[1:]:
+        try:
+            fst = fr.evaluate(MARK_JS)
+        except Exception:
+            continue
+        if fst["pass"] or fst["user"] or fst["otp"]:
+            return fr, fst
+    return page, st
+
+
+def _wait_signed_in(page, frame, timeout=12000):
+    """After pressing Sign in: wait until the password box is gone (or the page moved on)."""
+    url = page.url
+    end = time.time() + timeout / 1000
+    while time.time() < end:
+        page.wait_for_timeout(500)
+        live.tick(page)
+        try:
+            if page.url != url or not frame.evaluate(
+                    "() => [...document.querySelectorAll('input[type=password]')].some((i) => i.offsetParent !== null)"):
+                break
+        except Exception:
+            break  # the frame went away: the page moved on
+    settle(page, 3000)
+
+
+def _find_cred(host, home_host, carrier):
+    """Bitwarden login for this sign-in page: its own site, then the carrier's portal
+    site (sign-in often happens on a different address), then the carrier's name."""
+    for h in (host, home_host):
+        if h:
+            cred = vault.login_for(h)
+            if cred:
+                return cred
+    return vault.login_by_name([carrier]) if carrier else None
+
+
+def sign_in_if_needed(page, host, carrier, home_host=None):
+    """Handles login forms (also username-first and iframe ones), 'send code by email'
+    choices and code boxes. Returns (error_or_None, signed_in_now)."""
+    did, code_sent_at, pass_tries, user_only = False, None, 0, 0
+    for _ in range(8):
+        fr, st = _login_frame(page)
+        login_host = (urlparse(page.url).hostname or host or "").lower()
         if st["pass"] or st["user"]:
             try:
-                cred = vault.login_for(host)
+                cred = _find_cred(login_host, home_host or host, carrier)
             except Exception as e:
                 log(f"[vault] {e}")
                 return str(e)[:200], did
             if not cred:
-                return f"No Bitwarden login saved for {site_domain(host)} (add one with that website)", did
-            if did and st["pass"]:
-                return f"Sign-in to {site_domain(host)} was rejected (check the password in Bitwarden: {cred['item']})", did
+                log(f"[login] no Bitwarden login matches {login_host} / {home_host or host} / {carrier}")
+                return (f"No Bitwarden login found for {site_domain(login_host)} ({carrier}). Add the login "
+                        f"in Bitwarden with that website, or name it after the carrier"), did
+            if st["pass"] and pass_tries >= 2:
+                return f"Sign-in to {site_domain(login_host)} was rejected (check the password in Bitwarden: {cred['item']})", did
+            if st["user"] and not st["pass"]:
+                user_only += 1
+                if user_only > 2:
+                    return f"Sign-in to {site_domain(login_host)} won't take the username ({cred['item']})", did
             if st["user"]:
-                page.locator("[data-tp=user]").first.fill(cred["user"])
+                fr.locator("[data-tp=user]").first.fill(cred["user"])
             if st["pass"]:
-                page.locator("[data-tp=pass]").first.fill(cred["pass"])
-            if page.locator("[data-tp=remember]").count():
-                page.locator("[data-tp=remember]").first.check()
-            click_or_enter(page, "[data-tp=go]", "[data-tp=pass]" if st["pass"] else "[data-tp=user]")
+                fr.locator("[data-tp=pass]").first.fill(cred["pass"])
+                pass_tries += 1
+            if fr.locator("[data-tp=remember]").count():
+                try:
+                    fr.locator("[data-tp=remember]").first.check()
+                except Exception:
+                    pass
+            click_or_enter(fr, "[data-tp=go]", "[data-tp=pass]" if st["pass"] else "[data-tp=user]")
             did = True
-            log(f"[login] {host} with {cred['item']}")
+            log(f"[login] {login_host} with Bitwarden '{cred['item']}'" + ("" if st["pass"] else " (username first)"))
+            if st["pass"]:
+                _wait_signed_in(page, fr)
+                continue
         elif st["asksCode"] and st["emailOpt"] and not code_sent_at:
-            page.locator("[data-tp=email]").first.click()
+            fr.locator("[data-tp=email]").first.click()
             page.wait_for_timeout(800)
-            page.evaluate(MARK_JS)
-            click_or_enter(page, "[data-tp=go]", None)
+            fr.evaluate(MARK_JS)
+            click_or_enter(fr, "[data-tp=go]", None)
             code_sent_at = time.time()
-            log(f"[code] asked {host} to email the code")
+            log(f"[code] asked {login_host} to email the code")
         elif st["otp"]:
             if st["authApp"]:
-                code = admin_code(host, carrier)
+                code = admin_code(login_host, carrier)
             else:
-                code = email_code(code_sent_at or time.time() - 180, host)
+                code = email_code(code_sent_at or time.time() - 180, login_host)
             if not code:
                 return f"{carrier}: verification code never arrived", did
-            page.evaluate(MARK_JS)
-            page.locator("[data-tp=otp]").first.fill(code)
-            if page.locator("[data-tp=remember]").count():
-                page.locator("[data-tp=remember]").first.check()
-            click_or_enter(page, "[data-tp=go]", "[data-tp=otp]")
+            fr.evaluate(MARK_JS)
+            fr.locator("[data-tp=otp]").first.fill(code)
+            if fr.locator("[data-tp=remember]").count():
+                try:
+                    fr.locator("[data-tp=remember]").first.check()
+                except Exception:
+                    pass
+            click_or_enter(fr, "[data-tp=go]", "[data-tp=otp]")
             did = True
+            _wait_signed_in(page, fr)
+            continue
         else:
             return None, did
-        settle(page)
-    return f"Still on the sign-in page for {site_domain(host)}", did
+        settle(page, 3000)
+    return f"Still on the sign-in page for {site_domain(urlparse(page.url).hostname or host)}", did
 
 
 # ---------------- AI agent (finds a policy on a site with no known lookup) ----------------
@@ -1049,7 +1131,7 @@ def run_agent(ctx, page, task, recipe_key="agent"):
     else:
         live.say(f"Opening {site} for policy {policy}", page)
         open_site(page, start)
-        err, _ = sign_in_if_needed(page, host, carrier)
+        err, _ = sign_in_if_needed(page, host, carrier, home_host=host)
         check_down(page)
     if err:
         res, page, _ = ask_for_help(ctx, page, task, f"{err}. Please sign in on the screen "
@@ -1091,7 +1173,7 @@ def run_agent(ctx, page, task, recipe_key="agent"):
             live.defer = False
             live.say(f"AI is looking for policy {policy}" + (f" · last: {history[-1]}" if history else ""), cur)
             live.defer = True  # from here a Take control waits for this step to be recorded
-            err, _ = sign_in_if_needed(cur, (urlparse(cur.url).hostname or host), carrier)
+            err, _ = sign_in_if_needed(cur, (urlparse(cur.url).hostname or host), carrier, home_host=host)
             if err:
                 res, cur, _ = ask_for_help(ctx, cur, task, f"{err}. Please sign in on the screen, "
                                                            "then press Let AI continue.")
@@ -1441,7 +1523,8 @@ def run_policy(ctx, page, task):
 
     live.say(f"Opening {site_domain(host)}" + (f" for policy {policy}" if policy else ""), page)
     open_site(page, url)
-    err, signed_in = sign_in_if_needed(page, host, site_domain(host))
+    names = task.get("names") or []
+    err, signed_in = sign_in_if_needed(page, host, names[0] if names else site_domain(host), home_host=host)
     check_down(page)
     if err:
         return {"error": err, **read_page(page)}
