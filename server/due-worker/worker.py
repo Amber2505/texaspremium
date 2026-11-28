@@ -75,30 +75,67 @@ class Vault:
         self.items, self.loaded = None, 0.0
 
     def _bw(self, *args, extra=None):
-        r = subprocess.run(["bw", *args], capture_output=True, text=True, timeout=180,
-                           env={**os.environ, **(extra or {})})
+        # --nointeraction: never sit waiting for a prompt; the env vars keep the CLI
+        # quiet (no update notice mixed into the JSON) and pointed at our server.
+        env = {**os.environ, "BITWARDENCLI_APPDATA_DIR": os.getenv("BITWARDENCLI_APPDATA_DIR", "/data/bw"),
+               "BW_NOINTERACTION": "true", "NODE_NO_WARNINGS": "1", **(extra or {})}
+        r = subprocess.run(["bw", *args, "--nointeraction"], capture_output=True, text=True, timeout=180, env=env)
         if r.returncode:
-            raise RuntimeError(f"bw {args[0]} failed: {(r.stderr or r.stdout).strip()[:200]}")
+            msg = (r.stderr or r.stdout).strip()
+            for secret in (os.getenv("BITWARDEN_PASSWORD"), os.getenv("BW_CLIENTSECRET")):
+                if secret:
+                    msg = msg.replace(secret, "***")
+            raise RuntimeError(f"Bitwarden {args[0]} failed: {msg[:250]}")
         return r.stdout.strip()
 
-    def load(self):
-        if self.items is not None and time.time() - self.loaded < 3600:
+    @staticmethod
+    def _json(out, default):
+        """bw sometimes prints a notice before the JSON: read from the first { or [."""
+        i = min([k for k in (out.find("{"), out.find("[")) if k >= 0], default=-1)
+        return json.loads(out[i:]) if i >= 0 else default
+
+    def _login(self):
+        server = os.getenv("BW_SERVER", "").strip()  # e.g. https://vault.bitwarden.eu for an EU account
+        if server:
+            try:
+                self._bw("config", "server", server)
+            except RuntimeError as e:  # "Logout required before server config update"
+                log(f"[vault] {e}")
+        if os.getenv("BW_CLIENTID") and os.getenv("BW_CLIENTSECRET"):
+            # API key: no "new device" email code from Bitwarden
+            self._bw("login", "--apikey")
+        else:
+            self._bw("login", os.environ["BITWARDEN_EMAIL"], "--passwordenv", "BITWARDEN_PASSWORD")
+
+    def load(self, force=False):
+        if not force and self.items is not None and time.time() - self.loaded < 3600:
             return
-        status = json.loads(self._bw("status") or "{}").get("status")
+        if not os.getenv("BITWARDEN_PASSWORD"):
+            raise RuntimeError("Bitwarden: BITWARDEN_PASSWORD (master password) isn't set on Railway")
+        st = self._json(self._bw("status"), {})
+        status = st.get("status")
+        want = (os.getenv("BITWARDEN_EMAIL") or "").strip().lower()
+        if status != "unauthenticated" and want and (st.get("userEmail") or "").lower() not in ("", want):
+            log(f"[vault] signed in as {st.get('userEmail')}, switching to {want}")
+            self._bw("logout")
+            status = "unauthenticated"
         if status == "unauthenticated":
-            if os.getenv("BW_CLIENTID") and os.getenv("BW_CLIENTSECRET"):
-                # API key: no "new device" email code from Bitwarden
-                self._bw("login", "--apikey")
+            self._login()
+        try:
+            session = self._bw("unlock", "--passwordenv", "BITWARDEN_PASSWORD", "--raw")
+        except RuntimeError as e:
+            if "not logged in" in str(e).lower():
+                self._login()
+                session = self._bw("unlock", "--passwordenv", "BITWARDEN_PASSWORD", "--raw")
             else:
-                # Email + master password. Bitwarden may email a new-device code the first
-                # time; if this fails, add BW_CLIENTID / BW_CLIENTSECRET (see README).
-                self._bw("login", os.environ["BITWARDEN_EMAIL"], "--passwordenv", "BITWARDEN_PASSWORD")
-        session = self._bw("unlock", "--passwordenv", "BITWARDEN_PASSWORD", "--raw")
+                raise RuntimeError(f"{e} (check BITWARDEN_PASSWORD: it must be the master password)")
         self._bw("sync", "--session", session)
-        items = json.loads(self._bw("list", "items", "--session", session))
+        items = self._json(self._bw("list", "items", "--session", session), [])
         self.items = [i for i in items if i.get("type") == 1 and (i.get("login") or {}).get("password")]
         self.loaded = time.time()
-        log(f"[vault] {len(self.items)} logins loaded")
+        no_site = sum(1 for i in self.items if not (i["login"].get("uris") or []))
+        log(f"[vault] signed in as {st.get('userEmail') or want}: {len(self.items)} logins"
+            + (f" ({no_site} have no website saved, matched by name)" if no_site else ""))
 
     def login_for(self, host):
         """Best login for this site: exact host first, then same domain."""
@@ -120,6 +157,17 @@ class Vault:
                     s += 0.5
                 if s > score:
                     best, score = it, s
+        if not best:
+            # No website match: an item whose name has the site's main word
+            # ("Safeway" for www.safewayxchange.com), Texas Premium / admin logins first
+            core = re.sub(r"(agents?|portal|login|online|xchange|exchange|ins(urance)?|mga|group)$", "",
+                          dom.split(".")[0]) or dom.split(".")[0]
+            for it in self.items:
+                name = re.sub(r"[^a-z0-9]", "", (it.get("name") or "").lower())
+                if len(core) >= 4 and (core in name or (len(name) >= 4 and name in dom.split(".")[0])):
+                    s = 1.0 + (0.5 if re.search(r"admin|texas premium", it.get("name") or "", re.I) else 0)
+                    if s > score:
+                        best, score = it, s
         if not best:
             return None
         return {"user": best["login"].get("username") or "", "pass": best["login"]["password"],
@@ -577,9 +625,13 @@ def sign_in_if_needed(page, host, carrier):
     for _ in range(6):
         st = page.evaluate(MARK_JS)
         if st["pass"] or st["user"]:
-            cred = vault.login_for(host)
+            try:
+                cred = vault.login_for(host)
+            except Exception as e:
+                log(f"[vault] {e}")
+                return str(e)[:200], did
             if not cred:
-                return f"No Bitwarden login saved for {site_domain(host)}", did
+                return f"No Bitwarden login saved for {site_domain(host)} (add one with that website)", did
             if did and st["pass"]:
                 return f"Sign-in to {site_domain(host)} was rejected (check the password in Bitwarden: {cred['item']})", did
             if st["user"]:
@@ -1464,6 +1516,10 @@ def main():
         ctx.add_init_script(HUMAN_JS)
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         log(f"Cloud worker '{NAME}' started")
+        try:
+            vault.load(force=True)  # say right away whether Bitwarden works
+        except Exception as e:
+            log(f"[vault] NOT WORKING: {e}")
         while True:
             busy = False
             if live.hold:  # Paused from the admin page
