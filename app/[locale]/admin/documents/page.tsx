@@ -8,6 +8,8 @@ import {
   Calendar,
   Car,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   Download,
   ExternalLink,
@@ -264,6 +266,8 @@ export default function DocumentsPage() {
   const [viewing, setViewing] = useState<RequestRow | null>(null);
   const [viewItems, setViewItems] = useState<ViewItem[]>([]);
   const [viewLoading, setViewLoading] = useState(false);
+  // Big in-page viewer: index into the flat list of every file in the request
+  const [lightbox, setLightbox] = useState<number | null>(null);
 
   // ── Download all (one file at a time, remembered per file) ────────────────
   const [downloaded, setDownloaded] = useState<Set<string>>(() => {
@@ -548,8 +552,38 @@ export default function DocumentsPage() {
   };
 
   const openViewer = (row: RequestRow) => {
+    setLightbox(null);
     loadView(row, "");
   };
+
+  // Every file in the request, in order, with a readable label
+  const allViewFiles = viewItems.flatMap((item) =>
+    item.slots.flatMap((slot) =>
+      slot.files.map((f) => ({
+        f,
+        label:
+          item.slots.length > 1 ? `${item.label} · ${slot.label}` : item.label,
+      })),
+    ),
+  );
+  const indexOfFile = (id: string) =>
+    allViewFiles.findIndex((x) => x.f.id === id);
+
+  // ← → to move, Esc to close
+  useEffect(() => {
+    if (lightbox === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightbox(null);
+      if (e.key === "ArrowRight")
+        setLightbox((i) =>
+          i === null ? i : Math.min(allViewFiles.length - 1, i + 1),
+        );
+      if (e.key === "ArrowLeft")
+        setLightbox((i) => (i === null ? i : Math.max(0, i - 1)));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [lightbox, allViewFiles.length]);
 
   const markDownloaded = (id: string) =>
     setDownloaded((prev) => {
@@ -1494,7 +1528,7 @@ export default function DocumentsPage() {
       {/* Viewer */}
       {viewing && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">
@@ -1547,7 +1581,10 @@ export default function DocumentsPage() {
                   />
                 </button>
                 <button
-                  onClick={() => setViewing(null)}
+                  onClick={() => {
+                    setLightbox(null);
+                    setViewing(null);
+                  }}
                   className="p-2 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100"
                 >
                   <X className="w-5 h-5" />
@@ -1575,7 +1612,7 @@ export default function DocumentsPage() {
                         )}
                       </div>
                     </div>
-                    <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {item.slots.map((slot) =>
                         slot.files.length === 0 ? (
                           <div
@@ -1589,26 +1626,37 @@ export default function DocumentsPage() {
                           </div>
                         ) : (
                           slot.files.map((f) => (
-                            <a
+                            <button
+                              type="button"
                               key={f.id}
-                              href={f.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="group block rounded-lg border border-gray-200 overflow-hidden hover:border-blue-400"
+                              onClick={() => setLightbox(indexOfFile(f.id))}
+                              className="group block text-left rounded-lg border border-gray-200 overflow-hidden hover:border-blue-400 hover:shadow-md transition"
                             >
-                              <div className="aspect-[4/3] bg-gray-50 flex items-center justify-center relative">
+                              <div className="aspect-[4/3] bg-gray-50 flex items-center justify-center relative overflow-hidden">
                                 {f.contentType.startsWith("image/") ? (
                                   // eslint-disable-next-line @next/next/no-img-element
                                   <img
                                     src={f.url}
                                     alt={slot.label}
-                                    className="w-full h-full object-cover"
+                                    className="w-full h-full object-contain bg-gray-100"
                                     loading="lazy"
+                                  />
+                                ) : f.contentType === "application/pdf" ? (
+                                  // Live first-page preview; clicks go to the button
+                                  <iframe
+                                    src={`${f.url}#toolbar=0&navpanes=0&view=FitH`}
+                                    title={f.name}
+                                    loading="lazy"
+                                    className="w-full h-full pointer-events-none bg-white"
                                   />
                                 ) : (
                                   <FileText className="w-10 h-10 text-gray-400" />
                                 )}
-                                <ExternalLink className="w-4 h-4 text-white absolute top-2 right-2 drop-shadow opacity-0 group-hover:opacity-100" />
+                                <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition">
+                                  <span className="opacity-0 group-hover:opacity-100 text-white text-xs font-bold px-2.5 py-1 rounded-full bg-black/60 transition">
+                                    View larger
+                                  </span>
+                                </span>
                                 {downloaded.has(f.id) && (
                                   <span className="absolute bottom-2 left-2 flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[10px] font-bold shadow">
                                     <Check className="w-3 h-3" /> Downloaded
@@ -1623,7 +1671,7 @@ export default function DocumentsPage() {
                                   {fmtDate(f.uploadedAt)}
                                 </p>
                               </div>
-                            </a>
+                            </button>
                           ))
                         ),
                       )}
@@ -1635,6 +1683,103 @@ export default function DocumentsPage() {
           </div>
         </div>
       )}
+
+      {/* Big in-page viewer */}
+      {viewing &&
+        lightbox !== null &&
+        allViewFiles[lightbox] &&
+        (() => {
+          const { f, label } = allViewFiles[lightbox];
+          const isImg = f.contentType.startsWith("image/");
+          return (
+            <div
+              className="fixed inset-0 z-[60] bg-black/90 flex flex-col"
+              onClick={() => setLightbox(null)}
+            >
+              <div
+                className="flex items-center justify-between gap-3 px-4 py-3 text-white"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-bold truncate">{label}</p>
+                  <p className="text-[11px] text-white/60 truncate">
+                    {f.name} · {fmtDate(f.uploadedAt)} · {lightbox + 1} of{" "}
+                    {allViewFiles.length}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <a
+                    href={f.downloadUrl}
+                    onClick={() => markDownloaded(f.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 hover:bg-white/20"
+                  >
+                    <Download className="w-4 h-4" /> Download
+                  </a>
+                  <a
+                    href={f.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/10 hover:bg-white/20"
+                  >
+                    <ExternalLink className="w-4 h-4" /> New tab
+                  </a>
+                  <button
+                    onClick={() => setLightbox(null)}
+                    className="p-2 rounded-lg hover:bg-white/10"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="relative flex-1 min-h-0 flex items-center justify-center px-14 pb-4">
+                {lightbox > 0 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLightbox(lightbox - 1);
+                    }}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center"
+                  >
+                    <ChevronLeft className="w-6 h-6" />
+                  </button>
+                )}
+                <div
+                  className="w-full h-full flex items-center justify-center"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {isImg ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={f.id}
+                      src={f.url}
+                      alt={label}
+                      className="max-w-full max-h-full object-contain rounded"
+                    />
+                  ) : (
+                    <iframe
+                      key={f.id}
+                      src={`${f.url}#view=FitH`}
+                      title={f.name}
+                      className="w-full h-full max-w-5xl bg-white rounded"
+                    />
+                  )}
+                </div>
+                {lightbox < allViewFiles.length - 1 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLightbox(lightbox + 1);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center"
+                  >
+                    <ChevronRight className="w-6 h-6" />
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })()}
     </AdminShell>
   );
 }
